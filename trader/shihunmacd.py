@@ -94,17 +94,16 @@ class ShihunMACDStrategy(bt.Strategy):
 
 
 def shihunMACD(main=False):
-    print(main)
     cerebro = bt.Cerebro()
 
     cerebro.addstrategy(ShihunMACDStrategy)
 
-    datapath = os.path.join(path.GetDatasDir(), 'test1.csv')
+    datapath = os.path.join(path.GetDatasDir(), 'orcl-1995-2014.txt')
 
     data = bt.feeds.YahooFinanceCSVData(
         dataname=datapath,
-        fromdate=datetime.datetime(1989, 3, 22),
-        todate=datetime.datetime(2024, 7, 27),
+        fromdate=datetime.datetime(2010, 1, 1),
+        todate=datetime.datetime(2012, 12, 31),
         reverse=False)
 
     cerebro.adddata(data)
