@@ -4,6 +4,10 @@ from __future__ import (absolute_import, division, print_function,
 import datetime
 import os.path
 import sys
+
+from backtrader import num2date
+
+from trader.binance.csvdata import BinanceCSVData
 from trader.utils import path
 
 import backtrader as bt
@@ -14,8 +18,9 @@ class ShihunMACDStrategy(bt.Strategy):
     )
 
     def log(self, txt, dt=None):
-        dt = dt or self.datas[0].datetime.date(0)
-        print('%s, %s' % (dt.isoformat(), txt))
+        dt = dt or self.datas[0].datetime[0]
+        dat = num2date(dt)
+        print(f"{dat}, {txt}")
 
     def __init__(self):
         self.dataclose = self.datas[0].close
@@ -98,13 +103,13 @@ def shihunMACD(main=False):
 
     cerebro.addstrategy(ShihunMACDStrategy)
 
-    datapath = os.path.join(path.GetDatasDir(), 'orcl-1995-2014.txt')
+    datapath = os.path.join(path.GetDatasDir(), 'ETHUSDT-1h-202301-202401.csv')
 
-    data = bt.feeds.YahooFinanceCSVData(
+    data = BinanceCSVData(
         dataname=datapath,
-        fromdate=datetime.datetime(2010, 1, 1),
-        todate=datetime.datetime(2012, 12, 31),
-        reverse=False)
+        fromdate=datetime.datetime(2023, 1, 1),
+        todate=datetime.datetime(2024, 1, 1),
+    )
 
     cerebro.adddata(data)
 
