@@ -13,6 +13,8 @@ from trader.utils.trend import TrendType
 # chainer basic framework strategy
 class ChainerStrategy(bt.Strategy):
     def __init__(self):
+
+        # Stop loss point
         self.stopLossPoint=0
 
     def canBuy(self):
@@ -57,7 +59,7 @@ class ChainerStrategy(bt.Strategy):
 
         return False
 
-    def canSell(self):
+    def needSell(self):
         """canSell
         Can sell based on the current framework
         """
@@ -106,3 +108,11 @@ class ChainerStrategy(bt.Strategy):
             i += 1
 
         return points
+
+    def buy(self):
+        """buy
+            Process buy
+        """
+        if self.datas[0].close[0] > self.stopLossPoint:
+            self.stopLossPoint=self.datas[0].close[0]
+

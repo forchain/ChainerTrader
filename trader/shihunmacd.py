@@ -12,6 +12,7 @@ from trader.utils import path
 
 import backtrader as bt
 
+# Shihun MACD strategy
 class ShihunMACDStrategy(bt.Strategy):
     params = (
         ('confirm', 3),

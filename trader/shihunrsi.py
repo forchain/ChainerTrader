@@ -12,8 +12,11 @@ from trader.utils import path
 
 import backtrader as bt
 
+from trader.utils.chainerstrategy import ChainerStrategy
 
-class ShihunRSIStrategy(bt.Strategy):
+
+# Shihun RSI strategy
+class ShihunRSIStrategy(ChainerStrategy):
     params = (
         ('confirm', 3),
         ('period', 14),
@@ -76,11 +79,12 @@ class ShihunRSIStrategy(bt.Strategy):
             return
 
         if not self.position:
-            if self.rsi[0] > self.params.overbought:
+            if self.rsi[0] > self.params.overbought or self.needSell():
                 self.sell()
         else:
             if self.rsi[0] < self.params.oversold:
-                self.buy()
+                if self.canBuy():
+                    self.buy()
 
 
 

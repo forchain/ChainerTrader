@@ -6,8 +6,12 @@ from datetime import datetime
 import backtrader
 from backtrader import date2num
 
-
+# Binance CSV Data
 class BinanceCSVData(backtrader.CSVDataBase):
+    """
+        Binance CSV Data
+        By downloading Binance's exclusive data format for parsing
+    """
 
     params = (
         ('nullvalue', 0),
