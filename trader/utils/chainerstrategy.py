@@ -13,7 +13,6 @@ from trader.utils.trend import TrendType
 # chainer basic framework strategy
 class ChainerStrategy(bt.Strategy):
     def __init__(self):
-
         # Stop loss point
         self.stopLossPoint=0
 

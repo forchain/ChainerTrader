@@ -30,6 +30,8 @@ class ShihunRSIStrategy(ChainerStrategy):
         print(f"{dat}, {txt}")
 
     def __init__(self):
+        ChainerStrategy.__init__(self)
+
         self.dataclose = self.datas[0].close
 
         self.order = None
@@ -38,7 +40,7 @@ class ShihunRSIStrategy(ChainerStrategy):
         self.goldenFork = 0
         self.deathFork = 0
 
-        self.rsi = bt.indicators.RSI(self.data.close, period=self.params.period)
+        self.rsi = bt.indicators.RSI(self.datas[0], period=self.params.period)
 
     def notify_order(self, order):
         if order.status in [order.Submitted, order.Accepted]:
