@@ -12,8 +12,11 @@ from trader.utils import path
 
 import backtrader as bt
 
+from trader.utils.chainerstrategy import ChainerStrategy
+
+
 # Shihun MACD strategy
-class ShihunMACDStrategy(bt.Strategy):
+class ShihunMACDStrategy(ChainerStrategy):
     params = (
         ('confirm', 3),
     )
@@ -24,6 +27,8 @@ class ShihunMACDStrategy(bt.Strategy):
         print(f"{dat}, {txt}")
 
     def __init__(self):
+        super().__init__()
+
         self.dataclose = self.datas[0].close
 
         self.order = None
@@ -84,7 +89,7 @@ class ShihunMACDStrategy(bt.Strategy):
            self.deathFork = self.params.confirm
 
         if self.goldenFork > 0:
-            if not self.position and self.macd.signal[-2] > 0 and self.macd.signal[-1] > 0 and self.macd.signal[0] > 0:
+            if not self.position and self.macd.signal[-2] > 0 and self.macd.signal[-1] > 0 and self.macd.signal[0] > 0 and self.canBuy():
                 self.log('创建 买单, %.2f' % self.dataclose[0])
                 self.order = self.buy()
                 self.goldenFork = 0
@@ -93,7 +98,7 @@ class ShihunMACDStrategy(bt.Strategy):
 
 
         if self.deathFork > 0:
-            if self.position and self.macd.signal[-2] > self.macd.signal[-1] and self.macd.signal[-1] > self.macd.signal[0]:
+            if self.position and (self.macd.signal[-2] > self.macd.signal[-1] and self.macd.signal[-1] > self.macd.signal[0] or self.canSell()):
                 self.log('创建 卖单, %.2f' % self.dataclose[0])
                 self.order = self.sell()
                 self.deathFork = 0

@@ -30,7 +30,7 @@ class ShihunRSIStrategy(ChainerStrategy):
         print(f"{dat}, {txt}")
 
     def __init__(self):
-        ChainerStrategy.__init__(self)
+        super().__init__()
 
         self.dataclose = self.datas[0].close
 
@@ -81,7 +81,7 @@ class ShihunRSIStrategy(ChainerStrategy):
             return
 
         if not self.position:
-            if self.rsi[0] > self.params.overbought or self.needSell():
+            if self.rsi[0] > self.params.overbought or self.canSell():
                 self.sell()
         else:
             if self.rsi[0] < self.params.oversold:

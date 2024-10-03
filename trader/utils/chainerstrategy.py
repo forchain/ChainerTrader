@@ -13,6 +13,7 @@ from trader.utils.trend import TrendType
 # chainer basic framework strategy
 class ChainerStrategy(bt.Strategy):
     def __init__(self):
+        super().__init__()
         # Stop loss point
         self.stopLossPoint=0
 
@@ -20,6 +21,7 @@ class ChainerStrategy(bt.Strategy):
         """canBuy
         Can buy based on the current framework
         """
+        return True
         # We only operate when it's a bullish candlestick
         if self.datas[0].close[0] <= self.datas[0].open[0]:
             return False
@@ -32,19 +34,17 @@ class ChainerStrategy(bt.Strategy):
         curTrend = TrendType.UNKNOWN
 
         av1=(self.datas[0].open[-1] + self.datas[0].close[-1]) / 2
-        av2=(self.datas[0].open[-2] + self.datas[0].close[-2]) / 2
-        av3=(self.datas[0].open[-3] + self.datas[0].close[-3]) / 2
-        if self.datas[0].close[0] <= av1 and av1 <= av2 and av2 <= av3:
+
+        if self.datas[0].close[0] <= av1:
             curTrend=TrendType.DOWN
-        elif self.datas[0].close[0] >= av1 and av1 >= av2 and av2 >= av3:
+        elif self.datas[0].close[0] >= av1:
             curTrend=TrendType.UP
         else:
             curTrend = TrendType.UNKNOWN
-
+        print(curTrend)
         # We only operate in an upward trend
         if curTrend != TrendType.UP:
             return False
-
         # Identify all turning points
         infPoints = self.getInflectionPoints()
         if infPoints is None:
@@ -58,7 +58,7 @@ class ChainerStrategy(bt.Strategy):
 
         return False
 
-    def needSell(self):
+    def canSell(self):
         """canSell
         Can sell based on the current framework
         """
@@ -114,4 +114,10 @@ class ChainerStrategy(bt.Strategy):
         """
         if self.datas[0].close[0] > self.stopLossPoint:
             self.stopLossPoint=self.datas[0].close[0]
+        super().buy()
 
+    def sell(self):
+        """sell
+        Can sell based on the current framework
+        """
+        super().sell()
