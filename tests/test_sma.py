@@ -11,16 +11,14 @@ from trader.binance.csvdata import BinanceCSVData
 from trader.utils import path
 
 import backtrader as bt
+import backtrader.indicators as btind
 
 from trader.utils.chainerstrategy import ChainerStrategy
 
-
-# Shihun RSI strategy
-class ShihunRSIStrategy(ChainerStrategy):
+class SMAStrategy(ChainerStrategy):
     params = (
+        ('confirm', 3),
         ('period', 14),
-        ('overbought', 70),
-        ('oversold', 30),
     )
 
     def log(self, txt, dt=None):
@@ -35,7 +33,7 @@ class ShihunRSIStrategy(ChainerStrategy):
 
         self.order = None
 
-        self.rsi = bt.indicators.RSI(self.datas[0], period=self.params.period)
+        self.sma = btind.SimpleMovingAverage(self.datas[0], period=self.params.period)
 
     def notify_order(self, order):
         if order.status in [order.Submitted, order.Accepted]:
@@ -49,6 +47,8 @@ class ShihunRSIStrategy(ChainerStrategy):
                      order.executed.value,
                      order.executed.comm))
 
+                self.buyprice = order.executed.price
+                self.buycomm = order.executed.comm
             else:  # Sell
                 self.log('卖出, 价格: %.2f, 花费: %.2f, 手续费: %.2f' %
                          (order.executed.price,
@@ -74,20 +74,19 @@ class ShihunRSIStrategy(ChainerStrategy):
             return
 
         if not self.position:
-            if self.rsi[0] > self.params.overbought or self.canSell():
+            if self.sma[0] < self.dataclose[0] or self.canSell():
                 self.sell()
         else:
-            if self.rsi[0] < self.params.oversold:
+            if self.sma[0] > self.dataclose[0]:
                 if self.canBuy():
                     self.buy()
 
 
 
-def shihunRSI(main=False,period=14):
-    print("main:",main,"period:",period)
+def test_sma():
     cerebro = bt.Cerebro()
 
-    cerebro.addstrategy(ShihunRSIStrategy,period=period)
+    cerebro.addstrategy(SMAStrategy)
 
     datapath = os.path.join(path.GetDatasDir(), 'ETHUSDT-1h-202301-202401.csv')
 
@@ -110,9 +109,3 @@ def shihunRSI(main=False,period=14):
     cerebro.run()
 
     print('最终资产: %.2f' % cerebro.broker.getvalue())
-
-    if main:
-        cerebro.plot()
-
-if __name__ == '__main__':
-    shihunRSI(True)

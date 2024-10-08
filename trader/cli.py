@@ -13,7 +13,7 @@ def main():
     parser.add_argument("-v", "--version",help="Version",action="store_true")
     parser.add_argument( "--shihunmacd", help="Supper MACD from ShiHun", action="store_true")
     parser.add_argument("--shihunrsi", help="Supper RSI from ShiHun", action="store_true")
-
+    parser.add_argument('--period', help=('Period for the moving average'),action='store',type=int, default=14,required=False)
     args = parser.parse_args()
 
     if args.version:
@@ -25,5 +25,5 @@ def main():
     elif args.shihunmacd:
             shihunMACD(True)
     elif args.shihunrsi:
-            shihunRSI(True)
+            shihunRSI(True,args.period)
 
