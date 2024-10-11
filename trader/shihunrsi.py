@@ -83,8 +83,8 @@ class ShihunRSIStrategy(ChainerStrategy):
 
 
 
-def shihunRSI(main=False,period=14):
-    print("main:",main,"period:",period)
+def shihunRSI(main=False,period=14,commission=0.001):
+    print("main:",main,"period:",period,"commission",commission)
     cerebro = bt.Cerebro()
 
     cerebro.addstrategy(ShihunRSIStrategy,period=period)
@@ -103,7 +103,7 @@ def shihunRSI(main=False,period=14):
 
     cerebro.addsizer(bt.sizers.FixedSize, stake=10)
 
-    cerebro.broker.setcommission(commission=0.0)
+    cerebro.broker.setcommission(commission=commission)
 
     print('\n初始资产: %.2f' % cerebro.broker.getvalue())
 

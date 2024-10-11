@@ -106,7 +106,7 @@ class ShihunMACDStrategy(ChainerStrategy):
                 self.deathFork = 0
 
 
-def shihunMACD(main=False):
+def shihunMACD(main=False,commission=0.001):
     cerebro = bt.Cerebro()
 
     cerebro.addstrategy(ShihunMACDStrategy)
@@ -125,7 +125,7 @@ def shihunMACD(main=False):
 
     cerebro.addsizer(bt.sizers.FixedSize, stake=10)
 
-    cerebro.broker.setcommission(commission=0.0)
+    cerebro.broker.setcommission(commission=commission)
 
     print('\n初始资产: %.2f' % cerebro.broker.getvalue())
 
