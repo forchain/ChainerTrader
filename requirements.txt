@@ -1,2 +1,3 @@
 backtrader
 matplotlib
+prettytable
