@@ -2,7 +2,7 @@ import argparse,os
 
 from trader.shihunrsi import shihunRSI
 from trader.utils import path
-from trader.shihunmacd import shihunMACD
+from trader.shihunmacd2 import shihunMACD
 
 def main():
     parser = argparse.ArgumentParser(
