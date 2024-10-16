@@ -21,6 +21,7 @@ from trader.utils.operate import OperateType
 # Shihun MACD strategy
 class ShihunMACDStrategy(bt.Strategy):
     params = (
+        ('atr', False),
         ('atrperiod', 14),
         ('atrdist', 5),  # ATR distance for stop price
         ('confirm', 3),
@@ -43,7 +44,8 @@ class ShihunMACDStrategy(bt.Strategy):
         # Stop loss point
         self.stopLossPoint=0
         # To set the stop price
-        self.atr = bt.indicators.ATR(self.datas[0], period=self.params.atrperiod)
+        if self.params.atr:
+            self.atr = bt.indicators.ATR(self.datas[0], period=self.params.atrperiod)
 
         self.criticalBuyK = None
         self.criticalSellK = None
@@ -137,16 +139,18 @@ class ShihunMACDStrategy(bt.Strategy):
         elif willOpt == OperateType.BUY:
             self.log('收盘价: %.2f (创建 买单)' % self.dataclose[0])
             self.order = self.buy()
-            pdist = self.atr[0] * self.params.atrdist
+            pdist=0
+            if self.params.atr:
+                pdist = self.atr[0] * self.params.atrdist
             self.stopLossPoint = self.datas[0].close[0] - pdist
             self.criticalBuyK = None
             self.criticalSellK = None
 
 
-def shihunMACD(main=False,commission=0.001):
+def shihunMACD(main=False,commission=0.001,atr=True):
     cerebro = bt.Cerebro()
 
-    cerebro.addstrategy(ShihunMACDStrategy)
+    cerebro.addstrategy(ShihunMACDStrategy,atr=atr)
     cerebro.addanalyzer(btanalyzers.SharpeRatio, _name='sharpeRatio')
     cerebro.addanalyzer(btanalyzers.DrawDown, _name="drawdown")
 
@@ -184,6 +188,7 @@ def shihunMACD(main=False,commission=0.001):
     table = PrettyTable()
     table.field_names = ["Name", "Value"]
     table.add_row(["手续费率", commission])
+    table.add_row(["ATR", atr])
     table.add_row(["初始资金", format(initialCash, '.2f')])
     table.add_row(["最终资金", format(finalFund, '.2f')])
     table.add_row(["总收益率", format(totalReturnRate, '.2f')+"%"])

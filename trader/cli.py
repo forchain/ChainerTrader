@@ -15,6 +15,7 @@ def main():
     parser.add_argument("--shihunrsi", help="Supper RSI from ShiHun", action="store_true")
     parser.add_argument('--period', help=('Period for the moving average'),action='store',type=int, default=14,required=False)
     parser.add_argument('--commission', help=('Transaction commission'), action='store', type=float, default=0.001,required=False)
+    parser.add_argument("--atr", help="Use atr for stop-loss-point", action="store_true")
     args = parser.parse_args()
 
     if args.version:
@@ -24,7 +25,7 @@ def main():
             content = file.read()
             print(content)
     elif args.shihunmacd:
-            shihunMACD(True,args.commission)
+            shihunMACD(True,args.commission,args.atr)
     elif args.shihunrsi:
             shihunRSI(True,args.period,args.commission)
 
