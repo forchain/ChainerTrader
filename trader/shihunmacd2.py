@@ -148,6 +148,7 @@ def shihunMACD(main=False,commission=0.001):
 
     cerebro.addstrategy(ShihunMACDStrategy)
     cerebro.addanalyzer(btanalyzers.SharpeRatio, _name='sharpeRatio')
+    cerebro.addanalyzer(btanalyzers.DrawDown, _name="drawdown")
 
     datapath = os.path.join(path.GetDatasDir(), 'ETHUSDT-1h-202301-202401.csv')
 
@@ -172,6 +173,10 @@ def shihunMACD(main=False,commission=0.001):
     sharpeRatio = ret.analyzers.sharpeRatio.get_analysis()
     totalReturnRate = (finalFund - initialCash) / initialCash * 100
 
+    drawdown = ret.analyzers.drawdown.get_analysis()
+    maxDrawdown = drawdown.max.drawdown
+    maxDrawdownDuration = drawdown.max.len
+
     if main:
         cerebro.plot()
 
@@ -183,6 +188,8 @@ def shihunMACD(main=False,commission=0.001):
     table.add_row(["最终资金", format(finalFund, '.2f')])
     table.add_row(["总收益率", format(totalReturnRate, '.2f')+"%"])
     table.add_row(["夏普比率", format(sharpeRatio['sharperatio'],'.2f')])
+    table.add_row(["最大回撤:",(f"{maxDrawdown:.2f}%")])
+    table.add_row(["最大回撤持续时间:", (f"{maxDrawdownDuration:.2f}")])
 
     print("\n")
     print(table)
