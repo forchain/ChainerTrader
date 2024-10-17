@@ -16,6 +16,9 @@ import backtrader.analyzers as btanalyzers
 from prettytable import PrettyTable
 
 from trader.utils.operate import OperateType
+from trader.utils.profitlossratio import ProfitLossRatioAnalyzer
+from trader.utils.volatility import VolatilityAnalyzer
+from trader.utils.winrate import WinRateAnalyzer
 
 
 # Shihun MACD strategy
@@ -153,6 +156,9 @@ def shihunMACD(main=False,commission=0.001,atr=True):
     cerebro.addstrategy(ShihunMACDStrategy,atr=atr)
     cerebro.addanalyzer(btanalyzers.SharpeRatio, _name='sharpeRatio')
     cerebro.addanalyzer(btanalyzers.DrawDown, _name="drawdown")
+    cerebro.addanalyzer(VolatilityAnalyzer, _name="volatility",cerebro=cerebro)
+    cerebro.addanalyzer(WinRateAnalyzer,_name="winRate")
+    cerebro.addanalyzer(ProfitLossRatioAnalyzer, _name="profitLossRatio")
 
     datapath = os.path.join(path.GetDatasDir(), 'ETHUSDT-1h-202301-202401.csv')
 
@@ -180,6 +186,12 @@ def shihunMACD(main=False,commission=0.001,atr=True):
     drawdown = ret.analyzers.drawdown.get_analysis()
     maxDrawdown = drawdown.max.drawdown
     maxDrawdownDuration = drawdown.max.len
+    volatility = ret.analyzers.volatility.get_analysis()
+    winRate = ret.analyzers.winRate.get_analysis()
+    profitLossRatio = ret.analyzers.profitLossRatio.get_analysis()
+    plr = profitLossRatio['profitLossRatio']
+    avgProfit = profitLossRatio['avgProfit']
+    avgLoss = profitLossRatio['avgLoss']
 
     if main:
         cerebro.plot()
@@ -194,7 +206,12 @@ def shihunMACD(main=False,commission=0.001,atr=True):
     table.add_row(["总收益率", format(totalReturnRate, '.2f')+"%"])
     table.add_row(["夏普比率", format(sharpeRatio['sharperatio'],'.2f')])
     table.add_row(["最大回撤:",(f"{maxDrawdown:.2f}%")])
-    table.add_row(["最大回撤持续时间:", (f"{maxDrawdownDuration:.2f}")])
+    table.add_row(["回撤持续:", (f"{maxDrawdownDuration:.2f}")])
+    table.add_row(["波动率:", (f"{volatility:.2f}%")])
+    table.add_row(["胜率:", (f"{winRate:.2f}%")])
+    table.add_row(["平均盈亏比:", (f"{plr:.2f}")])
+    table.add_row(["平均盈利:", (f"{avgProfit:.2f}")])
+    table.add_row(["平均亏损:", (f"{avgLoss:.2f}")])
 
     print("\n")
     print(table)
