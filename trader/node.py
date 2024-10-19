@@ -36,7 +36,7 @@ class Node:
         data = BinanceCSVData(
             dataname=datapath,
             fromdate=datetime.datetime(2023, 1, 1),
-            todate=datetime.datetime(2024, 1, 1),
+            todate=datetime.datetime(2023, 2, 1),
         )
 
         cerebro.adddata(data)
@@ -76,7 +76,8 @@ class Node:
         table.add_row(["初始资金", format(self.initialCash, '.2f')])
         table.add_row(["最终资金", format(finalFund, '.2f')])
         table.add_row(["总收益率", format(totalReturnRate, '.2f') + "%"])
-        table.add_row(["夏普比率", format(sharpeRatio['sharperatio'], '.2f')])
+        if sharpeRatio['sharperatio']:
+            table.add_row(["夏普比率", format(sharpeRatio['sharperatio'], '.2f')])
         table.add_row(["最大回撤:", (f"{maxDrawdown:.2f}%")])
         table.add_row(["回撤持续:", (f"{maxDrawdownDuration:.2f}")])
         table.add_row(["波动率:", (f"{volatility:.2f}%")])
