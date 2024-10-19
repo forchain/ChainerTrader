@@ -1,6 +1,6 @@
 import argparse,os
 
-from trader.shihunrsi import shihunRSI
+from trader.shihunrsi2 import shihunRSI
 from trader.utils import path
 from trader.shihunmacd2 import shihunMACD
 
@@ -27,5 +27,5 @@ def main():
     elif args.shihunmacd:
             shihunMACD(True,args.commission,args.atr)
     elif args.shihunrsi:
-            shihunRSI(True,args.period,args.commission)
+            shihunRSI(True,args.commission,args.atr)
 
