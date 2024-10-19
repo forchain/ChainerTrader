@@ -36,7 +36,7 @@ class Node:
         data = BinanceCSVData(
             dataname=datapath,
             fromdate=datetime.datetime(2023, 1, 1),
-            todate=datetime.datetime(2023, 2, 1),
+            todate=datetime.datetime(2024, 1, 1),
         )
 
         cerebro.adddata(data)
