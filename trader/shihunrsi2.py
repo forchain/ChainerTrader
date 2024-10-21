@@ -123,6 +123,11 @@ class ShihunRSIStrategy(bt.Strategy):
             if self.stopLossPoint:
                 if self.dataclose[0] < self.stopLossPoint:
                    willOpt = OperateType.SELL
+            if willOpt == OperateType.UNKNOWN:
+                if self.rsi[0] < self.params.oversold:
+                    willOpt = OperateType.SELL
+                if self.rsi.histo[0] < self.rsi.histo[-1] and self.rsi.histo[-1] < self.rsi.histo[-2] and self.rsi.histo[-2] > 0 and self.rsi.histo[0] < 0:
+                    willOpt = OperateType.SELL
 
             if willOpt == OperateType.UNKNOWN:
                     if self.rsi.histo[0] < self.rsi.histo[-1] and self.rsi.histo[-1] > self.rsi.histo[-2] and self.rsi.histo[-2] > 0:
