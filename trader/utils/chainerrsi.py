@@ -3,8 +3,8 @@ import backtrader as bt
 
 
 class ChainerRSI(bt.Indicator):
-    lines = ('dif', 'signal',)
-    params = (('period_rsi1', 12), ('period_rsi2', 26), ('period_signal', 9),
+    lines = ('rsi', 'signal',)
+    params = (('period_rsi', 14), ('period_signal', 9),
               ('movav', bt.indicators.MovAv.Exponential),)
 
     plotinfo = dict(plothlines=[0.0])
@@ -16,11 +16,10 @@ class ChainerRSI(bt.Indicator):
 
     def __init__(self):
         super(ChainerRSI, self).__init__()
-        rsi1 = bt.indicators.RSI(self.data, period=self.params.period_rsi1)
-        rsi2 = bt.indicators.RSI(self.data, period=self.params.period_rsi2)
+        rsi = bt.indicators.RSI(self.data, period=self.params.period_rsi)
 
-        self.lines.dif = rsi1 - rsi2
-        self.lines.signal = self.params.movav(self.lines.dif,period=self.params.period_signal)
+        self.lines.rsi = rsi
+        self.lines.signal = self.params.movav(self.lines.rsi,period=self.params.period_signal)
 
 
 
@@ -32,4 +31,4 @@ class ChainerRSIHisto(ChainerRSI):
 
     def __init__(self):
         super(ChainerRSIHisto, self).__init__()
-        self.lines.histo = self.lines.dif - self.lines.signal
+        self.lines.histo = self.lines.rsi - self.lines.signal
