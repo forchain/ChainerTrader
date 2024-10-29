@@ -22,6 +22,10 @@ from trader.utils.trend import TrendType
 
 # Shihun MACD RSI BollingerBand strategy
 class ShihunMacdRsiBollingerBandStrategy(BaseStrategy):
+    params = (
+        ('period', 20),         # 布林带周期
+        ('devfactor', 2),       # 标准差系数
+    )
 
     def log(self, txt, dt=None):
         dt = dt or self.datas[0].datetime[0]
@@ -37,6 +41,11 @@ class ShihunMacdRsiBollingerBandStrategy(BaseStrategy):
         self.order = None
 
         self.macd = bt.indicators.MACDHisto(self.datas[0])
+        self.bollinger = bt.indicators.BollingerBands(
+            self.data.close,
+            period=self.params.period,
+            devfactor=self.params.devfactor
+        )
 
         self.criticalBuyK = None
         self.criticalSellK = None
@@ -107,8 +116,78 @@ class ShihunMacdRsiBollingerBandStrategy(BaseStrategy):
         return TrendType.DOWN
 
     def processShock(self):
+        upperBand = self.bollinger.lines.top[0]
+        lowerBand = self.bollinger.lines.bot[0]
+        midBand = self.bollinger.lines.mid[0]
+
         # find criticalK
         find = False
+        if self.data.close[0] < lowerBand:
+            self.criticalBuyK = self.data.high[0]
+            find = True
+
+        if self.macd.macd[0] > 0 and self.macd.macd[-1] > 0 and self.macd.macd[-2] > 0:
+            if self.macd.histo[0] < 0 and self.macd.histo[0] > self.macd.histo[-1] and self.macd.histo[-1] < \
+                    self.macd.histo[-2] and self.macd.histo[-2] < 0:
+                self.criticalBuyK = self.datas[0].high[0]
+                find = True
+
+        if self.macd.macd[0] > 0 and self.macd.macd[-1] < 0 and self.macd.macd[-2] < self.macd.macd[-1]:
+            curIdx = 0
+            adjacentUnderpants = False
+            while self.macd.histo[curIdx] >= 0:
+                if self.macd.macd[curIdx] <= 0 and self.macd.macd[curIdx - 1] >= 0:
+                    adjacentUnderpants = True
+                    break
+                curIdx -= 1
+            if not adjacentUnderpants:
+                while self.macd.histo[curIdx] < 0:
+                    if self.macd.macd[curIdx] <= 0 and self.macd.macd[curIdx - 1] >= 0:
+                        adjacentUnderpants = True
+                        break
+                    curIdx -= 1
+            if adjacentUnderpants:
+                self.criticalBuyK = self.datas[0].high[0]
+                find = True
+        willOpt = OperateType.UNKNOWN
+
+        if not self.position:
+            if self.criticalBuyK and self.macd.macd[0] > 0 and not find:
+                if self.datas[0].close[0] > self.datas[0].open[0] and self.datas[0].close[0] > self.criticalBuyK:
+                    willOpt = OperateType.BUY
+
+        else:
+            if self.stopLossPoint:
+                if self.dataclose[0] < self.stopLossPoint:
+                    willOpt = OperateType.SELL
+            if willOpt == OperateType.UNKNOWN:
+                if self.data.high[0] > upperBand:
+                    willOpt = OperateType.SELL
+                elif self.data.close[0] < midBand:
+                    willOpt = OperateType.SELL
+
+            if willOpt == OperateType.UNKNOWN:
+                if self.macd.histo[0] < self.macd.histo[-1] and self.macd.histo[-1] > self.macd.histo[-2] and \
+                        self.macd.histo[-2] > 0:
+                    self.criticalSellK = self.datas[0].low[0]
+                elif self.criticalSellK and self.datas[0].close[0] < self.datas[0].open[0] and self.datas[0].close[
+                    0] < self.criticalSellK:
+                    willOpt = OperateType.SELL
+
+        return willOpt
+
+    def processTrend(self):
+        upperBand = self.bollinger.lines.top[0]
+        lowerBand = self.bollinger.lines.bot[0]
+        midBand = self.bollinger.lines.mid[0]
+
+        # find criticalK
+        find = False
+        if self.data.close[0] > upperBand:
+            if self.data.close[0] > self.data.open[0]:
+                self.criticalBuyK = self.data.high[0]
+                find = True
+
         if self.macd.macd[0] > 0 and self.macd.macd[-1] > 0 and self.macd.macd[-2] > 0:
             if self.macd.histo[0] < 0 and self.macd.histo[0] > self.macd.histo[-1] and self.macd.histo[-1] < \
                     self.macd.histo[-2] and self.macd.histo[-2] < 0:
@@ -145,51 +224,7 @@ class ShihunMacdRsiBollingerBandStrategy(BaseStrategy):
                     willOpt = OperateType.SELL
 
             if willOpt == OperateType.UNKNOWN:
-                if self.macd.histo[0] < self.macd.histo[-1] and self.macd.histo[-1] > self.macd.histo[-2] and \
-                        self.macd.histo[-2] > 0:
-                    self.criticalSellK = self.datas[0].low[0]
-                elif self.criticalSellK and self.datas[0].close[0] < self.datas[0].open[0] and self.datas[0].close[
-                    0] < self.criticalSellK:
-                    willOpt = OperateType.SELL
-
-        return willOpt
-
-    def processTrend(self):
-        # find criticalK
-        find = False
-        if self.macd.macd[0] > 0 and self.macd.macd[-1] > 0 and self.macd.macd[-2] > 0:
-            if self.macd.histo[0] < 0 and self.macd.histo[0] > self.macd.histo[-1] and self.macd.histo[-1] < \
-                    self.macd.histo[-2] and self.macd.histo[-2] < 0:
-                self.criticalBuyK = self.datas[0].high[0]
-                find = True
-
-        if self.macd.macd[0] > 0 and self.macd.macd[-1] < 0 and self.macd.macd[-2] < self.macd.macd[-1]:
-            curIdx = 0
-            adjacentUnderpants = False
-            while self.macd.histo[curIdx] >= 0:
-                if self.macd.macd[curIdx] <= 0 and self.macd.macd[curIdx - 1] >= 0:
-                    adjacentUnderpants = True
-                    break
-                curIdx -= 1
-            if not adjacentUnderpants:
-                while self.macd.histo[curIdx] < 0:
-                    if self.macd.macd[curIdx] <= 0 and self.macd.macd[curIdx - 1] >= 0:
-                        adjacentUnderpants = True
-                        break
-                    curIdx -= 1
-            if adjacentUnderpants:
-                self.criticalBuyK = self.datas[0].high[0]
-                find = True
-        willOpt = OperateType.UNKNOWN
-
-        if not self.position:
-            if self.criticalBuyK and self.macd.macd[0] > 0 and not find:
-                if self.datas[0].close[0] > self.datas[0].open[0] and self.datas[0].close[0] > self.criticalBuyK:
-                    willOpt = OperateType.BUY
-
-        else:
-            if self.stopLossPoint:
-                if self.dataclose[0] < self.stopLossPoint:
+                if self.data.low[0] < midBand:
                     willOpt = OperateType.SELL
 
             if willOpt == OperateType.UNKNOWN:
