@@ -24,5 +24,3 @@ class BaseStrategy(bt.Strategy):
         # To set the stop price
         if self.params.atr:
             self.atr = bt.indicators.ATR(self.datas[0], period=self.params.atrperiod)
-
-        self.trend = TrendType.NORMAL
