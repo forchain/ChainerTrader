@@ -13,6 +13,7 @@ from trader.utils import path
 
 import backtrader as bt
 
+from trader.utils.basestrategy import BaseStrategy
 from trader.utils.chainerrsi import ChainerRSI, ChainerRSIHisto
 from trader.utils.chainerstrategy import ChainerStrategy
 from trader.utils.operate import OperateType
@@ -20,13 +21,7 @@ from trader.utils.trend import TrendType
 
 
 # Shihun MACD RSI BollingerBand strategy
-class ShihunMacdRsiBollingerBandStrategy(bt.Strategy):
-    params = (
-        ('atr', False),
-        ('atrperiod', 14),
-        ('atrdist', 5),  # ATR distance for stop price
-        ('mode', TrendType.UNKNOWN),
-    )
+class ShihunMacdRsiBollingerBandStrategy(BaseStrategy):
 
     def log(self, txt, dt=None):
         dt = dt or self.datas[0].datetime[0]
@@ -42,14 +37,6 @@ class ShihunMacdRsiBollingerBandStrategy(bt.Strategy):
         self.order = None
 
         self.macd = bt.indicators.MACDHisto(self.datas[0])
-
-        # Stop loss point
-        self.stopLossPoint=0
-        # To set the stop price
-        if self.params.atr:
-            self.atr = bt.indicators.ATR(self.datas[0], period=self.params.atrperiod)
-
-        self.trend = TrendType.UNKNOWN
 
         self.criticalBuyK = None
         self.criticalSellK = None

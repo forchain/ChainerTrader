@@ -16,19 +16,16 @@ import backtrader.analyzers as btanalyzers
 
 from prettytable import PrettyTable
 
+from trader.utils.basestrategy import BaseStrategy
 from trader.utils.operate import OperateType
 from trader.utils.profitlossratio import ProfitLossRatioAnalyzer
+from trader.utils.trend import TrendType
 from trader.utils.volatility import VolatilityAnalyzer
 from trader.utils.winrate import WinRateAnalyzer
 
 
 # Shihun MACD strategy
-class ShihunMACDStrategy(bt.Strategy):
-    params = (
-        ('atr', False),
-        ('atrperiod', 14),
-        ('atrdist', 5),  # ATR distance for stop price
-    )
+class ShihunMACDStrategy(BaseStrategy):
 
     def log(self, txt, dt=None):
         dt = dt or self.datas[0].datetime[0]
@@ -43,12 +40,6 @@ class ShihunMACDStrategy(bt.Strategy):
         self.order = None
 
         self.macd = bt.indicators.MACDHisto(self.datas[0])
-
-        # Stop loss point
-        self.stopLossPoint=0
-        # To set the stop price
-        if self.params.atr:
-            self.atr = bt.indicators.ATR(self.datas[0], period=self.params.atrperiod)
 
         self.criticalBuyK = None
         self.criticalSellK = None

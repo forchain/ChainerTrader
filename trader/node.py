@@ -13,17 +13,18 @@ import backtrader.analyzers as btanalyzers
 from prettytable import PrettyTable
 
 from trader.utils.profitlossratio import ProfitLossRatioAnalyzer
+from trader.utils.trend import TrendType
 from trader.utils.volatility import VolatilityAnalyzer
 from trader.utils.winrate import WinRateAnalyzer
 
 class Node:
-    def __init__(self,strategy,main=False, commission=0.001, atr=True,datafile="ETHUSDT-1h-202301-202401.csv"):
+    def __init__(self,strategy,main=False, commission=0.001, atr=True,mode=TrendType.UNKNOWN,datafile="ETHUSDT-1h-202301-202401.csv"):
         self.main=main
         self.commission=commission
         self.atr=atr
 
         cerebro = bt.Cerebro()
-        cerebro.addstrategy(strategy, atr=atr)
+        cerebro.addstrategy(strategy, atr=atr,mode=mode)
         cerebro.addanalyzer(btanalyzers.SharpeRatio, _name='sharpeRatio')
         cerebro.addanalyzer(btanalyzers.DrawDown, _name="drawdown")
         cerebro.addanalyzer(VolatilityAnalyzer, _name="volatility", cerebro=cerebro)
