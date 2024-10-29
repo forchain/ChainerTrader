@@ -18,7 +18,7 @@ from trader.utils.volatility import VolatilityAnalyzer
 from trader.utils.winrate import WinRateAnalyzer
 
 class Node:
-    def __init__(self,strategy,main=False, commission=0.001, atr=True,mode=TrendType.UNKNOWN,datafile="ETHUSDT-1h-202301-202401.csv"):
+    def __init__(self,strategy,main=False, commission=0.001, atr=True,mode=TrendType.NORMAL,datafile="ETHUSDT-1h-202301-202401.csv"):
         self.main=main
         self.commission=commission
         self.atr=atr

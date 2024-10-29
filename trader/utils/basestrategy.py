@@ -14,7 +14,7 @@ class BaseStrategy(bt.Strategy):
         ('atr', False),
         ('atrperiod', 14),
         ('atrdist', 5),  # ATR distance for stop price
-        ('mode', TrendType.UNKNOWN),
+        ('mode', TrendType.NORMAL),
     )
 
     def __init__(self):
@@ -25,4 +25,4 @@ class BaseStrategy(bt.Strategy):
         if self.params.atr:
             self.atr = bt.indicators.ATR(self.datas[0], period=self.params.atrperiod)
 
-        self.trend = TrendType.UNKNOWN
+        self.trend = TrendType.NORMAL
