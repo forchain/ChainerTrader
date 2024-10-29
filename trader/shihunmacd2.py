@@ -28,7 +28,6 @@ class ShihunMACDStrategy(bt.Strategy):
         ('atr', False),
         ('atrperiod', 14),
         ('atrdist', 5),  # ATR distance for stop price
-        ('confirm', 3),
     )
 
     def log(self, txt, dt=None):

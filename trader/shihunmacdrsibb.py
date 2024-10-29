@@ -16,6 +16,7 @@ import backtrader as bt
 from trader.utils.chainerrsi import ChainerRSI, ChainerRSIHisto
 from trader.utils.chainerstrategy import ChainerStrategy
 from trader.utils.operate import OperateType
+from trader.utils.trend import TrendType
 
 
 # Shihun MACD RSI BollingerBand strategy
@@ -24,15 +25,14 @@ class ShihunMacdRsiBollingerBandStrategy(bt.Strategy):
         ('atr', False),
         ('atrperiod', 14),
         ('atrdist', 5),  # ATR distance for stop price
-        ('overbought', 70),
-        ('oversold', 30),
-        ('mode', 0),
+        ('mode', TrendType.UNKNOWN),
     )
 
     def log(self, txt, dt=None):
         dt = dt or self.datas[0].datetime[0]
         dat = num2date(dt)
         print(f"{dat}, {txt}")
+
 
     def __init__(self):
         super().__init__()
@@ -41,7 +41,7 @@ class ShihunMacdRsiBollingerBandStrategy(bt.Strategy):
 
         self.order = None
 
-        self.rsi = ChainerRSIHisto(self.datas[0])
+        self.macd = bt.indicators.MACDHisto(self.datas[0])
 
         # Stop loss point
         self.stopLossPoint=0
@@ -49,8 +49,11 @@ class ShihunMacdRsiBollingerBandStrategy(bt.Strategy):
         if self.params.atr:
             self.atr = bt.indicators.ATR(self.datas[0], period=self.params.atrperiod)
 
+        self.trend = TrendType.UNKNOWN
+
         self.criticalBuyK = None
         self.criticalSellK = None
+
 
     def notify_order(self, order):
         if order.status in [order.Submitted, order.Accepted]:
@@ -82,43 +85,48 @@ class ShihunMacdRsiBollingerBandStrategy(bt.Strategy):
         self.log('营业利润, 毛利润: %.2f, 净利润: %.2f' %
                  (trade.pnl, trade.pnlcomm))
 
-
     def next(self):
         if self.order:
             return
         # self.log('收盘价, %.2f' % self.dataclose[0])
 
+        if self.macd.macd[0] > 0:
+            self.trend=TrendType.UP
+        else:
+            self.trend=TrendType.DOWN
+
+        if self.params.mode == TrendType.UP and self.trend != TrendType.UP:
+            return
+
         # find criticalK
         find = False
-        if self.rsi.signal[0] > 50:
-            if  self.rsi.histo[0] > 0 and self.rsi.histo[0] > self.rsi.histo[-1] and self.rsi.histo[-1] > self.rsi.histo[-2] and self.rsi.histo[-2] < 0:
-                find=True
-            if self.rsi.rsi[0] > self.params.overbought:
+        if self.macd.macd[0] > 0 and self.macd.macd[-1] > 0 and self.macd.macd[-2] > 0:
+            if  self.macd.histo[0] < 0 and self.macd.histo[0] > self.macd.histo[-1] and self.macd.histo[-1] < self.macd.histo[-2] and self.macd.histo[-2] < 0:
+                self.criticalBuyK = self.datas[0].high[0]
                 find=True
 
-            if self.rsi.signal[-1] < 50 and self.rsi.signal[-2] < self.rsi.signal[-1]:
-                curIdx = 0
-                adjacentUnderpants = False
-                while self.rsi.signal[curIdx] > self.rsi.signal[curIdx - 1]:
-                    curIdx -= 1
-                while self.rsi.signal[curIdx] < self.rsi.signal[curIdx - 1]:
-                    if self.rsi.signal[curIdx] > 50:
+        if self.macd.macd[0] > 0 and self.macd.macd[-1] < 0 and self.macd.macd[-2] < self.macd.macd[-1]:
+            curIdx = 0
+            adjacentUnderpants = False
+            while self.macd.histo[curIdx] >= 0:
+                if self.macd.macd[curIdx] <= 0 and self.macd.macd[curIdx-1] >= 0:
+                    adjacentUnderpants=True
+                    break
+                curIdx-=1
+            if not adjacentUnderpants:
+                while self.macd.histo[curIdx] < 0:
+                    if self.macd.macd[curIdx] <= 0 and self.macd.macd[curIdx - 1] >= 0:
                         adjacentUnderpants = True
                         break
                     curIdx -= 1
-                if adjacentUnderpants:
-                    find = True
-            if find:
-                if self.datas[0].close[0] > self.datas[0].open[0]:
-                    self.criticalBuyK = self.datas[0].high[0]
-                else:
-                    find=False
-
+            if adjacentUnderpants:
+                self.criticalBuyK = self.datas[0].high[0]
+                find = True
 
         willOpt = OperateType.UNKNOWN
 
         if not self.position:
-            if self.criticalBuyK and self.rsi.signal[0] > 50 and not find:
+            if self.criticalBuyK and self.macd.macd[0] > 0 and not find:
                 if self.datas[0].close[0] > self.datas[0].open[0] and self.datas[0].close[0] > self.criticalBuyK:
                     willOpt = OperateType.BUY
 
@@ -126,10 +134,12 @@ class ShihunMacdRsiBollingerBandStrategy(bt.Strategy):
             if self.stopLossPoint:
                 if self.dataclose[0] < self.stopLossPoint:
                    willOpt = OperateType.SELL
-            if self.rsi.rsi[0] < self.params.oversold:
-                willOpt = OperateType.SELL
-            if self.rsi.histo[0] < self.rsi.histo[-1] and self.rsi.histo[-1] < self.rsi.histo[-2] and self.rsi.histo[-2] > 0 and self.rsi.histo[0] < 0:
-                willOpt = OperateType.SELL
+
+            if willOpt == OperateType.UNKNOWN:
+                    if self.macd.histo[0] < self.macd.histo[-1] and self.macd.histo[-1] > self.macd.histo[-2] and self.macd.histo[-2] > 0:
+                        self.criticalSellK = self.datas[0].low[0]
+                    elif self.criticalSellK and self.datas[0].close[0] < self.datas[0].open[0] and self.datas[0].close[0] < self.criticalSellK:
+                        willOpt = OperateType.SELL
 
 
         if willOpt == OperateType.SELL:
@@ -147,8 +157,6 @@ class ShihunMacdRsiBollingerBandStrategy(bt.Strategy):
             self.stopLossPoint = self.datas[0].close[0] - pdist
             self.criticalBuyK = None
             self.criticalSellK = None
-
-
 
 
 def shihunMacdRsiBollingerBand(main=False,commission=0.001,atr=True):
