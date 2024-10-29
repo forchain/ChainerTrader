@@ -19,9 +19,9 @@ from trader.utils.chainerstrategy import ChainerStrategy
 from trader.utils.operate import OperateType
 from trader.utils.trend import TrendType
 
-def shihunMacdRsiBollingerBand(main=False,commission=0.001,atr=True):
+def shihunMacdRsiBollingerBandUp(main=False,commission=0.001,atr=True):
     node = Node(ShihunMacdRsiBollingerBandStrategy, main, commission, atr,TrendType.UP)
     node.start()
 
 if __name__ == '__main__':
-    shihunMacdRsiBollingerBand(True)
+    shihunMacdRsiBollingerBandUp(True)
