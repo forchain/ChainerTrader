@@ -46,6 +46,7 @@ class ShihunMacdRsiBollingerBandStrategy(BaseStrategy):
             period=self.params.period,
             devfactor=self.params.devfactor
         )
+        self.rsi = ChainerRSIHisto(self.datas[0])
 
         self.criticalBuyK = None
         self.criticalSellK = None
@@ -103,10 +104,10 @@ class ShihunMacdRsiBollingerBandStrategy(BaseStrategy):
         elif willOpt == OperateType.BUY:
             self.log('收盘价: %.2f (创建 买单)' % self.dataclose[0])
             self.order = self.buy()
-            pdist=0
-            if self.params.atr:
-                pdist = self.atr[0] * self.params.atrdist
-            self.stopLossPoint = self.datas[0].close[0] - pdist
+            pdist=self.datas[0].low[0]
+            if self.datas[0].low[-1] < pdist:
+                pdist=self.datas[0].low[-1]
+            self.stopLossPoint = pdist
             self.criticalBuyK = None
             self.criticalSellK = None
 
@@ -122,33 +123,14 @@ class ShihunMacdRsiBollingerBandStrategy(BaseStrategy):
 
         # find criticalK
         find = False
-        if self.data.close[0] < lowerBand:
-            self.criticalBuyK = self.data.high[0]
-            find = True
-
-        if self.macd.macd[0] > 0 and self.macd.macd[-1] > 0 and self.macd.macd[-2] > 0:
-            if self.macd.histo[0] < 0 and self.macd.histo[0] > self.macd.histo[-1] and self.macd.histo[-1] < \
-                    self.macd.histo[-2] and self.macd.histo[-2] < 0:
-                self.criticalBuyK = self.datas[0].high[0]
+        if self.data.close[0] < lowerBand and self.data.close[0] > self.data.open[0]:
+            if self.macd.histo[0] < 0 and self.macd.histo[0] > self.macd.histo[-1] and self.macd.histo[-1] < self.macd.histo[-2]:
                 find = True
-
-        if self.macd.macd[0] > 0 and self.macd.macd[-1] < 0 and self.macd.macd[-2] < self.macd.macd[-1]:
-            curIdx = 0
-            adjacentUnderpants = False
-            while self.macd.histo[curIdx] >= 0:
-                if self.macd.macd[curIdx] <= 0 and self.macd.macd[curIdx - 1] >= 0:
-                    adjacentUnderpants = True
-                    break
-                curIdx -= 1
-            if not adjacentUnderpants:
-                while self.macd.histo[curIdx] < 0:
-                    if self.macd.macd[curIdx] <= 0 and self.macd.macd[curIdx - 1] >= 0:
-                        adjacentUnderpants = True
-                        break
-                    curIdx -= 1
-            if adjacentUnderpants:
-                self.criticalBuyK = self.datas[0].high[0]
+            if self.rsi.histo[0] > 0 and self.rsi.histo[0] > self.rsi.histo[-1] and self.rsi.histo[-1] > self.rsi.histo[-2] and self.rsi.histo[-2] < 0:
                 find = True
+            if find:
+                self.criticalBuyK = self.datas[0].high[0]
+
         willOpt = OperateType.UNKNOWN
 
         if not self.position:
