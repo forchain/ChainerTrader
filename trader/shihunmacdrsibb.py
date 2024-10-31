@@ -42,7 +42,7 @@ class ShihunMacdRsiBollingerBandStrategy(BaseStrategy):
 
         self.macd = bt.indicators.MACDHisto(self.datas[0])
         self.bollinger = bt.indicators.BollingerBands(
-            self.data.close,
+            self.datas[0].close,
             period=self.params.period,
             devfactor=self.params.devfactor
         )
@@ -89,6 +89,7 @@ class ShihunMacdRsiBollingerBandStrategy(BaseStrategy):
 
         willOpt = OperateType.UNKNOWN
         curTrend = self.getTrend()
+
         if curTrend != TrendType.UP:
             if self.params.mode != TrendType.UP:
                 willOpt = self.processShock()
@@ -104,9 +105,15 @@ class ShihunMacdRsiBollingerBandStrategy(BaseStrategy):
         elif willOpt == OperateType.BUY:
             self.log('收盘价: %.2f (创建 买单)' % self.dataclose[0])
             self.order = self.buy()
-            pdist=self.datas[0].low[0]
-            if self.datas[0].low[-1] < pdist:
-                pdist=self.datas[0].low[-1]
+            pdist = 0
+            if curTrend == TrendType.UP:
+                if self.params.atr:
+                    pdist = self.atr[0] * self.params.atrdist
+                pdist = self.datas[0].close[0] - pdist
+            else:
+                pdist = self.datas[0].low[0]
+                if self.datas[0].low[-1] < pdist:
+                    pdist = self.datas[0].low[-1]
             self.stopLossPoint = pdist
             self.criticalBuyK = None
             self.criticalSellK = None
@@ -123,7 +130,7 @@ class ShihunMacdRsiBollingerBandStrategy(BaseStrategy):
 
         # find criticalK
         find = False
-        if self.data.close[0] < lowerBand and self.data.close[0] > self.data.open[0]:
+        if self.datas[0].close[0] < lowerBand and self.datas[0].close[0] > self.datas[0].open[0]:
             if self.macd.histo[0] < 0 and self.macd.histo[0] > self.macd.histo[-1] and self.macd.histo[-1] < self.macd.histo[-2]:
                 find = True
             if self.rsi.histo[0] > 0 and self.rsi.histo[0] > self.rsi.histo[-1] and self.rsi.histo[-1] > self.rsi.histo[-2] and self.rsi.histo[-2] < 0:
