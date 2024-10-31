@@ -152,15 +152,14 @@ class ShihunMacdRsiBollingerBandStrategy(BaseStrategy):
             if willOpt == OperateType.UNKNOWN:
                 if self.data.high[0] > upperBand:
                     willOpt = OperateType.SELL
-                elif self.data.close[0] < midBand:
+                if self.data.close[0] < midBand:
                     willOpt = OperateType.SELL
-
-            if willOpt == OperateType.UNKNOWN:
                 if self.macd.histo[0] < self.macd.histo[-1] and self.macd.histo[-1] > self.macd.histo[-2] and \
                         self.macd.histo[-2] > 0:
-                    self.criticalSellK = self.datas[0].low[0]
-                elif self.criticalSellK and self.datas[0].close[0] < self.datas[0].open[0] and self.datas[0].close[
-                    0] < self.criticalSellK:
+                    willOpt = OperateType.SELL
+
+                if self.rsi.histo[0] < 0 and self.rsi.histo[0] < self.rsi.histo[-1] and self.rsi.histo[-1] < \
+                        self.rsi.histo[-2] and self.rsi.histo[-2] > 0:
                     willOpt = OperateType.SELL
 
         return willOpt
