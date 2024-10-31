@@ -171,15 +171,9 @@ class ShihunMacdRsiBollingerBandStrategy(BaseStrategy):
 
         # find criticalK
         find = False
-        if self.data.close[0] > upperBand:
+        if self.macd.macd[0] > 0 and self.data.close[0] > upperBand:
             if self.data.close[0] > self.data.open[0]:
                 self.criticalBuyK = self.data.high[0]
-                find = True
-
-        if self.macd.macd[0] > 0 and self.macd.macd[-1] > 0 and self.macd.macd[-2] > 0:
-            if self.macd.histo[0] < 0 and self.macd.histo[0] > self.macd.histo[-1] and self.macd.histo[-1] < \
-                    self.macd.histo[-2] and self.macd.histo[-2] < 0:
-                self.criticalBuyK = self.datas[0].high[0]
                 find = True
 
         if self.macd.macd[0] > 0 and self.macd.macd[-1] < 0 and self.macd.macd[-2] < self.macd.macd[-1]:
