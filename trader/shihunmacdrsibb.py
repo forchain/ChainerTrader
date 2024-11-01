@@ -103,7 +103,6 @@ class ShihunMacdRsiBollingerBandStrategy(BaseStrategy):
             self.criticalSellK = None
 
         elif willOpt == OperateType.BUY:
-            self.log('收盘价: %.2f (创建 买单)' % self.dataclose[0])
             self.order = self.buy()
             pdist = 0
             if curTrend == TrendType.UP:
@@ -117,6 +116,7 @@ class ShihunMacdRsiBollingerBandStrategy(BaseStrategy):
             self.stopLossPoint = pdist
             self.criticalBuyK = None
             self.criticalSellK = None
+            self.log('收盘价: %.2f (创建 买单), 止损点:%.2f' % (self.dataclose[0],self.stopLossPoint))
 
     def getTrend(self):
         if self.macd.macd[0] > 0:
@@ -150,9 +150,9 @@ class ShihunMacdRsiBollingerBandStrategy(BaseStrategy):
                 if self.dataclose[0] < self.stopLossPoint:
                     willOpt = OperateType.SELL
             if willOpt == OperateType.UNKNOWN:
-                if self.data.high[0] > upperBand:
+                if self.datas[0].high[0] > upperBand:
                     willOpt = OperateType.SELL
-                if self.data.close[0] < midBand:
+                if self.datas[0].close[0] < midBand:
                     willOpt = OperateType.SELL
                 if self.macd.histo[0] < self.macd.histo[-1] and self.macd.histo[-1] > self.macd.histo[-2] and \
                         self.macd.histo[-2] > 0:
