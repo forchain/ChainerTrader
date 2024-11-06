@@ -15,3 +15,6 @@ def getRestAPI(stability=True):
 def getMarketRestAPI():
     # 对于仅发送公开市场数据的 API
     return "https://data-api.binance.vision"
+
+def getTestnetRestAPI():
+    return "https://testnet.binance.vision"

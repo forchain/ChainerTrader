@@ -2,12 +2,18 @@ import os
 import time
 import json
 import base64
+import logging
 
+from binance.spot import Spot as Client
+from binance.lib.utils import config_logging
 from binance.spot import Spot
 from dotenv import load_dotenv
 from cryptography.hazmat.primitives.serialization import load_pem_private_key
 from matplotlib.patheffects import Normal
 from websocket import create_connection
+
+from trader.binance.restapi import getMarketRestAPI, getTestnetRestAPI
+
 
 def loadAPIConfig():
     # load .env file
@@ -25,6 +31,12 @@ def loadAPIConfig():
     if privateKey:
         print("privateKey:", privateKey)
     return apiKey,apiSecret,privateKey
+
+def test_ping():
+    config_logging(logging, logging.DEBUG)
+
+    spot_client = Client(base_url=getTestnetRestAPI())
+    logging.info(spot_client.ping())
 
 def test_binanceSpot():
     client = Spot()
