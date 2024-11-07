@@ -1,12 +1,16 @@
 import argparse,os
 
-from trader.shihunmacdrsibb import shihunMacdRsiBollingerBand
-from trader.shihunmacdrsibbup import shihunMacdRsiBollingerBandUp
-from trader.shihunrsi2 import shihunRSI
+from trader.app.app import App
+from trader.strategy.shihunmacdrsibb import shihunMacdRsiBollingerBand
+from trader.strategy.shihunmacdrsibbup import shihunMacdRsiBollingerBandUp
+from trader.strategy.shihunrsi2 import shihunRSI
 from trader.utils import path
-from trader.shihunmacd2 import shihunMACD
+from trader.strategy.shihunmacd2 import shihunMACD
 
 def main():
+    app = App()
+    app.start()
+
     parser = argparse.ArgumentParser(
         description="Implement TradvingView Algorithms of Youtube Channel Shi Hun",
         epilog="Chainer Labs",
@@ -38,3 +42,4 @@ def main():
         else:
             shihunMacdRsiBollingerBand(True,args.commission,args.atr)
 
+    app.stop()
