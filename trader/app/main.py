@@ -27,14 +27,11 @@ def main():
     args = parser.parse_args()
 
     if args.version:
-        filePath = os.path.join(path.GetTraderDir(), 'VERSION')
-
-        with open(filePath, "r", encoding="utf-8") as file:
-            content = file.read()
-            print(content)
+        app.version()
+        return
     elif args.strategy is None:
         app.log().error("You must configure --strategy")
-        app.start(args.strategy)
+        return
 
     elif args.shihunmacd:
         shihunMACD(True,args.commission,args.atr)
@@ -46,4 +43,5 @@ def main():
         else:
             shihunMacdRsiBollingerBand(True,args.commission,args.atr)
 
-    app.stop()
+    if app.start(args.strategy):
+        app.stop()
