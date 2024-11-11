@@ -9,7 +9,6 @@ from trader.strategy.shihunmacd2 import shihunMACD
 
 def main():
     app = App()
-    app.start()
 
     parser = argparse.ArgumentParser(
         description="Implement TradvingView Algorithms of Youtube Channel Shi Hun",
@@ -17,6 +16,7 @@ def main():
         fromfile_prefix_chars='@')
 
     parser.add_argument("-v", "--version",help="Version",action="store_true")
+    parser.add_argument("-s", "--strategy", type=str, help="strategy type: ShihunMACD, ShihunRSI, ShihunMACD2, ShihunRSI2, ShihunMACDRISBB, ShihunMACDRSIBBUP",required=True)
     parser.add_argument( "--shihunmacd", help="Supper MACD from ShiHun", action="store_true")
     parser.add_argument("--shihunrsi", help="Supper RSI from ShiHun", action="store_true")
     parser.add_argument("--shihunmacdrsibb", help="MACD + RSI + BollingerBand from ShiHun", action="store_true")
@@ -32,6 +32,10 @@ def main():
         with open(filePath, "r", encoding="utf-8") as file:
             content = file.read()
             print(content)
+    elif args.strategy is None:
+        app.log().error("You must configure --strategy")
+        app.start(args.strategy)
+
     elif args.shihunmacd:
         shihunMACD(True,args.commission,args.atr)
     elif args.shihunrsi:
