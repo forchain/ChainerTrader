@@ -19,3 +19,7 @@ def test_log():
     app.log().warn("I am test logger by warn")
     app.log().error("I am test logger by error")
     app.log().critical("I am test logger by critical")
+
+def test_version():
+    app = App()
+    print(app.version())

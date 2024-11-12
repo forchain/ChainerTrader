@@ -128,9 +128,9 @@ class ShihunMACDStrategy(BaseStrategy):
             self.criticalSellK = None
 
 
-def shihunMACD(main=False,commission=0.001,atr=True):
+def shihunMACD2(main=False,commission=0.001,atr=True):
     node = Node(ShihunMACDStrategy,main,commission,atr)
     node.start()
 
 if __name__ == '__main__':
-    shihunMACD(True)
+    shihunMACD2(True)

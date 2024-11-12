@@ -1,12 +1,12 @@
 from enum import Enum
 
 class StrategyType(Enum):
-    ShihunMACD = 0
-    ShihunRSI = 1
-    ShihunMACD2 = 2
-    ShihunRSI2 = 3
-    ShihunMACDRISBB = 4
-    ShihunMACDRSIBBUP = 5
+    ShihunMACD = 0        # MACD from ShiHun
+    ShihunRSI = 1         # RSI from ShiHun
+    ShihunMACD2 = 2       # MACD2 from ShiHun
+    ShihunRSI2 = 3        # RSI2 from ShiHun
+    ShihunMACDRISBB = 4   # MACD + RSI + BollingerBand from ShiHun
+    ShihunMACDRSIBBUP = 5 # MACD + RSI + BollingerBand from ShiHun only in the upward trend
 
 def parseStrategyType(name):
     if name == StrategyType.ShihunMACD.name:

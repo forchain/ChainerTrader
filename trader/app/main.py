@@ -1,11 +1,7 @@
 import argparse,os
 
 from trader.app.app import App
-from trader.strategy.shihunmacdrsibb import shihunMacdRsiBollingerBand
-from trader.strategy.shihunmacdrsibbup import shihunMacdRsiBollingerBandUp
-from trader.strategy.shihunrsi2 import shihunRSI
-from trader.utils import path
-from trader.strategy.shihunmacd2 import shihunMACD
+
 
 def main():
     app = App()
@@ -16,7 +12,7 @@ def main():
         fromfile_prefix_chars='@')
 
     parser.add_argument("-v", "--version",help="Version",action="store_true")
-    parser.add_argument("-s", "--strategy", type=str, help="strategy type: ShihunMACD, ShihunRSI, ShihunMACD2, ShihunRSI2, ShihunMACDRISBB, ShihunMACDRSIBBUP",required=True)
+    parser.add_argument("-s", "--strategy", type=str, help="strategy type: ShihunMACD, ShihunRSI, ShihunMACD2, ShihunRSI2, ShihunMACDRISBB, ShihunMACDRSIBBUP")
     parser.add_argument( "--shihunmacd", help="Supper MACD from ShiHun", action="store_true")
     parser.add_argument("--shihunrsi", help="Supper RSI from ShiHun", action="store_true")
     parser.add_argument("--shihunmacdrsibb", help="MACD + RSI + BollingerBand from ShiHun", action="store_true")
@@ -27,21 +23,11 @@ def main():
     args = parser.parse_args()
 
     if args.version:
-        app.version()
+        print(app.version())
         return
     elif args.strategy is None:
         app.log().error("You must configure --strategy")
         return
-
-    elif args.shihunmacd:
-        shihunMACD(True,args.commission,args.atr)
-    elif args.shihunrsi:
-        shihunRSI(True,args.commission,args.atr)
-    elif args.shihunmacdrsibb:
-        if args.trend:
-            shihunMacdRsiBollingerBandUp(True,args.commission,args.atr)
-        else:
-            shihunMacdRsiBollingerBand(True,args.commission,args.atr)
 
     if app.start(args.strategy):
         app.stop()

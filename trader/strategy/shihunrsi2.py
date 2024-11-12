@@ -133,9 +133,9 @@ class ShihunRSIStrategy(BaseStrategy):
 
 
 
-def shihunRSI(main=False,commission=0.001,atr=True):
+def shihunRSI2(main=False,commission=0.001,atr=True):
     node = Node(ShihunRSIStrategy, main, commission, atr)
     node.start()
 
 if __name__ == '__main__':
-    shihunRSI(True)
+    shihunRSI2(True)
