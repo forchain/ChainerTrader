@@ -36,6 +36,10 @@ class App:
         self.startStrategy()
         return True
 
+    def startFromRPC(self):
+        self.startTime=datetime.now()
+        self.log().info(f"Start {self.name()} App from RPC")
+
     def stop(self):
         elapsed = datetime.now() - self.startTime
         self.log().info(f"Stop {self.name()} App, strategy type:{self.strategy.name}, elapsed time:{elapsed}")

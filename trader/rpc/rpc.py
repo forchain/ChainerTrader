@@ -10,18 +10,19 @@ from trader.utils import path
 
 
 class RPC(FastAPI):
-    def __init__(self,app):
+    def __init__(self):
         super().__init__()
-        self.app=app
+        self.app=App()
+        self.app.startFromRPC()
 
     def name(self):
         return "fastapi"
 
-rpc = RPC(App())
+rpc = RPC()
 
 def start():
     app_dir = os.path.join(path.GetTraderDir(), 'rpc')
-    uvicorn.run(app="rpc:rpc", host="127.0.0.1", port=8000, reload=True,app_dir=app_dir)
+    uvicorn.run(app="rpc:rpc", host="127.0.0.1", port=8000, reload=False,app_dir=app_dir)
 
 
 @rpc.get("/version")
