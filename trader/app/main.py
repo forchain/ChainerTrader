@@ -1,6 +1,7 @@
 import argparse,os
 
 from trader.app.app import App
+from trader.rpc.rpc import start
 
 
 def main():
@@ -21,6 +22,9 @@ def main():
 
     if args.version:
         print(app.version())
+        return
+    if args.api:
+        start()
         return
     elif args.strategy is None:
         app.log().error("You must configure --strategy")

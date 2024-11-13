@@ -1,7 +1,6 @@
 import logging,os
 from datetime import datetime
 
-from trader.rpc.rpc import rpc
 from trader.strategy.shihunmacd import shihunMACD
 from trader.strategy.shihunrsi import shihunRSI
 from trader.strategy.strategy import parseStrategyType, StrategyType
@@ -25,7 +24,7 @@ class App:
     def log(self):
         return self.logger.log()
 
-    def start(self,strategyType,commission=0.001,atr=True,period=14,api=False):
+    def start(self,strategyType,commission=0.001,atr=True,period=14):
         self.strategy=parseStrategyType(strategyType)
         self.commission=commission
         self.period=period
@@ -33,8 +32,6 @@ class App:
         self.startTime=datetime.now()
 
         self.log().info(f"Start {self.name()} App, strategy type:{self.strategy.name} commission:{commission}")
-        if api:
-            rpc.start(self)
 
         self.startStrategy()
         return True
