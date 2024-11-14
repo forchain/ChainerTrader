@@ -13,7 +13,7 @@ class RPC(FastAPI):
     def __init__(self):
         super().__init__()
         self.app=App()
-        self.app.startFromRPC()
+        self.app.start()
 
     def name(self):
         return "fastapi"
@@ -26,9 +26,13 @@ def start():
 
 
 @rpc.get("/version")
-def read_app_info():
-    return {"appInfo": rpc.app.version()}
+def read_app_version():
+    return {"version": rpc.app.version()}
 
 @rpc.get("/")
 def read_root():
     return {"Hello": "I am "+rpc.name()}
+
+@rpc.get("/info")
+def read_app_info():
+    return rpc.app.info()

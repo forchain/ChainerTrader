@@ -24,21 +24,20 @@ class App:
     def log(self):
         return self.logger.log()
 
-    def start(self,strategyType,commission=0.001,atr=True,period=14):
+    def start(self,strategyType=None,commission=0.001,atr=True,period=14):
         self.strategy=parseStrategyType(strategyType)
         self.commission=commission
         self.period=period
         self.atr=atr
         self.startTime=datetime.now()
 
-        self.log().info(f"Start {self.name()} App, strategy type:{self.strategy.name} commission:{commission}")
+        if self.strategy is None:
+            self.log().info(f"Start {self.name()} App, commission:{commission}")
+        else:
+            self.log().info(f"Start {self.name()} App, strategy type:{self.strategy.name} commission:{commission}")
+            self.startStrategy()
 
-        self.startStrategy()
         return True
-
-    def startFromRPC(self):
-        self.startTime=datetime.now()
-        self.log().info(f"Start {self.name()} App from RPC")
 
     def stop(self):
         elapsed = datetime.now() - self.startTime
@@ -70,3 +69,10 @@ class App:
 
         elif self.strategy == StrategyType.ShihunMACDRSIBBUP:
             shihunMacdRsiBollingerBandUp(True, self.commission, self.atr)
+
+    def info(self):
+        return {
+            "commission": self.commission,
+            "period": self.period,
+            "atr": self.atr,
+        }
