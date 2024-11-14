@@ -72,6 +72,8 @@ class App:
 
     def info(self):
         return {
+            "name":self.name(),
+            "version":self.version(),
             "commission": self.commission,
             "period": self.period,
             "atr": self.atr,

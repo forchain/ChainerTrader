@@ -36,3 +36,7 @@ def read_root():
 @rpc.get("/info")
 def read_app_info():
     return rpc.app.info()
+
+@rpc.get("/name")
+def read_app_name():
+    return {"name": rpc.app.name()}
