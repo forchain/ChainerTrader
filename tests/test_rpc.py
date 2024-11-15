@@ -1,3 +1,5 @@
+import os
+
 from fastapi.testclient import TestClient
 
 from trader.app.app import NAME

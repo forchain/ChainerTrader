@@ -1,6 +1,7 @@
 import argparse,os
 
 from trader.app.app import App
+from trader.common.config import Config
 from trader.rpc.rpc import start
 
 
@@ -18,19 +19,19 @@ def main():
     parser.add_argument('--commission', help=('Transaction commission'), action='store', type=float, default=0.001,required=False)
     parser.add_argument("--atr", help="Use atr for stop-loss-point", action="store_true")
     parser.add_argument("--api", help="Start the Web API service", action="store_true")
-    parser.add_argument("--logfile", help="Write log to file", action="store_true")
+    parser.add_argument("--log_file", help="Write log to file", action="store_true")
 
     args = parser.parse_args()
-
+    cfg = Config(args.strategy,args.commission,args.atr,args.period,args.log_file)
     if args.version:
         print(app.version())
         return
     if args.api:
-        start()
+        start(cfg)
         return
     elif args.strategy is None:
         app.log().error("You must configure --strategy")
         return
 
-    if app.start(args.strategy,args.commission,args.atr,args.period,args.logfile):
+    if app.start(cfg):
         app.stop()

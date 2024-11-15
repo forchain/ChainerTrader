@@ -24,27 +24,25 @@ class App:
     def log(self):
         return self.logger.log()
 
-    def start(self,strategyType=None,commission=0.001,atr=True,period=14,log_file=False):
-        if log_file:
+    def start(self,cfg):
+        self.cfg=cfg
+
+        if cfg.log_file:
             self.logger.enableFile()
 
-        self.strategy=parseStrategyType(strategyType)
-        self.commission=commission
-        self.period=period
-        self.atr=atr
         self.startTime=datetime.now()
 
-        if self.strategy is None:
-            self.log().info(f"Start {self.name()} App, commission:{commission}")
+        if self.cfg.strategy is None:
+            self.log().info(f"Start {self.name()} App, commission:{cfg.commission}")
         else:
-            self.log().info(f"Start {self.name()} App, strategy type:{self.strategy.name} commission:{commission}")
+            self.log().info(f"Start {self.name()} App, strategy type:{cfg.strategy.name} commission:{cfg.commission}")
             self.startStrategy()
 
         return True
 
     def stop(self):
         elapsed = datetime.now() - self.startTime
-        self.log().info(f"Stop {self.name()} App, strategy type:{self.strategy.name}, elapsed time:{elapsed}")
+        self.log().info(f"Stop {self.name()} App, strategy type:{self.cfg.strategy.name}, elapsed time:{elapsed}")
 
     def version(self):
         filePath = os.path.join(path.GetTraderDir(), 'VERSION')
@@ -52,32 +50,31 @@ class App:
         with open(filePath, "r", encoding="utf-8") as file:
             content = file.read()
             return content
-        return "None"
 
     def startStrategy(self):
-        if self.strategy == StrategyType.ShihunMACD:
-            shihunMACD(True, self.commission)
+        if self.cfg.strategy == StrategyType.ShihunMACD:
+            shihunMACD(True, self.cfg.commission)
 
-        elif self.strategy == StrategyType.ShihunRSI:
-            shihunRSI(True, self.commission, self.atr)
+        elif self.cfg.strategy == StrategyType.ShihunRSI:
+            shihunRSI(True, self.cfg.commission, self.cfg.atr)
 
-        elif self.strategy == StrategyType.ShihunMACD2:
-            shihunMACD2(True, self.commission, self.atr)
+        elif self.cfg.strategy == StrategyType.ShihunMACD2:
+            shihunMACD2(True, self.cfg.commission, self.cfg.atr)
 
-        elif self.strategy == StrategyType.ShihunRSI2:
-            shihunRSI2(True, self.commission, self.atr)
+        elif self.cfg.strategy == StrategyType.ShihunRSI2:
+            shihunRSI2(True, self.cfg.commission, self.cfg.atr)
 
-        elif self.strategy == StrategyType.ShihunMACDRISBB:
-            shihunMacdRsiBollingerBand(True, self.commission, self.atr)
+        elif self.cfg.strategy == StrategyType.ShihunMACDRISBB:
+            shihunMacdRsiBollingerBand(True, self.cfg.commission, self.cfg.atr)
 
-        elif self.strategy == StrategyType.ShihunMACDRSIBBUP:
-            shihunMacdRsiBollingerBandUp(True, self.commission, self.atr)
+        elif self.cfg.strategy == StrategyType.ShihunMACDRSIBBUP:
+            shihunMacdRsiBollingerBandUp(True, self.cfg.commission, self.cfg.atr)
 
     def info(self):
         return {
             "name":self.name(),
             "version":self.version(),
-            "commission": self.commission,
-            "period": self.period,
-            "atr": self.atr,
+            "commission": self.cfg.commission,
+            "period": self.cfg.period,
+            "atr": self.cfg.atr,
         }
