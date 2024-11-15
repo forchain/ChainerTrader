@@ -18,6 +18,8 @@ def main():
     parser.add_argument('--commission', help=('Transaction commission'), action='store', type=float, default=0.001,required=False)
     parser.add_argument("--atr", help="Use atr for stop-loss-point", action="store_true")
     parser.add_argument("--api", help="Start the Web API service", action="store_true")
+    parser.add_argument("--logfile", help="Write log to file", action="store_true")
+
     args = parser.parse_args()
 
     if args.version:
@@ -30,5 +32,5 @@ def main():
         app.log().error("You must configure --strategy")
         return
 
-    if app.start(args.strategy,args.commission,args.atr,args.period,args.api):
+    if app.start(args.strategy,args.commission,args.atr,args.period,args.logfile):
         app.stop()

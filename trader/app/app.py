@@ -16,7 +16,7 @@ NAME = "trader"
 
 class App:
     def __init__(self):
-        self.logger=Logger(NAME,logging.DEBUG)
+        self.logger=Logger(NAME)
 
     def name(self):
         return NAME
@@ -24,7 +24,10 @@ class App:
     def log(self):
         return self.logger.log()
 
-    def start(self,strategyType=None,commission=0.001,atr=True,period=14):
+    def start(self,strategyType=None,commission=0.001,atr=True,period=14,log_file=False):
+        if log_file:
+            self.logger.enableFile()
+
         self.strategy=parseStrategyType(strategyType)
         self.commission=commission
         self.period=period
