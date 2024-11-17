@@ -12,11 +12,11 @@ from trader.utils import path
 
 import backtrader as bt
 
-from trader.utils.chainerstrategy import ChainerStrategy
+from trader.utils.trilogy_strategy import TrilogyStrategy
 
 
 # Shihun RSI strategy
-class ShihunRSIStrategy(ChainerStrategy):
+class ShihunRSIStrategy(TrilogyStrategy):
     params = (
         ('period', 14),
         ('overbought', 70),

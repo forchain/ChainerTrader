@@ -13,12 +13,12 @@ from trader.utils import path
 import backtrader as bt
 import backtrader.analyzers as btanalyzers
 
-from trader.utils.chainerstrategy import ChainerStrategy
+from trader.utils.trilogy_strategy import TrilogyStrategy
 from prettytable import PrettyTable
 
 
 # Shihun MACD strategy
-class ShihunMACDStrategy(ChainerStrategy):
+class ShihunMACDStrategy(TrilogyStrategy):
     params = (
         ('confirm', 3),
     )

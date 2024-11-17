@@ -13,9 +13,9 @@ from trader.utils import path
 import backtrader as bt
 import backtrader.indicators as btind
 
-from trader.utils.chainerstrategy import ChainerStrategy
+from trader.utils.trilogy_strategy import TrilogyStrategy
 
-class SMAStrategy(ChainerStrategy):
+class SMAStrategy(TrilogyStrategy):
     params = (
         ('confirm', 3),
         ('period', 14),

@@ -15,7 +15,7 @@ $ python -m trader
 #or
 $ trader -v
 #or
-$ trader --shihunmacd
+$ trader --strategy=ShihunMACD
 ```
 
 ## Development
