@@ -25,6 +25,21 @@ class Config:
         os.environ['plot'] = str(self.plot)
         os.environ['mode'] = self.mode.name
 
+    def to_dict(self):
+        strategy_type = None
+        if self.strategy:
+            strategy_type=self.strategy.name
+
+        return {
+            "strategy_type":strategy_type,
+            'commission':self.commission,
+            'atr':self.atr,
+            'period':self.period,
+            'log_file':self.log_file,
+            'plot':self.plot,
+            'mode':self.mode.name,
+        }
+
 def NewConfigFromEnv():
     commission = os.environ.get('commission')
     if commission is None:

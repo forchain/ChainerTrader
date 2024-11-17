@@ -1,5 +1,6 @@
 from trader.app.app import NAME, App
 from trader.common import path
+from trader.common.config import Config, NewConfigFromEnv
 
 
 def test_app():
@@ -20,3 +21,9 @@ def test_log():
 def test_version():
     app = App()
     print(app.version())
+
+def test_config():
+    cfg = Config()
+    cfg.exportEnv()
+    ncfg=NewConfigFromEnv()
+    print(ncfg.to_dict())
