@@ -1,8 +1,5 @@
-import logging
-
 from trader.app.app import NAME, App
-from trader.utils import path
-from trader.utils.logger import Logger
+from trader.common import path
 
 
 def test_app():

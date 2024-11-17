@@ -7,7 +7,7 @@ from trader.strategy.node import Node
 
 import backtrader as bt
 
-from trader.utils.basestrategy import BaseStrategy
+from trader.utils.base_strategy import BaseStrategy
 from trader.utils.chainerrsi import ChainerRSIHisto
 from trader.utils.operate import OperateType
 from trader.utils.trend import TrendType

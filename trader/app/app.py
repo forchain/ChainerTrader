@@ -1,11 +1,11 @@
-import logging,os
+import os
 from datetime import datetime
 
 from trader.strategy.shihunmacd import shihunMACD
 from trader.strategy.shihunrsi import shihunRSI
-from trader.strategy.strategy import parseStrategyType, StrategyType
-from trader.utils.logger import Logger
-from trader.utils import path
+from trader.strategy.strategy import StrategyType
+from trader.common.logger import Logger
+from trader.common import path
 
 from trader.strategy.shihunmacdrsibb import shihunMacdRsiBollingerBand
 from trader.strategy.shihunmacdrsibbup import shihunMacdRsiBollingerBandUp

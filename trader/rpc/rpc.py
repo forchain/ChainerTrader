@@ -1,5 +1,3 @@
-from datetime import datetime
-
 import uvicorn
 import os
 
@@ -7,7 +5,7 @@ from fastapi import FastAPI
 
 from trader.app.app import App
 from trader.common.config import NewConfigFromEnv, Config
-from trader.utils import path
+from trader.common import path
 
 
 class RPC(FastAPI):

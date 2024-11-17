@@ -15,6 +15,7 @@ class BaseStrategy(bt.Strategy):
         ('atrperiod', 14),
         ('atrdist', 5),  # ATR distance for stop price
         ('mode', TrendType.NORMAL),
+        ('period', 14),
     )
 
     def __init__(self):

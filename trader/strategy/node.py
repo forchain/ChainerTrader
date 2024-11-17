@@ -5,7 +5,7 @@ import datetime
 import os.path
 
 from trader.binance.csvdata import BinanceCSVData
-from trader.utils import path
+from trader.common import path
 
 import backtrader as bt
 import backtrader.analyzers as btanalyzers

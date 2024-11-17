@@ -3,12 +3,11 @@ from __future__ import (absolute_import, division, print_function,
 
 import datetime
 import os.path
-import sys
 
 from backtrader import num2date
 
 from trader.binance.csvdata import BinanceCSVData
-from trader.utils import path
+from trader.common import path
 
 import backtrader as bt
 import backtrader.analyzers as btanalyzers
