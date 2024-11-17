@@ -27,10 +27,8 @@ class App:
 
         self.startTime=datetime.now()
 
-        if self.cfg.strategy is None:
-            self.log().info(f"Start {self.name()} App, commission:{cfg.commission}")
-        else:
-            self.log().info(f"Start {self.name()} App, strategy type:{cfg.strategy.name} commission:{cfg.commission}")
+        self.log().info(f"Start {self.name()} App, config:{cfg.to_dict()}")
+        if self.cfg.strategy:
             self.startStrategy()
 
         return True

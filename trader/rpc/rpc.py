@@ -26,7 +26,7 @@ rpc = RPC()
 
 def start(cfg:Config):
     cfg.exportEnv()
-    os.environ['fastapi_server'] = str('True')
+    os.environ['fastapi_server'] = str(True)
     app_dir = os.path.join(path.GetTraderDir(), 'rpc')
     uvicorn.run(app="rpc:rpc", host="127.0.0.1", port=8000, reload=False,app_dir=app_dir)
 
@@ -46,3 +46,7 @@ def read_app_info():
 @rpc.get("/name")
 def read_app_name():
     return {"name": rpc.app.name()}
+
+@rpc.get("/config")
+def read_app_config():
+    return rpc.app.cfg.to_dict()
