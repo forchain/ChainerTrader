@@ -37,7 +37,6 @@ class TrilogyStrategy(BaseStrategy):
             curTrend=TrendType.UP
         else:
             curTrend = TrendType.NORMAL
-        print(curTrend)
         # We only operate in an upward trend
         if curTrend != TrendType.UP:
             return False

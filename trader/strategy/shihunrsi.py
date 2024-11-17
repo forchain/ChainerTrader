@@ -18,11 +18,6 @@ class ShihunRSIStrategy(TrilogyStrategy):
         ('oversold', 30),
     )
 
-    def log(self, txt, dt=None):
-        dt = dt or self.datas[0].datetime[0]
-        dat = num2date(dt)
-        print(f"{dat}, {txt}")
-
     def __init__(self):
         super().__init__()
         self.dataclose = self.datas[0].close
@@ -31,38 +26,8 @@ class ShihunRSIStrategy(TrilogyStrategy):
 
         self.rsi = bt.indicators.RSI(self.datas[0], period=self.params.period)
 
-    def notify_order(self, order):
-        if order.status in [order.Submitted, order.Accepted]:
-            return
-
-        if order.status in [order.Completed]:
-            if order.isbuy():
-                self.log(
-                    '买入, 价格: %.2f, 花费: %.2f, 手续费: %.2f' %
-                    (order.executed.price,
-                     order.executed.value,
-                     order.executed.comm))
-
-            else:  # Sell
-                self.log('卖出, 价格: %.2f, 花费: %.2f, 手续费: %.2f' %
-                         (order.executed.price,
-                          order.executed.value,
-                          order.executed.comm))
-
-        elif order.status in [order.Canceled, order.Margin, order.Rejected]:
-            self.log('Order Canceled/Margin/Rejected')
-
-        self.order = None
-
-    def notify_trade(self, trade):
-        if not trade.isclosed:
-            return
-
-        self.log('营业利润, 毛利润: %.2f, 净利润: %.2f' %
-                 (trade.pnl, trade.pnlcomm))
-
     def next(self):
-        self.log('收盘价, %.2f' % self.dataclose[0])
+        self.log_debug(f'Kline:{self.cur_datetime()} 收盘价, {self.dataclose[0]:.2f}')
 
         if self.order:
             return

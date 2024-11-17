@@ -46,7 +46,7 @@ class App:
 
     def startStrategy(self):
         strategy = parseStrategy(self.cfg.strategy)
-        node = Node(strategy, self.cfg.plot, self.cfg.commission, self.cfg.atr,self.cfg.mode)
+        node = Node(strategy, self.cfg,self.log())
         node.start()
 
     def info(self):

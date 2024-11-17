@@ -19,12 +19,6 @@ class ShihunMacdRsiBollingerBandStrategy(BaseStrategy):
         ('devfactor', 2),       # 标准差系数
     )
 
-    def log(self, txt, dt=None):
-        dt = dt or self.datas[0].datetime[0]
-        dat = num2date(dt)
-        print(f"{dat}, {txt}")
-
-
     def __init__(self):
         super().__init__()
         self.params.period=20  # 布林带周期
@@ -43,41 +37,10 @@ class ShihunMacdRsiBollingerBandStrategy(BaseStrategy):
         self.criticalBuyK = None
         self.criticalSellK = None
 
-
-    def notify_order(self, order):
-        if order.status in [order.Submitted, order.Accepted]:
-            return
-
-        if order.status in [order.Completed]:
-            if order.isbuy():
-                self.log(
-                    '买入, 价格: %.2f, 花费: %.2f, 手续费: %.2f' %
-                    (order.executed.price,
-                     order.executed.value,
-                     order.executed.comm))
-
-            else:  # Sell
-                self.log('卖出, 价格: %.2f, 花费: %.2f, 手续费: %.2f' %
-                         (order.executed.price,
-                          order.executed.value,
-                          order.executed.comm))
-
-        elif order.status in [order.Canceled, order.Margin, order.Rejected]:
-            self.log('Order Canceled/Margin/Rejected')
-
-        self.order = None
-
-    def notify_trade(self, trade):
-        if not trade.isclosed:
-            return
-
-        self.log('营业利润, 毛利润: %.2f, 净利润: %.2f' %
-                 (trade.pnl, trade.pnlcomm))
-
     def next(self):
         if self.order:
             return
-        # self.log('收盘价, %.2f' % self.dataclose[0])
+        self.log_debug(f'Kline:{self.cur_datetime()} 收盘价, {self.dataclose[0]:.2f}')
 
         willOpt = OperateType.UNKNOWN
         curTrend = self.getTrend()
@@ -89,7 +52,7 @@ class ShihunMacdRsiBollingerBandStrategy(BaseStrategy):
             willOpt = self.processTrend()
 
         if willOpt == OperateType.SELL:
-            self.log('收盘价: %.2f (创建 卖单)' % self.dataclose[0])
+            self.log_info(f'Kline:{self.cur_datetime()}, 创建 卖单:{self.dataclose[0]:.2f}')
             self.order = self.sell()
             self.criticalBuyK = None
             self.criticalSellK = None
@@ -108,7 +71,7 @@ class ShihunMacdRsiBollingerBandStrategy(BaseStrategy):
             self.stopLossPoint = pdist
             self.criticalBuyK = None
             self.criticalSellK = None
-            self.log('收盘价: %.2f (创建 买单), 止损点:%.2f' % (self.dataclose[0],self.stopLossPoint))
+            self.log_info(f'Kline:{self.cur_datetime()}, 创建 买单:{self.dataclose[0]:.2f}, 止损点:{self.stopLossPoint:.2f}')
 
     def getTrend(self):
         if self.macd.macd[0] > 0:
