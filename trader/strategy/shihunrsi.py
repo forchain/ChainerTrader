@@ -3,21 +3,17 @@ from __future__ import (absolute_import, division, print_function,
 
 import datetime
 import os.path
-
+import backtrader as bt
 from backtrader import num2date
-
 from trader.binance.csvdata import BinanceCSVData
 from trader.common import path
-
-import backtrader as bt
-
+from trader.strategy.node import Node
 from trader.utils.trilogy_strategy import TrilogyStrategy
 
 
 # Shihun RSI strategy
 class ShihunRSIStrategy(TrilogyStrategy):
     params = (
-        ('period', 14),
         ('overbought', 70),
         ('oversold', 30),
     )
@@ -29,7 +25,6 @@ class ShihunRSIStrategy(TrilogyStrategy):
 
     def __init__(self):
         super().__init__()
-
         self.dataclose = self.datas[0].close
 
         self.order = None
@@ -79,39 +74,3 @@ class ShihunRSIStrategy(TrilogyStrategy):
             if self.rsi[0] < self.params.oversold:
                 if self.canBuy():
                     self.buy()
-
-
-
-def shihunRSI(main=False,period=14,commission=0.001):
-    print("main:",main,"period:",period,"commission",commission)
-    cerebro = bt.Cerebro()
-
-    cerebro.addstrategy(ShihunRSIStrategy,period=period)
-
-    datapath = os.path.join(path.GetDatasDir(), 'ETHUSDT-1h-202301-202401.csv')
-
-    data = BinanceCSVData(
-        dataname=datapath,
-        fromdate=datetime.datetime(2023, 1, 1),
-        todate=datetime.datetime(2024, 1, 1),
-    )
-
-    cerebro.adddata(data)
-
-    cerebro.broker.setcash(100000.0)
-
-    cerebro.addsizer(bt.sizers.FixedSize, stake=10)
-
-    cerebro.broker.setcommission(commission=commission)
-
-    print('\n初始资产: %.2f' % cerebro.broker.getvalue())
-
-    cerebro.run()
-
-    print('最终资产: %.2f' % cerebro.broker.getvalue())
-
-    if main:
-        cerebro.plot()
-
-if __name__ == '__main__':
-    shihunRSI(True)

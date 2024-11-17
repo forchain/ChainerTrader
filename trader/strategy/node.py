@@ -18,13 +18,13 @@ from trader.utils.volatility import VolatilityAnalyzer
 from trader.utils.winrate import WinRateAnalyzer
 
 class Node:
-    def __init__(self,strategy,main=False, commission=0.001, atr=True,mode=TrendType.NORMAL,datafile="ETHUSDT-1h-202301-202401.csv"):
-        self.main=main
+    def __init__(self,strategy,plot=False, commission=0.001, atr=True,period=14,mode=TrendType.NORMAL,datafile="ETHUSDT-1h-202301-202401.csv"):
+        self.plot=plot
         self.commission=commission
         self.atr=atr
 
         cerebro = bt.Cerebro()
-        cerebro.addstrategy(strategy, atr=atr,mode=mode)
+        cerebro.addstrategy(strategy, atr=atr,mode=mode,period=period)
         cerebro.addanalyzer(btanalyzers.SharpeRatio, _name='sharpeRatio')
         cerebro.addanalyzer(btanalyzers.DrawDown, _name="drawdown")
         cerebro.addanalyzer(VolatilityAnalyzer, _name="volatility", cerebro=cerebro)
@@ -66,7 +66,7 @@ class Node:
         avgProfit = profitLossRatio['avgProfit']
         avgLoss = profitLossRatio['avgLoss']
 
-        if self.main:
+        if self.plot:
             self.cerebro.plot()
 
         # statistics

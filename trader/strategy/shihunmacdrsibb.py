@@ -16,7 +16,6 @@ from trader.utils.trend import TrendType
 # Shihun MACD RSI BollingerBand strategy
 class ShihunMacdRsiBollingerBandStrategy(BaseStrategy):
     params = (
-        ('period', 20),         # 布林带周期
         ('devfactor', 2),       # 标准差系数
     )
 
@@ -28,7 +27,7 @@ class ShihunMacdRsiBollingerBandStrategy(BaseStrategy):
 
     def __init__(self):
         super().__init__()
-
+        self.params.period=20  # 布林带周期
         self.dataclose = self.datas[0].close
 
         self.order = None
@@ -211,10 +210,3 @@ class ShihunMacdRsiBollingerBandStrategy(BaseStrategy):
 
 
         return willOpt
-
-def shihunMacdRsiBollingerBand(main=False,commission=0.001,atr=True):
-    node = Node(ShihunMacdRsiBollingerBandStrategy, main, commission, atr)
-    node.start()
-
-if __name__ == '__main__':
-    shihunMacdRsiBollingerBand(True)

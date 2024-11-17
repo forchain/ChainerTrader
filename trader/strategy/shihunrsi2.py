@@ -11,7 +11,7 @@ from trader.utils.operate import OperateType
 
 
 # Shihun RSI strategy
-class ShihunRSIStrategy(BaseStrategy):
+class ShihunRSI2Strategy(BaseStrategy):
     params = (
         ('overbought', 70),
         ('oversold', 30),
@@ -129,13 +129,3 @@ class ShihunRSIStrategy(BaseStrategy):
             self.stopLossPoint = self.datas[0].close[0] - pdist
             self.criticalBuyK = None
             self.criticalSellK = None
-
-
-
-
-def shihunRSI2(main=False,commission=0.001,atr=True):
-    node = Node(ShihunRSIStrategy, main, commission, atr)
-    node.start()
-
-if __name__ == '__main__':
-    shihunRSI2(True)

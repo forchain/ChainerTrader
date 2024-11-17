@@ -1,16 +1,11 @@
 import os
 from datetime import datetime
 
-from trader.strategy.shihunmacd import shihunMACD
-from trader.strategy.shihunrsi import shihunRSI
-from trader.strategy.strategy import StrategyType
+from trader.strategy.node import Node
+from trader.strategy.strategy import StrategyType, parseStrategy
 from trader.common.logger import Logger
 from trader.common import path
 
-from trader.strategy.shihunmacdrsibb import shihunMacdRsiBollingerBand
-from trader.strategy.shihunmacdrsibbup import shihunMacdRsiBollingerBandUp
-from trader.strategy.shihunrsi2 import shihunRSI2
-from trader.strategy.shihunmacd2 import shihunMACD2
 
 NAME = "trader"
 
@@ -52,23 +47,9 @@ class App:
             return content
 
     def startStrategy(self):
-        if self.cfg.strategy == StrategyType.ShihunMACD:
-            shihunMACD(True, self.cfg.commission)
-
-        elif self.cfg.strategy == StrategyType.ShihunRSI:
-            shihunRSI(True, self.cfg.commission, self.cfg.atr)
-
-        elif self.cfg.strategy == StrategyType.ShihunMACD2:
-            shihunMACD2(True, self.cfg.commission, self.cfg.atr)
-
-        elif self.cfg.strategy == StrategyType.ShihunRSI2:
-            shihunRSI2(True, self.cfg.commission, self.cfg.atr)
-
-        elif self.cfg.strategy == StrategyType.ShihunMACDRISBB:
-            shihunMacdRsiBollingerBand(True, self.cfg.commission, self.cfg.atr)
-
-        elif self.cfg.strategy == StrategyType.ShihunMACDRSIBBUP:
-            shihunMacdRsiBollingerBandUp(True, self.cfg.commission, self.cfg.atr)
+        strategy = parseStrategy(self.cfg.strategy)
+        node = Node(strategy, self.cfg.plot, self.cfg.commission, self.cfg.atr,self.cfg.mode)
+        node.start()
 
     def info(self):
         return {

@@ -12,7 +12,7 @@ from trader.utils.operate import OperateType
 
 
 # Shihun MACD strategy
-class ShihunMACDStrategy(BaseStrategy):
+class ShihunMACD2Strategy(BaseStrategy):
 
     def log(self, txt, dt=None):
         dt = dt or self.datas[0].datetime[0]
@@ -126,11 +126,3 @@ class ShihunMACDStrategy(BaseStrategy):
             self.stopLossPoint = self.datas[0].close[0] - pdist
             self.criticalBuyK = None
             self.criticalSellK = None
-
-
-def shihunMACD2(main=False,commission=0.001,atr=True):
-    node = Node(ShihunMACDStrategy,main,commission,atr)
-    node.start()
-
-if __name__ == '__main__':
-    shihunMACD2(True)

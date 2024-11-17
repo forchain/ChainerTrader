@@ -1,12 +1,18 @@
 from enum import Enum
 
+from trader.strategy.shihunmacd import ShihunMACDStrategy
+from trader.strategy.shihunmacd2 import ShihunMACD2Strategy
+from trader.strategy.shihunmacdrsibb import ShihunMacdRsiBollingerBandStrategy
+from trader.strategy.shihunrsi import ShihunRSIStrategy
+from trader.strategy.shihunrsi2 import ShihunRSI2Strategy
+
+
 class StrategyType(Enum):
     ShihunMACD = 0        # MACD from ShiHun
     ShihunRSI = 1         # RSI from ShiHun
     ShihunMACD2 = 2       # MACD2 from ShiHun
     ShihunRSI2 = 3        # RSI2 from ShiHun
     ShihunMACDRISBB = 4   # MACD + RSI + BollingerBand from ShiHun
-    ShihunMACDRSIBBUP = 5 # MACD + RSI + BollingerBand from ShiHun only in the upward trend
 
 def parseStrategyType(name):
     if name == StrategyType.ShihunMACD.name:
@@ -19,7 +25,21 @@ def parseStrategyType(name):
         return StrategyType.ShihunRSI2
     elif name == StrategyType.ShihunMACDRISBB.name:
         return StrategyType.ShihunMACDRISBB
-    elif name == StrategyType.ShihunMACDRSIBBUP.name:
-        return StrategyType.ShihunMACDRSIBBUP
 
     return None
+
+def parseStrategy(stype):
+    if stype == StrategyType.ShihunMACD:
+        return ShihunMACDStrategy
+
+    elif stype == StrategyType.ShihunRSI:
+        return ShihunRSIStrategy
+
+    elif stype == StrategyType.ShihunMACD2:
+        return ShihunMACD2Strategy
+
+    elif stype == StrategyType.ShihunRSI2:
+        return ShihunRSI2Strategy
+
+    elif stype == StrategyType.ShihunMACDRISBB:
+        return ShihunMacdRsiBollingerBandStrategy
