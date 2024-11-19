@@ -21,7 +21,7 @@ class App:
 
     def start(self,cfg):
         self.cfg=cfg
-
+        self.logger.setLevel(cfg.log_level)
         if cfg.log_file:
             self.logger.enableFile()
 

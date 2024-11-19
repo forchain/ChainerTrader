@@ -5,7 +5,7 @@ from trader.utils.trend import TrendType, parseTrendType
 
 
 class Config:
-    def __init__(self,strategy_type=None,commission=0.001,atr=True,period=14,log_file=False,plot=False,mode=None):
+    def __init__(self,strategy_type=None,commission=0.001,atr=True,period=14,log_file=False,plot=False,mode=None,log_level="INFO"):
         self.strategy=parseStrategyType(strategy_type)
         self.mode=parseTrendType(mode)
         self.commission=commission
@@ -13,6 +13,7 @@ class Config:
         self.period=period
         self.log_file=log_file
         self.plot=plot
+        self.log_level=log_level
 
     def exportEnv(self):
         if self.strategy:
@@ -24,6 +25,7 @@ class Config:
         os.environ['log_file'] = str(self.log_file)
         os.environ['plot'] = str(self.plot)
         os.environ['mode'] = self.mode.name
+        os.environ['log_level'] = self.log_level
 
     def to_dict(self):
         strategy_type = None
@@ -38,6 +40,7 @@ class Config:
             'log_file':self.log_file,
             'plot':self.plot,
             'mode':self.mode.name,
+            'log_level':self.log_level,
         }
 
 def NewConfigFromEnv():
@@ -56,4 +59,5 @@ def NewConfigFromEnv():
         bool(os.environ.get('log_file')),
         bool(os.environ.get('plot')),
         os.environ.get('mode'),
+        os.environ.get('log_level'),
     )

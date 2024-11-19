@@ -22,9 +22,10 @@ def main():
     parser.add_argument("--log_file", help="Write log to file", action="store_true")
     parser.add_argument("--plot", help="Plot data", action="store_true")
     parser.add_argument("--mode", help="trend type: NORMAL UP DOWN",type=str)
+    parser.add_argument("--log_level", help="logger display level:CRITICAL,FATAL,ERROR,WARNING,WARNING,INFO,DEBUG", type=str,default="INFO")
 
     args = parser.parse_args()
-    cfg = Config(args.strategy,args.commission,args.atr,args.period,args.log_file,args.plot,args.mode)
+    cfg = Config(args.strategy,args.commission,args.atr,args.period,args.log_file,args.plot,args.mode,args.log_level)
     if args.version:
         print(app.version())
         return
