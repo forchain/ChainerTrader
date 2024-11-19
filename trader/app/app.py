@@ -1,6 +1,7 @@
 import os
 from datetime import datetime
 
+from trader.binance.exchange import EXCHANGE_NAME, BinanceExchange
 from trader.strategy.node import Node
 from trader.strategy.strategy import StrategyType, parseStrategy
 from trader.common.logger import Logger
@@ -24,6 +25,8 @@ class App:
         self.logger.setLevel(cfg.log_level)
         if cfg.log_file:
             self.logger.enableFile()
+        if cfg.exchange == EXCHANGE_NAME:
+            self.exchange = BinanceExchange()
 
         self.startTime=datetime.now()
 
