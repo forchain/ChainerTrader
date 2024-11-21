@@ -13,6 +13,7 @@ NAME = "trader"
 class App:
     def __init__(self):
         self.logger=Logger(NAME)
+        self.log().info(f"Init App {self.name()}")
 
     def name(self):
         return NAME
@@ -26,7 +27,8 @@ class App:
         if cfg.log_file:
             self.logger.enableFile()
         if cfg.exchange == EXCHANGE_NAME:
-            self.exchange = BinanceExchange()
+            self.exchange = BinanceExchange(self.log())
+            self.exchange.start()
 
         self.startTime=datetime.now()
 
@@ -37,6 +39,9 @@ class App:
         return True
 
     def stop(self):
+        if self.exchange:
+            self.exchange.stop()
+
         elapsed = datetime.now() - self.startTime
         self.log().info(f"Stop {self.name()} App, strategy type:{self.cfg.strategy.name}, elapsed time:{elapsed}")
 

@@ -1,3 +1,6 @@
+import time
+from datetime import datetime
+
 import uvicorn
 import os
 
@@ -11,13 +14,17 @@ from trader.common import path
 class RPC(FastAPI):
     def __init__(self):
         super().__init__()
+        self.app=None
+
+    def start(self):
+        if self.app:
+            return {"result","Already running"}
+
         self.app = App()
-
-        fastapi_server = bool(os.environ.get('fastapi_server'))
-        if not fastapi_server:
-            return
-
+        self.app.log().info(f"Start RPC {self.name()}")
         self.app.start(NewConfigFromEnv())
+
+        return {"result","success"}
 
     def name(self):
         return "fastapi"
@@ -26,7 +33,6 @@ rpc = RPC()
 
 def start(cfg:Config):
     cfg.exportEnv()
-    os.environ['fastapi_server'] = str(True)
     app_dir = os.path.join(path.GetTraderDir(), 'rpc')
     uvicorn.run(app="rpc:rpc", host="127.0.0.1", port=8000, reload=False,app_dir=app_dir)
 
@@ -50,3 +56,7 @@ def read_app_name():
 @rpc.get("/config")
 def read_app_config():
     return rpc.app.cfg.to_dict()
+
+@rpc.get("/start")
+def read_start_app():
+    return rpc.start()
