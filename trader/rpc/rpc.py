@@ -60,3 +60,7 @@ def read_app_config():
 @rpc.get("/start")
 def read_start_app():
     return rpc.start()
+
+@rpc.get("/exchange_info")
+def read_exchange_info():
+    return rpc.app.exchange.exchange_info()

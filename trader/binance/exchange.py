@@ -25,7 +25,7 @@ class BinanceExchange:
             self.spot_client.ping()
             self.server_time = self.spot_client.time()["serverTime"]
             self.server_time = self.server_time /1000
-            offset = self.get_server_time_offset()
+            offset = self.server_time_offset()
             if offset >= RECV_WINDOW/1000:
                 raise Exception(f"server time offset:{offset}")
 
@@ -33,18 +33,21 @@ class BinanceExchange:
             self.log.error(f"Start {self.name()} exchange: {e}")
             return False
 
-        self.log.info(f"Start {self.name()} exchange: server_time={self.get_server_datetime()} server_time_offset={self.get_server_time_offset()}")
+        self.log.info(f"Start {self.name()} exchange: server_time={self.server_datetime()} server_time_offset={self.server_time_offset()}")
         return True
 
     def stop(self):
         self.log.info(f"Stop {self.name()} exchange")
 
-    def get_server_datetime(self):
+    def server_datetime(self):
         if self.server_time is None:
             return None
 
         dt = datetime.fromtimestamp(self.server_time)
         return dt
 
-    def get_server_time_offset(self):
+    def server_time_offset(self):
         return self.server_time-datetime.now().timestamp()
+
+    def exchange_info(self):
+        return self.spot_client.exchange_info()
