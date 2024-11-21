@@ -33,9 +33,6 @@ def main():
     if args.api:
         start(cfg)
         return
-    elif args.strategy is None:
-        app.log().error("You must configure --strategy")
-        return
 
     if app.start(cfg):
         app.stop()

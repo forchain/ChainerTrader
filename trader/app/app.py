@@ -43,7 +43,7 @@ class App:
             self.exchange.stop()
 
         elapsed = datetime.now() - self.startTime
-        self.log().info(f"Stop {self.name()} App, strategy type:{self.cfg.strategy.name}, elapsed time:{elapsed}")
+        self.log().info(f"Stop {self.name()} App, elapsed time:{elapsed}")
 
     def version(self):
         filePath = os.path.join(path.GetTraderDir(), 'VERSION')

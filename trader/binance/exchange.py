@@ -9,17 +9,19 @@ class BinanceExchange:
         self.log=log
         self.log.info(f"Init Exchange {self.name()}")
 
-        base_url=get_restapi(False)
+        base_url=get_restapi()
         self.spot_client=Client(base_url=base_url)
 
     def name(self):
         return EXCHANGE_NAME
 
     def start(self):
-        self.log.info(f"Start {self.name()} exchange")
-
-        info = self.spot_client.exchange_info()
-        self.log.info(f"Get {self.name()} exchange_info:{info}")
+        try:
+            self.spot_client.ping()
+        except Exception as e:
+            self.log.error(f"Start {self.name()} exchange: {e}")
+        else:
+            self.log.error(f"Start {self.name()} exchange")
 
     def stop(self):
         self.log.info(f"Stop {self.name()} exchange")
