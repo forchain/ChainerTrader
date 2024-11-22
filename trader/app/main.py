@@ -24,9 +24,11 @@ def main():
     parser.add_argument("--mode", help="trend type: NORMAL UP DOWN",type=str)
     parser.add_argument("--log_level", help="logger display level:CRITICAL,FATAL,ERROR,WARNING,WARNING,INFO,DEBUG", type=str,default="INFO")
     parser.add_argument("--exchange", help="Which exchange is connected to:BINANCE",type=str)
+    parser.add_argument("--symbols", help="symbols for trading pairs", type=str)
+
 
     args = parser.parse_args()
-    cfg = Config(args.strategy,args.commission,args.atr,args.period,args.log_file,args.plot,args.mode,args.log_level,args.exchange)
+    cfg = Config(args.strategy,args.commission,args.atr,args.period,args.log_file,args.plot,args.mode,args.log_level,args.exchange,args.symbols)
     if args.version:
         print(app.version())
         return

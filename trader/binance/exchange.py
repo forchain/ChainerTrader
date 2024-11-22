@@ -10,8 +10,9 @@ EXCHANGE_NAME = "BINANCE"
 RECV_WINDOW = 5000
 
 class BinanceExchange:
-    def __init__(self,log):
+    def __init__(self,cfg,log):
         self.log=log
+        self.cfg=cfg
         self.log.info(f"Init Exchange {self.name()}")
 
         base_url=get_restapi(False)

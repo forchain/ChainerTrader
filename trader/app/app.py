@@ -27,7 +27,7 @@ class App:
         if cfg.log_file:
             self.logger.enableFile()
         if cfg.exchange == EXCHANGE_NAME:
-            self.exchange = BinanceExchange(self.log())
+            self.exchange = BinanceExchange(cfg,self.log())
             self.exchange.start()
 
         self.startTime=datetime.now()
