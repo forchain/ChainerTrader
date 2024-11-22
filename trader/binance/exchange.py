@@ -30,6 +30,7 @@ class BinanceExchange:
             if offset >= RECV_WINDOW/1000:
                 raise Exception(f"server time offset:{offset}")
 
+            self.update_exchange_info()
         except Exception as e:
             self.log.error(f"Start {self.name()} exchange: {e}")
             return False
@@ -50,5 +51,10 @@ class BinanceExchange:
     def server_time_offset(self):
         return self.server_time-datetime.now().timestamp()
 
-    def exchange_info(self):
-        return self.spot_client.exchange_info()
+    def update_exchange_info(self):
+        if self.cfg.symbols:
+            self.log.debug(f"update_exchange_info:{self.cfg.symbols}")
+            self.exchange_info = self.spot_client.exchange_info(symbols=self.cfg.symbols_list())
+        else:
+            self.exchange_info = None
+        return self.exchange_info

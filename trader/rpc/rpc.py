@@ -63,4 +63,4 @@ def read_start_app():
 
 @rpc.get("/exchange_info")
 def read_exchange_info():
-    return rpc.app.exchange.exchange_info()
+    return rpc.app.exchange.exchange_info

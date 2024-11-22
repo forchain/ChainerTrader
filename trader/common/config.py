@@ -52,6 +52,11 @@ class Config:
             'symbols':self.symbols,
         }
 
+    def symbols_list(self):
+        if self.symbols:
+            return self.symbols.split(',')
+        return None
+
 def NewConfigFromEnv():
     commission = os.environ.get('commission')
     if commission is None:
