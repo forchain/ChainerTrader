@@ -1,6 +1,7 @@
 import os
 from datetime import datetime
 
+from trader.app.task import TaskManager
 from trader.binance.exchange import EXCHANGE_NAME, BinanceExchange
 from trader.strategy.node import Node
 from trader.strategy.strategy import StrategyType, parseStrategy
@@ -33,6 +34,9 @@ class App:
         self.startTime=datetime.now()
 
         self.log().info(f"Start {self.name()} App, config:{cfg.to_dict()}")
+
+        self.task_manager= TaskManager(cfg,self.log())
+
         if self.cfg.strategy:
             self.startStrategy()
 
