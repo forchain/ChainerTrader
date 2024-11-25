@@ -3,7 +3,6 @@ from datetime import datetime
 from time import sleep
 
 from trader.app.task_manager import TaskManager
-from trader.binance.exchange import EXCHANGE_NAME, BinanceExchange
 from trader.common.logger import Logger
 from trader.common import path
 
@@ -26,9 +25,6 @@ class App:
         self.logger.setLevel(cfg.log_level)
         if cfg.log_file:
             self.logger.enableFile()
-        if cfg.exchange == EXCHANGE_NAME:
-            self.exchange = BinanceExchange(cfg,self.log())
-            self.exchange.start()
 
         self.startTime=datetime.now()
 

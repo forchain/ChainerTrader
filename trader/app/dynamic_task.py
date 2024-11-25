@@ -1,4 +1,6 @@
 
+from trader.binance.exchange import EXCHANGE_NAME, BinanceExchange
+
 class DynamicTask:
     def __init__(self,cfg,log):
         self.log = log
@@ -6,4 +8,10 @@ class DynamicTask:
         self.log.info(f"Init DynamicTask")
 
     def start(self):
-        pass
+        if self.cfg.exchange == EXCHANGE_NAME:
+            self.exchange = BinanceExchange(self.cfg,self.log)
+            self.exchange.start()
+        else:
+            self.log.warning(f"Not support exchange:{self.cfg.exchange}")
+            return
+
