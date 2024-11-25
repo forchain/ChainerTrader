@@ -10,10 +10,13 @@ class TaskManager:
         self.tasks = []
 
     def start(self):
-        if self.cfg.strategy:
-            self.tasks.append(StaticTask(self.log))
+        if self.cfg.data_file:
+            self.tasks.append(StaticTask(self.cfg,self.log))
         if self.cfg.exchange:
-            self.tasks.append(DynamicTask(self.log))
+            self.tasks.append(DynamicTask(self.cfg,self.log))
+
+        for task in self.tasks:
+            task.start()
 
     def stop(self):
         pass

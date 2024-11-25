@@ -4,8 +4,6 @@ from time import sleep
 
 from trader.app.task_manager import TaskManager
 from trader.binance.exchange import EXCHANGE_NAME, BinanceExchange
-from trader.strategy.node import Node
-from trader.strategy.strategy import StrategyType, parseStrategy
 from trader.common.logger import Logger
 from trader.common import path
 
@@ -39,9 +37,6 @@ class App:
         self.task_manager = TaskManager(cfg,self.log())
         self.task_manager.start()
 
-        if self.cfg.strategy:
-            self.startStrategy()
-
         return True
 
     def stop(self):
@@ -59,11 +54,6 @@ class App:
         with open(filePath, "r", encoding="utf-8") as file:
             content = file.read()
             return content
-
-    def startStrategy(self):
-        strategy = parseStrategy(self.cfg.strategy)
-        node = Node(strategy, self.cfg,self.log())
-        node.start()
 
     def info(self):
         return {
