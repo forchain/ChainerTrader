@@ -15,3 +15,6 @@ class DynamicTask:
             self.log.warning(f"Not support exchange:{self.cfg.exchange}")
             return
 
+    def stop(self):
+        if self.exchange:
+            self.exchange.stop()

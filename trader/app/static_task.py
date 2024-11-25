@@ -18,3 +18,6 @@ class StaticTask:
         strategy = parseStrategy(self.cfg.strategy)
         node = Node(strategy, self.cfg,self.log())
         node.start()
+
+    def stop(self):
+        pass

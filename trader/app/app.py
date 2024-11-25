@@ -2,6 +2,7 @@ import os
 from datetime import datetime
 from time import sleep
 
+from trader.app.database_manager import DatabaseManager
 from trader.app.task_manager import TaskManager
 from trader.common.logger import Logger
 from trader.common import path
@@ -30,6 +31,10 @@ class App:
 
         self.log().info(f"Start {self.name()} App, config:{cfg.to_dict()}")
 
+        if self.cfg.db_uri:
+            self.db_manager=DatabaseManager(cfg,self.logger)
+            self.db_manager.start()
+
         self.task_manager = TaskManager(cfg,self.log())
         self.task_manager.start()
 
@@ -38,8 +43,8 @@ class App:
     def stop(self):
         self.task_manager.stop()
 
-        if self.exchange:
-            self.exchange.stop()
+        if self.db_manager:
+            self.db_manager.stop()
 
         elapsed = datetime.now() - self.startTime
         self.log().info(f"Stop {self.name()} App, elapsed time:{elapsed}")

@@ -19,4 +19,5 @@ class TaskManager:
             task.start()
 
     def stop(self):
-        pass
+        for task in self.tasks:
+            task.stop()

@@ -37,14 +37,11 @@ class Node:
 
         datafile = cfg.data_file
 
-        # TODO: remove
-        if datafile is None:
-            datafile = "ETHUSDT-1h-202301-202401.csv"
-
-        datapath = os.path.join(path.GetDatasDir(), datafile)
+        if not os.path.isabs(cfg.data_file):
+            datafile = os.path.join(path.GetDatasDir(), cfg.data_file)
 
         data = BinanceCSVData(
-            dataname=datapath,
+            dataname=datafile,
             fromdate=datetime.datetime(2023, 1, 1),
             todate=datetime.datetime(2024, 1, 1),
         )

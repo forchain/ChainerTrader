@@ -34,4 +34,9 @@ $ trader -h
 $ trader --strategy=ShihunMACD
 ```
 
+## Load trader data from local file
+
+```bash
+$ trader --data_file="ETHUSDT-1h-202301-202401.csv"
+```
 ## Development

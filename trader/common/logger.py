@@ -5,6 +5,7 @@ class Logger:
         self.name=name
         self.logger = logging.getLogger(name)
         self.logger.setLevel(level)
+        self.handlers=[]
         if len(self.logger.handlers) <= 0:
             self.enableConsole()
 
@@ -20,7 +21,9 @@ class Logger:
         console_handler.setFormatter(formatter)
         # console_handler.setLevel(level)
         # 将处理器添加到记录器
+
         self.logger.addHandler(console_handler)
+        self.handlers.append(console_handler)
 
     def enableFile(self):
         if len(self.logger.handlers) != 1:
@@ -30,6 +33,12 @@ class Logger:
         file_handler.setFormatter(get_formatter())
         # file_handler.setLevel(level)
         self.logger.addHandler(file_handler)
+        self.handlers.append(file_handler)
+
+    def apply(self, other: logging.Logger):
+        other.setLevel(self.logger.level)
+        for handler in self.handlers:
+            other.addHandler(handler)
 
 def get_formatter():
     return logging.Formatter('%(asctime)s[%(levelname)s] %(message)s')
