@@ -18,7 +18,7 @@ from trader.utils.volatility import VolatilityAnalyzer
 from trader.utils.winrate import WinRateAnalyzer
 
 class Node:
-    def __init__(self,strategy,cfg=None,log=None,datafile="ETHUSDT-1h-202301-202401.csv"):
+    def __init__(self,strategy,cfg=None,log=None):
         self.plot=cfg.plot
         self.commission=cfg.commission
         self.atr=cfg.atr
@@ -34,6 +34,12 @@ class Node:
         cerebro.addanalyzer(WinRateAnalyzer, _name="winRate")
         cerebro.addanalyzer(ProfitLossRatioAnalyzer, _name="profitLossRatio")
         self.cerebro=cerebro
+
+        datafile = cfg.data_file
+
+        # TODO: remove
+        if datafile is None:
+            datafile = "ETHUSDT-1h-202301-202401.csv"
 
         datapath = os.path.join(path.GetDatasDir(), datafile)
 

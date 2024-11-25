@@ -1,7 +1,8 @@
 import os
 from datetime import datetime
+from time import sleep
 
-from trader.app.task import TaskManager
+from trader.app.task_manager import TaskManager
 from trader.binance.exchange import EXCHANGE_NAME, BinanceExchange
 from trader.strategy.node import Node
 from trader.strategy.strategy import StrategyType, parseStrategy
@@ -35,7 +36,8 @@ class App:
 
         self.log().info(f"Start {self.name()} App, config:{cfg.to_dict()}")
 
-        self.task_manager= TaskManager(cfg,self.log())
+        self.task_manager = TaskManager(cfg,self.log())
+        self.task_manager.start()
 
         if self.cfg.strategy:
             self.startStrategy()
@@ -43,6 +45,8 @@ class App:
         return True
 
     def stop(self):
+        self.task_manager.stop()
+
         if self.exchange:
             self.exchange.stop()
 
