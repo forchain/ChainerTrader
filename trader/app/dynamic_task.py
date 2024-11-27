@@ -1,10 +1,11 @@
-
+from trader.app.app import App
 from trader.binance.exchange import EXCHANGE_NAME, BinanceExchange
 
 class DynamicTask:
-    def __init__(self,cfg,log):
-        self.log = log
-        self.cfg = cfg
+    def __init__(self,app:App):
+        self.app=app
+        self.log = app.log()
+        self.cfg = app.config()
         self.log.info(f"Init DynamicTask")
 
     def start(self):
@@ -18,3 +19,4 @@ class DynamicTask:
     def stop(self):
         if self.exchange:
             self.exchange.stop()
+

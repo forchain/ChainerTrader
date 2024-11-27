@@ -23,9 +23,9 @@ class DatabaseManager:
 
     def start(self):
         self.client = MongoClient(self.cfg.db_uri)
-        # 选择数据库
-        self.db = self.client["binance"]
-
 
     def stop(self):
         self.client.close()
+
+    def get_database(self,name):
+        return self.client[name]

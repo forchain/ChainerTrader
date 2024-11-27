@@ -1,11 +1,13 @@
+from trader.app.app import App
 from trader.app.dynamic_task import DynamicTask
 from trader.app.static_task import StaticTask
 
 
 class TaskManager:
-    def __init__(self,cfg,log):
-        self.log = log
-        self.cfg = cfg
+    def __init__(self,app:App):
+        self.app=app
+        self.log = app.log()
+        self.cfg = app.config()
         self.log.info(f"Init TaskManager")
         self.tasks = []
 
@@ -13,7 +15,7 @@ class TaskManager:
         if self.cfg.data_file:
             self.tasks.append(StaticTask(self.cfg,self.log))
         if self.cfg.exchange:
-            self.tasks.append(DynamicTask(self.cfg,self.log))
+            self.tasks.append(DynamicTask(self.app))
 
         for task in self.tasks:
             task.start()

@@ -4,6 +4,7 @@ from time import sleep
 
 from trader.app.database_manager import DatabaseManager
 from trader.app.task_manager import TaskManager
+from trader.common.config import Config
 from trader.common.logger import Logger
 from trader.common import path
 
@@ -21,7 +22,7 @@ class App:
     def log(self):
         return self.logger.log()
 
-    def start(self,cfg):
+    def start(self,cfg:Config):
         self.cfg=cfg
         self.logger.setLevel(cfg.log_level)
         if cfg.log_file:
@@ -35,7 +36,7 @@ class App:
             self.db_manager=DatabaseManager(cfg,self.logger)
             self.db_manager.start()
 
-        self.task_manager = TaskManager(cfg,self.log())
+        self.task_manager = TaskManager(self)
         self.task_manager.start()
 
         return True
@@ -64,3 +65,6 @@ class App:
             "period": self.cfg.period,
             "atr": self.cfg.atr,
         }
+
+    def config(self):
+        return self.cfg
