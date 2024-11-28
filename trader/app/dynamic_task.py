@@ -9,14 +9,8 @@ class DynamicTask:
         self.log.info(f"Init DynamicTask")
 
     def start(self):
-        if self.cfg.exchange == EXCHANGE_NAME:
-            self.exchange = BinanceExchange(self.cfg,self.log)
-            self.exchange.start()
-        else:
-            self.log.warning(f"Not support exchange:{self.cfg.exchange}")
-            return
+        pass
 
     def stop(self):
-        if self.exchange:
-            self.exchange.stop()
+        pass
 

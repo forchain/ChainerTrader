@@ -1,11 +1,13 @@
 import os
 
+from mypy.typeops import false_only
+
 from trader.strategy.strategy import parseStrategyType
 from trader.utils.trend import TrendType, parseTrendType
 
 
 class Config:
-    def __init__(self,strategy_type=None,commission=0.001,atr=True,period=14,log_file=False,plot=False,mode=None,log_level="INFO",exchange=None,symbols=None,intervals="1d",data_file=None,db_uri=None):
+    def __init__(self,strategy_type=None,commission=0.001,atr=True,period=14,log_file=False,plot=False,mode=None,log_level="INFO",exchange=None,symbols="BTCUSDT",intervals="1d",data_file=None,db_uri=None):
         self.strategy=parseStrategyType(strategy_type)
         self.mode=parseTrendType(mode)
         self.commission=commission
@@ -34,8 +36,7 @@ class Config:
 
         if self.exchange:
             os.environ['exchange'] = self.exchange
-        if self.symbols:
-            os.environ['symbols'] = self.symbols
+        os.environ['symbols'] = self.symbols
         if self.data_file:
             os.environ['data_file'] = self.data_file
         if self.db_uri:
@@ -64,9 +65,20 @@ class Config:
         }
 
     def symbols_list(self):
-        if self.symbols:
-            return self.symbols.split(',')
-        return None
+        return self.symbols.split(',')
+
+    def intervals_list(self):
+        return self.intervals.split(',')
+
+    def checkSymbolsIntervals(self):
+        if self.symbols is None or self.intervals is None:
+            return False
+
+        intervals_len = len(self.intervals_list())
+        if len(self.symbols_list()) != intervals_len and intervals_len != 1:
+            return False
+        return True
+
 
 def NewConfigFromEnv():
     commission = os.environ.get('commission')

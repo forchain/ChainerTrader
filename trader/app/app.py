@@ -4,6 +4,7 @@ from time import sleep
 
 from trader.app.database_manager import DatabaseManager
 from trader.app.task_manager import TaskManager
+from trader.binance.exchange import EXCHANGE_NAME, BinanceExchange
 from trader.common.config import Config
 from trader.common.logger import Logger
 from trader.common import path
@@ -35,6 +36,9 @@ class App:
         if self.cfg.db_uri:
             self.db_manager=DatabaseManager(cfg,self.logger)
             self.db_manager.start()
+        if self.cfg.exchange == EXCHANGE_NAME:
+            self.exchange = BinanceExchange(self.cfg,self.log)
+            self.exchange.start()
 
         self.task_manager = TaskManager(self)
         self.task_manager.start()
@@ -46,6 +50,8 @@ class App:
 
         if self.db_manager:
             self.db_manager.stop()
+        if self.exchange:
+            self.exchange.stop()
 
         elapsed = datetime.now() - self.startTime
         self.log().info(f"Stop {self.name()} App, elapsed time:{elapsed}")

@@ -12,6 +12,10 @@ class TaskManager:
         self.tasks = []
 
     def start(self):
+        if not self.cfg.checkSymbolsIntervals():
+            self.log.error(f"symbols intervals error")
+            return
+
         if self.cfg.data_file:
             self.tasks.append(StaticTask(self.cfg,self.log))
         if self.cfg.exchange:
