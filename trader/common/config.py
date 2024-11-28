@@ -3,6 +3,7 @@ import os
 from mypy.typeops import false_only
 
 from trader.strategy.strategy import parseStrategyType
+from trader.utils.symbol_interval import SymbolInterval
 from trader.utils.trend import TrendType, parseTrendType
 
 
@@ -79,6 +80,21 @@ class Config:
             return False
         return True
 
+    def get_symbol_interval_list(self)->[SymbolInterval]:
+        intervals = self.intervals_list()
+        symbols = self.symbols_list()
+        intervals_len = len(intervals)
+
+        ret:[SymbolInterval]=[]
+        index=0
+        for sy in symbols:
+            if intervals_len == 1:
+                ret.append(SymbolInterval(sy,intervals[0]))
+            else:
+                ret.append(SymbolInterval(sy, intervals[index]))
+            index+=1
+
+        return ret
 
 def NewConfigFromEnv():
     commission = os.environ.get('commission')

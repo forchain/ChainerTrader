@@ -7,9 +7,11 @@ class DynamicTask:
         self.log = app.log()
         self.cfg = app.config()
         self.log.info(f"Init DynamicTask")
+        self.
 
     def start(self):
-        self.collection = self.app.db_manager.get_collection("trader", )
+        self.collection = self.app.db_manager.get_collection("trader", self.cfg.get_symbol_interval_list()[0])
+
 
     def stop(self):
         pass
