@@ -12,7 +12,7 @@ class TaskManager:
         self.tasks = []
 
     def start(self):
-        if not self.cfg.checkSymbolsIntervals():
+        if not self.cfg.check_symbols_intervals():
             self.log.error(f"symbols intervals error")
             return
 

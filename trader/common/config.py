@@ -70,7 +70,7 @@ class Config:
     def intervals_list(self):
         return self.intervals.split(',')
 
-    def checkSymbolsIntervals(self):
+    def check_symbols_intervals(self):
         if self.symbols is None or self.intervals is None:
             return False
 

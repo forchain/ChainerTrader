@@ -9,7 +9,7 @@ class DynamicTask:
         self.log.info(f"Init DynamicTask")
 
     def start(self):
-        pass
+        self.collection = self.app.db_manager.get_collection("trader", )
 
     def stop(self):
         pass

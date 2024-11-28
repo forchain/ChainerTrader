@@ -2,6 +2,7 @@ import logging
 from datetime import datetime
 
 from pymongo import MongoClient
+from pymongo.synchronous.collection import Collection
 
 from trader.common.logger import Logger
 
@@ -29,3 +30,9 @@ class DatabaseManager:
 
     def get_database(self,name):
         return self.client[name]
+
+    def get_collection(self,db_name,collection_name)->Collection:
+        db=self.get_database(db_name)
+        return db[collection_name]
+
+    def get_latest_kline(self):
