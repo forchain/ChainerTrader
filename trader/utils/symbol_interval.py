@@ -15,7 +15,7 @@ months -> 月	1M
 '''
 
 class Interval(Enum):
-    INTERVAL_1s  = "1s"
+    INTERVAL_1s  ="1s"
     INTERVAL_1m  ="1m"
     INTERVAL_3m  ="3m"
     INTERVAL_5m  ="5m"
@@ -37,35 +37,35 @@ def get_time_duration(interval:Interval)->int:
     if interval == Interval.INTERVAL_1s:
         return 1
     elif interval == Interval.INTERVAL_1m:
-        return timedelta(minutes=1).seconds
+        return int(timedelta(minutes=1).total_seconds())
     elif interval == Interval.INTERVAL_3m:
-        return timedelta(minutes=3).seconds
+        return int(timedelta(minutes=3).total_seconds())
     elif interval == Interval.INTERVAL_5m:
-        return timedelta(minutes=5).seconds
+        return int(timedelta(minutes=5).total_seconds())
     elif interval == Interval.INTERVAL_15m:
-        return timedelta(minutes=15).seconds
+        return int(timedelta(minutes=15).total_seconds())
     elif interval == Interval.INTERVAL_30m:
-        return timedelta(minutes=30).seconds
+        return int(timedelta(minutes=30).total_seconds())
     elif interval == Interval.INTERVAL_1h:
-        return timedelta(hours=1).seconds
+        return int(timedelta(hours=1).total_seconds())
     elif interval == Interval.INTERVAL_2h:
-        return timedelta(hours=2).seconds
+        return int(timedelta(hours=2).total_seconds())
     elif interval == Interval.INTERVAL_4h:
-        return timedelta(hours=4).seconds
+        return int(timedelta(hours=4).total_seconds())
     elif interval == Interval.INTERVAL_6h:
-        return timedelta(hours=6).seconds
+        return int(timedelta(hours=6).total_seconds())
     elif interval == Interval.INTERVAL_8h:
-        return timedelta(hours=8).seconds
+        return int(timedelta(hours=8).total_seconds())
     elif interval == Interval.INTERVAL_12h:
-        return timedelta(hours=12).seconds
+        return int(timedelta(hours=12).total_seconds())
     elif interval == Interval.INTERVAL_1d:
-        return timedelta(days=1).seconds
+        return int(timedelta(days=1).total_seconds())
     elif interval == Interval.INTERVAL_3d:
-        return timedelta(days=3).seconds
+        return int(timedelta(days=3).total_seconds())
     elif interval == Interval.INTERVAL_1w:
-        return timedelta(weeks=1).seconds
+        return int(timedelta(weeks=1).total_seconds())
     elif interval == Interval.INTERVAL_1M:
-        return timedelta(days=30).seconds
+        return int(timedelta(days=30).total_seconds())
 
 def add_time_duration(cur:int,interval:Interval,num:int)->int:
     return cur+get_time_duration(interval) * num

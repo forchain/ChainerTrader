@@ -1,3 +1,5 @@
+import json
+from datetime import datetime
 
 PRIMARY_KEY="open_time"
 
@@ -27,6 +29,26 @@ class Kline:
         self.vol_taker_quote=vol_taker_quote
         self.ignore=ignore
 
+    def to_dict(self):
+        return {
+            "open_datetime": f"{datetime.fromtimestamp(self.open_time)}",
+            "open_time":self.open_time,
+            "open":self.open,
+            "high":self.high,
+            "low":self.low,
+            "close":self.close,
+            "close_datetime": f"{datetime.fromtimestamp(self.close_time)}",
+            "close_time":self.close_time,
+            "volume":self.volume,
+            "vol_quote":self.vol_quote,
+            "trades":self.trades,
+            "vol_taker_base":self.vol_taker_base,
+            "vol_taker_quote":self.vol_taker_quote,
+            "ignore":self.ignore
+        }
+
+    def to_json(self):
+        return json.dumps(self.to_dict(), indent=4)
 
 def parse_kline(data)->Kline:
     return Kline(

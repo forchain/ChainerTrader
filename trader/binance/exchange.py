@@ -66,7 +66,7 @@ class BinanceExchange:
             self.exchange_info = None
         return self.exchange_info
 
-    def get_klines(self,si:SymbolInterval,start_time:int=None,end_time:int=None,limit:int=KLINE_LIMIT_DEFAULT):
+    def get_klines(self,si:SymbolInterval,start_time:int=None,end_time:int=None,limit:int=KLINE_LIMIT_DEFAULT)->[Kline]:
         r_limit=limit
         if r_limit > KLINE_LIMIT_MAX:
             r_limit=KLINE_LIMIT_MAX
@@ -74,13 +74,13 @@ class BinanceExchange:
         if start_time and end_time:
             start_time *= 1000
             end_time *= 1000
-            return self.spot_client.klines(si.symbol,si.interval.value,startTime=start_time,endTime=end_time,limit=r_limit)
+            ret = self.spot_client.klines(si.symbol,si.interval.value,startTime=start_time,endTime=end_time,limit=r_limit)
         else:
-            return self.spot_client.klines(si.symbol, si.interval.value,limit=r_limit)
+            ret = self.spot_client.klines(si.symbol, si.interval.value,limit=r_limit)
 
-    def get_latest_klines(self,si:SymbolInterval,end_time:int=None,limit:int=KLINE_LIMIT_DEFAULT):
-        r_start_time:int=0
-        r_end_time:int=0
+        return parse_klines(ret)
+
+    def get_latest_klines(self,si:SymbolInterval,end_time:int=None,limit:int=KLINE_LIMIT_DEFAULT)->[Kline]:
         if end_time is None:
             r_start_time=int(get_oldest_time().timestamp())
             r_end_time=add_time_duration(r_start_time,si.interval,-1)
@@ -91,3 +91,29 @@ class BinanceExchange:
 
 def get_oldest_time()->datetime:
     return datetime.strptime(OLDEST_TIME, "%Y-%m-%d %H:%M:%S")
+
+def parse_klines(data)->[Kline]:
+    if data is None:
+        return None
+
+    R_LIST_LEN=12
+    ret:[Kline]=[]
+    for d in data:
+        if len(d) < R_LIST_LEN:
+            raise Exception(f"kline length is error:{len(d)} != {R_LIST_LEN}")
+
+        ret.append(Kline(
+            int(d[0]/1000),
+            float(d[1]),
+            float(d[2]),
+            float(d[3]),
+            float(d[4]),
+            int(d[6]/1000),
+            float(d[5]),
+            float(d[7]),
+            int(d[8]),
+            float(d[9]),
+            float(d[10]),
+            float(d[11]),
+        ))
+    return ret
