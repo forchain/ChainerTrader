@@ -5,7 +5,7 @@ from binance.spot import Spot as Client
 
 from trader.binance.restapi import get_restapi
 from trader.utils.kline import Kline
-from trader.utils.symbol_interval import SymbolInterval
+from trader.utils.symbol_interval import SymbolInterval, add_time_duration
 
 EXCHANGE_NAME = "BINANCE"
 
@@ -72,9 +72,22 @@ class BinanceExchange:
             r_limit=KLINE_LIMIT_MAX
 
         if start_time and end_time:
-            return self.spot_client.klines(si.symbol,si.interval,startTime=start_time*1000,endTime=end_time*1000,limit=r_limit)
+            start_time *= 1000
+            end_time *= 1000
+            return self.spot_client.klines(si.symbol,si.interval.value,startTime=start_time,endTime=end_time,limit=r_limit)
         else:
-            return self.spot_client.klines(si.symbol, si.interval,limit=r_limit)
+            return self.spot_client.klines(si.symbol, si.interval.value,limit=r_limit)
 
     def get_latest_klines(self,si:SymbolInterval,end_time:int=None,limit:int=KLINE_LIMIT_DEFAULT):
-            if end_time is None:
+        r_start_time:int=0
+        r_end_time:int=0
+        if end_time is None:
+            r_start_time=int(get_oldest_time().timestamp())
+            r_end_time=add_time_duration(r_start_time,si.interval,-1)
+        else:
+            r_end_time=end_time
+            r_start_time=add_time_duration(r_end_time,si.interval,limit)
+        return self.get_klines(si,r_start_time,r_end_time,limit)
+
+def get_oldest_time()->datetime:
+    return datetime.strptime(OLDEST_TIME, "%Y-%m-%d %H:%M:%S")

@@ -1,5 +1,10 @@
+from datetime import timedelta
+from enum import Enum
 
 '''
+Kline intervals
+m -> minutes; h -> hours; d -> days; w -> weeks; M -> months
+
 间隔	间隔 值
 seconds -> 秒	1s
 minutes -> 分钟	1m， 3m， 5m， 15m， 30m
@@ -9,10 +14,66 @@ weeks -> 周	1w
 months -> 月	1M
 '''
 
+class Interval(Enum):
+    INTERVAL_1s  = "1s"
+    INTERVAL_1m  ="1m"
+    INTERVAL_3m  ="3m"
+    INTERVAL_5m  ="5m"
+    INTERVAL_15m ="15m"
+    INTERVAL_30m ="30m"
+    INTERVAL_1h  ="1h"
+    INTERVAL_2h  ="2h"
+    INTERVAL_4h  ="4h"
+    INTERVAL_6h  ="6h"
+    INTERVAL_8h  ="8h"
+    INTERVAL_12h ="12h"
+    INTERVAL_1d  ="1d"
+    INTERVAL_3d  ="3d"
+    INTERVAL_1w  ="1w"
+    INTERVAL_1M  ="1M"
+
+# return seconds
+def get_time_duration(interval:Interval)->int:
+    if interval == Interval.INTERVAL_1s:
+        return 1
+    elif interval == Interval.INTERVAL_1m:
+        return timedelta(minutes=1).seconds
+    elif interval == Interval.INTERVAL_3m:
+        return timedelta(minutes=3).seconds
+    elif interval == Interval.INTERVAL_5m:
+        return timedelta(minutes=5).seconds
+    elif interval == Interval.INTERVAL_15m:
+        return timedelta(minutes=15).seconds
+    elif interval == Interval.INTERVAL_30m:
+        return timedelta(minutes=30).seconds
+    elif interval == Interval.INTERVAL_1h:
+        return timedelta(hours=1).seconds
+    elif interval == Interval.INTERVAL_2h:
+        return timedelta(hours=2).seconds
+    elif interval == Interval.INTERVAL_4h:
+        return timedelta(hours=4).seconds
+    elif interval == Interval.INTERVAL_6h:
+        return timedelta(hours=6).seconds
+    elif interval == Interval.INTERVAL_8h:
+        return timedelta(hours=8).seconds
+    elif interval == Interval.INTERVAL_12h:
+        return timedelta(hours=12).seconds
+    elif interval == Interval.INTERVAL_1d:
+        return timedelta(days=1).seconds
+    elif interval == Interval.INTERVAL_3d:
+        return timedelta(days=3).seconds
+    elif interval == Interval.INTERVAL_1w:
+        return timedelta(weeks=1).seconds
+    elif interval == Interval.INTERVAL_1M:
+        return timedelta(days=30).seconds
+
+def add_time_duration(cur:int,interval:Interval,num:int)->int:
+    return cur+get_time_duration(interval) * num
+
 class SymbolInterval:
-    def __init__(self,symbol:str,interval:str):
+    def __init__(self,symbol:str,interval:Interval):
         self.symbol=symbol
         self.interval=interval
 
     def name(self):
-        return self.symbol+"-"+self.interval
+        return self.symbol+"-"+self.interval.value

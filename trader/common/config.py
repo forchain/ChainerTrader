@@ -3,7 +3,7 @@ import os
 from mypy.typeops import false_only
 
 from trader.strategy.strategy import parseStrategyType
-from trader.utils.symbol_interval import SymbolInterval
+from trader.utils.symbol_interval import SymbolInterval, Interval
 from trader.utils.trend import TrendType, parseTrendType
 
 
@@ -101,9 +101,9 @@ class Config:
         index=0
         for sy in symbols:
             if intervals_len == 1:
-                ret.append(SymbolInterval(sy,intervals[0]))
+                ret.append(SymbolInterval(sy,Interval(intervals[0])))
             else:
-                ret.append(SymbolInterval(sy, intervals[index]))
+                ret.append(SymbolInterval(sy,Interval(intervals[index])))
             index+=1
 
         return ret
