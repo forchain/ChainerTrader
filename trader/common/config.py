@@ -8,7 +8,19 @@ from trader.utils.trend import TrendType, parseTrendType
 
 
 class Config:
-    def __init__(self,strategy_type=None,commission=0.001,atr=True,period=14,log_file=False,plot=False,mode=None,log_level="INFO",exchange=None,symbols="BTCUSDT",intervals="1d",data_file=None,db_uri=None):
+    def __init__(self,strategy_type=None,
+                      commission=0.001,
+                      atr=True,
+                      period=14,
+                      log_file=False,
+                      plot=False,
+                      mode=None,
+                      log_level="INFO",
+                      exchange=None,
+                      symbols="BTCUSDT",
+                      intervals="1d",
+                      data_file=None,
+                      db_uri=None):
         self.strategy=parseStrategyType(strategy_type)
         self.mode=parseTrendType(mode)
         self.commission=commission

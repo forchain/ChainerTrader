@@ -1,10 +1,12 @@
 import logging
 from datetime import datetime
+from tty import IFLAG
 
 from pymongo import MongoClient
 from pymongo.synchronous.collection import Collection
 
 from trader.common.logger import Logger
+from trader.utils.kline import Kline, PRIMARY_KEY, parse_kline
 
 
 class DatabaseManager:
@@ -33,6 +35,18 @@ class DatabaseManager:
 
     def get_collection(self,db_name,collection_name)->Collection:
         db=self.get_database(db_name)
-        return db[collection_name]
 
-    def get_latest_kline(self):
+        if collection_name in db.list_collection_names():
+            return db[collection_name]
+        else:
+            self.log.info(f"Create collection {collection_name} and index")
+            col = db[collection_name]
+            col.create_index([(PRIMARY_KEY, 1)])
+
+    def get_latest_kline(self,col:Collection)->Kline|None:
+        max_record = col.find_one(sort=[(PRIMARY_KEY, -1)])
+        if max_record is None:
+            return None
+        kl = parse_kline(max_record)
+        self.log.debug(f"get latest kline({max_record['_id']}):{kl}")
+        return kl
