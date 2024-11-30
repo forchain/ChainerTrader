@@ -2,6 +2,8 @@ import os
 from datetime import datetime
 from time import sleep
 
+from mypyc.common import SELF_NAME
+
 from trader.app.database_manager import DatabaseManager
 from trader.app.task_manager import TaskManager
 from trader.binance.exchange import EXCHANGE_NAME, BinanceExchange
@@ -16,6 +18,7 @@ class App:
     def __init__(self):
         self.logger=Logger(NAME)
         self.log().info(f"Init App {self.name()}")
+        self.running = False
 
     def name(self):
         return NAME
@@ -24,6 +27,8 @@ class App:
         return self.logger.log()
 
     def start(self,cfg:Config):
+        self.running=True
+
         self.cfg=cfg
         self.logger.setLevel(cfg.log_level)
         if cfg.log_file:
@@ -41,7 +46,11 @@ class App:
             self.exchange.start()
 
         self.task_manager = TaskManager(self)
-        self.task_manager.start()
+
+        try:
+            self.task_manager.start()
+        except KeyboardInterrupt:
+            self.shutdown()
 
         return True
 
@@ -74,3 +83,10 @@ class App:
 
     def config(self):
         return self.cfg
+
+    def shutdown(self):
+        if not self.running:
+            self.log().warn(f"{self.name()} already exited")
+            return
+        self.running=False
+        self.log().info(f"Exit the {self.name()}")
