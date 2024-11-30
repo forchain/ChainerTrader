@@ -42,6 +42,7 @@ class DatabaseManager:
             self.log.info(f"Create collection {collection_name} and index")
             col = db[collection_name]
             col.create_index([(PRIMARY_KEY, ASCENDING)], unique=True)
+            return col
 
     def get_latest_kline(self,col:Collection)->Kline|None:
         max_record = col.find_one(sort=[(PRIMARY_KEY, -1)])
