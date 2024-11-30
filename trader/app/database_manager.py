@@ -49,7 +49,7 @@ class DatabaseManager:
         if max_record is None:
             return None
         kl = parse_kline(max_record)
-        self.log.debug(f"get latest kline({max_record['_id']}):{kl}")
+        self.log.debug(f"get latest kline({max_record['_id']}):{kl.to_json()}")
         return kl
 
     def add_klines(self,col:Collection,klines:[Kline])->int:
