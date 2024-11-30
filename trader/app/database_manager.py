@@ -2,7 +2,7 @@ import logging
 from datetime import datetime
 from tty import IFLAG
 
-from pymongo import MongoClient
+from pymongo import MongoClient, ASCENDING
 from pymongo.synchronous.collection import Collection
 
 from trader.common.logger import Logger
@@ -41,7 +41,7 @@ class DatabaseManager:
         else:
             self.log.info(f"Create collection {collection_name} and index")
             col = db[collection_name]
-            col.create_index([(PRIMARY_KEY, 1)])
+            col.create_index([(PRIMARY_KEY, ASCENDING)], unique=True)
 
     def get_latest_kline(self,col:Collection)->Kline|None:
         max_record = col.find_one(sort=[(PRIMARY_KEY, -1)])
@@ -50,3 +50,30 @@ class DatabaseManager:
         kl = parse_kline(max_record)
         self.log.debug(f"get latest kline({max_record['_id']}):{kl}")
         return kl
+
+    def add_klines(self,col:Collection,klines:[Kline])->int:
+        if len(klines) <= 0:
+            return 0
+        insert_data=[]
+        duplicate = True
+        total = 0
+        for kl in klines:
+            kld = kl.to_dict()
+            if duplicate:
+                try:
+                    col.insert_one(kld)
+                except Exception as e:
+                    duplicate = True
+                else:
+                    duplicate=False
+                    total+=1
+                finally:
+                    continue
+
+            insert_data.append(kld)
+
+        if len(insert_data) > 0:
+            col.insert_many(insert_data)
+            total+=len(insert_data)
+        self.log.debug(f"add klines, total:{total}")
+        return total
