@@ -32,7 +32,7 @@ class Kline:
     def to_dict(self):
         return {
             "open_datetime": f"{datetime.fromtimestamp(self.open_time)}",
-            "open_time":self.open_time,
+            PRIMARY_KEY:self.open_time,
             "open":self.open,
             "high":self.high,
             "low":self.low,
@@ -52,7 +52,7 @@ class Kline:
 
 def parse_kline(data)->Kline:
     return Kline(
-        open_time=data['open_time'],
+        open_time=data[PRIMARY_KEY],
         open=data['open'],
         high=data['high'],
         low=data['low'],
