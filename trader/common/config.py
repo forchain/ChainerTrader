@@ -20,7 +20,8 @@ class Config:
                       symbols="BTCUSDT",
                       intervals="1d",
                       data_file=None,
-                      db_uri=None):
+                      db_uri=None,
+                      window=1000):
         self.strategy=parseStrategyType(strategy_type)
         self.mode=parseTrendType(mode)
         self.commission=commission
@@ -34,6 +35,7 @@ class Config:
         self.intervals=intervals
         self.data_file=data_file
         self.db_uri=db_uri
+        self.window=window
 
     def exportEnv(self):
         if self.strategy:
@@ -55,6 +57,7 @@ class Config:
         if self.db_uri:
             os.environ['db_uri'] = self.db_uri
         os.environ['intervals'] = self.intervals
+        os.environ['window'] = str(self.window)
 
     def to_dict(self):
         strategy_type = None
@@ -75,6 +78,7 @@ class Config:
             'intervals': self.intervals,
             'data_file':self.data_file,
             'db_uri': self.db_uri,
+            'window': self.window,
         }
 
     def symbols_list(self):
@@ -115,6 +119,9 @@ def NewConfigFromEnv():
     period = os.environ.get('period')
     if period is None:
         period="0"
+    window = os.environ.get('window')
+    if window is None:
+        window="0"
 
     return Config(
         os.environ.get('strategy_type'),
@@ -127,7 +134,8 @@ def NewConfigFromEnv():
         os.environ.get('log_level'),
         os.environ.get('exchange'),
         os.environ.get('symbols'),
+        os.environ.get('intervals'),
         os.environ.get('data_file'),
         os.environ.get('db_uri'),
-        os.environ.get('intervals'),
+        int(window)
     )

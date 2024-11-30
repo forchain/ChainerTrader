@@ -28,10 +28,11 @@ def main():
     parser.add_argument("--intervals", help="intervals for trading pairs", type=str,default="1d")
     parser.add_argument("--data_file", help="Local data file", type=str)
     parser.add_argument("--db_uri", help="Database URI for MongoDB", type=str)
+    parser.add_argument('--window', help='Window for backtesting', action='store', type=int, default=1000)
 
 
     args = parser.parse_args()
-    cfg = Config(args.strategy,args.commission,args.atr,args.period,args.log_file,args.plot,args.mode,args.log_level,args.exchange,args.symbols,args.intervals,args.data_file,args.db_uri)
+    cfg = Config(args.strategy,args.commission,args.atr,args.period,args.log_file,args.plot,args.mode,args.log_level,args.exchange,args.symbols,args.intervals,args.data_file,args.db_uri,args.window)
     if args.version:
         print(app.version())
         return
