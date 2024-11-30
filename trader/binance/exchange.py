@@ -77,9 +77,14 @@ class BinanceExchange:
             ret = self.spot_client.klines(si.symbol,si.interval.value,startTime=start_time,endTime=end_time,limit=r_limit)
         else:
             ret = self.spot_client.klines(si.symbol, si.interval.value,limit=r_limit)
-        self.log.info(f"get klines:{len(ret)}")
+        kls = parse_klines(ret)
 
-        return parse_klines(ret)
+        if kls and len(kls) > 0:
+            self.log.info(f"get klines: {len(kls)}/{len(ret)}  start={kls[0].open_datetime()} end={kls[len(kls)-1].close_datetime()}")
+        else:
+            self.log.info(f"get klines: 0/{len(ret)}")
+
+        return kls
 
     def get_latest_klines(self,si:SymbolInterval,limit:int=KLINE_LIMIT_DEFAULT)->[Kline]:
         return self.get_klines(si,None,None,limit)
