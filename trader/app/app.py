@@ -7,6 +7,7 @@ from mypyc.common import SELF_NAME
 from trader.app.database_manager import DatabaseManager
 from trader.app.task_manager import TaskManager
 from trader.binance.exchange import EXCHANGE_NAME, BinanceExchange
+from trader.common.common import Context
 from trader.common.config import Config
 from trader.common.logger import Logger
 from trader.common import path
@@ -18,7 +19,8 @@ class App:
     def __init__(self):
         self.logger=Logger(NAME)
         self.log().info(f"Init App {self.name()}")
-        self.running = False
+
+        Context.running=False
 
     def name(self):
         return NAME
@@ -27,7 +29,7 @@ class App:
         return self.logger.log()
 
     def start(self,cfg:Config):
-        self.running=True
+        Context.running=True
 
         self.cfg=cfg
         self.logger.setLevel(cfg.log_level)
@@ -42,10 +44,10 @@ class App:
             self.db_manager=DatabaseManager(cfg,self.logger)
             self.db_manager.start()
         if self.cfg.exchange == EXCHANGE_NAME:
-            self.exchange = BinanceExchange(self.cfg,self.log)
+            self.exchange = BinanceExchange(self.cfg,self.log())
             self.exchange.start()
 
-        self.task_manager = TaskManager(self)
+        self.task_manager = TaskManager(self.cfg,self.log(),self.db_manager,self.exchange)
 
         try:
             self.task_manager.start()
@@ -85,8 +87,8 @@ class App:
         return self.cfg
 
     def shutdown(self):
-        if not self.running:
+        if not Context.running:
             self.log().warn(f"{self.name()} already exited")
             return
-        self.running=False
+        Context.running=False
         self.log().info(f"Exit the {self.name()}")
