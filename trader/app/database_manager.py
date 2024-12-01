@@ -2,7 +2,7 @@ import logging
 from datetime import datetime
 from tty import IFLAG
 
-from pymongo import MongoClient, ASCENDING
+from pymongo import MongoClient, ASCENDING, DESCENDING
 from pymongo.synchronous.collection import Collection
 
 from trader.common.logger import Logger
@@ -45,12 +45,25 @@ class DatabaseManager:
             return col
 
     def get_latest_kline(self,col:Collection)->Kline|None:
-        max_record = col.find_one(sort=[(PRIMARY_KEY, -1)])
+        max_record = col.find_one(sort=[(PRIMARY_KEY, DESCENDING)])
         if max_record is None:
             return None
         kl = parse_kline(max_record)
         self.log.debug(f"get latest kline({max_record['_id']}):{kl.to_json()}")
         return kl
+
+    def get_latest_klines(self,col:Collection,limit:int)->[Kline]:
+        results = col.find().sort(PRIMARY_KEY, DESCENDING).limit(limit)
+        if results is None:
+            return None
+
+        kls=[]
+        for ret in results:
+            kls.append(parse_kline(ret))
+        if len(kls) > 1:
+            kls.reverse()
+
+        return kls
 
     def add_klines(self,col:Collection,klines:[Kline])->int:
         if len(klines) <= 0:
