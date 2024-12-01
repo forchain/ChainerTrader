@@ -16,7 +16,7 @@ class StaticTask:
 
     def startStrategy(self):
         strategy = parseStrategy(self.cfg.strategy)
-        node = Node(strategy, self.cfg,self.log())
+        node = Node(strategy, self.cfg,self.log)
         node.start()
 
     def stop(self):
