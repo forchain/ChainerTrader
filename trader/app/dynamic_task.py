@@ -35,6 +35,9 @@ class DynamicTask:
             self.log.error(f"Not support strategy:{self.cfg.strategy}")
             return
 
+        if self.exchange.spot_ws_client:
+            self.exchange.spot_ws_client.klines(symbol=self.symbol_interval.symbol, interval=self.symbol_interval.interval.value, limit=1)
+
         self.log.info(f"Start {self.name()}")
         self.collection = self.db_manager.get_collection("trader", self.symbol_interval.name())
 
