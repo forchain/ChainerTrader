@@ -25,6 +25,8 @@ class BinanceExchange:
 
         base_url=get_restapi(False)
         self.spot_client=Client(base_url=base_url)
+        self.spot_ws_client = SpotWebsocketAPIClient(on_message=on_spot_ws_handler, on_close=on_spot_ws_close)
+        self.spot_ws_client.socket_manager.host = self
 
     def name(self):
         return EXCHANGE_NAME
@@ -45,8 +47,6 @@ class BinanceExchange:
 
         self.log.info(f"Start {self.name()} exchange: server_time={self.server_datetime()} server_time_offset={self.server_time_offset()}")
 
-        self.spot_ws_client = SpotWebsocketAPIClient(on_message=on_spot_ws_handler, on_close=on_spot_ws_close)
-        self.spot_ws_client.socket_manager.host=self
         return True
 
     def stop(self):

@@ -1,11 +1,8 @@
 import os
 from datetime import datetime
-from time import sleep
-
-from mypyc.common import SELF_NAME
 
 from trader.app.database_manager import DatabaseManager
-from trader.app.task_manager import TaskManager
+from trader.task.task_manager import TaskManager
 from trader.binance.exchange import EXCHANGE_NAME, BinanceExchange
 from trader.common.common import Context
 from trader.common.config import Config

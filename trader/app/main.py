@@ -29,10 +29,25 @@ def main():
     parser.add_argument("--data_file", help="Local data file", type=str)
     parser.add_argument("--db_uri", help="Database URI for MongoDB", type=str)
     parser.add_argument('--window', help='Window for backtesting', action='store', type=int, default=1000)
+    parser.add_argument("--task", help="Tasks:TRADER,BACK_TRADER,UPDATE_KLINES",type=str)
 
 
     args = parser.parse_args()
-    cfg = Config(args.strategy,args.commission,args.atr,args.period,args.log_file,args.plot,args.mode,args.log_level,args.exchange,args.symbols,args.intervals,args.data_file,args.db_uri,args.window)
+    cfg = Config(args.strategy,
+                 args.commission,
+                 args.atr,
+                 args.period,
+                 args.log_file,
+                 args.plot,
+                 args.mode,
+                 args.log_level,
+                 args.exchange,
+                 args.symbols,
+                 args.intervals,
+                 args.data_file,
+                 args.db_uri,
+                 args.window,
+                 args.task)
     if args.version:
         print(app.version())
         return
