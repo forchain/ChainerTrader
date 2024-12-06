@@ -33,6 +33,9 @@ class TaskManager:
         elif taskType == TaskType.UPDATE_KLINES:
             if self.cfg.exchange:
                 self.tasks.append(UpdateKlinesTask(self.cfg, self.log, self.db_manager, self.exchange))
+        elif taskType == TaskType.CHECK_KLINES:
+            if self.cfg.exchange:
+                self.tasks.append(UpdateKlinesTask(self.cfg, self.log, self.db_manager, self.exchange))
 
         for task in self.tasks:
             task.start()

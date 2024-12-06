@@ -7,6 +7,7 @@ from trader.app.database_manager import DatabaseManager
 from trader.binance.exchange import BinanceExchange
 from trader.common.common import Context, sleep
 from trader.common.config import Config
+from trader.task.task_type import TaskType
 from trader.utils.symbol_interval import SymbolInterval, add_time_duration
 
 DOWLOAD_SPACE_TIME = 5
@@ -21,7 +22,10 @@ class UpdateKlinesTask:
         self.log.info(f"Init {self.name()}")
 
     def name(self):
-        return f"UpdateKlinesTask({self.symbol_interval.name()})"
+        return f"{self.type()}({self.symbol_interval.name()})"
+
+    def type(self):
+        return TaskType.UPDATE_KLINES
 
     def start(self):
         self.start_time = datetime.now()

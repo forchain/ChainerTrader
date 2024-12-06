@@ -9,6 +9,7 @@ from trader.common.common import Context
 from trader.common.config import Config
 from trader.strategy.node import Node
 from trader.strategy.strategy import parseStrategy
+from trader.task.task_type import TaskType
 from trader.utils.kline import Kline
 from trader.utils.symbol_interval import SymbolInterval, add_time_duration
 
@@ -24,7 +25,10 @@ class TraderTask:
         self.log.info(f"Init {self.name()}")
 
     def name(self):
-        return f"DynamicTask({self.symbol_interval.name()})"
+        return f"{self.type()}({self.symbol_interval.name()})"
+
+    def type(self):
+        return TaskType.TRADER
 
     def start(self):
         if self.cfg.strategy is None:

@@ -5,6 +5,7 @@ class TaskType(Enum):
     TRADER = 0
     BACK_TRADER = 1
     UPDATE_KLINES = 2
+    CHECK_KLINES = 3
 
 def parse_task_type(name):
     if name == TaskType.TRADER.name:
@@ -13,4 +14,6 @@ def parse_task_type(name):
         return TaskType.BACK_TRADER
     elif name == TaskType.UPDATE_KLINES.name:
         return TaskType.UPDATE_KLINES
+    elif name == TaskType.CHECK_KLINES.name:
+        return TaskType.CHECK_KLINES
     return None
