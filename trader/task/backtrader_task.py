@@ -2,7 +2,7 @@
 from trader.strategy.node import Node
 from trader.strategy.strategy import StrategyType, parseStrategy
 
-class StaticTask:
+class BackTraderTask:
     def __init__(self,cfg,log):
         self.log = log
         self.cfg=cfg

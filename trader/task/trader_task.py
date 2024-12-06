@@ -14,7 +14,7 @@ from trader.utils.symbol_interval import SymbolInterval, add_time_duration
 
 DOWLOAD_SPACE_TIME = 5
 
-class DynamicTask:
+class TraderTask:
     def __init__(self,cfg:Config,log:Logger,db_manager:DatabaseManager,exchange:BinanceExchange):
         self.log = log
         self.cfg = cfg

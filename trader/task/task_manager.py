@@ -1,8 +1,8 @@
 from logging import Logger
 
 from trader.app.database_manager import DatabaseManager
-from trader.task.dynamic_task import DynamicTask
-from trader.task.static_task import StaticTask
+from trader.task.trader_task import TraderTask
+from trader.task.backtrader_task import BackTraderTask
 from trader.binance.exchange import BinanceExchange
 from trader.common.config import Config
 from trader.task.task_type import parse_task_type, TaskType
@@ -26,10 +26,10 @@ class TaskManager:
         taskType=parse_task_type(self.cfg.task)
         if taskType == TaskType.TRADER:
             if self.cfg.exchange:
-                self.tasks.append(DynamicTask(self.cfg, self.log, self.db_manager, self.exchange))
+                self.tasks.append(TraderTask(self.cfg, self.log, self.db_manager, self.exchange))
         elif taskType == TaskType.BACK_TRADER:
             if self.cfg.data_file:
-                self.tasks.append(StaticTask(self.cfg, self.log))
+                self.tasks.append(BackTraderTask(self.cfg, self.log))
         elif taskType == TaskType.UPDATE_KLINES:
             if self.cfg.exchange:
                 self.tasks.append(UpdateKlinesTask(self.cfg, self.log, self.db_manager, self.exchange))
@@ -40,3 +40,6 @@ class TaskManager:
     def stop(self):
         for task in self.tasks:
             task.stop()
+
+    def add_task(self,task):
+        pass
