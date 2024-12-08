@@ -5,6 +5,7 @@ from binance.spot import Spot as Client
 from binance.websocket.spot.websocket_api import SpotWebsocketAPIClient
 
 from trader.binance.restapi import get_restapi
+from trader.common.logger import default
 from trader.utils.kline import Kline
 from trader.utils.symbol_interval import SymbolInterval, add_time_duration
 
@@ -18,7 +19,7 @@ KLINE_LIMIT_DEFAULT = 500
 OLDEST_TIME  = "2000-01-01 00:00:00"
 
 class BinanceExchange:
-    def __init__(self,cfg,log):
+    def __init__(self,cfg,log=default()):
         self.log=log
         self.cfg=cfg
         self.log.info(f"Init Exchange {self.name()}")
