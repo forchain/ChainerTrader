@@ -1,5 +1,6 @@
 import os
 from datetime import datetime
+from math import trunc
 
 from trader.app.database_manager import DatabaseManager
 from trader.task.task_manager import TaskManager
@@ -16,6 +17,10 @@ class App:
     def __init__(self):
         self.logger=Logger(NAME)
         self.log().info(f"Init App {self.name()}")
+
+        self.db_manager=None
+        self.exchange=None
+        self.task_manager=None
 
         Context.running=False
 
@@ -43,6 +48,9 @@ class App:
         if self.cfg.exchange == EXCHANGE_NAME:
             self.exchange = BinanceExchange(self.cfg,self.log())
             self.exchange.start()
+        if self.cfg.task is None:
+            self.log().warn(f"No tasks can be executed")
+            return True
 
         self.task_manager = TaskManager(self.cfg,self.log(),self.db_manager,self.exchange)
 
@@ -54,6 +62,8 @@ class App:
         return True
 
     def stop(self):
+        Context.running = False
+
         self.task_manager.stop()
 
         if self.db_manager:
