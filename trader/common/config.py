@@ -1,9 +1,6 @@
 import logging
 import os
 
-from fontTools.misc.cython import returns
-from mypy.typeops import false_only
-
 from trader.strategy.strategy import parseStrategyType
 from trader.utils.symbol_interval import SymbolInterval, Interval
 from trader.utils.trend import TrendType, parseTrendType

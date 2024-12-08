@@ -1,6 +1,7 @@
 import time
 from logging import Logger
 
+NAME = "trader"
 
 class Context:
     running: bool = False
