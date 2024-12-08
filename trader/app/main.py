@@ -1,13 +1,11 @@
 import argparse,os
 
-from trader.app.app import App
+from trader.app.app import App, version
 from trader.common.config import Config
 from trader.rpc.rpc import start
 
 
 def main():
-    app = App()
-
     parser = argparse.ArgumentParser(
         description="Implement TradvingView Algorithms of Youtube Channel Shi Hun",
         epilog="Chainer Labs",
@@ -49,11 +47,12 @@ def main():
                  args.window,
                  args.task)
     if args.version:
-        print(app.version())
+        print(version())
         return
     if args.api:
         start(cfg)
         return
 
-    if app.start(cfg):
+    app = App(cfg)
+    if app.start():
         app.stop()

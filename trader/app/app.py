@@ -5,22 +5,16 @@ from math import trunc
 from trader.app.database_manager import DatabaseManager
 from trader.task.task_manager import TaskManager
 from trader.binance.exchange import EXCHANGE_NAME, BinanceExchange
-from trader.common.common import Context, sleep
+from trader.common.common import Context, sleep, NAME
 from trader.common.config import Config, default
 from trader.common.logger import Logger
 from trader.common import path
 
 
-NAME = "trader"
-
 class App:
     def __init__(self,cfg:Config=default()):
         self.cfg = cfg
-        self.logger=Logger(NAME)
-        self.logger.setLevel(cfg.log_level)
-        if cfg.log_file:
-            self.logger.enableFile()
-        self.logger.resetRoot()
+        self.logger=Logger(cfg)
 
         self.log().info(f"Init App {self.name()}")
 
@@ -48,7 +42,6 @@ class App:
     def start(self):
         if self.cfg.task is None:
             self.log().warn(f"No tasks can be executed")
-            sleep(self.log(),5,"测试")
             return True
 
         Context.running=True
