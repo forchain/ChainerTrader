@@ -1,3 +1,4 @@
+import logging
 import os
 
 from mypy.typeops import false_only
@@ -116,6 +117,9 @@ class Config:
             index+=1
 
         return ret
+
+    def get_log_level(self)->int:
+        return logging.getLevelName(self.log_level)
 
 def NewConfigFromEnv():
     commission = os.environ.get('commission')
