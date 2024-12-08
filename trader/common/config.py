@@ -1,6 +1,7 @@
 import logging
 import os
 
+from fontTools.misc.cython import returns
 from mypy.typeops import false_only
 
 from trader.strategy.strategy import parseStrategyType
@@ -149,3 +150,6 @@ def NewConfigFromEnv():
         int(window),
         os.environ.get('task'),
     )
+
+def default()->Config:
+    return Config()
