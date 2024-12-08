@@ -64,7 +64,8 @@ class App:
     def stop(self):
         Context.running = False
 
-        self.task_manager.stop()
+        if self.task_manager:
+            self.task_manager.stop()
 
         if self.db_manager:
             self.db_manager.stop()
