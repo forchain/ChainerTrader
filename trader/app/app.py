@@ -1,8 +1,11 @@
+import asyncio
 import os
+import signal
 from datetime import datetime
 from math import trunc
 
 from trader.app.database_manager import DatabaseManager
+from trader.common.message import Message, new_exit_msg, new_str_msg
 from trader.task.task_manager import TaskManager
 from trader.binance.exchange import EXCHANGE_NAME, BinanceExchange
 from trader.common.common import Context, sleep, NAME
@@ -30,7 +33,6 @@ class App:
         if self.cfg.task:
             self.task_manager = TaskManager(self.cfg, self.log(), self.db_manager, self.exchange)
 
-        Context.running=False
         self.startTime = datetime.now()
 
     def name(self):
@@ -42,9 +44,7 @@ class App:
     def start(self):
         if self.cfg.task is None:
             self.log().warn(f"No tasks can be executed")
-            return True
-
-        Context.running=True
+            #return True
 
         self.log().info(f"Start {self.name()} App, config:{self.cfg.to_dict()}")
 
@@ -54,18 +54,13 @@ class App:
             self.exchange.start()
 
         if self.task_manager:
-            self.task_manager = TaskManager(self.cfg,self.log(),self.db_manager,self.exchange)
+            self.task_manager.start()
 
-            try:
-                self.task_manager.start()
-            except KeyboardInterrupt:
-                self.shutdown()
+        self.process()
 
         return True
 
     def stop(self):
-        Context.running = False
-
         if self.task_manager:
             self.task_manager.stop()
 
@@ -92,12 +87,55 @@ class App:
     def config(self):
         return self.cfg
 
-    def shutdown(self):
-        if not Context.running:
-            self.log().warn(f"{self.name()} already exited")
-            return
-        Context.running=False
-        self.log().info(f"Exit the {self.name()}")
+    def process(self):
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            loop.add_signal_handler(sig, self.shutdown, loop)
+
+        try:
+            loop.run_until_complete(self.start_handler())
+        except asyncio.CancelledError:
+            self.log().debug("All events have been cancelled.")
+        finally:
+            loop.close()
+            self.log().info(f"{self.name()} events exited.")
+
+    def shutdown(self,loop):
+        self.log().info(f"Received shutdown signal, stopping {self.name()}...")
+        for task in asyncio.all_tasks(loop):
+            task.cancel()
+
+    async def start_handler(self):
+        queue = asyncio.Queue()
+
+        managers=[]
+        if self.task_manager:
+            managers.append(asyncio.create_task(self.task_manager.start(queue)))
+        handlers = asyncio.create_task(self.handler(queue))
+
+        await asyncio.gather(*managers)
+        await handlers
+
+    async def handler(self,queue):
+        self.log().info(f"{self.name()} enter listen_to_queue")
+
+        while True:
+            msg:Message = await queue.get()
+            self.log().debug(f"Processing message: {msg.name()}")
+            if msg.is_exit():
+                self.log().info("Received exit message, shutting down...")
+                break
+            if msg.is_task():
+                self.task_manager.handler(msg)
+
+            queue.task_done()
+
+        self.log().info(f"{self.name()} exit listen_to_queue")
 
 def version():
     filePath = os.path.join(path.GetTraderDir(), 'VERSION')
