@@ -22,7 +22,7 @@ class DatabaseManager:
         _CLIENT_LOGGER = logging.getLogger("pymongo.client")
         _SDAM_LOGGER = logging.getLogger("pymongo.topology")
         '''
-        log.apply(logging.getLogger("pymongo.command"))
+        #log.apply(logging.getLogger("pymongo.command"))
 
     def start(self):
         self.client = MongoClient(self.cfg.db_uri)
