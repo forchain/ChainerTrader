@@ -1,6 +1,11 @@
+import asyncio
+from asyncio import Queue
 from logging import Logger
 
 from trader.app.database_manager import DatabaseManager
+from trader.common.message import Message, new_task_msg
+from trader.task.check_klines_task import CheckKlinesTask
+from trader.task.task_config import parse_task_config, TaskConfig
 from trader.task.trader_task import TraderTask
 from trader.task.backtrader_task import BackTraderTask
 from trader.binance.exchange import BinanceExchange
@@ -19,30 +24,48 @@ class TaskManager:
         self.log.info(f"Init TaskManager")
         self.tasks = []
 
-    def start(self):
+    async def start(self,events:Queue):
         if not self.cfg.check_symbols_intervals():
             self.log.error(f"symbols intervals error")
             return
-        taskType=parse_task_type(self.cfg.task)
-        if taskType == TaskType.TRADER:
-            if self.cfg.exchange:
-                self.tasks.append(TraderTask(self.cfg, self.log, self.db_manager, self.exchange))
-        elif taskType == TaskType.BACK_TRADER:
-            if self.cfg.data_file:
-                self.tasks.append(BackTraderTask(self.cfg, self.log))
-        elif taskType == TaskType.UPDATE_KLINES:
-            if self.cfg.exchange:
-                self.tasks.append(UpdateKlinesTask(self.cfg, self.log, self.db_manager, self.exchange))
-        elif taskType == TaskType.CHECK_KLINES:
-            if self.cfg.exchange:
-                self.tasks.append(UpdateKlinesTask(self.cfg, self.log, self.db_manager, self.exchange))
+        taskcs=parse_task_config(self.cfg.tasks)
+        for taskc in taskcs:
+            if taskc.type == TaskType.BACK_TRADER:
+                if not self.cfg.data_file:
+                    self.log.error(f"No config data_file for {taskc.to_dict()}")
+                    continue
+            else:
+                if not self.cfg.exchange:
+                    self.log.error(f"No config exchange for {taskc.to_dict()}")
+                    continue
+                if not self.cfg.db_uri:
+                    self.log.error(f"No config db_uri for {taskc.to_dict()}")
+                    continue
+            await events.put(new_task_msg(taskc))
 
-        for task in self.tasks:
-            task.start()
 
     def stop(self):
-        for task in self.tasks:
-            task.stop()
-
-    def add_task(self,task):
         pass
+
+    def add_task(self,cfg):
+        task=None
+        if cfg.type == TaskType.TRADER:
+            task=TraderTask(self.cfg, self.log, self.db_manager, self.exchange)
+        elif cfg.type == TaskType.BACK_TRADER:
+            task =BackTraderTask(self.cfg, self.log)
+        elif cfg.type == TaskType.UPDATE_KLINES:
+            task =UpdateKlinesTask(self.cfg, self.log, self.db_manager, self.exchange)
+        elif cfg.type == TaskType.CHECK_KLINES:
+            task=CheckKlinesTask(self.cfg, self.log, self.db_manager, self.exchange)
+
+        if task is None:
+            self.log.error(f"Can't add task:{cfg.to_dict()}")
+            return
+        self.tasks.append(task)
+        task.start()
+
+    def handler(self,msg:Message):
+        cfg:TaskConfig=msg.get_data()
+
+        if cfg.add:
+           self.add_task(cfg)

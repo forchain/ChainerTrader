@@ -1,4 +1,4 @@
-from trader.task.task_type import TaskType
+from trader.task.task_type import TaskType, parse_task_type
 import json
 
 class TaskConfig:
@@ -6,16 +6,26 @@ class TaskConfig:
         self.type=type
         self.start_time=start_time
         self.end_time=end_time
+        self.add=True
+
+    def to_dict(self):
+        return {
+            'type':self.type,
+            'start_time':self.start_time,
+            'end_time':self.end_time,
+            'add': self.add,
+        }
 
 # '[{"task_type": "CHECK_KLINES", "start_time": 0,"end_time":0}]'
 def parse_task_config(cfg)->[TaskConfig]:
     parsed_list = json.loads(cfg)
     ret=[]
     for tcd in parsed_list:
-        tc=TaskConfig(tcd['task_type'])
+        tc=TaskConfig(parse_task_type(tcd['task_type']))
         if "start_time" in tcd:
             tc.start_time=tcd['start_time']
         if "end_time" in tcd:
             tc.start_time=tcd['end_time']
 
         ret.append(tc)
+    return ret
