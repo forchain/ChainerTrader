@@ -7,6 +7,7 @@ class TaskConfig:
         self.start_time=start_time
         self.end_time=end_time
         self.add=True
+        self.symbol_interval=None
 
     def to_dict(self):
         return {
@@ -14,6 +15,7 @@ class TaskConfig:
             'start_time':self.start_time,
             'end_time':self.end_time,
             'add': self.add,
+            'symbol_interval': self.symbol_interval,
         }
 
 # '[{"task_type": "CHECK_KLINES", "start_time": 0,"end_time":0}]'
