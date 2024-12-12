@@ -30,7 +30,7 @@ class App:
             self.exchange = BinanceExchange(self.cfg, self.log())
 
         self.task_manager=None
-        if self.cfg.task:
+        if self.cfg.tasks:
             self.task_manager = TaskManager(self.cfg, self.log(), self.db_manager, self.exchange)
 
         self.startTime = datetime.now()
@@ -42,9 +42,9 @@ class App:
         return self.logger.log()
 
     def start(self):
-        if self.cfg.task is None:
+        if self.cfg.tasks is None:
             self.log().warn(f"No tasks can be executed")
-            #return True
+            return True
 
         self.log().info(f"Start {self.name()} App, config:{self.cfg.to_dict()}")
 
@@ -52,9 +52,6 @@ class App:
             self.db_manager.start()
         if  self.exchange:
             self.exchange.start()
-
-        if self.task_manager:
-            self.task_manager.start()
 
         self.process()
 

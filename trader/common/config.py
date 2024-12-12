@@ -21,7 +21,7 @@ class Config:
                       data_file=None,
                       db_uri=None,
                       window=1000,
-                      task=None):
+                      tasks=None):
         self.strategy=parseStrategyType(strategy_type)
         self.mode=parseTrendType(mode)
         self.commission=commission
@@ -36,7 +36,7 @@ class Config:
         self.data_file=data_file
         self.db_uri=db_uri
         self.window=window
-        self.task=task
+        self.tasks=tasks
 
     def exportEnv(self):
         if self.strategy:
@@ -60,7 +60,7 @@ class Config:
         os.environ['intervals'] = self.intervals
         os.environ['window'] = str(self.window)
         if self.task:
-            os.environ['task'] = self.task
+            os.environ['tasks'] = self.tasks
 
     def to_dict(self):
         strategy_type = None
@@ -82,7 +82,7 @@ class Config:
             'data_file':self.data_file,
             'db_uri': self.db_uri,
             'window': self.window,
-            'task':self.task,
+            'tasks':self.tasks,
         }
 
     def symbols_list(self):
@@ -145,7 +145,7 @@ def NewConfigFromEnv():
         os.environ.get('data_file'),
         os.environ.get('db_uri'),
         int(window),
-        os.environ.get('task'),
+        os.environ.get('tasks'),
     )
 
 def default()->Config:
