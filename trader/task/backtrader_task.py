@@ -1,15 +1,16 @@
 
 from trader.strategy.node import Node
 from trader.strategy.strategy import StrategyType, parseStrategy
+from trader.task.task_config import TaskConfig
 from trader.task.task_type import TaskType
 from trader.utils.symbol_interval import SymbolInterval
 
 
 class BackTraderTask:
-    def __init__(self,cfg,log):
+    def __init__(self,tcfg:TaskConfig,cfg,log):
         self.log = log
         self.cfg=cfg
-        self.symbol_interval: SymbolInterval = self.cfg.get_symbol_interval_list()[0]
+        self.symbol_interval: SymbolInterval = tcfg.symbol_interval
         self.log.info(f"Init {self.name()}")
 
     def start(self):

@@ -28,20 +28,25 @@ class TaskManager:
         if not self.cfg.check_symbols_intervals():
             self.log.error(f"symbols intervals error")
             return
-        taskcs=parse_task_config(self.cfg.tasks)
-        for taskc in taskcs:
-            if taskc.type == TaskType.BACK_TRADER:
-                if not self.cfg.data_file:
-                    self.log.error(f"No config data_file for {taskc.to_dict()}")
-                    continue
-            else:
-                if not self.cfg.exchange:
-                    self.log.error(f"No config exchange for {taskc.to_dict()}")
-                    continue
-                if not self.cfg.db_uri:
-                    self.log.error(f"No config db_uri for {taskc.to_dict()}")
-                    continue
-            await events.put(new_task_msg(taskc))
+        taskcs = parse_task_config(self.cfg.tasks)
+
+        for si in self.cfg.get_symbol_interval_list():
+            for taskc in taskcs:
+                if taskc.type == TaskType.BACK_TRADER:
+                    if not self.cfg.data_file:
+                        self.log.error(f"No config data_file for {taskc.to_dict()}")
+                        continue
+                else:
+                    if not self.cfg.exchange:
+                        self.log.error(f"No config exchange for {taskc.to_dict()}")
+                        continue
+                    if not self.cfg.db_uri:
+                        self.log.error(f"No config db_uri for {taskc.to_dict()}")
+                        continue
+                taskc.symbol_interval=si
+                await events.put(new_task_msg(taskc))
+
+
 
 
     def stop(self):
@@ -50,13 +55,13 @@ class TaskManager:
     def add_task(self,cfg):
         task=None
         if cfg.type == TaskType.TRADER:
-            task=TraderTask(self.cfg, self.log, self.db_manager, self.exchange)
+            task=TraderTask(cfg,self.cfg, self.log, self.db_manager, self.exchange)
         elif cfg.type == TaskType.BACK_TRADER:
-            task =BackTraderTask(self.cfg, self.log)
+            task =BackTraderTask(cfg,self.cfg, self.log)
         elif cfg.type == TaskType.UPDATE_KLINES:
-            task =UpdateKlinesTask(self.cfg, self.log, self.db_manager, self.exchange)
+            task =UpdateKlinesTask(cfg,self.cfg, self.log, self.db_manager, self.exchange)
         elif cfg.type == TaskType.CHECK_KLINES:
-            task=CheckKlinesTask(self.cfg, self.log, self.db_manager, self.exchange)
+            task=CheckKlinesTask(cfg,self.cfg, self.log, self.db_manager, self.exchange)
 
         if task is None:
             self.log.error(f"Can't add task:{cfg.to_dict()}")

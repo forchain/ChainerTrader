@@ -9,6 +9,7 @@ from trader.common.common import Context
 from trader.common.config import Config
 from trader.strategy.node import Node
 from trader.strategy.strategy import parseStrategy
+from trader.task.task_config import TaskConfig
 from trader.task.task_type import TaskType
 from trader.utils.kline import Kline
 from trader.utils.symbol_interval import SymbolInterval, add_time_duration
@@ -16,12 +17,12 @@ from trader.utils.symbol_interval import SymbolInterval, add_time_duration
 DOWLOAD_SPACE_TIME = 5
 
 class TraderTask:
-    def __init__(self,cfg:Config,log:Logger,db_manager:DatabaseManager,exchange:BinanceExchange):
+    def __init__(self,tcfg:TaskConfig,cfg:Config,log:Logger,db_manager:DatabaseManager,exchange:BinanceExchange):
         self.log = log
         self.cfg = cfg
         self.db_manager = db_manager
         self.exchange = exchange
-        self.symbol_interval:SymbolInterval=self.cfg.get_symbol_interval_list()[0]
+        self.symbol_interval:SymbolInterval=tcfg.symbol_interval
         self.log.info(f"Init {self.name()}")
 
     def name(self):
