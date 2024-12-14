@@ -10,6 +10,7 @@ from trader.common.config import Config
 from trader.task.task_config import TaskConfig
 from trader.task.task_type import TaskType
 from trader.utils.symbol_interval import SymbolInterval, add_time_duration
+from asyncio import Queue, Event
 
 DOWLOAD_SPACE_TIME = 5
 
@@ -19,22 +20,23 @@ class UpdateKlinesTask:
         self.cfg = cfg
         self.db_manager = db_manager
         self.exchange = exchange
-        self.symbol_interval:SymbolInterval=tcfg.symbol_interval
+        self.tcfg=tcfg
         self.log.info(f"Init {self.name()}")
 
     def name(self):
-        return f"{self.type()}({self.symbol_interval.name()})"
+        return f"{self.type()}({self.tcfg.symbol_interval.name()})"
 
     def type(self):
         return TaskType.UPDATE_KLINES
 
-    def start(self):
+    async def start(self,queue:Queue,quit:Event):
         self.start_time = datetime.now()
 
         self.log.info(f"Start {self.name()}")
-        self.collection = self.db_manager.get_collection("trader", self.symbol_interval.name())
+        self.collection = self.db_manager.get_collection("trader", self.tcfg.symbol_interval.name())
 
-        download(self.name(),self.log,self.db_manager,self.collection,self.exchange,self.symbol_interval)
+        download(self.name(),self.log,self.db_manager,self.collection,self.exchange,self.tcfg.symbol_interval,quit)
+        self.stop()
 
     def stop(self):
         elapsed = datetime.now() - self.start_time
@@ -42,10 +44,10 @@ class UpdateKlinesTask:
 
 
 
-def download(name,log:Logger,db_manager:DatabaseManager,collection:Collection,exchange:BinanceExchange,symbol_interval:SymbolInterval):
+def download(name,log:Logger,db_manager:DatabaseManager,collection:Collection,exchange:BinanceExchange,symbol_interval:SymbolInterval,quit:Event):
     update_completed = False
     while not update_completed:
-        if not Context.running:
+        if quit.is_set():
             log.info(f"exit {name}")
             return False
 
