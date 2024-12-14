@@ -1,6 +1,7 @@
 import asyncio
 import os
 import signal
+from asyncio import Event, Queue
 from datetime import datetime
 from math import trunc
 
@@ -90,9 +91,10 @@ class App:
         except RuntimeError:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
+        quit = asyncio.Event()
 
         for sig in (signal.SIGINT, signal.SIGTERM):
-            loop.add_signal_handler(sig, self.shutdown, loop)
+            loop.add_signal_handler(sig, self.shutdown, quit)
 
         try:
             loop.run_until_complete(self.start_handler())
@@ -102,23 +104,25 @@ class App:
             loop.close()
             self.log().info(f"{self.name()} events exited.")
 
-    def shutdown(self,loop):
+    def shutdown(self,quit:Event):
         self.log().info(f"Received shutdown signal, stopping {self.name()}...")
-        for task in asyncio.all_tasks(loop):
-            task.cancel()
+        quit.set()
 
-    async def start_handler(self):
+    async def start_handler(self,quit:Event):
         queue = asyncio.Queue()
 
-        managers=[]
+        tasks=[]
         if self.task_manager:
-            managers.append(asyncio.create_task(self.task_manager.start(queue)))
+            tasks=tasks+self.task_manager.start(queue,quit)
+
         handlers = asyncio.create_task(self.handler(queue))
 
-        await asyncio.gather(*managers)
+        await asyncio.gather(*tasks)
+
+        await queue.put(new_exit_msg())
         await handlers
 
-    async def handler(self,queue):
+    async def handler(self,queue:Queue):
         self.log().info(f"{self.name()} enter listen_to_queue")
 
         while True:
@@ -127,8 +131,6 @@ class App:
             if msg.is_exit():
                 self.log().info("Received exit message, shutting down...")
                 break
-            if msg.is_task():
-                self.task_manager.handler(msg)
 
             queue.task_done()
 
