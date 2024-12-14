@@ -97,12 +97,12 @@ class App:
             loop.add_signal_handler(sig, self.shutdown, quit)
 
         try:
-            loop.run_until_complete(self.start_handler())
+            loop.run_until_complete(self.start_handler(quit))
         except asyncio.CancelledError:
-            self.log().debug("All events have been cancelled.")
+            self.log().debug("All tasks have been cancelled.")
         finally:
             loop.close()
-            self.log().info(f"{self.name()} events exited.")
+            self.log().info(f"{self.name()} tasks exited.")
 
     def shutdown(self,quit:Event):
         self.log().info(f"Received shutdown signal, stopping {self.name()}...")

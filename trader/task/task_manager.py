@@ -1,5 +1,5 @@
 import asyncio
-from asyncio import Queue
+from asyncio import Queue, Event
 from logging import Logger
 
 from trader.app.database_manager import DatabaseManager
@@ -22,12 +22,12 @@ class TaskManager:
         self.db_manager = db_manager
         self.exchange = exchange
         self.log.info(f"Init TaskManager")
-        self.tasks = []
 
-    async def start(self,events:Queue):
+    def start(self,queue:Queue,quit:Event)->[]:
+        ret=[]
         if not self.cfg.check_symbols_intervals():
             self.log.error(f"symbols intervals error")
-            return
+            return ret
         taskcs = parse_task_config(self.cfg.tasks)
 
         for si in self.cfg.get_symbol_interval_list():
@@ -37,22 +37,20 @@ class TaskManager:
                         self.log.error(f"No config data_file for {taskc.to_dict()}")
                         continue
                 else:
-                    if not self.cfg.exchange:
+                    if not self.exchange:
                         self.log.error(f"No config exchange for {taskc.to_dict()}")
                         continue
-                    if not self.cfg.db_uri:
+                    if not self.db_manager:
                         self.log.error(f"No config db_uri for {taskc.to_dict()}")
                         continue
                 taskc.symbol_interval=si
-                await events.put(new_task_msg(taskc))
-
-
-
+                ret.append(asyncio.create_task(self.add_task(taskc,queue,quit)))
+        return ret
 
     def stop(self):
         pass
 
-    def add_task(self,cfg):
+    async def add_task(self,cfg,queue:Queue,quit:Event):
         task=None
         if cfg.type == TaskType.TRADER:
             task=TraderTask(cfg,self.cfg, self.log, self.db_manager, self.exchange)
@@ -66,11 +64,4 @@ class TaskManager:
         if task is None:
             self.log.error(f"Can't add task:{cfg.to_dict()}")
             return
-        self.tasks.append(task)
-        task.start()
-
-    def handler(self,msg:Message):
-        cfg:TaskConfig=msg.get_data()
-
-        if cfg.add:
-           self.add_task(cfg)
+        await task.start(queue,quit)
