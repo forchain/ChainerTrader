@@ -11,8 +11,11 @@ from trader.strategy.node import Node
 from trader.strategy.strategy import parseStrategy
 from trader.task.task_config import TaskConfig
 from trader.task.task_type import TaskType
+from trader.task.update_klines_task import download
 from trader.utils.kline import Kline
 from trader.utils.symbol_interval import SymbolInterval, add_time_duration
+from asyncio import Queue, Event
+
 
 DOWLOAD_SPACE_TIME = 5
 
@@ -31,7 +34,7 @@ class TraderTask:
     def type(self):
         return TaskType.TRADER
 
-    def start(self):
+    async def start(self,queue:Queue,quit:Event):
         if self.cfg.strategy is None:
            self.log.error(f"No config strategy")
            return
@@ -40,15 +43,17 @@ class TraderTask:
             self.log.error(f"Not support strategy:{self.cfg.strategy}")
             return
 
-        if self.exchange.spot_ws_client:
-            self.exchange.spot_ws_client.klines(symbol=self.symbol_interval.symbol, interval=self.symbol_interval.interval.value, limit=1)
+        #if self.exchange.spot_ws_client:
+        #    self.exchange.spot_ws_client.klines(symbol=self.symbol_interval.symbol, interval=self.symbol_interval.interval.value, limit=1)
 
         self.log.info(f"Start {self.name()}")
+        self.start_time = datetime.now()
         self.collection = self.db_manager.get_collection("trader", self.symbol_interval.name())
 
         while Context.running:
-            if not self.download():
-                return
+            if not download(self.name(),self.log,self.db_manager,self.collection,self.exchange,self.symbol_interval,quit):
+               break
+
             kls_cache = self.db_manager.get_latest_klines(self.collection, self.cfg.window)
             if len(kls_cache) <= 0:
                 continue
@@ -65,44 +70,11 @@ class TraderTask:
                     dist +=1
                     self.sleep(dist,"next K-line...")
 
-
-
-    def download(self):
-        update_completed = False
-        while not update_completed:
-            if not Context.running:
-                self.log.info(f"exit {self.name()}")
-                return False
-
-            latest_kline = self.db_manager.get_latest_kline(self.collection)
-            if latest_kline is None:
-                kls = self.exchange.get_klines_by_start(self.symbol_interval)
-            else:
-                next_time = add_time_duration(latest_kline.open_time, self.symbol_interval.interval, 1)
-                if next_time < int(datetime.now().timestamp()):
-                    kls = self.exchange.get_klines_by_start(self.symbol_interval, next_time)
-                else:
-                    update_completed = True
-                    self.log.info(f"{self.name()} update local klines DB is completed")
-                    continue
-            if len(kls) <= 0:
-                self.log.error(f"{self.name()} get klines is empty")
-                self.sleep(DOWLOAD_SPACE_TIME)
-                continue
-
-            ret = self.db_manager.add_klines(self.collection, kls)
-            if ret != len(kls):
-                self.log.warning(f"{self.name()} add klines to DB: {ret} != {len(kls)}")
-            else:
-                self.log.info(f"{self.name()} add klines to DB: {ret}")
-
-            self.sleep(DOWLOAD_SPACE_TIME)
-
-        return True
-
+        self.stop()
 
     def stop(self):
-        pass
+        elapsed = datetime.now() - self.start_time
+        self.log.info(f"Stop {self.name()}, elapsed time:{elapsed}")
 
     def sleep(self,seconds,msg=None):
         if msg:
