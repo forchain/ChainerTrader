@@ -91,3 +91,11 @@ class DatabaseManager:
             total+=len(insert_data)
         self.log.debug(f"add klines, total:{total}")
         return total
+
+    def get_first_kline(self,col:Collection)->Kline|None:
+        max_record = col.find_one(sort=[(PRIMARY_KEY, ASCENDING)])
+        if max_record is None:
+            return None
+        kl = parse_kline(max_record)
+        self.log.debug(f"get first kline({max_record['_id']}):{kl.to_json()}")
+        return kl
