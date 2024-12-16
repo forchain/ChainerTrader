@@ -99,3 +99,11 @@ class DatabaseManager:
         kl = parse_kline(max_record)
         self.log.debug(f"get first kline({max_record['_id']}):{kl.to_json()}")
         return kl
+
+    def get_kline(self,col:Collection,open_time:int)->Kline|None:
+        result = col.find_one({PRIMARY_KEY: open_time})
+        if result is None:
+            return None
+        kl = parse_kline(result)
+        self.log.debug(f"get kline({result['_id']}):{kl.to_json()}")
+        return kl
