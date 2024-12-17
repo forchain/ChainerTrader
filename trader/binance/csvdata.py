@@ -40,7 +40,6 @@ class BinanceCSVData(backtrader.CSVDataBase):
         if not self.params.reverse:
             return
 
-        # Yahoo sends data in reverse order and the file is still unreversed
         dq = collections.deque()
         for line in self.f:
             dq.appendleft(line)
@@ -55,9 +54,15 @@ class BinanceCSVData(backtrader.CSVDataBase):
         pass
 
     def _loadline(self, linetokens):
+        if linetokens is None:
+            return False
+
         i = itertools.count(0)
 
         dttxt = linetokens[next(i)]
+        if (dttxt is None) or (not dttxt):
+            return False
+
         dtnum = date2num(datetime.fromtimestamp(int(dttxt)/1000))
         self.lines.datetime[0] = dtnum
         self.lines.open[0] = float(linetokens[next(i)])
