@@ -70,11 +70,11 @@ class BinanceCSVData(backtrader.CSVDataBase):
         self.lines.low[0] = float(linetokens[next(i)])
         self.lines.close[0] = float(linetokens[next(i)])
         self.lines.volume[0] = float(linetokens[next(i)])
+        self.lines.close_time[0] = date2num(datetime.fromtimestamp(int(linetokens[next(i)])/1000))
 
-        next(i)
-        next(i)
-        next(i)
-        next(i)
-        next(i)
-        next(i)
+        self.lines.quote_volume[0]=float(linetokens[next(i)])
+        self.lines.count[0]=int(linetokens[next(i)])
+        self.lines.taker_buy_volume[0]=float(linetokens[next(i)])
+        self.lines.taker_buy_quote_volume[0]=float(linetokens[next(i)])
+        self.lines.ignore[0]=int(linetokens[next(i)])
         return True
