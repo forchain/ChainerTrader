@@ -23,6 +23,7 @@ class TraderTask:
     def __init__(self,tcfg:TaskConfig,cfg:Config,log:Logger,db_manager:DatabaseManager,exchange:BinanceExchange):
         self.log = log
         self.cfg = cfg
+        self.tcfg = tcfg
         self.db_manager = db_manager
         self.exchange = exchange
         self.symbol_interval:SymbolInterval=tcfg.symbol_interval
@@ -35,12 +36,12 @@ class TraderTask:
         return TaskType.TRADER
 
     async def start(self,queue:Queue,quit:Event):
-        if self.cfg.strategy is None:
+        if self.tcfg.strategy is None:
            self.log.error(f"No config strategy")
            return
-        strategy = parseStrategy(self.cfg.strategy)
+        strategy = parseStrategy(self.tcfg.strategy)
         if strategy is None:
-            self.log.error(f"Not support strategy:{self.cfg.strategy}")
+            self.log.error(f"Not support strategy:{self.tcfg.strategy}")
             return
 
         #if self.exchange.spot_ws_client:

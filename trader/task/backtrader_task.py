@@ -24,10 +24,10 @@ class BackTraderTask:
     async def start(self,queue:Queue,quit:Event):
         self.start_time = datetime.now()
         data = None
-        if self.cfg.data_file:
-                data_file = self.cfg.data_file
-                if not os.path.isabs(self.cfg.data_file):
-                    data_file = os.path.join(path.GetDatasDir(), self.cfg.data_file)
+        if self.tcfg.csv:
+                data_file = self.tcfg.csv
+                if not os.path.isabs(self.tcfg.csv):
+                    data_file = os.path.join(path.GetDatasDir(),self.tcfg.csv)
                 if self.tcfg.start_time <= 0 and self.tcfg.end_time <= 0:
                     data = BinanceCSVData(
                         dataname=data_file,
@@ -51,16 +51,20 @@ class BackTraderTask:
         if self.db_manager:
             collection = self.db_manager.get_collection("trader", self.tcfg.symbol_interval.name())
             if data is None:
-                kls_cache = self.db_manager.get_latest_klines(collection, self.cfg.window)
+                kls_cache = self.db_manager.get_all_klines(collection)
                 if len(kls_cache) <= 0:
                     self.log.error(f"No klines for {self.name()}")
                     return
+                self.log.info(f"Create BinanceData({len(kls_cache)}) ")
                 data = BinanceData(kls_cache)
 
         if data is None:
             self.log.error(f"No strategy data for {self.name()}")
             return
-        strategy = parseStrategy(self.cfg.strategy)
+        strategy = parseStrategy(self.tcfg.strategy)
+        if strategy is None:
+            self.log.error(f"Not support strategy:{self.tcfg.strategy}")
+            return
         node = Node(strategy, self.cfg, self.log,data)
         node.start()
 

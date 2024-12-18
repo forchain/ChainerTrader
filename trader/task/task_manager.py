@@ -26,50 +26,47 @@ class TaskManager:
 
     def start(self,queue:Queue,quit:Event)->[]:
         ret=[]
-        if not self.cfg.check_symbols_intervals():
-            self.log.error(f"symbols intervals error")
-            return ret
+
         taskcs = parse_task_config(self.cfg.tasks)
 
-        for si in self.cfg.get_symbol_interval_list():
-            for taskc in taskcs:
-                if taskc.type == TaskType.BACK_TRADER:
-                    if not self.cfg.data_file and not self.db_manager:
-                        self.log.error(f"No config data_file or db_uri for {taskc.to_dict()}")
-                        continue
-                    if not self.cfg.strategy:
-                        self.log.error(f"No config strategy for {taskc.to_dict()}")
-                        continue
-                elif taskc.type == TaskType.CHECK_KLINES:
-                    if not self.db_manager:
-                        self.log.error(f"No config db_uri for {taskc.to_dict()}")
-                        continue
-                elif taskc.type == TaskType.IMPORT_CSV:
-                    if not self.cfg.data_file:
-                        self.log.error(f"No config data_file for {taskc.to_dict()}")
-                        continue
-                    if not self.db_manager:
-                        self.log.error(f"No config db_uri for {taskc.to_dict()}")
-                        continue
-                elif taskc.type == TaskType.TRADER:
-                    if not self.cfg.strategy:
-                        self.log.error(f"No config strategy for {taskc.to_dict()}")
-                        continue
-                    if not self.exchange:
-                        self.log.error(f"No config exchange for {taskc.to_dict()}")
-                        continue
-                    if not self.db_manager:
-                        self.log.error(f"No config db_uri for {taskc.to_dict()}")
-                        continue
-                else:
-                    if not self.exchange:
-                        self.log.error(f"No config exchange for {taskc.to_dict()}")
-                        continue
-                    if not self.db_manager:
-                        self.log.error(f"No config db_uri for {taskc.to_dict()}")
-                        continue
-                taskc.symbol_interval=si
-                ret.append(asyncio.create_task(self.add_task(taskc,queue,quit)))
+        for taskc in taskcs:
+            if taskc.ttype == TaskType.BACK_TRADER:
+                if not taskc.csv and not self.db_manager:
+                    self.log.error(f"No config data_file or db_uri for {taskc.to_dict()}")
+                    continue
+                if not taskc.strategy:
+                    self.log.error(f"No config strategy for {taskc.to_dict()}")
+                    continue
+            elif taskc.ttype == TaskType.CHECK_KLINES:
+                if not self.db_manager:
+                    self.log.error(f"No config db_uri for {taskc.to_dict()}")
+                    continue
+            elif taskc.ttype == TaskType.IMPORT_CSV:
+                if not taskc.csv:
+                    self.log.error(f"No config data_file for {taskc.to_dict()}")
+                    continue
+                if not self.db_manager:
+                    self.log.error(f"No config db_uri for {taskc.to_dict()}")
+                    continue
+            elif taskc.ttype == TaskType.TRADER:
+                if not taskc.strategy:
+                    self.log.error(f"No config strategy for {taskc.to_dict()}")
+                    continue
+                if not self.exchange:
+                    self.log.error(f"No config exchange for {taskc.to_dict()}")
+                    continue
+                if not self.db_manager:
+                    self.log.error(f"No config db_uri for {taskc.to_dict()}")
+                    continue
+            else:
+                if not self.exchange:
+                    self.log.error(f"No config exchange for {taskc.to_dict()}")
+                    continue
+                if not self.db_manager:
+                    self.log.error(f"No config db_uri for {taskc.to_dict()}")
+                    continue
+            ret.append(asyncio.create_task(self.add_task(taskc, queue, quit)))
+
         return ret
 
     def stop(self):
@@ -77,15 +74,15 @@ class TaskManager:
 
     async def add_task(self,cfg,queue:Queue,quit:Event):
         task=None
-        if cfg.type == TaskType.TRADER:
+        if cfg.ttype == TaskType.TRADER:
             task=TraderTask(cfg,self.cfg, self.log, self.db_manager, self.exchange)
-        elif cfg.type == TaskType.BACK_TRADER:
+        elif cfg.ttype == TaskType.BACK_TRADER:
             task =BackTraderTask(cfg,self.cfg, self.log,self.db_manager)
-        elif cfg.type == TaskType.UPDATE_KLINES:
+        elif cfg.ttype == TaskType.UPDATE_KLINES:
             task =UpdateKlinesTask(cfg,self.cfg, self.log, self.db_manager, self.exchange)
-        elif cfg.type == TaskType.CHECK_KLINES:
+        elif cfg.ttype == TaskType.CHECK_KLINES:
             task=CheckKlinesTask(cfg,self.cfg, self.log, self.db_manager)
-        elif cfg.type == TaskType.IMPORT_CSV:
+        elif cfg.ttype == TaskType.IMPORT_CSV:
             task =ImportCSVTask(cfg,self.cfg, self.log,self.db_manager)
 
         if task is None:

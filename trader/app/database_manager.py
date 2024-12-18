@@ -107,3 +107,13 @@ class DatabaseManager:
         kl = parse_kline(result)
         self.log.debug(f"get kline({result['_id']}):{kl.to_json()}")
         return kl
+
+    def get_all_klines(self, col: Collection) -> [Kline]:
+        results = col.find().sort(PRIMARY_KEY, ASCENDING)
+        if results is None:
+            return None
+
+        kls = []
+        for ret in results:
+            kls.append(parse_kline(ret))
+        return kls

@@ -27,14 +27,14 @@ class ImportCSVTask:
 
     async def start(self,queue:Queue,quit:Event):
         self.start_time = datetime.now()
-        if not self.cfg.data_file:
+        if not self.tcfg.csv:
             self.log.error(f"{self.name()} no data_file")
             return
         self.log.info(f"Start {self.name()}")
         kls = []
-        data_file = self.cfg.data_file
-        if not os.path.isabs(self.cfg.data_file):
-            data_file = os.path.join(path.GetDatasDir(), self.cfg.data_file)
+        data_file = self.tcfg.csv
+        if not os.path.isabs(self.tcfg.csv):
+            data_file = os.path.join(path.GetDatasDir(), self.tcfg.csv)
 
         with open(data_file, mode='r', newline='', encoding='utf-8') as file:
             reader = csv.reader(file)
