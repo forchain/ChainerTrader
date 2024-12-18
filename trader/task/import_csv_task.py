@@ -14,6 +14,7 @@ from asyncio import Queue, Event
 import csv
 
 from trader.utils.kline import Kline
+from trader.utils.symbol_interval import add_time_duration
 
 
 class ImportCSVTask:
@@ -50,6 +51,12 @@ class ImportCSVTask:
             self.log.error(f"No kline in {data_file}")
             return
         self.log.info(f"Read klines ({len(kls)}) from {data_file}")
+        if len(kls) >= 2:
+            next_open_time = add_time_duration(kls[0].open_time, self.tcfg.symbol_interval.interval, 1)
+            if next_open_time != kls[1].open_time:
+                self.log.error(f"{self.name()} kline interval is not {self.tcfg.symbol_interval.interval.name}")
+                return
+
 
         collection = self.db_manager.get_collection("trader", self.tcfg.symbol_interval.name())
 
