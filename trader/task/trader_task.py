@@ -58,7 +58,7 @@ class TraderTask:
             if len(kls_cache) <= 0:
                 continue
             latest_kline = kls_cache[len(kls_cache) - 1]
-            node = Node(strategy, self.cfg, self.log,BinanceData(kls_cache),kls_cache[0].open_datetime(),latest_kline.close_datetime())
+            node = Node(strategy, self.cfg, self.log,BinanceData(kls_cache))
             node.start()
 
             while Context.running:

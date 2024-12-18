@@ -33,8 +33,25 @@ class TaskManager:
         for si in self.cfg.get_symbol_interval_list():
             for taskc in taskcs:
                 if taskc.type == TaskType.BACK_TRADER:
-                    if not self.cfg.data_file:
-                        self.log.error(f"No config data_file for {taskc.to_dict()}")
+                    if not self.cfg.data_file and not self.db_manager:
+                        self.log.error(f"No config data_file or db_uri for {taskc.to_dict()}")
+                        continue
+                    if not self.cfg.strategy:
+                        self.log.error(f"No config strategy for {taskc.to_dict()}")
+                        continue
+                elif taskc.type == TaskType.CHECK_KLINES:
+                    if not self.db_manager:
+                        self.log.error(f"No config db_uri for {taskc.to_dict()}")
+                        continue
+                elif taskc.type == TaskType.TRADER:
+                    if not self.cfg.strategy:
+                        self.log.error(f"No config strategy for {taskc.to_dict()}")
+                        continue
+                    if not self.exchange:
+                        self.log.error(f"No config exchange for {taskc.to_dict()}")
+                        continue
+                    if not self.db_manager:
+                        self.log.error(f"No config db_uri for {taskc.to_dict()}")
                         continue
                 else:
                     if not self.exchange:
@@ -55,7 +72,7 @@ class TaskManager:
         if cfg.type == TaskType.TRADER:
             task=TraderTask(cfg,self.cfg, self.log, self.db_manager, self.exchange)
         elif cfg.type == TaskType.BACK_TRADER:
-            task =BackTraderTask(cfg,self.cfg, self.log)
+            task =BackTraderTask(cfg,self.cfg, self.log,self.db_manager)
         elif cfg.type == TaskType.UPDATE_KLINES:
             task =UpdateKlinesTask(cfg,self.cfg, self.log, self.db_manager, self.exchange)
         elif cfg.type == TaskType.CHECK_KLINES:
