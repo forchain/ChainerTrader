@@ -25,26 +25,26 @@ class BackTraderTask:
         self.start_time = datetime.now()
         data = None
         if self.cfg.data_file:
-                datafile = self.cfg.data_file
+                data_file = self.cfg.data_file
                 if not os.path.isabs(self.cfg.data_file):
-                    datafile = os.path.join(path.GetDatasDir(), self.cfg.data_file)
+                    data_file = os.path.join(path.GetDatasDir(), self.cfg.data_file)
                 if self.tcfg.start_time <= 0 and self.tcfg.end_time <= 0:
                     data = BinanceCSVData(
-                        dataname=datafile,
+                        dataname=data_file,
                     )
                 elif self.tcfg.start_time <= 0:
                     data = BinanceCSVData(
-                        dataname=datafile,
+                        dataname=data_file,
                         todate=datetime.fromtimestamp(self.tcfg.end_time),
                     )
                 elif  self.tcfg.end_time <= 0:
                     data = BinanceCSVData(
-                        dataname=datafile,
+                        dataname=data_file,
                         fromdate=datetime.fromtimestamp(self.tcfg.start_time),
                     )
                 else:
                     data = BinanceCSVData(
-                        dataname=datafile,
+                        dataname=data_file,
                         fromdate=datetime.fromtimestamp(self.tcfg.start_time),
                         todate=datetime.fromtimestamp(self.tcfg.end_time),
                     )

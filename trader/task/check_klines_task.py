@@ -12,11 +12,10 @@ from trader.utils.symbol_interval import SymbolInterval, add_time_duration
 
 
 class CheckKlinesTask:
-    def __init__(self,tcfg:TaskConfig,cfg:Config,log:Logger,db_manager:DatabaseManager,exchange:BinanceExchange):
+    def __init__(self,tcfg:TaskConfig,cfg:Config,log:Logger,db_manager:DatabaseManager):
         self.log = log
         self.cfg = cfg
         self.db_manager = db_manager
-        self.exchange = exchange
         self.tcfg = tcfg
         self.log.info(f"Init {self.name()}")
 

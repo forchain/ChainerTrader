@@ -5,6 +5,7 @@ from logging import Logger
 from trader.app.database_manager import DatabaseManager
 from trader.common.message import Message, new_task_msg
 from trader.task.check_klines_task import CheckKlinesTask
+from trader.task.import_csv_task import ImportCSVTask
 from trader.task.task_config import parse_task_config, TaskConfig
 from trader.task.trader_task import TraderTask
 from trader.task.backtrader_task import BackTraderTask
@@ -43,6 +44,13 @@ class TaskManager:
                     if not self.db_manager:
                         self.log.error(f"No config db_uri for {taskc.to_dict()}")
                         continue
+                elif taskc.type == TaskType.IMPORT_CSV:
+                    if not self.cfg.data_file:
+                        self.log.error(f"No config data_file for {taskc.to_dict()}")
+                        continue
+                    if not self.db_manager:
+                        self.log.error(f"No config db_uri for {taskc.to_dict()}")
+                        continue
                 elif taskc.type == TaskType.TRADER:
                     if not self.cfg.strategy:
                         self.log.error(f"No config strategy for {taskc.to_dict()}")
@@ -76,7 +84,9 @@ class TaskManager:
         elif cfg.type == TaskType.UPDATE_KLINES:
             task =UpdateKlinesTask(cfg,self.cfg, self.log, self.db_manager, self.exchange)
         elif cfg.type == TaskType.CHECK_KLINES:
-            task=CheckKlinesTask(cfg,self.cfg, self.log, self.db_manager, self.exchange)
+            task=CheckKlinesTask(cfg,self.cfg, self.log, self.db_manager)
+        elif cfg.type == TaskType.IMPORT_CSV:
+            task =ImportCSVTask(cfg,self.cfg, self.log,self.db_manager)
 
         if task is None:
             self.log.error(f"Can't add task:{cfg.to_dict()}")
