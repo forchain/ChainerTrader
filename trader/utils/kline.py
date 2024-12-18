@@ -56,6 +56,9 @@ class Kline:
     def close_datetime(self):
         return datetime.fromtimestamp(self.close_time)
 
+    def key(self):
+        return self.open_time
+
 def parse_kline(data)->Kline:
     return Kline(
         open_time=data[PRIMARY_KEY],
