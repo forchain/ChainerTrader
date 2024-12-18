@@ -18,16 +18,13 @@ from trader.utils.volatility import VolatilityAnalyzer
 from trader.utils.winrate import WinRateAnalyzer
 
 class Node:
-    def __init__(self,strategy,cfg=None,log=None,data=None,start:datetime=None,end:datetime=None):
+    def __init__(self,strategy,cfg=None,log=None,data=None):
         self.plot=cfg.plot
         self.commission=cfg.commission
         self.atr=cfg.atr
         self.log=log
 
-        if start and end:
-            log.info(f"New node: from {start} to {end}")
-        else:
-            log.info(f"New node")
+        log.info(f"New node")
 
         cerebro = bt.Cerebro()
         cerebro.addstrategy(strategy, atr=cfg.atr,mode=cfg.mode,period=cfg.period,log=log)
@@ -37,16 +34,6 @@ class Node:
         cerebro.addanalyzer(WinRateAnalyzer, _name="winRate")
         cerebro.addanalyzer(ProfitLossRatioAnalyzer, _name="profitLossRatio")
         self.cerebro=cerebro
-
-        if data is None:
-            datafile = cfg.data_file
-            if not os.path.isabs(cfg.data_file):
-                datafile = os.path.join(path.GetDatasDir(), cfg.data_file)
-            data = BinanceCSVData(
-                dataname=datafile,
-                fromdate=datetime.datetime(2023, 1, 1),
-                todate=datetime.datetime(2024, 1, 1),
-            )
 
         cerebro.adddata(data)
         self.initialCash = 100000
