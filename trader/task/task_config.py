@@ -1,3 +1,5 @@
+import os
+
 from trader.strategy.strategy import parseStrategyType
 from trader.task.task_type import TaskType, parse_task_type
 import json
@@ -25,7 +27,17 @@ class TaskConfig:
 
 # '[{"task_type": "CHECK_KLINES", "start_time": 0,"end_time":0,"symbol":"BTCUSDT","interval":"1d","csv":"ETHUSDT-1h-202301-202401.csv","strategy","ShihunRSI2"}]'
 def parse_task_config(cfg)->[TaskConfig]:
-    parsed_list = json.loads(cfg)
+    if os.path.isfile(cfg):
+        try:
+            with open(cfg, 'r', encoding='utf-8') as file:
+                parsed_list = json.load(file)
+        except json.JSONDecodeError:
+            return []
+        except FileNotFoundError:
+            return []
+    else:
+        parsed_list = json.loads(cfg)
+
     ret=[]
     for tcd in parsed_list:
         tc=TaskConfig(parse_task_type(tcd['task_type']),SymbolInterval(tcd['symbol'],Interval(tcd['interval'])))
