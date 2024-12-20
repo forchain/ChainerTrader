@@ -6,21 +6,18 @@ from logging import Logger
 from trader.app.database_manager import DatabaseManager
 from trader.binance.exchange import BinanceExchange
 from trader.common.config import Config
+from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig
 from trader.task.task_type import TaskType
 from trader.utils.symbol_interval import SymbolInterval, add_time_duration
 
 
-class CheckKlinesTask:
-    def __init__(self,tcfg:TaskConfig,cfg:Config,log:Logger,db_manager:DatabaseManager):
-        self.log = log
-        self.cfg = cfg
-        self.db_manager = db_manager
-        self.tcfg = tcfg
-        self.log.info(f"Init {self.name()}")
+class CheckKlinesTask(BaseTask):
+    def __init__(self,tcfg:TaskConfig,cfg:Config,log:Logger,db_manager:DatabaseManager,exchange:BinanceExchange):
+        super().__init__(tcfg,cfg,log,db_manager,exchange)
 
     async def start(self,queue:Queue,quit:Event):
-        self.start_time = datetime.now()
+        super().start(queue,quit)
 
         self.log.info(f"Start {self.name()}")
         collection = self.db_manager.get_collection("trader", self.tcfg.symbol_interval.name())
@@ -57,14 +54,3 @@ class CheckKlinesTask:
 
         self.log.info(f"{self.name()} process result:{count}/{total}")
         self.stop()
-
-
-    def stop(self):
-        elapsed = datetime.now() - self.start_time
-        self.log.info(f"Stop {self.name()}, elapsed time:{elapsed}")
-
-    def name(self):
-        return f"{self.type()}({self.tcfg.symbol_interval.name()})"
-
-    def type(self):
-        return TaskType.CHECK_KLINES

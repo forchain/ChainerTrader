@@ -5,9 +5,11 @@ import datetime as dt
 from trader.app.database_manager import DatabaseManager
 from trader.binance.csvdata import BinanceCSVData
 from trader.binance.data import BinanceData
+from trader.binance.exchange import BinanceExchange
 from trader.common import path
 from trader.strategy.node import Node
 from trader.strategy.strategy import StrategyType, parseStrategy
+from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig
 from trader.task.task_type import TaskType
 from asyncio import Queue, Event
@@ -17,20 +19,17 @@ from trader.utils.kline import Kline
 from trader.utils.symbol_interval import add_time_duration
 
 
-class ImportCSVTask:
-    def __init__(self,tcfg:TaskConfig,cfg,log,db_manager:DatabaseManager):
-        self.log = log
-        self.cfg=cfg
-        self.tcfg = tcfg
-        self.db_manager = db_manager
-        self.log.info(f"Init {self.name()}")
+class ImportCSVTask(BaseTask):
+    def __init__(self,tcfg:TaskConfig,cfg,log,db_manager:DatabaseManager,exchange:BinanceExchange):
+        super().__init__(tcfg, cfg, log, db_manager, exchange)
 
     async def start(self,queue:Queue,quit:Event):
-        self.start_time = datetime.now()
+        super().start(queue,quit)
+
         if not self.tcfg.csv:
             self.log.error(f"{self.name()} no data_file")
             return
-        self.log.info(f"Start {self.name()}")
+
         kls = []
         data_file = self.tcfg.csv
         if not os.path.isabs(self.tcfg.csv):
@@ -67,13 +66,3 @@ class ImportCSVTask:
             self.log.info(f"{self.name()} add klines to DB: {ret}")
 
         self.stop()
-
-    def stop(self):
-        elapsed = datetime.now() - self.start_time
-        self.log.info(f"Stop {self.name()}, elapsed time:{elapsed}")
-
-    def name(self):
-        return f"{self.type()}({self.tcfg.symbol_interval.name()})"
-
-    def type(self):
-        return TaskType.IMPORT_CSV

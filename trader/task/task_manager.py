@@ -77,13 +77,13 @@ class TaskManager:
         if cfg.ttype == TaskType.TRADER:
             task=TraderTask(cfg,self.cfg, self.log, self.db_manager, self.exchange)
         elif cfg.ttype == TaskType.BACK_TRADER:
-            task =BackTraderTask(cfg,self.cfg, self.log,self.db_manager)
+            task =BackTraderTask(cfg,self.cfg, self.log,self.db_manager,self.exchange)
         elif cfg.ttype == TaskType.UPDATE_KLINES:
             task =UpdateKlinesTask(cfg,self.cfg, self.log, self.db_manager, self.exchange)
         elif cfg.ttype == TaskType.CHECK_KLINES:
-            task=CheckKlinesTask(cfg,self.cfg, self.log, self.db_manager)
+            task=CheckKlinesTask(cfg,self.cfg, self.log, self.db_manager,self.exchange)
         elif cfg.ttype == TaskType.IMPORT_CSV:
-            task =ImportCSVTask(cfg,self.cfg, self.log,self.db_manager)
+            task =ImportCSVTask(cfg,self.cfg, self.log,self.db_manager,self.exchange)
 
         if task is None:
             self.log.error(f"Can't add task:{cfg.to_dict()}")
