@@ -1,6 +1,7 @@
 import asyncio
 from asyncio import Queue, Event
 from logging import Logger
+from multiprocessing import Manager, Process
 
 from trader.app.database_manager import DatabaseManager
 from trader.common.message import Message, new_task_msg
@@ -25,46 +26,24 @@ class TaskManager:
         self.log.info(f"Init TaskManager")
 
     def start(self,queue:Queue,quit:Event)->[]:
-        ret=[]
-
         taskcs = parse_task_config(self.cfg.tasks)
+
+        ret = []
+        bttaskcs = []
+        index = 0
+        for taskc in taskcs:
+            if taskc.ttype == TaskType.BACK_TRADER:
+                taskc.id=index
+                index+=1
+                bttaskcs.append(taskc)
+        if len(bttaskcs) > 0:
+            ret.append(asyncio.create_task(self.add_backtrader_task(bttaskcs, queue, quit)))
 
         for taskc in taskcs:
             if taskc.ttype == TaskType.BACK_TRADER:
-                if not taskc.csv and not self.db_manager:
-                    self.log.error(f"No config data_file or db_uri for {taskc.to_dict()}")
-                    continue
-                if not taskc.strategy:
-                    self.log.error(f"No config strategy for {taskc.to_dict()}")
-                    continue
-            elif taskc.ttype == TaskType.CHECK_KLINES:
-                if not self.db_manager:
-                    self.log.error(f"No config db_uri for {taskc.to_dict()}")
-                    continue
-            elif taskc.ttype == TaskType.IMPORT_CSV:
-                if not taskc.csv:
-                    self.log.error(f"No config data_file for {taskc.to_dict()}")
-                    continue
-                if not self.db_manager:
-                    self.log.error(f"No config db_uri for {taskc.to_dict()}")
-                    continue
-            elif taskc.ttype == TaskType.TRADER:
-                if not taskc.strategy:
-                    self.log.error(f"No config strategy for {taskc.to_dict()}")
-                    continue
-                if not self.exchange:
-                    self.log.error(f"No config exchange for {taskc.to_dict()}")
-                    continue
-                if not self.db_manager:
-                    self.log.error(f"No config db_uri for {taskc.to_dict()}")
-                    continue
-            else:
-                if not self.exchange:
-                    self.log.error(f"No config exchange for {taskc.to_dict()}")
-                    continue
-                if not self.db_manager:
-                    self.log.error(f"No config db_uri for {taskc.to_dict()}")
-                    continue
+                continue
+            taskc.id = index
+            index += 1
             ret.append(asyncio.create_task(self.add_task(taskc, queue, quit)))
 
         return ret
@@ -89,3 +68,19 @@ class TaskManager:
             self.log.error(f"Can't add task:{cfg.to_dict()}")
             return
         await task.start(queue,quit)
+
+
+    async def add_backtrader_task(self,cfgs,queue:Queue,quit:Event):
+        processes=[]
+        for cfg in cfgs:
+            proc = Process(target=start_backtrader_task, args=(cfg,self.cfg,self.log,self.db_manager,self.exchange,queue,quit))
+            processes.append(proc)
+
+        for p in processes:
+            p.start()
+        for p in processes:
+            p.join()
+
+def start_backtrader_task(tcfg,cfg,log,db_manager,exchange,queue:Queue,quit:Event):
+    task = BackTraderTask(tcfg, cfg, log, db_manager, exchange)
+    task.start(queue,quit)

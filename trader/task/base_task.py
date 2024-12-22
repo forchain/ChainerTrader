@@ -29,7 +29,7 @@ class BaseTask:
         self.log.info(f"Stop {self.name()}, elapsed time:{elapsed}")
 
     def name(self):
-        return f"{self.type()}({self.tcfg.symbol_interval.name()})"
+        return f"{self.tcfg.id}.{self.type().name}.{self.tcfg.symbol_interval.name()}"
 
     def type(self):
         return self.tcfg.ttype
