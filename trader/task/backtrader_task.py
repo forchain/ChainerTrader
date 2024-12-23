@@ -7,6 +7,7 @@ from trader.binance.csvdata import BinanceCSVData
 from trader.binance.data import BinanceData
 from trader.binance.exchange import BinanceExchange
 from trader.common import path
+from trader.common.logger import Logger
 from trader.strategy.node import Node
 from trader.strategy.strategy import StrategyType, parseStrategy
 from trader.task.base_task import BaseTask
@@ -17,9 +18,18 @@ from asyncio import Queue, Event
 
 class BackTraderTask(BaseTask):
     def __init__(self,tcfg:TaskConfig,cfg,log,db_manager:DatabaseManager,exchange:BinanceExchange):
-        super().__init__(tcfg,cfg,log,db_manager,exchange)
+        logger = Logger(cfg)
+        plog=logger.log()
+        super().__init__(tcfg,cfg,plog,db_manager,exchange)
 
-    async def start(self,queue:Queue,quit:Event):
+    def start(self,queue:Queue,quit:Event):
+        if not self.tcfg.csv and not self.db_manager:
+            self.log.error(f"No config data_file or db_uri for {self.tcfg.to_dict()}")
+            return
+        if not self.tcfg.strategy:
+            self.log.error(f"No config strategy for {self.tcfg.to_dict()}")
+            return
+
         super().start(queue,quit)
 
         data = None

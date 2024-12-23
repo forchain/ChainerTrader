@@ -17,6 +17,10 @@ class CheckKlinesTask(BaseTask):
         super().__init__(tcfg,cfg,log,db_manager,exchange)
 
     async def start(self,queue:Queue,quit:Event):
+        if not self.db_manager:
+            self.log.error(f"No config db_uri for {self.tcfg.to_dict()}")
+            return
+
         super().start(queue,quit)
 
         self.log.info(f"Start {self.name()}")

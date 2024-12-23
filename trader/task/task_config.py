@@ -16,8 +16,11 @@ class TaskConfig:
         self.strategy=None
         self.symbol_interval = symbol_interval
 
+        self.id=0
+
     def to_dict(self):
         return {
+            'id': self.id,
             'type':self.ttype,
             'symbol_interval': self.symbol_interval.name(),
             'csv':self.csv,

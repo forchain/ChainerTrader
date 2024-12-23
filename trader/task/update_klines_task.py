@@ -21,6 +21,13 @@ class UpdateKlinesTask(BaseTask):
 
 
     async def start(self,queue:Queue,quit:Event):
+        if not self.exchange:
+            self.log.error(f"No config exchange for {self.tcfg.to_dict()}")
+            return
+        if not self.db_manager:
+            self.log.error(f"No config db_uri for {self.tcfg.to_dict()}")
+            return
+
         super().start(queue,quit)
 
         self.collection = self.db_manager.get_collection("trader", self.tcfg.symbol_interval.name())
