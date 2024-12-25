@@ -3,13 +3,13 @@ import os
 import signal
 from asyncio import Event, Queue
 from datetime import datetime
-from math import trunc
 
 from trader.app.database_manager import DatabaseManager
-from trader.common.message import Message, new_exit_msg, new_str_msg
+from trader.statistics.statistics import Statistics
+from trader.common.message import Message, new_exit_msg
 from trader.task.task_manager import TaskManager
 from trader.binance.exchange import EXCHANGE_NAME, BinanceExchange
-from trader.common.common import Context, sleep, NAME
+from trader.common.common import NAME
 from trader.common.config import Config, default
 from trader.common.logger import Logger
 from trader.common import path
@@ -35,6 +35,8 @@ class App:
             self.task_manager = TaskManager(self.cfg, self.log(), self.db_manager, self.exchange)
 
         self.startTime = datetime.now()
+
+        self.stat = Statistics(self.cfg,self.log())
 
     def name(self):
         return NAME
@@ -131,6 +133,8 @@ class App:
             if msg.is_exit():
                 self.log().info("Received exit message, shutting down...")
                 break
+            if msg.is_stat():
+                self.stat.handler(msg)
 
             queue.task_done()
 

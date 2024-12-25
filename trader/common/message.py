@@ -4,6 +4,7 @@ class MessageType(Enum):
     EXIT = 0
     STR = 1
     TASK = 2
+    STAT = 3
 
 
 class Message:
@@ -30,6 +31,9 @@ class Message:
     def is_task(self):
         return self.tp == MessageType.TASK
 
+    def is_stat(self):
+        return self.tp == MessageType.STAT
+
 def new_exit_msg()->Message:
     return Message(MessageType.EXIT)
 
@@ -38,3 +42,6 @@ def new_str_msg(string:str)->Message:
 
 def new_task_msg(data)->Message:
     return Message(MessageType.TASK,data)
+
+def new_stat_msg(data)->Message:
+    return Message(MessageType.STAT,data)
