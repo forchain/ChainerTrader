@@ -116,7 +116,7 @@ class App:
             tasks=tasks+self.task_manager.start(queue,quit)
 
         handlers = asyncio.create_task(self.handler(queue))
-
+        self.log().info(f"All task is created:{len(tasks)}")
         await asyncio.gather(*tasks)
 
         await queue.put(new_exit_msg())

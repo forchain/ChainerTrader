@@ -27,6 +27,7 @@ class TaskManager:
 
     def start(self,queue:Queue,quit:Event)->[]:
         taskcs = parse_task_config(self.cfg.tasks)
+        self.log.info(f"Load task config:{len(taskcs)}")
 
         ret = []
         bttaskcs = []

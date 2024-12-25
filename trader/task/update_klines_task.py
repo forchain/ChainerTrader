@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime
 from logging import Logger
 
@@ -32,11 +33,13 @@ class UpdateKlinesTask(BaseTask):
 
         self.collection = self.db_manager.get_collection("trader", self.tcfg.symbol_interval.name())
 
-        download(self.name(),self.log,self.db_manager,self.collection,self.exchange,self.tcfg.symbol_interval,quit)
+        await download(self.name(),self.log,self.db_manager,self.collection,self.exchange,self.tcfg.symbol_interval,quit)
+
         self.stop()
 
-def download(name,log:Logger,db_manager:DatabaseManager,collection:Collection,exchange:BinanceExchange,symbol_interval:SymbolInterval,quit:Event):
+async def download(name,log:Logger,db_manager:DatabaseManager,collection:Collection,exchange:BinanceExchange,symbol_interval:SymbolInterval,quit:Event):
     update_completed = False
+    max_try = 5
     while not update_completed:
         if quit.is_set():
             log.info(f"exit {name}")
@@ -55,8 +58,14 @@ def download(name,log:Logger,db_manager:DatabaseManager,collection:Collection,ex
                 continue
         if len(kls) <= 0:
             log.error(f"{name} get klines is empty")
-            sleep(log,DOWLOAD_SPACE_TIME)
-            continue
+            if max_try > 0:
+                await sleep(log, DOWLOAD_SPACE_TIME, f"next try {max_try}, {name}")
+                max_try -= 1
+                continue
+            else:
+                log.warning(f"exit {name}, because get empty klines")
+                return False
+
 
         ret = db_manager.add_klines(collection, kls)
         if ret != len(kls):
@@ -64,6 +73,18 @@ def download(name,log:Logger,db_manager:DatabaseManager,collection:Collection,ex
         else:
             log.info(f"{name} add klines to DB: {ret}")
 
-        sleep(log,DOWLOAD_SPACE_TIME)
+        await sleep(log,DOWLOAD_SPACE_TIME,name)
+
+    return True
+
+
+async def download_test(name,log:Logger,db_manager:DatabaseManager,collection:Collection,exchange:BinanceExchange,symbol_interval:SymbolInterval,quit:Event):
+    update_completed = False
+    while not update_completed:
+        if quit.is_set():
+            log.info(f"exit {name}")
+            return False
+
+        await sleep(log,DOWLOAD_SPACE_TIME,name)
 
     return True

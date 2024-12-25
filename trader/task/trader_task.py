@@ -45,10 +45,11 @@ class TraderTask(BaseTask):
         #if self.exchange.spot_ws_client:
         #    self.exchange.spot_ws_client.klines(symbol=self.symbol_interval.symbol, interval=self.symbol_interval.interval.value, limit=1)
 
-        self.collection = self.db_manager.get_collection("trader", self.symbol_interval.name())
+        self.collection = self.db_manager.get_collection("trader", self.tcfg.symbol_interval.name())
 
         while Context.running:
-            if not download(self.name(),self.log,self.db_manager,self.collection,self.exchange,self.symbol_interval,quit):
+            ret = await download(self.name(),self.log,self.db_manager,self.collection,self.exchange,self.tcfg.symbol_interval,quit)
+            if not ret:
                break
 
             kls_cache = self.db_manager.get_latest_klines(self.collection, self.cfg.window)
@@ -59,12 +60,12 @@ class TraderTask(BaseTask):
             node.start()
 
             while Context.running:
-                next_time = add_time_duration(latest_kline.open_time, self.symbol_interval.interval, 1)
+                next_time = add_time_duration(latest_kline.open_time, self.tcfg.symbol_interval.interval, 1)
                 if next_time < int(datetime.now().timestamp()):
                      break
                 else:
                     dist = next_time - int(datetime.now().timestamp())
                     dist +=1
-                    sleep(self.log,dist,"next K-line...")
+                    await sleep(self.log,dist,"next K-line...")
 
         self.stop()
