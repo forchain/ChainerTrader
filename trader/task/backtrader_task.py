@@ -8,6 +8,9 @@ from trader.binance.data import BinanceData
 from trader.binance.exchange import BinanceExchange
 from trader.common import path
 from trader.common.logger import Logger
+from trader.common.message import new_stat_msg
+from trader.statistics.stat import BackTraderStat
+from trader.statistics.statistics import Statistics
 from trader.strategy.node import Node
 from trader.strategy.strategy import StrategyType, parseStrategy
 from trader.task.base_task import BaseTask
@@ -22,7 +25,7 @@ class BackTraderTask(BaseTask):
         plog=logger.log()
         super().__init__(tcfg,cfg,plog,db_manager,exchange)
 
-    def start(self,queue:Queue,quit:Event):
+    def start(self,stat:Statistics,quit:Event):
         if not self.tcfg.csv and not self.db_manager:
             self.log.error(f"No config data_file or db_uri for {self.tcfg.to_dict()}")
             return
@@ -30,7 +33,7 @@ class BackTraderTask(BaseTask):
             self.log.error(f"No config strategy for {self.tcfg.to_dict()}")
             return
 
-        super().start(queue,quit)
+        super().start(None,quit)
 
         data = None
         if self.tcfg.csv:
@@ -75,6 +78,6 @@ class BackTraderTask(BaseTask):
             self.log.error(f"Not support strategy:{self.tcfg.strategy}")
             return
         node = Node(strategy, self.cfg, self.log,data)
-        node.start()
-
+        total_return_rate = node.start()
+        stat.handler(new_stat_msg(BackTraderStat(self.tcfg.strategy,self.tcfg.symbol_interval.name(),total_return_rate)))
         self.stop()

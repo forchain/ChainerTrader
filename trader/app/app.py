@@ -30,13 +30,12 @@ class App:
         if self.cfg.exchange == EXCHANGE_NAME:
             self.exchange = BinanceExchange(self.cfg, self.log())
 
+        self.stat = Statistics(self.cfg, self.log())
         self.task_manager=None
         if self.cfg.tasks:
-            self.task_manager = TaskManager(self.cfg, self.log(), self.db_manager, self.exchange)
+            self.task_manager = TaskManager(self.cfg, self.log(), self.db_manager, self.exchange,self.stat)
 
         self.startTime = datetime.now()
-
-        self.stat = Statistics(self.cfg,self.log())
 
     def name(self):
         return NAME
@@ -57,6 +56,8 @@ class App:
             self.exchange.start()
 
         self.process()
+
+        self.stat.report()
 
         return True
 

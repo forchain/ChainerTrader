@@ -86,3 +86,5 @@ class Node:
 
         print("\n")
         print(table)
+
+        return totalReturnRate

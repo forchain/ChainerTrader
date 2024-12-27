@@ -7,6 +7,8 @@ from trader.binance.data import BinanceData
 from trader.binance.exchange import BinanceExchange
 from trader.common.common import Context, sleep
 from trader.common.config import Config
+from trader.common.message import new_stat_msg
+from trader.statistics.stat import BackTraderStat
 from trader.strategy.node import Node
 from trader.strategy.strategy import parseStrategy
 from trader.task.base_task import BaseTask
@@ -57,7 +59,8 @@ class TraderTask(BaseTask):
                 continue
             latest_kline = kls_cache[len(kls_cache) - 1]
             node = Node(strategy, self.cfg, self.log,BinanceData(kls_cache))
-            node.start()
+            total_return_rate = node.start()
+            await queue.put(new_stat_msg(BackTraderStat(self.tcfg.strategy, self.tcfg.symbol_interval.name(), total_return_rate)))
 
             while Context.running:
                 next_time = add_time_duration(latest_kline.open_time, self.tcfg.symbol_interval.interval, 1)
