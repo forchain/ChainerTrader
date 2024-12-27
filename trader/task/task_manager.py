@@ -4,6 +4,7 @@ from logging import Logger
 from multiprocessing import Manager, Process
 
 from trader.app.database_manager import DatabaseManager
+from trader.common.common import sleep
 from trader.statistics.statistics import Statistics
 from trader.task.check_klines_task import CheckKlinesTask
 from trader.task.import_csv_task import ImportCSVTask
@@ -18,12 +19,11 @@ from trader.utils.trend import TrendType
 
 
 class TaskManager:
-    def __init__(self,cfg:Config,log:Logger,db_manager:DatabaseManager,exchange:BinanceExchange,stat:Statistics):
+    def __init__(self,cfg:Config,log:Logger,db_manager:DatabaseManager,exchange:BinanceExchange):
         self.log = log
         self.cfg = cfg
         self.db_manager = db_manager
         self.exchange = exchange
-        self.stat = stat
         self.log.info(f"Init TaskManager")
 
     def start(self,queue:Queue,quit:Event)->[]:
@@ -39,7 +39,7 @@ class TaskManager:
                 index+=1
                 bttaskcs.append(taskc)
         if len(bttaskcs) > 0:
-            ret.append(asyncio.create_task(self.add_backtrader_task(bttaskcs, self.stat, quit)))
+            ret.append(asyncio.create_task(self.add_backtrader_task(bttaskcs,queue,quit)))
 
         for taskc in taskcs:
             if taskc.ttype == TaskType.BACK_TRADER:
@@ -72,17 +72,25 @@ class TaskManager:
         await task.start(queue,quit)
 
 
-    async def add_backtrader_task(self,cfgs,stat:Statistics,quit:Event):
-        processes=[]
-        for cfg in cfgs:
-            proc = Process(target=start_backtrader_task, args=(cfg,self.cfg,self.log,self.db_manager,self.exchange,stat,quit))
-            processes.append(proc)
+    async def add_backtrader_task(self,cfgs,queue:Queue,quit:Event):
+        with Manager() as manager:
+            pqueue = manager.list()
+            processes = []
+            for cfg in cfgs:
+                proc = Process(target=start_backtrader_task,
+                               args=(cfg, self.cfg, self.log, self.db_manager, self.exchange, pqueue, quit))
+                processes.append(proc)
 
-        for p in processes:
-            p.start()
-        for p in processes:
-            p.join()
+            for p in processes:
+                p.start()
+            for p in processes:
+                p.join()
 
-def start_backtrader_task(tcfg,cfg,log,db_manager,exchange,stat:Statistics,quit:Event):
+            for msg in pqueue:
+                self.log.info(f"Relay process queue message:{msg.name()}")
+                await queue.put(msg)
+
+
+def start_backtrader_task(tcfg,cfg,log,db_manager,exchange,queue,quit:Event):
     task = BackTraderTask(tcfg, cfg, log, db_manager, exchange)
-    task.start(stat,quit)
+    task.start(queue,quit)

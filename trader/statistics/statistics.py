@@ -2,6 +2,7 @@ from logging import Logger
 
 from prettytable import PrettyTable
 
+from trader.common.common import sleep
 from trader.common.message import Message
 from trader.statistics.stat import BackTraderStat
 
@@ -20,6 +21,7 @@ class Statistics:
 
     def report(self):
         if len(self.bts_list) > 0:
+            self.log.info(f"Report BackTrader stats")
             if len(self.bts_list) > 1:
                 self.bts_list.sort(key=lambda bts: bts.total_return_rate)
 

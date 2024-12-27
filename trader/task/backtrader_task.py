@@ -25,7 +25,7 @@ class BackTraderTask(BaseTask):
         plog=logger.log()
         super().__init__(tcfg,cfg,plog,db_manager,exchange)
 
-    def start(self,stat:Statistics,quit:Event):
+    def start(self,queue,quit:Event):
         if not self.tcfg.csv and not self.db_manager:
             self.log.error(f"No config data_file or db_uri for {self.tcfg.to_dict()}")
             return
@@ -79,5 +79,5 @@ class BackTraderTask(BaseTask):
             return
         node = Node(strategy, self.cfg, self.log,data)
         total_return_rate = node.start()
-        stat.handler(new_stat_msg(BackTraderStat(self.tcfg.strategy,self.tcfg.symbol_interval.name(),total_return_rate)))
+        queue.append(new_stat_msg(BackTraderStat(self.tcfg.strategy,self.tcfg.symbol_interval.name(),total_return_rate),self.tcfg.id))
         self.stop()

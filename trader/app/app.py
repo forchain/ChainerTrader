@@ -33,7 +33,7 @@ class App:
         self.stat = Statistics(self.cfg, self.log())
         self.task_manager=None
         if self.cfg.tasks:
-            self.task_manager = TaskManager(self.cfg, self.log(), self.db_manager, self.exchange,self.stat)
+            self.task_manager = TaskManager(self.cfg, self.log(), self.db_manager, self.exchange)
 
         self.startTime = datetime.now()
 
