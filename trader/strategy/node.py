@@ -87,4 +87,4 @@ class Node:
         print("\n")
         print(table)
 
-        return totalReturnRate
+        return [totalReturnRate,maxDrawdown,maxDrawdownDuration,volatility,winRate,plr,avgProfit,avgLoss]

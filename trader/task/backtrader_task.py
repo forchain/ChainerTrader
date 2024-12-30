@@ -78,6 +78,6 @@ class BackTraderTask(BaseTask):
             self.log.error(f"Not support strategy:{self.tcfg.strategy}")
             return
         node = Node(strategy, self.cfg, self.log,data)
-        total_return_rate = node.start()
-        queue.append(new_stat_msg(BackTraderStat(self.tcfg.strategy,self.tcfg.symbol_interval.name(),total_return_rate),self.tcfg.id))
+        ret = node.start()
+        queue.append(new_stat_msg(BackTraderStat(self.tcfg.strategy,self.tcfg.symbol_interval.name(),ret[0],ret[1],ret[2],ret[3],ret[4],ret[5],ret[6],ret[7]),self.tcfg.id))
         self.stop()
