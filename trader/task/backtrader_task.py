@@ -61,7 +61,7 @@ class BackTraderTask(BaseTask):
                         todate=datetime.fromtimestamp(self.tcfg.end_time),
                     )
         if self.db_manager:
-            collection = self.db_manager.get_collection("trader", self.tcfg.symbol_interval.name())
+            collection = self.db_manager.get_collection(self.cfg.db_name, self.tcfg.symbol_interval.name())
             if data is None:
                 kls_cache = self.db_manager.get_all_klines(collection)
                 if len(kls_cache) <= 0:

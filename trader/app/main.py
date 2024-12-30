@@ -22,6 +22,7 @@ def main():
     parser.add_argument("--log_level", help="logger display level:CRITICAL,FATAL,ERROR,WARNING,WARNING,INFO,DEBUG", type=str,default="INFO")
     parser.add_argument("--exchange", help="Which remote exchange is connected to:BINANCE",type=str)
     parser.add_argument("--db_uri", help="Database URI for MongoDB", type=str)
+    parser.add_argument("--db_name", help="Database name for MongoDB", type=str,default="trader")
     parser.add_argument('--window', help='Window for backtesting', action='store', type=int, default=1000)
     parser.add_argument("--tasks", help="Tasks config:TRADER,BACK_TRADER,UPDATE_KLINES,CHECK_KLINES,IMPORT_CSV",type=str)
 
@@ -36,6 +37,7 @@ def main():
                  args.log_level,
                  args.exchange,
                  args.db_uri,
+                 args.db_name,
                  args.window,
                  args.tasks)
     if args.version:
