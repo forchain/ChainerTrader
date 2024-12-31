@@ -28,15 +28,28 @@ $ trader -v
 $ trader -h
 ```
 
-## Run trader with `ShihunMACD` strategy
+## Run trader with `ShihunMACD` strategy and load trader data from local file
 
 ```bash
-$ trader --strategy=ShihunMACD
+$ trader --tasks='[{"task_type": "BACK_TRADER","symbol":"ETHUSDT","interval":"1h","strategy":"ShihunMACD","csv":"ETHUSDT-1h-202301-202401.csv"}]'
 ```
 
-## Load trader data from local file
+## Run trader with tasks config file
+
+```tasks.json:
+[
+    {
+        "task_type": "BACK_TRADER",
+        "symbol": "ETHUSDT",
+        "interval": "1h",
+        "strategy": "ShihunMACD",
+        "csv": "ETHUSDT-1h-202301-202401.csv"
+    }
+]
+```
 
 ```bash
-$ trader --data_file="ETHUSDT-1h-202301-202401.csv"
+$ trader --tasks=./tasks.json
 ```
+
 ## Development
