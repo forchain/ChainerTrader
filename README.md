@@ -11,11 +11,9 @@ pip install trader
 ## Usage
 
 ```bash
-$ python -m trader
+$ python -m trader -h
 #or
-$ trader -v
-#or
-$ trader --strategy=ShihunMACD
+$ trader -h
 ```
 
 ## Development
