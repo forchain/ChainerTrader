@@ -160,3 +160,4 @@ $ trader --tasks=./scripts/backtrader_strategy.json
 ```
 
 ## Development
+Read the [CONTRIBUTING.md](CONTRIBUTING.md) file.
