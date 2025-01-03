@@ -45,6 +45,7 @@ $ trader --atr ... ...
 ```bash
 $ trader --api ... ...
 ```
+* Then you can access http://127.0.0.1:8000/ through a browser
 
 ## Output logs to file
 
