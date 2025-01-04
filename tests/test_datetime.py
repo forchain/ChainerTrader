@@ -1,6 +1,8 @@
 from datetime import date, datetime, time
 from backtrader import date2num, num2date
 
+from trader.common.common import parse_datetime
+
 
 def test_datetime():
     dttxt = "2024-10-11"
@@ -27,3 +29,14 @@ def test_binanceTimestamp2():
     dt = num2date(dtnum)
 
     print(f"dt:{dt}")
+
+def test_parse_datetime():
+    cfg_dt0 = "2023-09-24 14:30:00"
+    dt0 = parse_datetime(cfg_dt0)
+    print(f"date time:{dt0}")
+    cfg_dt1 = f"{int(dt0.timestamp())}"
+    dt1 = parse_datetime(cfg_dt1)
+    print(f"date time:{dt1}")
+    assert dt0 == dt1
+
+
