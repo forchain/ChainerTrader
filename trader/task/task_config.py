@@ -1,5 +1,6 @@
 import os
 
+from trader.common.common import parse_datetime
 from trader.strategy.strategy import parseStrategyType
 from trader.task.task_type import TaskType, parse_task_type
 import json
@@ -28,7 +29,7 @@ class TaskConfig:
             'end_time':self.end_time,
         }
 
-# '[{"task_type": "CHECK_KLINES", "start_time": 0,"end_time":0,"symbol":"BTCUSDT","interval":"1d","csv":"ETHUSDT-1h-202301-202401.csv","strategy","ShihunRSI2"}]'
+# '[{"task_type": "CHECK_KLINES", "start_time": "2023-09-24 14:30:00","end_time":"0","symbol":"BTCUSDT","interval":"1d","csv":"ETHUSDT-1h-202301-202401.csv","strategy","ShihunRSI2"}]'
 def parse_task_config(cfg)->[TaskConfig]:
     if os.path.isfile(cfg):
         try:
@@ -45,9 +46,11 @@ def parse_task_config(cfg)->[TaskConfig]:
     for tcd in parsed_list:
         tc=TaskConfig(parse_task_type(tcd['task_type']),SymbolInterval(tcd['symbol'],Interval(tcd['interval'])))
         if "start_time" in tcd:
-            tc.start_time=tcd['start_time']
+            start_time=parse_datetime(tcd['start_time'])
+            tc.start_time=int(start_time.timestamp())
         if "end_time" in tcd:
-            tc.start_time=tcd['end_time']
+            end_time=parse_datetime(tcd['end_time'])
+            tc.end_time = int(end_time.timestamp())
         if "csv" in tcd:
             tc.csv=tcd['csv']
         if "strategy" in tcd:
