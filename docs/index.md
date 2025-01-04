@@ -160,5 +160,25 @@ $ trader --tasks='[{"task_type": "TRADER","symbol":"BTCUSDT","interval":"1d"}]' 
 $ trader --tasks=./scripts/backtrader_strategy.json
 ```
 
+## Run trader with tasks config file for backtesting and config start time or end time
+
+```tasks.json:
+[
+    {
+        "task_type": "BACK_TRADER",
+        "symbol": "ETHUSDT",
+        "interval": "1h",
+        "strategy": "ShihunMACD",
+        "csv": "ETHUSDT-1h-202301-202401.csv",
+        "start_time": "2023-06-01 14:00:00",
+        "end_time": "2023-11-01 14:00:00"
+    }
+]
+```
+
+```bash
+$ trader --tasks=./tasks.json
+```
+
 ## Development
 Read the [CONTRIBUTING.md](CONTRIBUTING.md) file.
