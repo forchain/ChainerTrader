@@ -1,6 +1,8 @@
 from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
 
+from datetime import datetime
+
 import backtrader as bt
 
 from trader.utils.trend import TrendType
@@ -24,6 +26,16 @@ class BaseStrategy(bt.Strategy):
         # To set the stop price
         if self.params.atr:
             self.atr = bt.indicators.ATR(self.datas[0], period=self.params.atrperiod)
+
+        self.start_time=datetime.fromtimestamp(0)
+        self.end_time=datetime.fromtimestamp(0)
+
+    def next(self):
+        cur = self.cur_datetime()
+        if cur > self.end_time:
+            self.end_time=cur
+        if int(self.start_time.timestamp()) == 0:
+            self.start_time=cur
 
 
     def notify_order(self, order):

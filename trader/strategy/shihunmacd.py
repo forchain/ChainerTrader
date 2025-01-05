@@ -24,6 +24,8 @@ class ShihunMACDStrategy(TrilogyStrategy):
         self.mcross = bt.indicators.CrossOver(self.macd.macd, self.macd.signal)
 
     def next(self):
+        super().next()
+
         self.log_debug(f'Kline:{self.cur_datetime()} 收盘价, {self.dataclose[0]:.2f}')
 
         if self.order:

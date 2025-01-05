@@ -21,6 +21,7 @@ class ShihunRSIStrategy(TrilogyStrategy):
         self.rsi = bt.indicators.RSI(self.datas[0], period=self.params.period)
 
     def next(self):
+        super().next()
         self.log_debug(f'Kline:{self.cur_datetime()} 收盘价, {self.dataclose[0]:.2f}')
 
         if self.order:
