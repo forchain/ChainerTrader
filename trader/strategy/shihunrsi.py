@@ -1,14 +1,8 @@
 from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
 
-import datetime
-import os.path
 import backtrader as bt
-from backtrader import num2date
-from trader.binance.csvdata import BinanceCSVData
-from trader.common import path
-from trader.strategy.node import Node
-from trader.utils.trilogy_strategy import TrilogyStrategy
+from trader.strategy.trilogy_strategy import TrilogyStrategy
 
 
 # Shihun RSI strategy
