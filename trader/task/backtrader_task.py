@@ -20,13 +20,13 @@ from trader.utils.symbol_interval import SymbolInterval
 from asyncio import Queue, Event
 
 class BackTraderTask(BaseTask):
-    def __init__(self,tcfg:TaskConfig,cfg,log,db_manager:DatabaseManager,exchange:BinanceExchange):
+    def __init__(self,tcfg:TaskConfig,cfg,db_manager:DatabaseManager,exchange:BinanceExchange):
         logger = Logger(cfg)
         plog=logger.log()
         super().__init__(tcfg,cfg,plog,db_manager,exchange)
 
-    def start(self,queue,quit:Event):
-        if not self.tcfg.csv and not self.db_manager:
+    def start(self,queue,datas,quit:Event):
+        if not self.tcfg.csv and datas is None:
             self.log.error(f"No config data_file or db_uri for {self.tcfg.to_dict()}")
             return
         if not self.tcfg.strategy:
@@ -60,15 +60,15 @@ class BackTraderTask(BaseTask):
                         fromdate=datetime.fromtimestamp(self.tcfg.start_time),
                         todate=datetime.fromtimestamp(self.tcfg.end_time),
                     )
-        if self.db_manager:
-            collection = self.db_manager.get_collection(self.cfg.db_name, self.tcfg.symbol_interval.name())
-            if data is None:
-                kls_cache = self.db_manager.get_all_klines(collection)
-                if len(kls_cache) <= 0:
-                    self.log.error(f"No klines for {self.name()}")
-                    return
-                self.log.info(f"Create BinanceData({len(kls_cache)}) ")
-                data = BinanceData(kls_cache)
+        if datas and data is None:
+            kls_cache = datas[0]
+            #collection = self.db_manager.get_collection(self.cfg.db_name, self.tcfg.symbol_interval.name())
+            #kls_cache = self.db_manager.get_klines(collection,self.tcfg.start_time,self.tcfg.end_time)
+            if len(kls_cache) <= 0:
+                self.log.error(f"No klines for {self.name()}")
+                return
+            self.log.info(f"Create BinanceData({len(kls_cache)}) ")
+            data = BinanceData(kls_cache)
 
         if data is None:
             self.log.error(f"No strategy data for {self.name()}")

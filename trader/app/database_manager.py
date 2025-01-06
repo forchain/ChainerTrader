@@ -117,3 +117,23 @@ class DatabaseManager:
         for ret in results:
             kls.append(parse_kline(ret))
         return kls
+
+    def get_klines(self, col: Collection,start_time:int=0,end_time:int=0) -> [Kline]:
+        if start_time == 0 and end_time == 0:
+            return self.get_all_klines(col)
+        elif start_time > end_time and end_time > 0:
+            return self.get_all_klines(col)
+        elif start_time != 0 and end_time == 0:
+            results = col.find({PRIMARY_KEY: {"$gte": start_time}}).sort(PRIMARY_KEY, ASCENDING)
+        elif start_time == 0 and end_time != 0:
+            results = col.find({PRIMARY_KEY: {"$lte": end_time}}).sort(PRIMARY_KEY, ASCENDING)
+        else:
+            results = col.find({PRIMARY_KEY: {"$gte": start_time,"$lte": end_time}}).sort(PRIMARY_KEY, ASCENDING)
+
+        if results is None:
+            return None
+
+        kls = []
+        for ret in results:
+            kls.append(parse_kline(ret))
+        return kls

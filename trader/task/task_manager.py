@@ -77,8 +77,14 @@ class TaskManager:
             pqueue = manager.list()
             processes = []
             for cfg in cfgs:
+                if self.db_manager:
+                    datas = manager.list()
+                    collection = self.db_manager.get_collection(self.cfg.db_name, cfg.symbol_interval.name())
+                    kls_cache = self.db_manager.get_klines(collection, cfg.start_time, cfg.end_time)
+                    datas.append(kls_cache)
+
                 proc = Process(target=start_backtrader_task,
-                               args=(cfg, self.cfg, self.log, self.db_manager, self.exchange, pqueue, quit))
+                               args=(cfg, self.cfg,None, self.exchange, pqueue,datas, quit))
                 processes.append(proc)
 
             for p in processes:
@@ -91,6 +97,6 @@ class TaskManager:
                 await queue.put(msg)
 
 
-def start_backtrader_task(tcfg,cfg,log,db_manager,exchange,queue,quit:Event):
-    task = BackTraderTask(tcfg, cfg, log, db_manager, exchange)
-    task.start(queue,quit)
+def start_backtrader_task(tcfg,cfg,db_manager,exchange,queue,datas,quit:Event):
+    task = BackTraderTask(tcfg, cfg,db_manager, exchange)
+    task.start(queue,datas,quit)
