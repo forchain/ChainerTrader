@@ -89,4 +89,4 @@ def process_backtrader(parmas,result):
     ret = node.start()
     logger.log().info(f"end do backtrader: {tcfg.id}")
 
-    result.append(new_stat_msg(BackTraderStat(tcfg.strategy, tcfg.symbol_interval.name(), ret[0], ret[1], ret[2], ret[3], ret[4],ret[5], ret[6], ret[7]), tcfg.id))
+    result.append(new_stat_msg(BackTraderStat(tcfg.strategy, tcfg.symbol_interval.name(), ret), tcfg.id))
