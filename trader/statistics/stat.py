@@ -10,5 +10,9 @@ class BackTraderStat:
         self.tret=tret
 
 class TraderStat:
-    def __init__(self):
-        pass
+    def __init__(self,strategy,
+                 symbol_interval,
+                 tret:TraderResult):
+        self.strategy = strategy
+        self.symbol_interval = symbol_interval
+        self.tret = tret

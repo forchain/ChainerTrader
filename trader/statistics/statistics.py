@@ -4,7 +4,7 @@ from prettytable import PrettyTable
 
 from trader.common.common import sleep
 from trader.common.message import Message
-from trader.statistics.stat import BackTraderStat
+from trader.statistics.stat import BackTraderStat, TraderStat
 
 
 class Statistics:
@@ -17,6 +17,8 @@ class Statistics:
     def handler(self,msg:Message):
         self.log.info(f"handle message:{msg.name()}")
         if isinstance(msg.data,BackTraderStat):
+            self.bts_list.append(msg.data)
+        if isinstance(msg.data,TraderStat):
             self.bts_list.append(msg.data)
 
     def report(self):
