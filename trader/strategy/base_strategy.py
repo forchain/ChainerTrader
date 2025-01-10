@@ -82,3 +82,14 @@ class BaseStrategy(bt.Strategy):
 
     def cur_datetime(self):
         return num2date(self.datas[0].datetime[0])
+
+    def need_stop_loss(self):
+        if self.data.close[0] < self.stopLossPoint:
+            return True
+        return False
+
+    def update_stop_loss_point(self):
+        pdist = 0
+        if self.params.atr:
+            pdist = self.atr[0] * self.params.atrdist
+        self.stopLossPoint = self.datas[0].close[0] - pdist
