@@ -40,8 +40,12 @@ class MACDRSIStrategy(BaseStrategy):
             if self.macd_line[0] > self.signal_line[0] and self.rsi[0] < self.params.oversold:
                 willOpt = OperateType.BUY
         else:
-            if self.macd_line[0] < self.signal_line[0] and self.rsi[0] > self.params.overbought:
+            if self.need_stop_loss():
                 willOpt = OperateType.SELL
+            else:
+                if self.macd_line[0] < self.signal_line[0] and self.rsi[0] > self.params.overbought:
+                    willOpt = OperateType.SELL
+
 
         if willOpt == OperateType.SELL:
             self.log_info(f'Kline:{self.cur_datetime()}, 创建 卖单:{self.dataclose[0]:.2f}')
@@ -50,7 +54,4 @@ class MACDRSIStrategy(BaseStrategy):
         elif willOpt == OperateType.BUY:
             self.log_info(f'Kline:{self.cur_datetime()}, 创建 买单:{self.dataclose[0]:.2f}')
             self.order = self.buy()
-            pdist=0
-            if self.params.atr:
-                pdist = self.atr[0] * self.params.atrdist
-            self.stopLossPoint = self.datas[0].close[0] - pdist
+            self.update_stop_loss_point()
