@@ -54,7 +54,7 @@ class TrilogyStrategy(BaseStrategy):
         """canSell
         Can sell based on the current framework
         """
-        if self.datas[0].close[0] < self.stopLossPoint:
+        if self.need_stop_loss():
             return True
         return False
 

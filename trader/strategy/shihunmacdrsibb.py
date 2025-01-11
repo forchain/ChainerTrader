@@ -96,7 +96,7 @@ class ShihunMacdRsiBollingerBandStrategy(BaseStrategy):
                     willOpt = OperateType.BUY
 
         else:
-            if self.need_stop_loss()
+            if self.need_stop_loss():
                 willOpt = OperateType.SELL
             else:
                 if self.datas[0].high[0] > upperBand:
@@ -150,7 +150,7 @@ class ShihunMacdRsiBollingerBandStrategy(BaseStrategy):
                     willOpt = OperateType.BUY
 
         else:
-            if self.need_stop_loss()
+            if self.need_stop_loss():
                 willOpt = OperateType.SELL
             else:
                 if self.data.low[0] < midBand:
