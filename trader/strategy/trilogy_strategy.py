@@ -104,11 +104,7 @@ class TrilogyStrategy(BaseStrategy):
         """buy
             Process buy
         """
-        if self.datas[0].close[0] > self.stopLossPoint:
-            pdist = 0
-            if self.params.atr:
-                pdist = self.atr[0] * self.params.atrdist
-            self.stopLossPoint=self.datas[0].close[0] - pdist
+        self.update_stop_loss_point()
         super().buy()
 
     def sell(self):

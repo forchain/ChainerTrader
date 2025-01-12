@@ -73,7 +73,7 @@ async def download(name,log:Logger,db_manager:DatabaseManager,collection:Collect
         else:
             log.info(f"{name} add klines to DB: {ret}")
 
-        await sleep(log,DOWLOAD_SPACE_TIME,name)
+        #await sleep(log,DOWLOAD_SPACE_TIME,name)
 
     return True
 
