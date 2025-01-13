@@ -1,4 +1,5 @@
 import logging
+import os
 
 from trader.app.app import App
 from trader.common import path
@@ -12,6 +13,9 @@ def test_app():
 
 def test_path():
     print(path.GetProjectDir())
+
+def test_data_path():
+    assert os.path.exists(path.get_file_path("ETHUSDT-1h-202301-202401.csv"))
 
 def test_log():
     cfg = default()
