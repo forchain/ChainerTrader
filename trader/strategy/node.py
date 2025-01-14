@@ -21,11 +21,12 @@ from trader.utils.volatility import VolatilityAnalyzer
 from trader.utils.winrate import WinRateAnalyzer
 
 class Node:
-    def __init__(self,strategy,cfg=None,log=None,data=None):
+    def __init__(self,name,strategy,cfg=None,log=None,data=None):
         self.plot=cfg.plot
         self.commission=cfg.commission
         self.atr=cfg.atr
         self.log=log
+        self.name=name
 
         log.info(f"New node")
 
@@ -75,6 +76,7 @@ class Node:
         # statistics
         table = PrettyTable()
         table.field_names = ["Name", "Value"]
+        table.add_row(["策略", f"{self.name}"])
         table.add_row(["手续费率", self.commission])
         table.add_row(["ATR", self.atr])
         table.add_row(["初始资金", format(self.initialCash, '.2f')])
