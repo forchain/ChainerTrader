@@ -5,6 +5,8 @@ class MessageType(Enum):
     STR = 1
     TASK = 2
     STAT = 3
+    BACKTRADER = 4
+
 
 
 class Message:

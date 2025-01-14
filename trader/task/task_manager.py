@@ -84,7 +84,8 @@ class TaskManager:
                 strategy,data = task.start(queue,quit)
                 tasks.append(task)
 
-                parmas = manager.list()
+                #parmas = manager.list()
+                parmas=[]
                 parmas.append(self.cfg)
                 parmas.append(data)
                 parmas.append(strategy)
