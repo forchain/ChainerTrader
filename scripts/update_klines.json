@@ -1,0 +1,2767 @@
+[
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "1000SATSUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "1INCHDOWNUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "1INCHUPUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "1INCHUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "1MBABYDOGEUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "AAVEDOWNUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "AAVEUPUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "AAVEUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ACAUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ACEUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ACHUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ACMUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ACTUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ADADOWNUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ADAUPUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ADAUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ADXUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "AERGOUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "AEURUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "AEVOUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "AGIXUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "AGLDUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "AIONUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "AIUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "AKROUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ALCXUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ALGOUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ALICEUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ALPACAUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ALPHAUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ALPINEUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ALTUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "AMBUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "AMPUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ANCUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ANKRUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ANTUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ANYUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "APEUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "API3USDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "APTUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ARBUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ARDRUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ARKMUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ARKUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ARPAUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ARUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ASRUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ASTRUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ASTUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ATAUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ATMUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ATOMUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "AUCTIONUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "AUDIOUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "AUDUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "AUTOUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "AVAUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "AVAXUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "AXLUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "AXSUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BADGERUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BAKEUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BALUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BANANAUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BANDUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BARUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BATUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BBUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BCCUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BCHABCUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BCHDOWNUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BCHSVUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BCHUPUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BCHUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BEAMUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BEAMXUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BEARUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BELUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BETAUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BETHUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BICOUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BIFIUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BKRWUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BLURUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BLZUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BNBBEARUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BNBBULLUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BNBDOWNUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BNBUPUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BNBUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BNSOLUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BNTUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BNXUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BOMEUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BONDUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BONKUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BSWUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BTCDOWNUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BTCSTUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BTCUPUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BTCUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BTGUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BTSUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BTTCUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BTTUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BULLUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BURGERUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BUSDTRY",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BUSDUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "BZRXUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "C98USDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "CAKEUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "CATIUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "CELOUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "CELRUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "CETUSUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "CFXUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "CHESSUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "CHRUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "CHZUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "CITYUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "CKBUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "CLVUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "COCOSUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "COMBOUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "COMPUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "COSUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "COTIUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "COWUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "CREAMUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "CRVUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "CTKUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "CTSIUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "CTXCUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "CVCUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "CVPUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "CVXUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "CYBERUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "DAIUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "DARUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "DASHUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "DATAUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "DCRUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "DEGOUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "DENTUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "DEXEUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "DFUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "DGBUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "DIAUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "DNTUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "DOCKUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "DODOUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "DOGEUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "DOGSUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "DOTDOWNUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "DOTUPUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "DOTUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "DREPUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "DUSKUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "DYDXUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "DYMUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "EDUUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "EGLDUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "EIGENUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ELFUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ENAUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ENJUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ENSUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "EOSBEARUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "EOSBULLUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "EOSDOWNUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "EOSUPUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "EOSUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "EPSUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "EPXUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ERDUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ERNUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ETCUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ETHBEARUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ETHBULLUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ETHDOWNUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ETHFIUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ETHUPUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ETHUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "EURIUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "EURUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "FARMUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "FDUSDTRY",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "FDUSDUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "FETUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "FIDAUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "FILDOWNUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "FILUPUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "FILUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "FIOUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "FIROUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "FISUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "FLMUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "FLOKIUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "FLOWUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "FLUXUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "FORTHUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "FORUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "FRONTUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "FTMUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "FTTUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "FUNUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "FXSUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "GALAUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "GALUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "GASUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "GBPUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "GFTUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "GHSTUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "GLMRUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "GLMUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "GMTUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "GMXUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "GNOUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "GNSUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "GRTUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "GTCUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "GTOUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "GUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "GXSUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "HARDUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "HBARUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "HCUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "HFTUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "HIFIUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "HIGHUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "HIVEUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "HMSTRUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "HNTUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "HOOKUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "HOTUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ICPUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ICXUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "IDEXUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "IDUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ILVUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "IMXUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "INJUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "IOSTUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "IOTAUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "IOTXUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "IOUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "IQUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "IRISUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "JASMYUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "JOEUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "JSTUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "JTOUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "JUPUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "JUVUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "KAIAUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "KAVAUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "KDAUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "KEEPUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "KEYUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "KLAYUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "KMDUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "KNCUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "KP3RUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "KSMUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "LAZIOUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "LDOUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "LENDUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "LEVERUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "LINAUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "LINKDOWNUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "LINKUPUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "LINKUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "LISTAUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "LITUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "LOKAUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "LOOMUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "LPTUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "LQTYUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "LRCUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "LSKUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "LTCDOWNUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "LTCUPUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "LTCUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "LTOUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "LUMIAUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "LUNAUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "LUNCUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "MAGICUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "MANAUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "MANTAUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "MASKUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "MATICUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "MAVUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "MBLUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "MBOXUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "MCOUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "MCUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "MDTUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "MDXUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "MEMEUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "METISUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "MFTUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "MINAUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "MIRUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "MITHUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "MKRUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "MLNUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "MOBUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "MOVRUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "MTLUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "MULTIUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "NANOUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "NBSUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "NBTUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "NEARUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "NEBLUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "NEIROUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "NEOUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "NEXOUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "NFPUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "NKNUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "NMRUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "NOTUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "NPXSUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "NTRNUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "NULSUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "NUUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "OAXUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "OCEANUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "OGNUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "OGUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "OMGUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "OMNIUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "OMUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ONEUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ONGUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ONTUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "OOKIUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "OPUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ORDIUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ORNUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "OSMOUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "OXTUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "PAXGUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "PAXUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "PDAUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "PENDLEUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "PEOPLEUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "PEPEUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "PERLUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "PERPUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "PHAUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "PHBUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "PIVXUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "PIXELUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "PLAUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "PNTUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "PNUTUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "POLSUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "POLUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "POLYUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "POLYXUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "PONDUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "PORTALUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "PORTOUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "POWRUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "PROMUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "PROSUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "PSGUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "PUNDIXUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "PYRUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "PYTHUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "QIUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "QKCUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "QNTUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "QTUMUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "QUICKUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "RADUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "RAMPUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "RAREUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "RAYUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "RDNTUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "REEFUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "REIUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "RENDERUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "RENUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "REPUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "REQUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "REZUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "RGTUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "RIFUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "RLCUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "RNDRUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "RONINUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ROSEUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "RPLUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "RSRUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "RUNEUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "RVNUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "SAGAUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "SANDUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "SANTOSUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "SCRTUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "SCRUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "SCUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "SEIUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "SFPUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "SHIBUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "SKLUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "SLFUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "SLPUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "SNTUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "SNXUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "SOLUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "SPELLUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "SRMUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "SSVUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "STEEMUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "STGUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "STMXUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "STORJUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "STORMUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "STPTUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "STRATUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "STRAXUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "STRKUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "STXUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "SUIUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "SUNUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "SUPERUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "SUSDUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "SUSHIDOWNUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "SUSHIUPUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "SUSHIUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "SXPDOWNUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "SXPUPUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "SXPUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "SYNUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "SYSUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "TAOUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "TCTUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "TFUELUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "THETAUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "THEUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "TIAUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "TKOUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "TLMUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "TNSRUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "TOMOUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "TONUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "TORNUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "TRBUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "TRIBEUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "TROYUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "TRUUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "TRXDOWNUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "TRXUPUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "TRXUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "TURBOUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "TUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "TUSDTRY",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "TUSDUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "TVKUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "TWTUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "UFTUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "UMAUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "UNFIUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "UNIDOWNUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "UNIUPUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "UNIUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "USDCUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "USDPUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "USDSBUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "USDSUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "USDTARS",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "USDTBIDR",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "USDTBKRW",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "USDTBRL",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "USDTBVND",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "USDTCOP",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "USDTCZK",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "USDTDAI",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "USDTGYEN",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "USDTIDRT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "USDTMXN",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "USDTNGN",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "USDTPLN",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "USDTRON",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "USDTRUB",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "USDTTRY",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "USDTUAH",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "USDTVAI",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "USDTZAR",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "USTCUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "USTUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "USUALUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "UTKUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "VANRYUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "VENUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "VETUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "VGXUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "VIBUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "VICUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "VIDTUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "VITEUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "VOXELUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "VTHOUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "WANUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "WAVESUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "WAXPUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "WBETHUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "WBTCUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "WIFUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "WINGUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "WINUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "WLDUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "WNXMUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "WOOUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "WRXUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "WTCUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "WUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "XAIUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "XECUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "XEMUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "XLMDOWNUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "XLMUPUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "XLMUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "XMRUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "XNOUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "XRPBEARUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "XRPBULLUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "XRPDOWNUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "XRPUPUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "XRPUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "XTZDOWNUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "XTZUPUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "XTZUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "XVGUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "XVSUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "XZCUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "YFIDOWNUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "YFIIUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "YFIUPUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "YFIUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "YGGUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ZECUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ZENUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ZILUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ZKUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ZROUSDT",
+    "interval": "1d"
+  },
+  {
+    "task_type": "UPDATE_KLINES",
+    "symbol": "ZRXUSDT",
+    "interval": "1d"
+  }
+]
