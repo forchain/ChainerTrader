@@ -1,0 +1,7 @@
+backtrader
+matplotlib
+prettytable
+binance-connector
+python-dotenv
+fastapi[standard]
+pymongo
