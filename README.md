@@ -1,6 +1,5 @@
 # ChainerTrader 
-Implement TradvingView Algorithms of Youtube Channel Shi Hun
-
+A high - performance trading bot that can sift through an enormous number of strategies and extract the optimal ones.
 
 ## Install it from PyPI
 
