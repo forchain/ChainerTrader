@@ -47,7 +47,7 @@ class GridStrategy(BaseStrategy):
         for sell_level in self.sell_levels:
             if current_price >= sell_level and sell_level not in self.order_dict:
                 if self.need_stop_loss():
-                    order = self.sell()
+                    order = self.sell(size=self.params.once_size, price=current_price)
                     self.order_dict[sell_level] = order
                     self.log_debug(f"Will sell placed at {sell_level}, Cash: {cash}, Position: {positions}")
                     return
