@@ -21,13 +21,13 @@ class GridStrategy(BaseStrategy):
         self.order_dict = {}
 
         # init grid
-        latest_price = self.data.close[-len(self.data)]
+        self.latest_price = self.data.close[-len(self.data)]
         grid_size = self.params.grid_size
         levels = self.params.grid_levels
 
         for i in range(0, levels):
-            self.buy_levels.append(latest_price - (i+1) * grid_size)
-            self.sell_levels.append(latest_price + (i+1) * grid_size)
+            self.buy_levels.append(self.latest_price - (i+1) * grid_size)
+            self.sell_levels.append(self.latest_price + (i+1) * grid_size)
 
     def next(self):
         super().next()
@@ -35,6 +35,22 @@ class GridStrategy(BaseStrategy):
         current_price = self.data.close[0]
         cash = self.broker.get_cash()
         positions = self.getposition(self.data).size
+
+        if current_price - self.latest_price > self.params.grid_size*self.params.grid_levels:
+            self.latest_price=current_price
+            self.buy_levels.clear()
+            self.sell_levels.clear()
+            for i in range(0, self.params.grid_levels):
+                self.buy_levels.append(self.latest_price - (i + 1) * self.params.grid_size)
+                self.sell_levels.append(self.latest_price + (i + 1) * self.params.grid_size)
+
+        if self.latest_price - current_price > self.params.grid_size*self.params.grid_levels:
+            self.latest_price = current_price
+            self.buy_levels.clear()
+            self.sell_levels.clear()
+            for i in range(0, self.params.grid_levels):
+                self.buy_levels.append(self.latest_price - (i + 1) * self.params.grid_size)
+                self.sell_levels.append(self.latest_price + (i + 1) * self.params.grid_size)
 
         for buy_level in self.buy_levels:
             if current_price <= buy_level and buy_level not in self.order_dict:
