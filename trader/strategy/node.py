@@ -2,6 +2,7 @@ from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
 
 import datetime
+import logging
 import os.path
 
 from backtrader import num2date
@@ -14,19 +15,19 @@ import backtrader.analyzers as btanalyzers
 
 from prettytable import PrettyTable
 
+from trader.common.config import Config
 from trader.strategy.trader_result import TraderResult
+from trader.utils.operation_state import OptStatAnalyzer
 from trader.utils.profitlossratio import ProfitLossRatioAnalyzer
 from trader.utils.trend import TrendType
 from trader.utils.volatility import VolatilityAnalyzer
 from trader.utils.winrate import WinRateAnalyzer
 
 class Node:
-    def __init__(self,name,strategy,cfg=None,log=None,data=None):
-        self.plot=cfg.plot
-        self.commission=cfg.commission
-        self.atr=cfg.atr
+    def __init__(self,name,strategy,cfg:Config=None,log:logging.Logger=None,data=None):
         self.log=log
         self.name=name
+        self.cfg=cfg
 
         log.info(f"New node")
 
@@ -37,11 +38,11 @@ class Node:
         cerebro.addanalyzer(VolatilityAnalyzer, _name="volatility", cerebro=cerebro)
         cerebro.addanalyzer(WinRateAnalyzer, _name="winRate")
         cerebro.addanalyzer(ProfitLossRatioAnalyzer, _name="profitLossRatio")
+        cerebro.addanalyzer(OptStatAnalyzer, _name="optstat")
         self.cerebro=cerebro
 
         cerebro.adddata(data)
-        self.initialCash = 100000
-        cerebro.broker.setcash(self.initialCash)
+        cerebro.broker.setcash(cfg.cash)
 
         cerebro.addsizer(bt.sizers.FixedSize, stake=10)
 
@@ -55,7 +56,7 @@ class Node:
 
         finalFund = self.cerebro.broker.getvalue()
         sharpeRatio = ret.analyzers.sharpeRatio.get_analysis()
-        totalReturnRate = (finalFund - self.initialCash) / self.initialCash * 100
+        totalReturnRate = (finalFund - self.cfg.cash) / self.cfg.cash * 100
 
         drawdown = ret.analyzers.drawdown.get_analysis()
         maxDrawdown = drawdown.max.drawdown
@@ -67,7 +68,9 @@ class Node:
         avgProfit = profitLossRatio['avgProfit']
         avgLoss = profitLossRatio['avgLoss']
 
-        if self.plot:
+        optstat = ret.analyzers.optstat.get_analysis()
+
+        if self.cfg.plot:
             self.cerebro.plot()
 
         data_len = len(self.cerebro.datas[0])
@@ -77,9 +80,9 @@ class Node:
         table = PrettyTable()
         table.field_names = ["Name", "Value"]
         table.add_row(["策略", f"{self.name}"])
-        table.add_row(["手续费率", self.commission])
-        table.add_row(["ATR", self.atr])
-        table.add_row(["初始资金", format(self.initialCash, '.2f')])
+        table.add_row(["手续费率", self.cfg.commission])
+        table.add_row(["ATR", self.cfg.atr])
+        table.add_row(["初始资金", format(self.cfg.cash, '.2f')])
         table.add_row(["最终资金", format(finalFund, '.2f')])
         table.add_row(["总收益率", format(totalReturnRate, '.2f') + "%"])
         if sharpeRatio['sharperatio']:
@@ -94,6 +97,8 @@ class Node:
         table.add_row(["开始时间", (f"{start_time}")])
         table.add_row(["结束时间", (f"{end_time}")])
         table.add_row(["数据量", data_len])
+        table.add_row(["操作买单数", optstat['buys']])
+        table.add_row(["操作卖单数", optstat['sells']])
 
         print("\n")
         print(table)
