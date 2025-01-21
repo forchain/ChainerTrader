@@ -17,6 +17,7 @@ from prettytable import PrettyTable
 
 from trader.common.config import Config
 from trader.strategy.trader_result import TraderResult
+from trader.utils.operation_state import OptStatAnalyzer
 from trader.utils.profitlossratio import ProfitLossRatioAnalyzer
 from trader.utils.trend import TrendType
 from trader.utils.volatility import VolatilityAnalyzer
@@ -37,6 +38,7 @@ class Node:
         cerebro.addanalyzer(VolatilityAnalyzer, _name="volatility", cerebro=cerebro)
         cerebro.addanalyzer(WinRateAnalyzer, _name="winRate")
         cerebro.addanalyzer(ProfitLossRatioAnalyzer, _name="profitLossRatio")
+        cerebro.addanalyzer(OptStatAnalyzer, _name="optstat")
         self.cerebro=cerebro
 
         cerebro.adddata(data)
@@ -66,6 +68,8 @@ class Node:
         avgProfit = profitLossRatio['avgProfit']
         avgLoss = profitLossRatio['avgLoss']
 
+        optstat = ret.analyzers.optstat.get_analysis()
+
         if self.cfg.plot:
             self.cerebro.plot()
 
@@ -93,6 +97,8 @@ class Node:
         table.add_row(["开始时间", (f"{start_time}")])
         table.add_row(["结束时间", (f"{end_time}")])
         table.add_row(["数据量", data_len])
+        table.add_row(["操作买单数", optstat['buys']])
+        table.add_row(["操作卖单数", optstat['sells']])
 
         print("\n")
         print(table)
