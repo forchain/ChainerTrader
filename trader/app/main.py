@@ -26,7 +26,7 @@ def main():
     parser.add_argument("--db_name", help="Database name for MongoDB", type=str,default="trader")
     parser.add_argument('--window', help='Window for backtesting', action='store', type=int, default=1000)
     parser.add_argument("--tasks", help="Tasks config:TRADER,BACK_TRADER,UPDATE_KLINES,CHECK_KLINES,IMPORT_CSV",type=str)
-
+    parser.add_argument('--cash', help='Init cash for backtesting', action='store', type=int, default=100000)
 
     args = parser.parse_args()
     db_uri = None
@@ -44,7 +44,8 @@ def main():
                  db_uri,
                  args.db_name,
                  args.window,
-                 args.tasks)
+                 args.tasks,
+                 args.cash)
     if args.version:
         print(version())
         return

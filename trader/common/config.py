@@ -19,7 +19,8 @@ class Config:
                       db_uri=None,
                       db_name=NAME,
                       window=1000,
-                      tasks=None):
+                      tasks=None,
+                      cash=100000):
         self.mode=parseTrendType(mode)
         self.commission=commission
         self.atr=atr
@@ -32,6 +33,7 @@ class Config:
         self.db_name=db_name
         self.window=window
         self.tasks=tasks
+        self.cash=cash
 
     def exportEnv(self):
         os.environ['commission'] = str(self.commission)
@@ -50,6 +52,7 @@ class Config:
         os.environ['window'] = str(self.window)
         if self.tasks:
             os.environ['tasks'] = self.tasks
+        os.environ['cash'] = str(self.cash)
 
     def to_dict(self):
         return {
@@ -65,6 +68,7 @@ class Config:
             'db_name': self.db_name,
             'window': self.window,
             'tasks':self.tasks,
+            'cash':self.cash
         }
 
     def get_log_level(self)->int:
@@ -94,6 +98,7 @@ def NewConfigFromEnv():
         os.environ.get('db_name'),
         int(window),
         os.environ.get('tasks'),
+        os.environ.get('cash'),
     )
 
 def default()->Config:
