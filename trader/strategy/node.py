@@ -103,4 +103,13 @@ class Node:
         print("\n")
         print(table)
 
-        return TraderResult(totalReturnRate,maxDrawdown,maxDrawdownDuration,volatility,winRate,plr,avgProfit,avgLoss)
+        return TraderResult(totalReturnRate,
+                            maxDrawdown,
+                            maxDrawdownDuration,
+                            volatility,
+                            winRate,
+                            plr,
+                            avgProfit,
+                            avgLoss,
+                            optstat['buys'],
+                            optstat['sells'])
