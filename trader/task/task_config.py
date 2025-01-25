@@ -6,17 +6,18 @@ from trader.task.task_type import TaskType, parse_task_type
 import json
 
 from trader.utils.symbol_interval import SymbolInterval, Interval
+from trader.utils.symbols_interval import SymbolsInterval
 
 
 class TaskConfig:
-    def __init__(self,ttype:TaskType,symbol_interval=SymbolInterval("BTCUSDT",Interval("1d"))):
+    def __init__(self,ttype:TaskType,symbols_interval=SymbolsInterval("BTCUSDT",Interval("1d"))):
         self.ttype=ttype
         self.csv = None
         self.start_time=0
         self.end_time=0
         self.strategy=None
-        self.symbol_interval = symbol_interval
-
+        self.symbol_interval = symbols_interval.get(0)
+        self.symbols_interval = symbols_interval
         self.id=0
 
     def to_dict(self):
@@ -44,7 +45,11 @@ def parse_task_config(cfg)->[TaskConfig]:
 
     ret=[]
     for tcd in parsed_list:
-        tc=TaskConfig(parse_task_type(tcd['task_type']),SymbolInterval(tcd['symbol'],Interval(tcd['interval'])))
+        if "symbols" in tcd:
+            si = SymbolsInterval(tcd['symbols'], Interval(tcd['interval']))
+        else:
+            si = SymbolsInterval(tcd['symbol'], Interval(tcd['interval']))
+        tc = TaskConfig(parse_task_type(tcd['task_type']),si)
         if "start_time" in tcd:
             start_time=parse_datetime(tcd['start_time'])
             tc.start_time=int(start_time.timestamp())

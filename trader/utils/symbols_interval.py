@@ -1,7 +1,7 @@
-from trader.utils.symbol_interval import Interval
+from trader.utils.symbol_interval import Interval, SymbolInterval
 import os
 
-class SymbolInterval:
+class SymbolsInterval:
     def __init__(self,symbols:str,interval:Interval):
         symbol_list=[]
         if os.path.isfile(symbols):
@@ -13,7 +13,7 @@ class SymbolInterval:
         else:
             symbol_list=symbols.split(',')
 
-        self.symbol_interval:SymbolInterval=[]
+        self.symbol_interval=[]
         for sy in symbol_list:
              self.symbol_interval.append(SymbolInterval(sy,interval))
 
