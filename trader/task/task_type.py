@@ -7,6 +7,7 @@ class TaskType(Enum):
     UPDATE_KLINES = 2
     CHECK_KLINES = 3
     IMPORT_CSV = 4
+    AUTO_BACK_TRADER = 5
 
 def parse_task_type(name):
     if name == TaskType.TRADER.name:
@@ -19,4 +20,6 @@ def parse_task_type(name):
         return TaskType.CHECK_KLINES
     elif name == TaskType.IMPORT_CSV.name:
         return TaskType.IMPORT_CSV
+    elif name == TaskType.AUTO_BACK_TRADER.name:
+        return TaskType.AUTO_BACK_TRADER
     return None

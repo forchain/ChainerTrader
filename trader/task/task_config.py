@@ -21,14 +21,25 @@ class TaskConfig:
         self.id=0
 
     def to_dict(self):
-        return {
-            'id': self.id,
-            'type':self.ttype,
-            'symbol_interval': self.symbol_interval.name(),
-            'csv':self.csv,
-            'start_time':self.start_time,
-            'end_time':self.end_time,
-        }
+        if len(self.symbols_interval) > 1:
+            return {
+                'id': self.id,
+                'type': self.ttype,
+                'symbols_interval': len(self.symbols_interval),
+                'csv': self.csv,
+                'start_time': self.start_time,
+                'end_time': self.end_time,
+            }
+        else:
+            return {
+                'id': self.id,
+                'type': self.ttype,
+                'symbol_interval': self.symbol_interval.name(),
+                'csv': self.csv,
+                'start_time': self.start_time,
+                'end_time': self.end_time,
+            }
+
 
 # '[{"task_type": "CHECK_KLINES", "start_time": "2023-09-24 14:30:00","end_time":"0","symbol":"BTCUSDT","interval":"1d","csv":"ETHUSDT-1h-202301-202401.csv","strategy","ShihunRSI2"}]'
 def parse_task_config(cfg)->[TaskConfig]:
