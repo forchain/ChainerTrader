@@ -1,13 +1,12 @@
 import logging
 import os
 
-from dotenv import load_dotenv
 
 from trader.app.app import App
 from trader.common import path
 from trader.common.common import NAME
 from trader.common.config import Config, NewConfigFromEnv, default
-from trader.utils.top100 import get_symbol_top100
+
 
 
 def test_app():
@@ -39,13 +38,3 @@ def test_config():
     cfg.exportEnv()
     ncfg=NewConfigFromEnv()
     print(ncfg.to_dict())
-
-def test_get_symbol_top100():
-    load_dotenv()
-    # get env value
-    apiKey = os.getenv("coinMarketCapAPIKey")
-
-    index=0
-    for si in get_symbol_top100(apiKey):
-        print(f"{index} -> {si}")
-        index+=1
