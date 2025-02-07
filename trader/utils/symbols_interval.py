@@ -1,3 +1,4 @@
+from trader.common import path
 from trader.utils.symbol_interval import Interval, SymbolInterval
 import os
 
@@ -6,7 +7,7 @@ class SymbolsInterval:
         symbol_list=[]
         if os.path.isfile(symbols):
             try:
-                with open(symbols, 'r', encoding='utf-8') as file:
+                with open(path.get_file_path(symbols), 'r', encoding='utf-8') as file:
                     symbol_list = [line.strip() for line in file]
             except FileNotFoundError:
                 return
