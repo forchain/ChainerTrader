@@ -2,8 +2,7 @@
   {
     "task_type": "AUTO_BACK_TRADER",
     "symbols": "symbols_top100.txt",
-    "interval": "1h",
-    "csv":"ETHUSDT-1h-202301-202401.csv",
-    "strategy":"ShihunMACD,ShihunMACD2,ShihunRSI,ShihunRSI2,ShihunMACDRISBB,MACDRSI,GRID,BOLLMEANREG,TURTLE"
+    "interval": "1d",
+    "strategys":"ShihunMACD,ShihunMACD2,ShihunRSI,ShihunRSI2,ShihunMACDRISBB,MACDRSI,GRID,BOLLMEANREG,TURTLE"
   }
 ]

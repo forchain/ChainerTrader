@@ -14,14 +14,14 @@ class SymbolsInterval:
         else:
             symbol_list=symbols.split(',')
 
-        self.symbol_interval=[]
+        self.symbol_intervals=[]
         for sy in symbol_list:
-             self.symbol_interval.append(SymbolInterval(sy,interval))
+             self.symbol_intervals.append(SymbolInterval(sy,interval))
 
     def get(self,index:int):
-        if index >= len(self.symbol_interval):
+        if index >= len(self.symbol_intervals):
             return None
-        return self.symbol_interval[index]
+        return self.symbol_intervals[index]
 
     def __len__(self):
-        return len(self.symbol_interval)
+        return len(self.symbol_intervals)
