@@ -36,9 +36,7 @@ class BackTraderTask(BaseTask):
 
         data = None
         if self.tcfg.csv:
-                data_file = self.tcfg.csv
-                if not os.path.isabs(self.tcfg.csv):
-                    data_file = os.path.join(path.GetDatasDir(),self.tcfg.csv)
+                data_file = path.get_file_path(self.tcfg.csv)
                 if self.tcfg.start_time <= 0 and self.tcfg.end_time <= 0:
                     data = BinanceCSVData(
                         dataname=data_file,
