@@ -10,13 +10,14 @@ from trader.utils.symbols_interval import SymbolsInterval
 
 
 class TaskConfig:
-    def __init__(self,ttype:TaskType,symbol_interval=SymbolInterval("BTCUSDT",Interval("1d")),csv=None,start_time=0,end_time=0,strategy=None):
+    def __init__(self,ttype:TaskType,symbol_interval=SymbolInterval("BTCUSDT",Interval("1d")),csv=None,start_time=0,end_time=0,strategy=None,auto_download=False):
         self.ttype=ttype
         self.csv = csv
         self.start_time=start_time
         self.end_time=end_time
         self.strategy=strategy
         self.symbol_interval = symbol_interval
+        self.auto_download = auto_download
 
         self.id=0
 
@@ -29,6 +30,7 @@ class TaskConfig:
             'start_time': self.start_time,
             'end_time': self.end_time,
             'strategy': self.strategy,
+            'auto_download': self.auto_download,
         }
 
 
@@ -48,6 +50,8 @@ def parse_task_config(cfg)->[TaskConfig]:
     ret=[]
     index = 0
     for tcd in parsed_list:
+        task_type = parse_task_type(tcd['task_type'])
+
         if "symbols" in tcd:
             sis = SymbolsInterval(tcd['symbols'], Interval(tcd['interval']))
         else:
@@ -68,21 +72,23 @@ def parse_task_config(cfg)->[TaskConfig]:
         if "strategy" in tcd:
             strategy = parseStrategyType(tcd['strategy'])
             strategys.append(strategy)
-        id=0
-        if "id" in tcd:
-            id = tcd['id']
-
         elif "strategys" in tcd:
             strategys_list = tcd['strategys'].split(',')
             for st in strategys_list:
                 strategy = parseStrategyType(st)
                 strategys.append(strategy)
 
-        task_type = parse_task_type(tcd['task_type'])
+        id=0
+        if "id" in tcd:
+            id = tcd['id']
+
+        auto_download=False
+        if "auto_download" in tcd:
+            auto_download = tcd['auto_download']
 
         for si in sis.symbol_intervals:
             for strategy in strategys:
-                tc = TaskConfig(task_type, si, csv, start_time, end_time, strategy)
+                tc = TaskConfig(task_type, si, csv, start_time, end_time, strategy,auto_download)
                 if id == 0:
                     id=index
                     index+=1
