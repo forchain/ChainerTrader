@@ -46,6 +46,7 @@ def parse_task_config(cfg)->[TaskConfig]:
         parsed_list = json.loads(cfg)
 
     ret=[]
+    index = 0
     for tcd in parsed_list:
         if "symbols" in tcd:
             sis = SymbolsInterval(tcd['symbols'], Interval(tcd['interval']))
@@ -63,14 +64,30 @@ def parse_task_config(cfg)->[TaskConfig]:
         csv = None
         if "csv" in tcd:
             csv = tcd['csv']
-        strategy = None
+        strategys = []
         if "strategy" in tcd:
             strategy = parseStrategyType(tcd['strategy'])
+            strategys.append(strategy)
+        id=0
+        if "id" in tcd:
+            id = tcd['id']
+
+        elif "strategys" in tcd:
+            strategys_list = tcd['strategys'].split(',')
+            for st in strategys_list:
+                strategy = parseStrategyType(st)
+                strategys.append(strategy)
+
         task_type = parse_task_type(tcd['task_type'])
 
         for si in sis.symbol_intervals:
-            tc = TaskConfig(task_type, si,csv,start_time,end_time,strategy)
-            ret.append(tc)
+            for strategy in strategys:
+                tc = TaskConfig(task_type, si, csv, start_time, end_time, strategy)
+                if id == 0:
+                    id=index
+                    index+=1
+                tc.id=id
+                ret.append(tc)
 
     return ret
 
