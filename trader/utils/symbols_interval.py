@@ -5,9 +5,10 @@ import os
 class SymbolsInterval:
     def __init__(self,symbols:str,interval:Interval):
         symbol_list=[]
-        if os.path.isfile(symbols):
+        file_path = path.get_file_path(symbols)
+        if os.path.isfile(file_path):
             try:
-                with open(path.get_file_path(symbols), 'r', encoding='utf-8') as file:
+                with open(file_path, 'r', encoding='utf-8') as file:
                     symbol_list = [line.strip() for line in file]
             except FileNotFoundError:
                 return
