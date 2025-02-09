@@ -76,7 +76,11 @@ class TaskManager:
             tasks = []
             for cfg in cfgs:
                 task = BackTraderTask(cfg,self.cfg,self.log,self.db_manager,self.exchange)
-                strategy,data = task.start(queue,quit)
+                ret = await task.start(queue,quit)
+                if ret is None:
+                    continue
+                strategy=ret[0]
+                data=ret[1]
                 tasks.append(task)
 
                 #parmas = manager.list()
