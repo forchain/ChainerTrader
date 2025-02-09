@@ -1,5 +1,6 @@
 import os
 
+from trader.common import path
 from trader.common.common import parse_datetime
 from trader.strategy.strategy import parseStrategyType
 from trader.task.task_type import TaskType, parse_task_type
@@ -36,9 +37,10 @@ class TaskConfig:
 
 # '[{"task_type": "CHECK_KLINES", "start_time": "2023-09-24 14:30:00","end_time":"0","symbol":"BTCUSDT","interval":"1d","csv":"ETHUSDT-1h-202301-202401.csv","strategy","ShihunRSI2"}]'
 def parse_task_config(cfg)->[TaskConfig]:
-    if os.path.isfile(cfg):
+    file_path=path.get_file_path(cfg)
+    if os.path.isfile(file_path):
         try:
-            with open(cfg, 'r', encoding='utf-8') as file:
+            with open(file_path, 'r', encoding='utf-8') as file:
                 parsed_list = json.load(file)
         except json.JSONDecodeError:
             return []
@@ -90,9 +92,11 @@ def parse_task_config(cfg)->[TaskConfig]:
             for strategy in strategys:
                 tc = TaskConfig(task_type, si, csv, start_time, end_time, strategy,auto_download)
                 if id == 0:
-                    id=index
+                    tc.id=index
                     index+=1
-                tc.id=id
+                else:
+                    tc.id=id
+
                 ret.append(tc)
 
     return ret
