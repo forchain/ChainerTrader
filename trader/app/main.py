@@ -27,6 +27,7 @@ def main():
     parser.add_argument('--window', help='Window for backtesting', action='store', type=int, default=1000)
     parser.add_argument("--tasks", help="Tasks config:TRADER,BACK_TRADER,UPDATE_KLINES,CHECK_KLINES,IMPORT_CSV",type=str)
     parser.add_argument('--cash', help='Init cash for backtesting', action='store', type=int, default=100000)
+    parser.add_argument('--stat', help='The maximum number of entries displayed in statistics for backtesting', action='store', type=int, default=50)
 
     args = parser.parse_args()
     db_uri = None
@@ -45,7 +46,8 @@ def main():
                  args.db_name,
                  args.window,
                  args.tasks,
-                 args.cash)
+                 args.cash,
+                 args.stat)
     if args.version:
         print(version())
         return

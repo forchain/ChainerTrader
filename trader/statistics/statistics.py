@@ -15,6 +15,12 @@ class Statistics:
         self.bts_list=[]
 
     def handler(self,msg:Message):
+        if self.cfg.stat == 0:
+            return
+        elif self.cfg.stat > 0:
+            if len(self.bts_list) > self.cfg.stat:
+                return
+
         self.log.info(f"handle message:{msg.name()}")
         if isinstance(msg.data,BackTraderStat):
             self.bts_list.append(msg.data)
