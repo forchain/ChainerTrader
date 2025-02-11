@@ -15,7 +15,7 @@ class Statistics:
         self.bts_list=[]
         self.operates=[]
 
-    def handler(self,msg:Message):
+    def handler_stat(self,msg:Message):
         if self.cfg.stat == 0:
             return
         elif self.cfg.stat > 0:
@@ -54,6 +54,9 @@ class Statistics:
 
             print("\n")
             print(table)
+
+    def handler_op(self, msg: Message):
+        self.operates.append(msg.data)
 
     def get_operates(self,limit:int = 10):
         ret=[]
