@@ -13,6 +13,7 @@ class Statistics:
         self.cfg = cfg
         self.log.info(f"Init Statistics")
         self.bts_list=[]
+        self.operates=[]
 
     def handler(self,msg:Message):
         if self.cfg.stat == 0:
@@ -53,3 +54,11 @@ class Statistics:
 
             print("\n")
             print(table)
+
+    def get_operates(self,limit:int = 10):
+        ret=[]
+        for op in self.operates:
+            if len(ret) >= limit:
+                break
+            ret.append(op.to_dict())
+        return ret

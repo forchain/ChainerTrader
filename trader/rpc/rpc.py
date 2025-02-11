@@ -86,3 +86,7 @@ def read_exchange_info(symbol:str):
 @rpc.get("/update_klines_task")
 def update_kines_task():
     return rpc.app.task_manager.add_task()
+
+@rpc.get("/operates/")
+def read_start_app(limit:int = 10):
+    return rpc.app.stat.get_operates()
