@@ -135,9 +135,7 @@ class App:
                 self.log().info("Received exit message, shutting down...")
                 break
             if msg.is_stat():
-                self.stat.handler_stat(msg)
-            if msg.is_op():
-                self.stat.handler_op(msg)
+                self.stat.handler(msg)
 
             queue.task_done()
 

@@ -5,6 +5,7 @@ from prettytable import PrettyTable
 from trader.common.common import sleep
 from trader.common.message import Message
 from trader.statistics.stat import BackTraderStat, TraderStat
+from trader.strategy.trader_result import TraderResult
 
 
 class Statistics:
@@ -13,9 +14,8 @@ class Statistics:
         self.cfg = cfg
         self.log.info(f"Init Statistics")
         self.bts_list=[]
-        self.operates=[]
 
-    def handler_stat(self,msg:Message):
+    def handler(self,msg:Message):
         if self.cfg.stat == 0:
             return
         elif self.cfg.stat > 0:
@@ -55,13 +55,15 @@ class Statistics:
             print("\n")
             print(table)
 
-    def handler_op(self, msg: Message):
-        self.operates.append(msg.data)
-
     def get_operates(self,limit:int = 10):
         ret=[]
-        for op in self.operates:
+        if len(self.bts_list) <= 0:
+            return ret
+
+        for ts in self.bts_list:
             if len(ret) >= limit:
                 break
-            ret.append(op.to_dict())
+            if ts.operate is None:
+                continue
+            ret.append(ts.operate.to_dict())
         return ret

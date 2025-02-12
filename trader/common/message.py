@@ -6,8 +6,6 @@ class MessageType(Enum):
     TASK = 2
     STAT = 3
     BACKTRADER = 4
-    OPERATE = 5
-
 
 
 class Message:
@@ -41,9 +39,6 @@ class Message:
     def is_stat(self):
         return self.tp == MessageType.STAT
 
-    def is_op(self):
-        return self.tp == MessageType.OPERATE
-
 def new_exit_msg()->Message:
     return Message(MessageType.EXIT)
 
@@ -55,6 +50,3 @@ def new_task_msg(data)->Message:
 
 def new_stat_msg(data,id=0)->Message:
     return Message(MessageType.STAT,data,id)
-
-def new_operate_msg(data)->Message:
-    return Message(MessageType.OPERATE,data)

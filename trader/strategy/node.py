@@ -112,4 +112,5 @@ class Node:
                             avgProfit,
                             avgLoss,
                             optstat['buys'],
-                            optstat['sells'])
+                            optstat['sells'],
+                            optstat['latest'])
