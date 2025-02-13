@@ -100,7 +100,8 @@ def process_backtrader(parmas,result):
     if ret.operate:
         next_time = add_time_duration(ret.operate.dtime, tcfg.symbol_interval.interval, 1)
         if next_time < int(datetime.now().timestamp()):
-            ret.operate=None
+            #ret.operate=None
+            ret.operate.symbol_interval = tcfg.symbol_interval
         else:
             ret.operate.symbol_interval=tcfg.symbol_interval
     result.append(new_stat_msg(BackTraderStat(tcfg.strategy.name, tcfg.symbol_interval.name(), ret), tcfg.id))

@@ -64,7 +64,7 @@ class Statistics:
         for ts in self.bts_list:
             if len(ret) >= limit:
                 break
-            if ts.operate is None:
+            if ts.tret.operate is None:
                 continue
-            ret.append(ts.operate.to_dict())
+            ret.append(ts.tret.operate.to_dict())
         return ret

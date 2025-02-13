@@ -21,6 +21,6 @@ class Operate:
             "type":self.otype.name,
             "symbol":self.symbol_interval.symbol,
             "interval":self.symbol_interval.interval.value,
-            "datetime":datetime.fromtimestamp(self.dtime),
+            "datetime":f"{datetime.fromtimestamp(self.dtime)}",
             "price":self.price,
         }

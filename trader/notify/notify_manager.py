@@ -28,9 +28,9 @@ class NotifyManager:
     def handler(self, msg: Message):
         if self.notice is None or len(self.notice) <= 0:
             return
-        if msg.data is None:
+        if msg.data is None or msg.data.tret.operate is None:
             return
         for n in self.notice:
-            content=f"{msg.data.to_dict()}"
+            content=f"{msg.data.tret.operate.to_dict()}"
             n.send(content,"trader operate")
             self.log.info(f"Notify {n.tp.name} : {content}")
