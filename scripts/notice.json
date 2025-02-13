@@ -1,0 +1,27 @@
+[
+  {
+    "type": "MAIL_QQ",
+    "sender": "your_email@qq.com",
+    "password":"your_smtp_auth_code"
+  },
+  {
+    "type": "MAIL_GMAIL",
+    "sender": "your_email@gmail.com",
+    "password":"your_smtp_auth_code"
+  },
+  {
+    "type": "MAIL_OUTLOOK",
+    "sender": "your_email@outlook.com",
+    "password":"your_smtp_auth_code"
+  },
+  {
+    "type": "MAIL_163",
+    "sender": "your_email@163.com",
+    "password":"your_smtp_auth_code"
+  },
+  {
+    "type": "MAIL_LARK",
+    "sender": "your_email@lark.com",
+    "password":"your_smtp_auth_code"
+  }
+]

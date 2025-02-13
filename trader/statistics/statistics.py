@@ -1,5 +1,6 @@
 from logging import Logger
 
+from fastapi.openapi.models import Operation
 from prettytable import PrettyTable
 
 from trader.common.common import sleep
