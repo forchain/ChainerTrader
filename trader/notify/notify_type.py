@@ -60,6 +60,9 @@ class NotifyMail:
 
         try:
             server = smtplib.SMTP_SSL(self.stmp_server, self.stmp_port)
+            #if self.tp == NotifyType.MAIL_GMAIL:
+                #server.starttls()
+
             server.login(self.sender,self.password)
             server.sendmail(self.sender, self.recipient, msg.as_string())
             server.quit()
@@ -69,10 +72,10 @@ class NotifyMail:
 
 def default_notify_mail_template():
     ret = {}
-    ret[NotifyType.MAIL_QQ] = NotifyMail(NotifyType.MAIL_QQ,"smtp.qq.com",587)
-    ret[NotifyType.MAIL_GMAIL] = NotifyMail(NotifyType.MAIL_GMAIL, "smtp.qq.com", 587)
-    ret[NotifyType.MAIL_OUTLOOK] = NotifyMail(NotifyType.MAIL_OUTLOOK, "smtp.qq.com", 587)
-    ret[NotifyType.MAIL_163] = NotifyMail(NotifyType.MAIL_163, "smtp.qq.com", 587)
+    ret[NotifyType.MAIL_QQ] = NotifyMail(NotifyType.MAIL_QQ,"smtp.qq.com",465)
+    ret[NotifyType.MAIL_GMAIL] = NotifyMail(NotifyType.MAIL_GMAIL, "smtp.gmail.com", 465)
+    ret[NotifyType.MAIL_OUTLOOK] = NotifyMail(NotifyType.MAIL_OUTLOOK, "smtp.office365.com", 465)
+    ret[NotifyType.MAIL_163] = NotifyMail(NotifyType.MAIL_163, "smtp.163.com", 465)
     ret[NotifyType.MAIL_LARK] = NotifyMail(NotifyType.MAIL_LARK, "smtp.larksuite.com", 465)
 
     return ret
