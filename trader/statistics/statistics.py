@@ -24,10 +24,17 @@ class Statistics:
                 return
 
         self.log.info(f"handle message:{msg.name()}")
+        add=False
         if isinstance(msg.data,BackTraderStat):
             self.bts_list.append(msg.data)
+            add=True
         if isinstance(msg.data,TraderStat):
             self.bts_list.append(msg.data)
+            add=True
+        if add and len(self.bts_list) > 1:
+            self.bts_list.sort(key=lambda bts: bts.tret.total_return_rate)
+            del_stat=self.bts_list.pop(0)
+            self.log.info(f"Remove item form stat list:{del_stat.strategy} {del_stat.symbol_interval} {del_stat.total_return_rate}")
 
     def report(self):
         if len(self.bts_list) > 0:
