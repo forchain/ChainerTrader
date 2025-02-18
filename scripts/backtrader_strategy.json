@@ -54,5 +54,12 @@
     "interval": "1h",
     "csv":"ETHUSDT-1h-202301-202401.csv",
     "strategy":"BOLLMEANREG"
+  },
+  {
+    "task_type": "BACK_TRADER",
+    "symbol": "ETHUSDT",
+    "interval": "1h",
+    "csv":"ETHUSDT-1h-202301-202401.csv",
+    "strategy":"TURTLE"
   }
 ]

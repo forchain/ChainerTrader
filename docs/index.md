@@ -180,5 +180,10 @@ $ trader --tasks=./scripts/backtrader_strategy.json
 $ trader --tasks=./tasks.json
 ```
 
+## Automatically generate backtesting tasks based on multiple configurations of 'symbols' and 'strategys'
+```bash
+$ trader --tasks=./multi_backtrader.json --db --exchange=BINANCE
+```
+
 ## Development
 Read the [CONTRIBUTING.md](CONTRIBUTING.md) file.

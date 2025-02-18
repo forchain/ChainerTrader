@@ -42,6 +42,8 @@ class BaseStrategy(bt.Strategy):
         if int(self.start_time.timestamp()) == 0:
             self.start_time=cur
 
+        self.log_debug(f'Kline:{cur} 收盘价, {self.data.close[0]:.2f}')
+
 
     def notify_order(self, order):
         if order.status in [order.Submitted, order.Accepted]:
