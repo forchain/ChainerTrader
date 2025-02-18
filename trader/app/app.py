@@ -5,6 +5,7 @@ from asyncio import Event, Queue
 from datetime import datetime
 
 from trader.app.database_manager import DatabaseManager
+from trader.notify.notify_manager import NotifyManager
 from trader.statistics.statistics import Statistics
 from trader.common.message import Message, new_exit_msg
 from trader.task.task_manager import TaskManager
@@ -30,6 +31,8 @@ class App:
         if self.cfg.exchange == EXCHANGE_NAME:
             self.exchange = BinanceExchange(self.cfg, self.log())
 
+        self.notify_mgr= NotifyManager(cfg,self.logger)
+
         self.stat = Statistics(self.cfg, self.log())
         self.task_manager=None
         if self.cfg.tasks:
@@ -49,6 +52,8 @@ class App:
             return True
 
         self.log().info(f"Start {self.name()} App, config:{self.cfg.to_dict()}")
+
+        self.notify_mgr.start()
 
         if self.db_manager:
             self.db_manager.start()
@@ -136,6 +141,7 @@ class App:
                 break
             if msg.is_stat():
                 self.stat.handler(msg)
+                self.notify_mgr.handler(msg)
 
             queue.task_done()
 

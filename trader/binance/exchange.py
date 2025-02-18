@@ -75,12 +75,17 @@ class BinanceExchange:
         if r_limit > KLINE_LIMIT_MAX:
             r_limit=KLINE_LIMIT_MAX
 
-        if start_time and end_time:
-            start_time *= 1000
-            end_time *= 1000
-            ret = self.spot_client.klines(si.symbol,si.interval.value,startTime=start_time,endTime=end_time,limit=r_limit)
-        else:
-            ret = self.spot_client.klines(si.symbol, si.interval.value,limit=r_limit)
+        try:
+            if start_time and end_time:
+                start_time *= 1000
+                end_time *= 1000
+                ret = self.spot_client.klines(si.symbol, si.interval.value, startTime=start_time, endTime=end_time,limit=r_limit)
+            else:
+                ret = self.spot_client.klines(si.symbol, si.interval.value, limit=r_limit)
+        except Exception as e:
+            self.log.error(f"{e}")
+            return None
+
         kls = parse_klines(ret)
 
         if kls and len(kls) > 0:

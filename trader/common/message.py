@@ -8,7 +8,6 @@ class MessageType(Enum):
     BACKTRADER = 4
 
 
-
 class Message:
     count:int=0
     def __init__(self,tp:MessageType,data=None,id=0):
