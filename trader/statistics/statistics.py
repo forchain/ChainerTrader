@@ -31,8 +31,8 @@ class Statistics:
         elif self.cfg.stat > 0:
             if len(self.bts_list) > self.cfg.stat:
                 if add and len(self.bts_list) > 1:
-                    self.bts_list.sort(key=lambda bts: bts.tret.total_return_rate)
-                    del_stat = self.bts_list.pop(0)
+                    self.bts_list.sort(key=lambda bts: bts.tret.total_return_rate,reverse=True)
+                    del_stat = self.bts_list.pop()
                     self.log.info(
                         f"Remove item form stat list:{del_stat.strategy} {del_stat.symbol_interval} {del_stat.tret.total_return_rate}")
 
@@ -40,7 +40,7 @@ class Statistics:
         if len(self.bts_list) > 0:
             self.log.info(f"Report BackTrader stats")
             if len(self.bts_list) > 1:
-                self.bts_list.sort(key=lambda bts: bts.tret.total_return_rate)
+                self.bts_list.sort(key=lambda bts: bts.tret.total_return_rate,reverse=True)
 
             table = PrettyTable()
             table.field_names = ["Index","策略", "币种", "总收益率","最大回撤","回撤持续","波动率","胜率","平均盈亏比","平均盈利","平均亏损","操作买卖数"]
