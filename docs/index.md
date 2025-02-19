@@ -157,6 +157,7 @@ $ trader --tasks='[{"task_type": "TRADER","symbol":"BTCUSDT","interval":"1d"}]' 
 ```
 
 ```bash
+$ cd ./trader/scripts
 $ trader --tasks=./scripts/backtrader_strategy.json
 ```
 
@@ -182,6 +183,7 @@ $ trader --tasks=./tasks.json
 
 ## Automatically generate backtesting tasks based on multiple configurations of 'symbols' and 'strategys'
 ```bash
+$ cd ./trader/scripts
 $ trader --tasks=./multi_backtrader.json --db --exchange=BINANCE
 ```
 
