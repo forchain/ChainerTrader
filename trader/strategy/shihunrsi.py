@@ -19,6 +19,7 @@ class ShihunRSIStrategy(TrilogyStrategy):
         self.order = None
 
         self.rsi = bt.indicators.RSI(self.datas[0], period=self.params.period)
+        self.trilogy = False
 
     def next(self):
         super().next()
@@ -27,8 +28,12 @@ class ShihunRSIStrategy(TrilogyStrategy):
             return
 
         if not self.position:
-            if self.rsi[0] < self.params.oversold:
+            if not self.trilogy:
                 if self.canBuy():
+                    self.trilogy = True
+
+            if self.rsi[0] < self.params.oversold:
+                if self.trilogy:
                     self.buy()
         else:
             if self.rsi[0] > self.params.overbought or self.canSell():
