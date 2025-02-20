@@ -35,6 +35,8 @@ class ShihunRSIStrategy(TrilogyStrategy):
             if self.rsi[0] < self.params.oversold:
                 if self.trilogy:
                     self.buy()
+                    self.trilogy = False
         else:
             if self.rsi[0] > self.params.overbought or self.canSell():
                 self.sell()
+                self.trilogy = False
