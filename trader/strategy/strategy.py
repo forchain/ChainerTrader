@@ -4,6 +4,7 @@ from trader.strategy.boll_mean_reg import BollingerMeanRegStrategy
 from trader.strategy.dualma import DualMovingAverageStrategy
 from trader.strategy.dualthrust import DualThrustStrategy
 from trader.strategy.grid import GridStrategy
+from trader.strategy.kdj import KDJStrategy
 from trader.strategy.macdrsi import MACDRSIStrategy
 from trader.strategy.shihunmacd import ShihunMACDStrategy
 from trader.strategy.shihunmacd2 import ShihunMACD2Strategy
@@ -25,6 +26,7 @@ class StrategyType(Enum):
     TURTLE = 8            # Turtle: Richard Dennis and William Eckhardt
     DUALMA = 9            # Dual Moving Average Crossover Strategy
     DUALTHRUST = 10       # Dual thrust strategy
+    KDJ = 11              # KDJ strategy
 
 def parseStrategyType(name):
     if name == StrategyType.ShihunMACD.name:
@@ -49,6 +51,8 @@ def parseStrategyType(name):
         return StrategyType.DUALMA
     elif name == StrategyType.DUALTHRUST.name:
         return StrategyType.DUALTHRUST
+    elif name == StrategyType.KDJ.name:
+        return StrategyType.KDJ
     return None
 
 def parseStrategy(stype):
@@ -84,5 +88,8 @@ def parseStrategy(stype):
 
     elif stype == StrategyType.DUALTHRUST:
         return DualThrustStrategy
+
+    elif stype == StrategyType.KDJ:
+        return KDJStrategy
     else:
         return None
