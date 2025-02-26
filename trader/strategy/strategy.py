@@ -93,3 +93,14 @@ def parseStrategy(stype):
         return KDJStrategy
     else:
         return None
+
+def parse_strategys(stypes:[StrategyType]):
+    ret=[]
+    for st in stypes:
+        cl=parseStrategy(st)
+        if cl is None:
+            continue
+        ret.append(cl)
+    if len(ret) <= 0:
+        return None
+    return ret

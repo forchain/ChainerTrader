@@ -32,7 +32,9 @@ class Node:
         log.info(f"New node")
 
         cerebro = bt.Cerebro()
-        cerebro.addstrategy(strategy, atr=cfg.atr,mode=cfg.mode,period=cfg.period,log=log)
+        for st in strategy:
+            cerebro.addstrategy(st, atr=cfg.atr, mode=cfg.mode, period=cfg.period, log=log)
+
         cerebro.addanalyzer(btanalyzers.SharpeRatio, _name='sharpeRatio')
         cerebro.addanalyzer(btanalyzers.DrawDown, _name="drawdown")
         cerebro.addanalyzer(VolatilityAnalyzer, _name="volatility", cerebro=cerebro)
