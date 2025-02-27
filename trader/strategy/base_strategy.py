@@ -11,6 +11,7 @@ from backtrader import num2date
 # chainer basic framework strategy
 class BaseStrategy(bt.Strategy):
     params = (
+        ('name','Unkown'),
         ('atr', False),
         ('atrperiod', 14),
         ('atrdist', 5),  # ATR distance for stop price
@@ -84,7 +85,7 @@ class BaseStrategy(bt.Strategy):
         if self.params.log is None:
             print(msg)
             return
-        self.params.log.info(msg)
+        self.params.log.info(f"{msg}, [{self.name()}]")
 
     def log_debug(self,msg):
         if self.params.log is None:
@@ -120,3 +121,6 @@ class BaseStrategy(bt.Strategy):
         if self.params.atr:
             pdist = self.atr[0] * self.params.atrdist
         self.takeProfitPoint = self.datas[0].close[0] + pdist
+
+    def name(self):
+        return self.params.name

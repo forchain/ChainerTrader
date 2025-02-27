@@ -94,6 +94,33 @@ def parseStrategy(stype):
     else:
         return None
 
+def get_strategy_type(cl):
+    if cl == ShihunMACDStrategy:
+        return StrategyType.ShihunMACD
+    elif cl == ShihunRSIStrategy:
+        return StrategyType.ShihunRSI
+    elif cl == ShihunMACD2Strategy:
+        return StrategyType.ShihunMACD2
+    elif cl == ShihunRSI2Strategy:
+        return StrategyType.ShihunRSI2
+    elif cl == ShihunMacdRsiBollingerBandStrategy:
+        return StrategyType.ShihunMACDRISBB
+    elif cl == MACDRSIStrategy:
+        return StrategyType.MACDRSI
+    elif cl == GridStrategy:
+        return StrategyType.GRID
+    elif cl == BollingerMeanRegStrategy:
+        return StrategyType.BOLLMEANREG
+    elif cl == TurtleStrategy:
+        return StrategyType.TURTLE
+    elif cl == DualMovingAverageStrategy:
+        return StrategyType.DUALMA
+    elif cl == DualThrustStrategy:
+        return StrategyType.DUALTHRUST
+    elif cl == KDJStrategy:
+        return StrategyType.KDJ
+    return None
+
 def parse_strategys(stypes:[StrategyType]):
     ret=[]
     for st in stypes:

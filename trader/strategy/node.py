@@ -16,6 +16,7 @@ import backtrader.analyzers as btanalyzers
 from prettytable import PrettyTable
 
 from trader.common.config import Config
+from trader.strategy.strategy import get_strategy_type
 from trader.strategy.trader_result import TraderResult
 from trader.utils.operation_state import OptStatAnalyzer
 from trader.utils.profitlossratio import ProfitLossRatioAnalyzer
@@ -33,7 +34,7 @@ class Node:
 
         cerebro = bt.Cerebro()
         for st in strategy:
-            cerebro.addstrategy(st, atr=cfg.atr, mode=cfg.mode, period=cfg.period, log=log)
+            cerebro.addstrategy(st, atr=cfg.atr, mode=cfg.mode, period=cfg.period, log=log,name=get_strategy_type(st))
 
         cerebro.addanalyzer(btanalyzers.SharpeRatio, _name='sharpeRatio')
         cerebro.addanalyzer(btanalyzers.DrawDown, _name="drawdown")
