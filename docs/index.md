@@ -187,5 +187,11 @@ $ cd ./trader/scripts
 $ trader --tasks=./multi_backtrader.json --db --exchange=BINANCE
 ```
 
+## Run trader with `ShihunMACD` and `ShihunMACD2` strategy for backtesting and share an account
+
+```bash
+$ trader --tasks='[{"task_type": "BACK_TRADER","symbol":"ETHUSDT","interval":"1h","strategys_bunch":"ShihunMACD,ShihunMACD2","csv":"ETHUSDT-1h-202301-202401.csv"}]'
+```
+
 ## Development
 Read the [CONTRIBUTING.md](CONTRIBUTING.md) file.

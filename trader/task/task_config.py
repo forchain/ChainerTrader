@@ -39,7 +39,7 @@ class TaskConfig:
         s=""
         for st in self.strategy:
             if len(s) > 0:
-                s+=","+st.name
+                s+="+"+st.name
             else:
                 s+=st.name
         return s
