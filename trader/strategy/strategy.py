@@ -6,6 +6,7 @@ from trader.strategy.dualthrust import DualThrustStrategy
 from trader.strategy.grid import GridStrategy
 from trader.strategy.kdj import KDJStrategy
 from trader.strategy.macdrsi import MACDRSIStrategy
+from trader.strategy.rsrs import RSRSStrategy
 from trader.strategy.shihunmacd import ShihunMACDStrategy
 from trader.strategy.shihunmacd2 import ShihunMACD2Strategy
 from trader.strategy.shihunmacdrsibb import ShihunMacdRsiBollingerBandStrategy
@@ -27,6 +28,7 @@ class StrategyType(Enum):
     DUALMA = 9            # Dual Moving Average Crossover Strategy
     DUALTHRUST = 10       # Dual thrust strategy
     KDJ = 11              # KDJ strategy
+    RSRS = 12             # RSRS strategy
 
 def parseStrategyType(name):
     if name == StrategyType.ShihunMACD.name:
@@ -53,6 +55,8 @@ def parseStrategyType(name):
         return StrategyType.DUALTHRUST
     elif name == StrategyType.KDJ.name:
         return StrategyType.KDJ
+    elif name == StrategyType.RSRS.name:
+        return StrategyType.RSRS
     return None
 
 def parseStrategy(stype):
@@ -91,6 +95,9 @@ def parseStrategy(stype):
 
     elif stype == StrategyType.KDJ:
         return KDJStrategy
+
+    elif stype == StrategyType.RSRS:
+        return RSRSStrategy
     else:
         return None
 
@@ -119,6 +126,8 @@ def get_strategy_type(cl):
         return StrategyType.DUALTHRUST
     elif cl == KDJStrategy:
         return StrategyType.KDJ
+    elif cl == RSRSStrategy:
+        return StrategyType.RSRS
     return None
 
 def parse_strategys(stypes:[StrategyType]):
