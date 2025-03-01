@@ -79,6 +79,11 @@ class Node:
         data_len = len(self.cerebro.datas[0])
         end_time = num2date(self.cerebro.datas[0].datetime[0])
         start_time = num2date(self.cerebro.datas[0].datetime[1 - data_len])
+
+        start_price = self.cerebro.datas[0].open[1-data_len]
+        end_price=self.cerebro.datas[0].close[0]
+        hold_rate=end_price/start_price*100
+
         # statistics
         table = PrettyTable()
         table.field_names = ["Name", "Value"]
@@ -102,6 +107,7 @@ class Node:
         table.add_row(["数据量", data_len])
         table.add_row(["操作买单数", optstat['buys']])
         table.add_row(["操作卖单数", optstat['sells']])
+        table.add_row(["持有增长率:", (f"{hold_rate:.2f}%")])
 
         print("\n")
         print(table)
@@ -116,4 +122,5 @@ class Node:
                             avgLoss,
                             optstat['buys'],
                             optstat['sells'],
-                            optstat['latest'])
+                            optstat['latest'],
+                            hold_rate)
