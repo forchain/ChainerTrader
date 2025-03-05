@@ -27,7 +27,7 @@ class TraderTask(BaseTask):
         super().__init__(tcfg, cfg, log, db_manager, exchange)
 
     async def start(self,queue:Queue,quit:Event):
-        if not self.tcfg.strategy:
+        if not self.tcfg.strategys:
             self.log.error(f"No config strategy for {self.tcfg.to_dict()}")
             return
         if not self.exchange:
@@ -39,7 +39,7 @@ class TraderTask(BaseTask):
 
         super().start(queue, quit)
 
-        strategy = parse_strategys(self.tcfg.strategy)
+        strategy = parse_strategys(self.tcfg.strategys)
         if strategy is None:
             self.log.error(f"Not support strategy:{self.tcfg.strategy_name()}")
             return

@@ -13,7 +13,7 @@ from trader.common.message import new_stat_msg
 from trader.statistics.stat import BackTraderStat
 from trader.statistics.statistics import Statistics
 from trader.strategy.node import Node
-from trader.strategy.strategy import StrategyType, parseStrategy, parse_strategys
+from trader.strategy.strategy import parseStrategy, parse_strategys
 from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig
 from trader.task.task_type import TaskType
@@ -29,7 +29,7 @@ class BackTraderTask(BaseTask):
         if not self.tcfg.csv and not self.db_manager:
             self.log.error(f"No config data_file or db for {self.tcfg.to_dict()}")
             return None
-        if not self.tcfg.strategy:
+        if not self.tcfg.strategys:
             self.log.error(f"No config strategy for {self.tcfg.to_dict()}")
             return None
 
@@ -80,7 +80,7 @@ class BackTraderTask(BaseTask):
         if data is None:
             self.log.error(f"No strategy data for {self.name()}")
             return None
-        strategy = parse_strategys(self.tcfg.strategy)
+        strategy = parse_strategys(self.tcfg.strategys)
         if strategy is None:
             self.log.error(f"Not support strategy:{self.tcfg.strategy_name()}")
             return None

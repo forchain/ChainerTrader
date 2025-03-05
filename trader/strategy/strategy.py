@@ -1,5 +1,6 @@
 from enum import Enum
 
+from trader.common.common import dynamic_load
 from trader.strategy.boll_mean_reg import BollingerMeanRegStrategy
 from trader.strategy.dualma import DualMovingAverageStrategy
 from trader.strategy.dualthrust import DualThrustStrategy
@@ -14,123 +15,10 @@ from trader.strategy.shihunrsi import ShihunRSIStrategy
 from trader.strategy.shihunrsi2 import ShihunRSI2Strategy
 from trader.strategy.turtle import TurtleStrategy
 
-
-class StrategyType(Enum):
-    ShihunMACD = 0        # MACD from ShiHun
-    ShihunRSI = 1         # RSI from ShiHun
-    ShihunMACD2 = 2       # MACD2 from ShiHun
-    ShihunRSI2 = 3        # RSI2 from ShiHun
-    ShihunMACDRISBB = 4   # MACD + RSI + BollingerBand from ShiHun
-    MACDRSI = 5           # MACD + RSI
-    GRID = 6              # GRID
-    BOLLMEANREG = 7       # Bollinger Bands Mean Regression Strategy
-    TURTLE = 8            # Turtle: Richard Dennis and William Eckhardt
-    DUALMA = 9            # Dual Moving Average Crossover Strategy
-    DUALTHRUST = 10       # Dual thrust strategy
-    KDJ = 11              # KDJ strategy
-    RSRS = 12             # RSRS strategy
-
-def parseStrategyType(name):
-    if name == StrategyType.ShihunMACD.name:
-        return StrategyType.ShihunMACD
-    elif name == StrategyType.ShihunRSI.name:
-        return StrategyType.ShihunRSI
-    elif name == StrategyType.ShihunMACD2.name:
-        return StrategyType.ShihunMACD2
-    elif name == StrategyType.ShihunRSI2.name:
-        return StrategyType.ShihunRSI2
-    elif name == StrategyType.ShihunMACDRISBB.name:
-        return StrategyType.ShihunMACDRISBB
-    elif name == StrategyType.MACDRSI.name:
-        return StrategyType.MACDRSI
-    elif name == StrategyType.GRID.name:
-        return StrategyType.GRID
-    elif name == StrategyType.BOLLMEANREG.name:
-        return StrategyType.BOLLMEANREG
-    elif name == StrategyType.TURTLE.name:
-        return StrategyType.TURTLE
-    elif name == StrategyType.DUALMA.name:
-        return StrategyType.DUALMA
-    elif name == StrategyType.DUALTHRUST.name:
-        return StrategyType.DUALTHRUST
-    elif name == StrategyType.KDJ.name:
-        return StrategyType.KDJ
-    elif name == StrategyType.RSRS.name:
-        return StrategyType.RSRS
-    return None
-
 def parseStrategy(stype):
-    if stype == StrategyType.ShihunMACD:
-        return ShihunMACDStrategy
+    return dynamic_load(stype, get_strategy_class_name(stype))
 
-    elif stype == StrategyType.ShihunRSI:
-        return ShihunRSIStrategy
-
-    elif stype == StrategyType.ShihunMACD2:
-        return ShihunMACD2Strategy
-
-    elif stype == StrategyType.ShihunRSI2:
-        return ShihunRSI2Strategy
-
-    elif stype == StrategyType.ShihunMACDRISBB:
-        return ShihunMacdRsiBollingerBandStrategy
-
-    elif stype == StrategyType.MACDRSI:
-        return MACDRSIStrategy
-
-    elif stype == StrategyType.GRID:
-        return GridStrategy
-
-    elif stype == StrategyType.BOLLMEANREG:
-        return BollingerMeanRegStrategy
-
-    elif stype == StrategyType.TURTLE:
-        return TurtleStrategy
-
-    elif stype == StrategyType.DUALMA:
-        return DualMovingAverageStrategy
-
-    elif stype == StrategyType.DUALTHRUST:
-        return DualThrustStrategy
-
-    elif stype == StrategyType.KDJ:
-        return KDJStrategy
-
-    elif stype == StrategyType.RSRS:
-        return RSRSStrategy
-    else:
-        return None
-
-def get_strategy_type(cl):
-    if cl == ShihunMACDStrategy:
-        return StrategyType.ShihunMACD
-    elif cl == ShihunRSIStrategy:
-        return StrategyType.ShihunRSI
-    elif cl == ShihunMACD2Strategy:
-        return StrategyType.ShihunMACD2
-    elif cl == ShihunRSI2Strategy:
-        return StrategyType.ShihunRSI2
-    elif cl == ShihunMacdRsiBollingerBandStrategy:
-        return StrategyType.ShihunMACDRISBB
-    elif cl == MACDRSIStrategy:
-        return StrategyType.MACDRSI
-    elif cl == GridStrategy:
-        return StrategyType.GRID
-    elif cl == BollingerMeanRegStrategy:
-        return StrategyType.BOLLMEANREG
-    elif cl == TurtleStrategy:
-        return StrategyType.TURTLE
-    elif cl == DualMovingAverageStrategy:
-        return StrategyType.DUALMA
-    elif cl == DualThrustStrategy:
-        return StrategyType.DUALTHRUST
-    elif cl == KDJStrategy:
-        return StrategyType.KDJ
-    elif cl == RSRSStrategy:
-        return StrategyType.RSRS
-    return None
-
-def parse_strategys(stypes:[StrategyType]):
+def parse_strategys(stypes:[str]):
     ret=[]
     for st in stypes:
         cl=parseStrategy(st)
@@ -140,3 +28,6 @@ def parse_strategys(stypes:[StrategyType]):
     if len(ret) <= 0:
         return None
     return ret
+
+def get_strategy_class_name(file_name:str)->str:
+    return file_name+"Strategy"
