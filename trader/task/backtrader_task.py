@@ -13,7 +13,7 @@ from trader.common.message import new_stat_msg
 from trader.statistics.stat import BackTraderStat
 from trader.statistics.statistics import Statistics
 from trader.strategy.node import Node
-from trader.strategy.strategy import StrategyType, parseStrategy
+from trader.strategy.strategy import parseStrategy, parse_strategys
 from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig
 from trader.task.task_type import TaskType
@@ -29,7 +29,7 @@ class BackTraderTask(BaseTask):
         if not self.tcfg.csv and not self.db_manager:
             self.log.error(f"No config data_file or db for {self.tcfg.to_dict()}")
             return None
-        if not self.tcfg.strategy:
+        if not self.tcfg.strategys:
             self.log.error(f"No config strategy for {self.tcfg.to_dict()}")
             return None
 
@@ -80,9 +80,9 @@ class BackTraderTask(BaseTask):
         if data is None:
             self.log.error(f"No strategy data for {self.name()}")
             return None
-        strategy = parseStrategy(self.tcfg.strategy)
+        strategy = parse_strategys(self.tcfg.strategys)
         if strategy is None:
-            self.log.error(f"Not support strategy:{self.tcfg.strategy}")
+            self.log.error(f"Not support strategy:{self.tcfg.strategy_name()}")
             return None
         return [strategy,data]
 
@@ -94,7 +94,7 @@ def process_backtrader(parmas,result):
     logger = Logger(cfg)
 
     logger.log().info(f"start do backtrader: {tcfg.id}")
-    node = Node(tcfg.strategy.name,strategy, cfg, logger.log(), data)
+    node = Node(tcfg.strategy_name(),strategy, cfg, logger.log(), data)
     ret = node.start()
     logger.log().info(f"end do backtrader: {tcfg.id}")
     if ret.operate:
@@ -103,4 +103,4 @@ def process_backtrader(parmas,result):
             ret.operate=None
         else:
             ret.operate.symbol_interval=tcfg.symbol_interval
-    result.append(new_stat_msg(BackTraderStat(tcfg.strategy.name, tcfg.symbol_interval.name(), ret), tcfg.id))
+    result.append(new_stat_msg(BackTraderStat(tcfg.strategy_name(), tcfg.symbol_interval.name(), ret), tcfg.id))

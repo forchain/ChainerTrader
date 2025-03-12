@@ -7,34 +7,32 @@ from trader.utils.operate import OperateType
 
 
 class TurtleStrategy(BaseStrategy):
+    params = (
+        ("period_R", 7),
+        ("risk", 0.02),
+    )
+
     def __init__(self):
+        self.params.atr=True
         super().__init__()
-        self.params.period=20
         self.highest = bt.indicators.Highest(self.data.high, period=self.params.period)
-        self.lowest = bt.indicators.Lowest(self.data.low, period=self.params.period)
+
+        self.lowest_R = bt.indicators.Lowest(self.data.low, period=self.params.period_R)
+
 
     def next(self):
         super().next()
-
         if self.order:
             return
 
-        willOpt = OperateType.UNKNOWN
-
+        position_size = (self.broker.getvalue() * self.params.risk) / (self.atr[0] * 100)
         if not self.position:
-            if self.data.close[0] > self.highest[0]:
-               willOpt = OperateType.BUY
+            if self.data.close[0] > self.highest[-1]:
+                self.log_info(f'Kline:{self.cur_datetime()}, 创建 买单:{self.data.close[0]:.2f}')
+                self.order = self.buy(size=position_size)
+                self.update_stop_loss_point()
         else:
-            if self.data.close[0] < self.lowest[0]:
-               willOpt = OperateType.SELL
-            elif self.need_stop_loss():
-               willOpt = OperateType.SELL
 
-        if willOpt == OperateType.SELL:
-            self.log_info(f'Kline:{self.cur_datetime()}, 创建 卖单:{self.dataclose[0]:.2f}')
-            self.order = self.sell()
-
-        elif willOpt == OperateType.BUY:
-            self.log_info(f'Kline:{self.cur_datetime()}, 创建 买单:{self.dataclose[0]:.2f}')
-            self.order = self.buy()
-            self.update_stop_loss_point()
+            if self.need_stop_loss() or self.data.close[0] < self.lowest_R[-1]:
+                self.log_info(f'Kline:{self.cur_datetime()}, 创建 卖单:{self.data.close[0]:.2f}')
+                self.close()

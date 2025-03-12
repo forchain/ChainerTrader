@@ -10,7 +10,7 @@ from trader.common.config import Config
 from trader.common.message import new_stat_msg
 from trader.statistics.stat import BackTraderStat, TraderStat
 from trader.strategy.node import Node
-from trader.strategy.strategy import parseStrategy
+from trader.strategy.strategy import parseStrategy, parse_strategys
 from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig
 from trader.task.task_type import TaskType
@@ -27,7 +27,7 @@ class TraderTask(BaseTask):
         super().__init__(tcfg, cfg, log, db_manager, exchange)
 
     async def start(self,queue:Queue,quit:Event):
-        if not self.tcfg.strategy:
+        if not self.tcfg.strategys:
             self.log.error(f"No config strategy for {self.tcfg.to_dict()}")
             return
         if not self.exchange:
@@ -39,9 +39,9 @@ class TraderTask(BaseTask):
 
         super().start(queue, quit)
 
-        strategy = parseStrategy(self.tcfg.strategy)
+        strategy = parse_strategys(self.tcfg.strategys)
         if strategy is None:
-            self.log.error(f"Not support strategy:{self.tcfg.strategy}")
+            self.log.error(f"Not support strategy:{self.tcfg.strategy_name()}")
             return
 
         #if self.exchange.spot_ws_client:
@@ -58,9 +58,9 @@ class TraderTask(BaseTask):
             if len(kls_cache) <= 0:
                 continue
             latest_kline = kls_cache[len(kls_cache) - 1]
-            node = Node(self.tcfg.strategy.name,strategy, self.cfg, self.log,BinanceData(kls_cache))
+            node = Node(self.tcfg.strategy_name(),strategy, self.cfg, self.log,BinanceData(kls_cache))
             ret=node.start()
-            await queue.put(new_stat_msg(TraderStat(self.tcfg.strategy.name, self.tcfg.symbol_interval.name(), ret),self.tcfg.id))
+            await queue.put(new_stat_msg(TraderStat(self.tcfg.strategy_name(), self.tcfg.symbol_interval.name(), ret),self.tcfg.id))
 
             while Context.running:
                 next_time = add_time_duration(latest_kline.open_time, self.tcfg.symbol_interval.interval, 1)

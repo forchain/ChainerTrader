@@ -1,10 +1,12 @@
 import logging
 import os
 
+
 from trader.app.app import App
 from trader.common import path
 from trader.common.common import NAME
 from trader.common.config import Config, NewConfigFromEnv, default
+
 
 
 def test_app():
