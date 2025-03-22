@@ -10,7 +10,7 @@ from trader.utils.trend import TrendType
 
 
 # Shihun MACD RSI BollingerBand strategy
-class ShihunMacdRsiBollingerBandStrategy(BaseStrategy):
+class ShihunMACDRISBBStrategy(BaseStrategy):
     params = (
         ('devfactor', 2),       # 标准差系数
     )

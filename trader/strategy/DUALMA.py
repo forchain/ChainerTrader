@@ -6,7 +6,7 @@ from trader.strategy.base_strategy import BaseStrategy
 from trader.utils.operate import OperateType
 
 
-class DualMovingAverageStrategy(BaseStrategy):
+class DUALMAStrategy(BaseStrategy):
     params = (
         ("long_period", 50),
     )

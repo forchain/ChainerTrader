@@ -6,7 +6,7 @@ from trader.strategy.base_strategy import BaseStrategy
 from trader.utils.operate import OperateType
 
 
-class TurtleStrategy(BaseStrategy):
+class TURTLEStrategy(BaseStrategy):
     params = (
         ("period_R", 7),
         ("risk", 0.02),
