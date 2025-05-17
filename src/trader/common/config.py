@@ -2,8 +2,7 @@ import logging
 import os
 
 from trader.common.common import NAME
-from trader.utils.symbol_interval import SymbolInterval, Interval
-from trader.utils.trend import TrendType, parseTrendType
+from trader.utils.trend import parseTrendType
 
 
 class Config:

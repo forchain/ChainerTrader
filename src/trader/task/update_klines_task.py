@@ -1,4 +1,3 @@
-import asyncio
 from datetime import datetime
 from logging import Logger
 
@@ -6,12 +5,11 @@ from pymongo.synchronous.collection import Collection
 
 from trader.app.database_manager import DatabaseManager
 from trader.binance.exchange import BinanceExchange
-from trader.common.common import Context, sleep
+from trader.common.common import sleep
 from trader.common.config import Config
-from trader.task.base_task import BaseTask
-from trader.task.task_config import TaskConfig
-from trader.task.task_type import TaskType
-from trader.utils.symbol_interval import SymbolInterval, add_time_duration
+from trader.task import BaseTask
+from trader.task import TaskConfig
+from trader.utils import SymbolInterval, add_time_duration
 from asyncio import Queue, Event
 
 DOWLOAD_SPACE_TIME = 5

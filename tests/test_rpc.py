@@ -1,9 +1,7 @@
-import os
-
 from fastapi.testclient import TestClient
 
 from trader.common.common import NAME
-from trader.rpc.rpc import rpc
+from trader.rpc import rpc
 
 client = TestClient(rpc)
 

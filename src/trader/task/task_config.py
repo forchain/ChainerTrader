@@ -2,10 +2,10 @@ import os
 
 from trader.common import path
 from trader.common.common import parse_datetime
-from trader.task.task_type import TaskType, parse_task_type
+from trader.task import TaskType, parse_task_type
 import json
 
-from trader.utils.symbol_interval import SymbolInterval, Interval
+from trader.utils import SymbolInterval, Interval
 from trader.utils.symbols_interval import SymbolsInterval
 
 class TaskConfig:

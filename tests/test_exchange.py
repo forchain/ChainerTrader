@@ -1,9 +1,7 @@
 from trader.binance.exchange import BinanceExchange, get_oldest_time
-from trader.common.config import Config
-from trader.common.logger import Logger
-from trader.task.task_config import TaskConfig
-from trader.task.task_type import TaskType
-from trader.utils.symbol_interval import Interval, get_time_duration
+from trader.task import TaskConfig
+from trader.task import TaskType
+from trader.utils import Interval, get_time_duration
 
 def get_exchange():
     cfg = TaskConfig(TaskType.TRADER)

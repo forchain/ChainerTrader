@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "trader"
+version = "0.1.0"
+description = "Awesome trader created by socoldlight"
+authors = [
+    {name = "socoldlight", email = "socoldlight@example.com"},
+]
+license = { text = "MIT" }
+readme = "README.md"
+requires-python = ">=3.11"
+
+dependencies = [
+    "backtrader",
+    "matplotlib",
+    "prettytable",
+    "binance-connector",
+    "python-dotenv",
+    "fastapi[standard]",
+    "pymongo",
+    "statsmodels"
+]
+
+# These requirements are for development and testing only, not for production.
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "coverage",
+    "flake8",
+    "black",
+    "isort",
+    "pytest-cov",
+    "mypy",
+    "gitchangelog",
+    "mkdocs",
+    "httpx",
+]
+
+[project.scripts]
+trader = "trader.app.main:main"
+
+[tool.setuptools]
+include-package-data = true
+
+# 显式指定每个包需要包含的非 .py 文件（支持通配符）
+[tool.setuptools.package-data]
+trader = [
+    "VERSION",
+    "data/*",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

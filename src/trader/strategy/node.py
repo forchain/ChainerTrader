@@ -1,14 +1,9 @@
 from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
 
-import datetime
 import logging
-import os.path
 
 from backtrader import num2date
-
-from trader.binance.csvdata import BinanceCSVData
-from trader.common import path
 
 import backtrader as bt
 import backtrader.analyzers as btanalyzers
@@ -19,7 +14,6 @@ from trader.common.config import Config
 from trader.strategy.trader_result import TraderResult
 from trader.utils.operation_state import OptStatAnalyzer
 from trader.utils.profitlossratio import ProfitLossRatioAnalyzer
-from trader.utils.trend import TrendType
 from trader.utils.volatility import VolatilityAnalyzer
 from trader.utils.winrate import WinRateAnalyzer
 

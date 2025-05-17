@@ -1,5 +1,5 @@
 from trader.common import path
-from trader.utils.symbol_interval import Interval, SymbolInterval
+from trader.utils import Interval, SymbolInterval
 import os
 
 class SymbolsInterval:

@@ -2,9 +2,9 @@ import os
 
 from trader.common.config import Config
 from trader.common.path import GetScriptsDir
-from trader.task.task_config import TaskConfig, get_symbols, parse_task_config
-from trader.task.task_type import TaskType
-from trader.utils.symbol_interval import SymbolInterval, Interval
+from trader.task import TaskConfig, get_symbols, parse_task_config
+from trader.task import TaskType
+from trader.utils import SymbolInterval, Interval
 
 
 def test_config():

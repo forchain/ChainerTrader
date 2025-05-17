@@ -1,6 +1,4 @@
-import os
 from datetime import datetime
-import datetime as dt
 
 from trader.app.database_manager import DatabaseManager
 from trader.binance.csvdata import BinanceCSVData
@@ -11,15 +9,13 @@ from trader.common.config import Config
 from trader.common.logger import Logger
 from trader.common.message import new_stat_msg
 from trader.statistics.stat import BackTraderStat
-from trader.statistics.statistics import Statistics
 from trader.strategy.node import Node
-from trader.strategy.strategy import parseStrategy, parse_strategys
+from trader.strategy.strategy import parse_strategys
 from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig
-from trader.task.task_type import TaskType
 from trader.task.update_klines_task import download
-from trader.utils.symbol_interval import SymbolInterval, add_time_duration
-from asyncio import Queue, Event
+from trader.utils.symbol_interval import add_time_duration
+from asyncio import Event
 
 class BackTraderTask(BaseTask):
     def __init__(self,tcfg:TaskConfig,cfg:Config,log:Logger,db_manager:DatabaseManager,exchange:BinanceExchange):
