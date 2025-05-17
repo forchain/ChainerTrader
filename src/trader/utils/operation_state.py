@@ -1,7 +1,7 @@
 import backtrader as bt
 from backtrader import num2date
 
-from trader.utils import Operate, OperateType
+from trader.utils.operate import Operate, OperateType
 
 
 class OptStatAnalyzer(bt.Analyzer):

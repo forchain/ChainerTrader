@@ -4,9 +4,9 @@ from logging import Logger
 from trader.app.database_manager import DatabaseManager
 from trader.binance.exchange import BinanceExchange
 from trader.common.config import Config
-from trader.task import BaseTask
-from trader.task import TaskConfig
-from trader.utils import add_time_duration
+from trader.task.base_task import BaseTask
+from trader.task.task_config import TaskConfig
+from trader.utils.symbol_interval import add_time_duration
 
 
 class CheckKlinesTask(BaseTask):

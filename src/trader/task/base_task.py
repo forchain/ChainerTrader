@@ -5,7 +5,7 @@ from logging import Logger
 from trader.app.database_manager import DatabaseManager
 from trader.binance.exchange import BinanceExchange
 from trader.common.config import Config
-from trader.task import TaskConfig
+from trader.task.task_config import TaskConfig
 
 
 class BaseTask:

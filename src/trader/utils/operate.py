@@ -1,7 +1,7 @@
 from datetime import datetime
 from enum import Enum
 
-from trader.utils import SymbolInterval
+from trader.utils.symbol_interval import SymbolInterval
 
 
 class OperateType(Enum):

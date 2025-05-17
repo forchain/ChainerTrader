@@ -10,10 +10,10 @@ from trader.common.message import new_stat_msg
 from trader.statistics.stat import TraderStat
 from trader.strategy.node import Node
 from trader.strategy.strategy import parse_strategys
-from trader.task import BaseTask
-from trader.task import TaskConfig
-from trader.task import download
-from trader.utils import add_time_duration
+from trader.task.base_task import BaseTask
+from trader.task.task_config import TaskConfig
+from trader.task.update_klines_task import download
+from trader.utils.symbol_interval import add_time_duration
 from asyncio import Queue, Event
 
 

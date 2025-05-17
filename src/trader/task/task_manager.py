@@ -4,15 +4,15 @@ from logging import Logger
 from multiprocessing import Manager, Process
 
 from trader.app.database_manager import DatabaseManager
-from trader.task import CheckKlinesTask
-from trader.task import ImportCSVTask
-from trader.task import parse_task_config
-from trader.task import TraderTask
-from trader.task import BackTraderTask, process_backtrader
+from trader.task.check_klines_task import CheckKlinesTask
+from trader.task.import_csv_task import ImportCSVTask
+from trader.task.task_config import parse_task_config
+from trader.task.trader_task import TraderTask
+from trader.task.backtrader_task import BackTraderTask, process_backtrader
 from trader.binance.exchange import BinanceExchange
 from trader.common.config import Config
-from trader.task import TaskType
-from trader.task import UpdateKlinesTask
+from trader.task.task_type import TaskType
+from trader.task.update_klines_task import UpdateKlinesTask
 
 
 class TaskManager:

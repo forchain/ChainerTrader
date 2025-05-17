@@ -3,13 +3,13 @@ import os
 from trader.app.database_manager import DatabaseManager
 from trader.binance.exchange import BinanceExchange
 from trader.common import path
-from trader.task import BaseTask
-from trader.task import TaskConfig
+from trader.task.base_task import BaseTask
+from trader.task.task_config import TaskConfig
 from asyncio import Queue, Event
 import csv
 
-from trader.utils import Kline
-from trader.utils import add_time_duration
+from trader.utils.kline import Kline
+from trader.utils.symbol_interval import add_time_duration
 
 
 class ImportCSVTask(BaseTask):
