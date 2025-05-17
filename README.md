@@ -1,6 +1,13 @@
 # ChainerTrader 
 Implement TradvingView Algorithms of Youtube Channel Shi Hun
 
+## Development
+```bash
+git clone https://github.com/ChainerLabs/Trader.git
+cd trader 
+make virtualenv
+```
+Read the [CONTRIBUTING.md](CONTRIBUTING.md) file.
 
 ## Install it from PyPI
 
@@ -15,7 +22,3 @@ $ python -m trader -h
 #or
 $ trader -h
 ```
-
-## Development
-
-Read the [CONTRIBUTING.md](CONTRIBUTING.md) file.
