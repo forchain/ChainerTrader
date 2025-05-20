@@ -33,7 +33,7 @@ class ImportCSVTask(BaseTask):
         kls = []
         data_file = self.tcfg.csv
         if not os.path.isabs(self.tcfg.csv):
-            data_file = os.path.join(path.GetDatasDir(), self.tcfg.csv)
+            data_file = os.path.join(path.GetDataDir(), self.tcfg.csv)
 
         with open(data_file, mode='r', newline='', encoding='utf-8') as file:
             reader = csv.reader(file)
