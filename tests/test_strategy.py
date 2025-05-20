@@ -1,7 +1,7 @@
 from trader.app.app import App
 from trader.common.config import Config
 from trader.strategy.strategy import parseStrategy, parse_strategys
-from trader.utils import TrendType
+from trader.utils.trend import TrendType
 
 def test_ShihunMACD():
     app = App(Config("ShihunMACD"))
