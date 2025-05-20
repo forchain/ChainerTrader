@@ -4,7 +4,7 @@ import re
 
 def GetProjectDir():
     baseDir = os.path.abspath(os.path.dirname(__file__))
-    filePath = os.path.join(baseDir, './../../')
+    filePath = os.path.join(baseDir, './../../../')
     return os.path.realpath(filePath)
 
 def GetTraderDir():
@@ -14,7 +14,7 @@ def GetTraderDir():
 
 def GetDatasDir():
     baseDir = os.path.abspath(os.path.dirname(__file__))
-    filePath = os.path.join(baseDir, './../../datas')
+    filePath = os.path.join(baseDir, './../../data')
     return os.path.realpath(filePath)
 
 def GetScriptsDir():
