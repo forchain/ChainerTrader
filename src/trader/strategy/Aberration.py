@@ -15,28 +15,23 @@ class AberrationStrategy(BaseStrategy):
         self.params.period = 20
         self.order = None
 
-        self.bollinger = bt.indicators.BollingerBands(
-            self.datas[0].close,
-            period=self.params.period,
-            devfactor=self.params.devfactor
-        )
+        self.ma = bt.indicators.SMA(self.data.close, period=self.params.period)
+        self.std = bt.indicators.StdDev(self.data.close, period=self.params.period)
+        self.upper = self.ma + self.params.devfactor * self.std
+        self.lower = self.ma - self.params.devfactor * self.std
 
     def next(self):
         super().next()
         if self.order:
             return
 
-        upperBand = self.bollinger.lines.top[0]
-        midBand = self.bollinger.lines.mid[0]
-        lowerBand = self.bollinger.lines.bot[0]
-
         if not self.position:
-            if self.data.close[0] > upperBand:
+            if self.data.close[0] > self.upper[0]:
                 self.buy()
                 self.update_stop_loss_point()
         else:
             if self.need_stop_loss():
                 self.sell()
             else:
-                if self.data.close[0] < lowerBand:
+                if self.data.close[0] < self.ma[0]:
                     self.sell()
