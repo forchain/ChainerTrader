@@ -69,8 +69,8 @@ virtualenv:       ## Create a virtual environment.
 	@echo "creating virtualenv ..."
 	@rm -rf .venv
 	@python3 -m venv .venv
-	@./.venv/bin/pip install -U pip
-	@./.venv/bin/pip install -e .[dev]
+	@./.venv/bin/pip install -U pip -i https://pypi.tuna.tsinghua.edu.cn/simple
+	@./.venv/bin/pip install -e .[dev] -i https://pypi.tuna.tsinghua.edu.cn/simple
 	@echo
 	@echo "!!! Please run 'source .venv/bin/activate' to enable the environment !!!"
 
