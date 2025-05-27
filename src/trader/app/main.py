@@ -15,7 +15,7 @@ def main():
     parser.add_argument('--period', help='Period for the moving average',action='store',type=int, default=14,required=False)
     parser.add_argument('--commission', help='Transaction commission', action='store', type=float, default=0.001,required=False)
     parser.add_argument("--atr", help="Use atr for stop-loss-point", action="store_true")
-    parser.add_argument("--api", help="Start the Web API service", action="store_true")
+    parser.add_argument("--api", help="Start the Web API service with optional binding address and port (e.g. 127.0.0.1:8000, :8000, 127.0.0.1)", type=str, const="127.0.0.1:8000", nargs="?")
     parser.add_argument("--log_file", help="Write log to file", action="store_true")
     parser.add_argument("--plot", help="Plot data", action="store_true")
     parser.add_argument("--mode", help="trend type: NORMAL UP DOWN",type=str)
@@ -54,7 +54,7 @@ def main():
         print(version())
         return
     if args.api:
-        start(cfg)
+        start(cfg, args.api)
         return
 
     app = App(cfg)

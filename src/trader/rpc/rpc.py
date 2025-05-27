@@ -43,10 +43,21 @@ class RPC(FastAPI):
 
 rpc = RPC()
 
-def start(cfg:Config):
+def start(cfg:Config, bind_addr:str="127.0.0.1:8000"):
     cfg.exportEnv()
     app_dir = os.path.join(path.GetTraderDir(), 'rpc')
-    uvicorn.run(app="rpc:rpc", host="127.0.0.1", port=8000, reload=False,app_dir=app_dir,log_level=cfg.get_log_level())
+    
+    # Parse bind address and port
+    if ':' in bind_addr:
+        host, port = bind_addr.rsplit(':', 1)
+        if not host:  # Handle case like ":8000"
+            host = "127.0.0.1"
+        port = int(port)
+    else:
+        host = bind_addr
+        port = 8000
+    
+    uvicorn.run(app="rpc:rpc", host=host, port=port, reload=False, app_dir=app_dir, log_level=cfg.get_log_level())
 
 def startApp(shared_dict):
     app = shared_dict['app']
