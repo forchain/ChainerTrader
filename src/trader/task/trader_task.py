@@ -2,8 +2,8 @@ from datetime import datetime
 from logging import Logger
 
 from trader.app.database_manager import DatabaseManager
-from trader.binance.data import BinanceData
-from trader.binance.exchange import BinanceExchange
+from trader.binance_exchange.data import BinanceData
+from trader.binance_exchange.exchange import BinanceExchange
 from trader.common.common import Context, sleep
 from trader.common.config import Config
 from trader.common.message import new_stat_msg

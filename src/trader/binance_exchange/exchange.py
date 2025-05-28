@@ -1,8 +1,9 @@
+import sys
 from datetime import datetime
 
 from binance.spot import Spot as Client
 
-from trader.binance.restapi import get_restapi
+from trader.binance_exchange.restapi import get_restapi
 from trader.common.logger import default
 from trader.utils.kline import Kline
 from trader.utils.symbol_interval import SymbolInterval

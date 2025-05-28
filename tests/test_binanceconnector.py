@@ -12,7 +12,7 @@ from cryptography.hazmat.primitives.serialization import load_pem_private_key
 from matplotlib.patheffects import Normal
 from websocket import create_connection
 
-from trader.binance.restapi import getMarketRestAPI, getTestnetRestAPI
+from trader.binance_exchange.restapi import getMarketRestAPI, getTestnetRestAPI
 
 
 def loadAPIConfig():
@@ -103,7 +103,7 @@ def test_PayloadByEd25519Key():
         'method': 'order.place',
         'params': params
     }
-    ws = create_connection('wss://ws-api.binance.com:443/ws-api/v3')
+    ws = create_connection('wss://ws-api.binance_exchange.com:443/ws-api/v3')
     ws.send(json.dumps(request))
     result = ws.recv()
     ws.close()

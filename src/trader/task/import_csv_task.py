@@ -1,7 +1,7 @@
 import os
 
 from trader.app.database_manager import DatabaseManager
-from trader.binance.exchange import BinanceExchange
+from trader.binance_exchange.exchange import BinanceExchange
 from trader.common import path
 from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig

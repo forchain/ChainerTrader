@@ -1,9 +1,9 @@
 from datetime import datetime
 
 from trader.app.database_manager import DatabaseManager
-from trader.binance.csvdata import BinanceCSVData
-from trader.binance.data import BinanceData
-from trader.binance.exchange import BinanceExchange
+from trader.binance_exchange.csvdata import BinanceCSVData
+from trader.binance_exchange.data import BinanceData
+from trader.binance_exchange.exchange import BinanceExchange
 from trader.common import path
 from trader.common.config import Config
 from trader.common.logger import Logger
