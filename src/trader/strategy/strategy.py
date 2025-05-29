@@ -1,9 +1,17 @@
+import os
 
 from trader.common.common import dynamic_load
-
+from pathlib import Path
 
 def parseStrategy(stype):
-    mod=f"trader.strategy.{stype}"
+    current_dir = Path(__file__).parent
+    folder_path = current_dir / stype
+
+    if folder_path.is_dir():
+        mod=f"trader.strategy.{stype}.{stype}"
+    else:
+        mod=f"trader.strategy.{stype}"
+
     return dynamic_load(mod, get_strategy_class_name(stype))
 
 def parse_strategys(stypes:[str]):
