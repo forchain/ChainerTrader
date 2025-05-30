@@ -27,7 +27,7 @@ class Node:
 
         cerebro = bt.Cerebro()
         for st in strategy:
-            cerebro.addstrategy(st, atr=cfg.atr, mode=cfg.mode, period=cfg.period, log=log,name=st.__name__)
+            cerebro.addstrategy(st, stoploss=cfg.stoploss,atr=cfg.atr, mode=cfg.mode, period=cfg.period, log=log,name=st.__name__)
 
         cerebro.addanalyzer(btanalyzers.SharpeRatio, _name='sharpeRatio')
         cerebro.addanalyzer(btanalyzers.DrawDown, _name="drawdown")
