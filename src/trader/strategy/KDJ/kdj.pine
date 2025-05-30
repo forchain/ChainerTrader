@@ -7,6 +7,8 @@ smoothD = input.int(3, title = 'D_smooth')
 upper = input.int(80, title = 'upper')
 lower = input.int(20, title = 'lower')
 krange = input.int(10, title = 'krange')
+takeProfitPerc = input.float(5.0, title="profit", minval=0.1)
+stopLossPerc   = input.float(2.0, title="loss", minval=0.1)
 
 lowMin = ta.lowest(low, length)
 highMax = ta.highest(high, length)
@@ -28,8 +30,11 @@ isNearUpper = math.abs(J - upper) < krange
 longCondition = K > D and isNearLower
 shortCondition = K < D and isNearUpper
 
-if longCondition
-    strategy.entry('long', strategy.long)
+if (strategy.position_size > 0)
+    strategy.exit("profit_loss_exit", from_entry="long",profit = takeProfitPerc * 0.01 * close,loss   = stopLossPerc * 0.01 * close)
+else
+    if longCondition
+        strategy.entry('long', strategy.long)
 
 if shortCondition
     strategy.close('long')
