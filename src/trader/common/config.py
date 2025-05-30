@@ -4,12 +4,13 @@ import os
 from trader.common.common import NAME
 from trader.utils.trend import parseTrendType
 
+DEFAULT_PERIOD = 14
 
 class Config:
     def __init__(self,commission=0.001,
                       atr=True,
                       stoploss=False,
-                      period=14,
+                      period=DEFAULT_PERIOD,
                       log_file=False,
                       plot=False,
                       mode=None,
