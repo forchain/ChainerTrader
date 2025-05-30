@@ -1,0 +1,38 @@
+//@version=6
+strategy('KDJ_strategy', overlay = true, default_qty_type = strategy.percent_of_equity, default_qty_value = 100)
+
+length = input.int(9, title = 'period')
+smoothK = input.int(3, title = 'K_smooth')
+smoothD = input.int(3, title = 'D_smooth')
+upper = input.int(80, title = 'upper')
+lower = input.int(20, title = 'lower')
+krange = input.int(10, title = 'krange')
+
+lowMin = ta.lowest(low, length)
+highMax = ta.highest(high, length)
+rsv = (close - lowMin) / (highMax - lowMin) * 100
+
+K = ta.ema(rsv, smoothK)
+D = ta.ema(K, smoothD)
+J = 3 * K - 2 * D
+
+
+plot(K, title="K", color=color.blue)
+plot(D, title="D", color=color.orange)
+plot(J, title="J", color=color.purple)
+
+
+isNearLower = math.abs(J - lower) < krange
+isNearUpper = math.abs(J - upper) < krange
+
+longCondition = K > D and isNearLower
+shortCondition = K < D and isNearUpper
+
+if longCondition
+    strategy.entry('long', strategy.long)
+
+if shortCondition
+    strategy.close('long')
+
+plotshape(longCondition, title = 'buy', location = location.belowbar, color = color.green, style = shape.labelup, text = 'Buy')
+plotshape(shortCondition, title = 'sell', location = location.abovebar, color = color.red, style = shape.labeldown, text = 'Sell')
