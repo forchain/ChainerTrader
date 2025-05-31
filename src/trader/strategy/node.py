@@ -14,7 +14,6 @@ from trader.common.config import Config
 from trader.strategy.trader_result import TraderResult
 from trader.utils.operation_state import OptStatAnalyzer
 from trader.utils.profitlossratio import ProfitLossRatioAnalyzer
-from trader.utils.volatility import VolatilityAnalyzer
 from trader.utils.winrate import WinRateAnalyzer
 
 class Node:
@@ -31,7 +30,7 @@ class Node:
 
         cerebro.addanalyzer(btanalyzers.SharpeRatio, _name='sharpeRatio')
         cerebro.addanalyzer(btanalyzers.DrawDown, _name="drawdown")
-        cerebro.addanalyzer(VolatilityAnalyzer, _name="volatility", cerebro=cerebro)
+        cerebro.addanalyzer(bt.analyzers.VWR, _name='volatility')
         cerebro.addanalyzer(WinRateAnalyzer, _name="winRate")
         cerebro.addanalyzer(ProfitLossRatioAnalyzer, _name="profitLossRatio")
         cerebro.addanalyzer(OptStatAnalyzer, _name="optstat")
@@ -51,13 +50,15 @@ class Node:
         ret = rets[0]
 
         finalFund = self.cerebro.broker.getvalue()
-        sharpeRatio = ret.analyzers.sharpeRatio.get_analysis()
         totalReturnRate = (finalFund - self.cfg.cash) / self.cfg.cash * 100
 
         drawdown = ret.analyzers.drawdown.get_analysis()
         maxDrawdown = drawdown.max.drawdown
         maxDrawdownDuration = drawdown.max.len
-        volatility = ret.analyzers.volatility.get_analysis()
+
+        sharpeRatio = ret.analyzers.sharpeRatio.get_analysis()
+        volatility = ret.analyzers.volatility.get_analysis()['vwr']
+
         winRate = ret.analyzers.winRate.get_analysis()
         profitLossRatio = ret.analyzers.profitLossRatio.get_analysis()
         plr = profitLossRatio['profitLossRatio']
