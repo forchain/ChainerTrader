@@ -1,0 +1,30 @@
+//@version=6
+strategy('ShihunMACD_strategy', overlay = true, default_qty_type = strategy.percent_of_equity, default_qty_value = 100)
+
+period = input.int(9, title = 'period')
+confirm = input.int(3, title = 'confirm')
+takeProfitPerc = input.float(5.0, title="profit", minval=0.1)
+stopLossPerc   = input.float(2.0, title="loss", minval=0.1)
+fastLength = input.int(12, title="fast period")
+slowLength = input.int(26, title="slow period")
+signalLength = input.int(9, title="signal period")
+
+[macdLine, signalLine, _] = ta.macd(close, fastLength, slowLength, signalLength)
+
+plot(macdLine, color=color.blue, title="MACD fast (DIF)")
+plot(signalLine, color=color.orange, title="MACD slow (DEA)")
+
+macdBuy  = ta.crossover(macdLine, signalLine)
+macdSell = ta.crossunder(macdLine, signalLine)
+
+if (strategy.position_size > 0)
+    strategy.exit("profit_loss_exit", from_entry="long",profit = takeProfitPerc * 0.01 * close,loss   = stopLossPerc * 0.01 * close)
+else
+    if macdBuy
+        strategy.entry('long', strategy.long)
+
+if macdSell
+    strategy.close('long')
+
+plotshape(macdBuy, title = 'buy', location = location.belowbar, color = color.green, style = shape.labelup, text = 'Buy')
+plotshape(macdSell, title = 'sell', location = location.abovebar, color = color.red, style = shape.labeldown, text = 'Sell')

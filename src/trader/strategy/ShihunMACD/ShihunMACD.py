@@ -29,6 +29,8 @@ class ShihunMACDStrategy(TrilogyStrategy):
         if self.order:
             return
 
+        price = self.data.close[0]
+
         # histo2 = self.macd.macd[-2] - self.macd.signal[-2]
         # histo1 = self.macd.macd[-1] - self.macd.signal[-1]
         # histo0 = self.macd.macd[0] - self.macd.signal[0]
@@ -42,9 +44,15 @@ class ShihunMACDStrategy(TrilogyStrategy):
 
         if self.goldenFork > 0:
             if not self.position and self.macd.signal[-2] > 0 and self.macd.signal[-1] > 0 and self.macd.signal[0] > 0 and self.canBuy():
-                self.log_info(f'Kline:{self.cur_datetime()}, 创建 买单:{self.dataclose[0]:.2f}')
-                self.order = self.buy()
-                self.goldenFork = 0
+                self.log_info(f'Kline:{self.cur_datetime()}, 创建 买单:{price:.2f}')
+
+                commission_info = self.broker.getcommissioninfo(self.data)
+                cash = self.broker.getcash()
+                size = int(cash / (price * (1 + commission_info.p.commission)))
+
+                if size > 0:
+                    self.order = self.buy(size=size)
+                    self.goldenFork = 0
             else:
                 self.goldenFork -= 1
 
@@ -52,5 +60,5 @@ class ShihunMACDStrategy(TrilogyStrategy):
         if self.deathFork > 0:
             if self.position and (self.macd.signal[-2] > self.macd.signal[-1] and self.macd.signal[-1] > self.macd.signal[0] or self.canSell()):
                 self.log_info(f'Kline:{self.cur_datetime()}, 创建 卖单:{self.dataclose[0]:.2f}')
-                self.order = self.sell()
+                self.order = self.close()
                 self.deathFork = 0

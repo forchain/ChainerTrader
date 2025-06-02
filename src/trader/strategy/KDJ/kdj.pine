@@ -1,7 +1,7 @@
 //@version=6
 strategy('KDJ_strategy', overlay = true, default_qty_type = strategy.percent_of_equity, default_qty_value = 100)
 
-length = input.int(9, title = 'period')
+period = input.int(9, title = 'period')
 smoothK = input.int(3, title = 'K_smooth')
 smoothD = input.int(3, title = 'D_smooth')
 upper = input.int(80, title = 'upper')
@@ -10,8 +10,8 @@ krange = input.int(10, title = 'krange')
 takeProfitPerc = input.float(5.0, title="profit", minval=0.1)
 stopLossPerc   = input.float(2.0, title="loss", minval=0.1)
 
-lowMin = ta.lowest(low, length)
-highMax = ta.highest(high, length)
+lowMin = ta.lowest(low, period)
+highMax = ta.highest(high, period)
 rsv = (close - lowMin) / (highMax - lowMin) * 100
 
 K = ta.ema(rsv, smoothK)
