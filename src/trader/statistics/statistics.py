@@ -43,7 +43,7 @@ class Statistics:
                 self.bts_list.sort(key=lambda bts: bts.tret.total_return_rate,reverse=True)
 
             table = PrettyTable()
-            table.field_names = ["Index","策略", "币种", "总收益率","持有增长率","最大回撤","回撤持续","波动率","胜率","平均盈亏比","平均盈利","平均亏损","操作买卖数"]
+            table.field_names = ["Index","策略", "币种", "总收益率","持有增长率","最大回撤","回撤时长","波动率","胜率","平均盈亏比","平均盈利","平均亏损","操作买卖数"]
             index = 0
             for bts in self.bts_list:
                 table.add_row([index,
