@@ -1,5 +1,6 @@
 //@version=6
-strategy('DeviationMACD', overlay = true, default_qty_type = strategy.percent_of_equity, default_qty_value = 100)
+strategy('DeviationMACD', overlay = true, default_qty_type = strategy.percent_of_equity, default_qty_value = 100,max_bars_back = 1000, max_lines_count = 400, max_labels_count = 400)
+
 
 // base
 period = input.int(9, title = 'period',group = "Base")
@@ -65,6 +66,44 @@ if barstate.islast
     f_fillCell(Table, 1, 0, x, 'H: ')
     f_fillCell(Table, 2, 0, x2, 'L: ')
 
+// deviation
+prd = input.int(defval = 5, title = 'Pivot Period', minval = 1, maxval = 50,group = "Deviation")
+source = input.string(defval = 'Close', title = 'Source for Pivot Points', options = ['Close', 'High/Low'],group = "Deviation")
+searchdiv = input.string(defval = 'Regular', title = 'Divergence Type', options = ['Regular', 'Hidden', 'Regular/Hidden'],group = "Deviation")
+showindis = input.string(defval = 'Full', title = 'Show Indicator Names', options = ['Full', 'First Letter', 'Don\'t Show'],group = "Deviation")
+showlimit = input.int(1, title = 'Minimum Number of Divergence', minval = 1, maxval = 11,group = "Deviation")
+maxpp = input.int(defval = 10, title = 'Maximum Pivot Points to Check', minval = 1, maxval = 20,group = "Deviation")
+maxbars = input.int(defval = 100, title = 'Maximum Bars to Check', minval = 30, maxval = 200,group = "Deviation")
+shownum = input(defval = true, title = 'Show Divergence Number',group = "Deviation")
+showlast = input(defval = false, title = 'Show Only Last Divergence',group = "Deviation")
+dontconfirm = input(defval = false, title = 'Don\'t Wait for Confirmation',group = "Deviation")
+showlines = input(defval = true, title = 'Show Divergence Lines',group = "Deviation")
+showpivot = input(defval = false, title = 'Show Pivot Points',group = "Deviation")
+calcmacd = input(defval = true, title = 'MACD',group = "Deviation")
+calcmacda = input(defval = true, title = 'MACD Histogram',group = "Deviation")
+calcrsi = input(defval = true, title = 'RSI',group = "Deviation")
+calcstoc = input(defval = true, title = 'Stochastic',group = "Deviation")
+calccci = input(defval = true, title = 'CCI',group = "Deviation")
+calcmom = input(defval = true, title = 'Momentum',group = "Deviation")
+calcobv = input(defval = true, title = 'OBV',group = "Deviation")
+calcvwmacd = input(true, title = 'VWmacd',group = "Deviation")
+calccmf = input(true, title = 'Chaikin Money Flow',group = "Deviation")
+calcmfi = input(true, title = 'Money Flow Index',group = "Deviation")
+calcext = input(false, title = 'Check External Indicator',group = "Deviation")
+externalindi = input(defval = close, title = 'External Indicator',group = "Deviation")
+pos_reg_div_col = input(defval = color.yellow, title = 'Positive Regular Divergence',group = "Deviation")
+neg_reg_div_col = input(defval = color.navy, title = 'Negative Regular Divergence',group = "Deviation")
+pos_hid_div_col = input(defval = color.lime, title = 'Positive Hidden Divergence',group = "Deviation")
+neg_hid_div_col = input(defval = color.red, title = 'Negative Hidden Divergence',group = "Deviation")
+pos_div_text_col = input(defval = color.black, title = 'Positive Divergence Text Color',group = "Deviation")
+neg_div_text_col = input(defval = color.white, title = 'Negative Divergence Text Color',group = "Deviation")
+reg_div_l_style_ = input.string(defval = 'Solid', title = 'Regular Divergence Line Style', options = ['Solid', 'Dashed', 'Dotted'],group = "Deviation")
+hid_div_l_style_ = input.string(defval = 'Dashed', title = 'Hdden Divergence Line Style', options = ['Solid', 'Dashed', 'Dotted'],group = "Deviation")
+reg_div_l_width = input.int(defval = 2, title = 'Regular Divergence Line Width', minval = 1, maxval = 5,group = "Deviation")
+hid_div_l_width = input.int(defval = 1, title = 'Hidden Divergence Line Width', minval = 1, maxval = 5,group = "Deviation")
+showmas = input.bool(defval = false, title = 'Show MAs 50 & 200', inline = 'ma12',group = "Deviation")
+cma1col = input.color(defval = color.lime, title = '', inline = 'ma12',group = "Deviation")
+cma2col = input.color(defval = color.red, title = '', inline = 'ma12',group = "Deviation")
 
 // process
 macdBuy  = ta.crossover(macdLine, signalLine)
