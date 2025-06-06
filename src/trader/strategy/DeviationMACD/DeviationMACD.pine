@@ -1,0 +1,83 @@
+//@version=6
+strategy('DeviationMACD', overlay = true, default_qty_type = strategy.percent_of_equity, default_qty_value = 100)
+
+// base
+period = input.int(9, title = 'period',group = "Base")
+
+// macd
+fastLength = input.int(12, title="fast period",group = "MACD")
+slowLength = input.int(26, title="slow period",group = "MACD")
+signalLength = input.int(9, title="signal period",group = "MACD")
+
+[macdLine, signalLine, _] = ta.macd(close, fastLength, slowLength, signalLength)
+
+plot(macdLine, color=color.blue, title="MACD fast (DIF)")
+plot(signalLine, color=color.orange, title="MACD slow (DEA)")
+
+// stopLoss takeProfit
+takeProfitPerc = input.float(5.0, title="profit", minval=0.1,group = "Stop loss")
+stopLossPerc   = input.float(2.0, title="loss", minval=0.1,group = "Stop loss")
+
+// atr
+length = input.int(title = 'Length', defval = 14, minval = 1,group = "ATR")
+smoothing = input.string(title = 'Smoothing', defval = 'RMA', options = ['RMA', 'SMA', 'EMA', 'WMA'],group = "ATR")
+m = input(1.5, 'Multiplier',group = "ATR")
+src1 = input(high,group = "ATR")
+src2 = input(low,group = "ATR")
+pline = input(true, 'Show Price Lines',group = "ATR")
+col1 = input(color.blue, 'ATR Text Color',group = "ATR")
+col2 = input.color(color.teal, 'Low Text Color', inline = '1',group = "ATR")
+col3 = input.color(color.red, 'High Text Color', inline = '2',group = "ATR")
+
+collong = input.color(color.teal, 'Low Line Color', inline = '1',group = "ATR")
+colshort = input.color(color.red, 'High Line Color', inline = '2',group = "ATR")
+
+ma_function(source, length) =>
+    if smoothing == 'RMA'
+        ta.rma(source, length)
+    else
+        if smoothing == 'SMA'
+            ta.sma(source, length)
+        else
+            if smoothing == 'EMA'
+                ta.ema(source, length)
+            else
+                ta.wma(source, length)
+
+a = ma_function(ta.tr(true), length) * m
+x = ma_function(ta.tr(true), length) * m + src1
+x2 = src2 - ma_function(ta.tr(true), length) * m
+
+p1 = plot(x, title = 'ATR Short Stop Loss', color = colshort, trackprice = pline ? true : false)
+p2 = plot(x2, title = 'ATR Long Stop Loss', color = collong, trackprice = pline ? true : false)
+
+var table Table = table.new(position.bottom_center, 3, 1, border_width = 3)
+
+f_fillCell(_table, _column, _row, _value, _timeframe) =>
+
+    _cellText = _timeframe + str.tostring(_value, '#.#')
+    table.cell(_table, _column, _row, _cellText, text_color = col1)
+    table.cell_set_text_color(Table, 1, 0, color.new(col3, transp = 0))
+    table.cell_set_text_color(Table, 2, 0, color.new(col2, transp = 0))
+
+if barstate.islast
+    f_fillCell(Table, 0, 0, a, 'ATR: ')
+    f_fillCell(Table, 1, 0, x, 'H: ')
+    f_fillCell(Table, 2, 0, x2, 'L: ')
+
+
+// process
+macdBuy  = ta.crossover(macdLine, signalLine)
+macdSell = ta.crossunder(macdLine, signalLine)
+
+if (strategy.position_size > 0)
+    strategy.exit("profit_loss_exit", from_entry="long",profit = takeProfitPerc * 0.01 * close,loss   = stopLossPerc * 0.01 * close)
+else
+    if macdBuy
+        strategy.entry('long', strategy.long)
+
+if macdSell
+    strategy.close('long')
+
+plotshape(macdBuy, title = 'buy', location = location.belowbar, color = color.green, style = shape.labelup, text = 'Buy')
+plotshape(macdSell, title = 'sell', location = location.abovebar, color = color.red, style = shape.labeldown, text = 'Sell')
