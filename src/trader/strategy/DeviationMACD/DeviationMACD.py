@@ -56,15 +56,17 @@ class DeviationMACDStrategy(BaseStrategy):
             if p2 > p1 and m2 < m1:
                 willOpt = OperateType.SELL
 
+        if not self.position:
+            if willOpt == OperateType.BUY:
+                self.log_info(f'Kline:{self.cur_datetime()}, 创建 买单:{self.data.close[0]:.2f}')
+                self.order = self.buy()
+                self.update_stop_loss_point()
+        else:
+            if willOpt == OperateType.SELL:
+                self.log_info(f'Kline:{self.cur_datetime()}, 创建 卖单:{self.data.close[0]:.2f}')
+                self.order = self.sell()
 
-        if willOpt == OperateType.SELL:
-            self.log_info(f'Kline:{self.cur_datetime()}, 创建 卖单:{self.data.close[0]:.2f}')
-            self.order = self.sell()
 
-        elif willOpt == OperateType.BUY:
-            self.log_info(f'Kline:{self.cur_datetime()}, 创建 买单:{self.data.close[0]:.2f}')
-            self.order = self.buy()
-            self.update_stop_loss_point()
 
     def is_local_min(self, data, look=2):
         return data[-look] > data[-1] and data[0] < data[-1]
