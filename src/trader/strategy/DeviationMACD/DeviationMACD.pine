@@ -413,28 +413,47 @@ alertcondition(pos_reg_div_detected or pos_hid_div_detected, title = 'Positive D
 alertcondition(neg_reg_div_detected or neg_hid_div_detected, title = 'Negative Divergence Detected', message = 'Negative Divergence Detected')
 
 // process
-opt_buy_long = false
-opt_buy_short = false
-opt_close = false
+var float[] low_priceQueue = array.new_float()
+var float[] high_priceQueue = array.new_float()
+
+opt_buy= false
+opt_sell = false
 
 if pos_reg_div_detected or pos_hid_div_detected
-    opt_buy_long:=true
+    lastQueuedPrice = array.size(low_priceQueue) > 0 ? array.get(low_priceQueue, array.size(low_priceQueue) - 1) : na
+    shouldAdd = na(lastQueuedPrice) ? true : close < lastQueuedPrice
+    if shouldAdd
+        array.push(low_priceQueue, close)
+        if array.size(low_priceQueue) > 5
+            array.shift(low_priceQueue)
+        
+        if array.size(low_priceQueue) >= 3
+            opt_buy:=true 
+    else
+        array.clear(low_priceQueue)
 
 if neg_reg_div_detected or neg_hid_div_detected
-    opt_buy_short:=true
+    lastQueuedPrice = array.size(high_priceQueue) > 0 ? array.get(high_priceQueue, array.size(high_priceQueue) - 1) : na
+    shouldAdd = na(lastQueuedPrice) ? true : close < lastQueuedPrice
+    if shouldAdd
+        array.push(high_priceQueue, close)
+        if array.size(high_priceQueue) > 5
+            array.shift(high_priceQueue)
+
+        if array.size(high_priceQueue) >= 3
+            opt_sell:=true 
+    else
+        array.clear(high_priceQueue)
 
 if (strategy.position_size > 0)
-    if opt_buy_short
-        strategy.close('long')
-        strategy.close('short')
+    strategy.exit("profit_loss_exit", from_entry="long",profit = takeProfitPerc * 0.01 * close,loss   = stopLossPerc * 0.01 * close)
 else
-    if opt_buy_long
+    if opt_buy
         strategy.entry('long', strategy.long)
-        strategy.exit("profit_loss_exit", from_entry="long",profit = x,loss   = x2)
 
-    else if opt_buy_short
-        strategy.entry('short', strategy.long)
-        strategy.exit("profit_loss_exit", from_entry="short",profit = x,loss   = x2)
+if opt_sell
+    strategy.close('long')
 
-plotshape(opt_buy_long, title = 'long', location = location.belowbar, color = color.green, style = shape.labelup, text = 'long')
-plotshape(opt_buy_short, title = 'short', location = location.abovebar, color = color.red, style = shape.labeldown, text = 'short')
+
+plotshape(opt_buy, title = 'buy', location = location.belowbar, color = color.green, style = shape.labelup, text = 'buy')
+plotshape(opt_sell, title = 'sell', location = location.abovebar, color = color.red, style = shape.labeldown, text = 'sell')
