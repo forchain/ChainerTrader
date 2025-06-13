@@ -72,7 +72,6 @@ showlast = input(defval = false, title = 'Show Only Last Divergence',group = "De
 dontconfirm = input(defval = false, title = 'Don\'t Wait for Confirmation',group = "Deviation")
 showlines = input(defval = true, title = 'Show Divergence Lines',group = "Deviation")
 showpivot = input(defval = false, title = 'Show Pivot Points',group = "Deviation")
-calcmacda = input(defval = true, title = 'MACD Histogram',group = "Deviation")
 pos_reg_div_col = input(defval = color.yellow, title = 'Positive Regular Divergence',group = "Deviation")
 neg_reg_div_col = input(defval = color.navy, title = 'Negative Regular Divergence',group = "Deviation")
 pos_hid_div_col = input(defval = color.lime, title = 'Positive Hidden Divergence',group = "Deviation")
@@ -83,13 +82,7 @@ reg_div_l_style_ = input.string(defval = 'Solid', title = 'Regular Divergence Li
 hid_div_l_style_ = input.string(defval = 'Dashed', title = 'Hdden Divergence Line Style', options = ['Solid', 'Dashed', 'Dotted'],group = "Deviation")
 reg_div_l_width = input.int(defval = 2, title = 'Regular Divergence Line Width', minval = 1, maxval = 5,group = "Deviation")
 hid_div_l_width = input.int(defval = 1, title = 'Hidden Divergence Line Width', minval = 1, maxval = 5,group = "Deviation")
-showmas = input.bool(defval = false, title = 'Show MAs 50 & 200', inline = 'ma12',group = "Deviation")
-cma1col = input.color(defval = color.lime, title = '', inline = 'ma12',group = "Deviation")
-cma2col = input.color(defval = color.red, title = '', inline = 'ma12',group = "Deviation")
 
-
-plot(showmas ? ta.sma(close, 50) : na, color = showmas ? cma1col : na)
-plot(showmas ? ta.sma(close, 200) : na, color = showmas ? cma2col : na)
 
 // set line styles
 var reg_div_l_style = reg_div_l_style_ == 'Solid' ? line.style_solid : reg_div_l_style_ == 'Dashed' ? line.style_dashed : line.style_dotted
@@ -208,24 +201,24 @@ negative_regular_negative_hidden_divergence(src, cond) =>
                     break
     divlen
 
-// calculate 4 types of divergence if enabled in the options and return divergences in an array
-calculate_divs(cond, indicator_1) =>
+// calculate 4 types of divergence 
+calculate_divs(indicator_1) =>
     divs = array.new_int(4, 0)
-    array.set(divs, 0, cond and (searchdiv == 'Regular' or searchdiv == 'Regular/Hidden') ? positive_regular_positive_hidden_divergence(indicator_1, 1) : 0)
-    array.set(divs, 1, cond and (searchdiv == 'Regular' or searchdiv == 'Regular/Hidden') ? negative_regular_negative_hidden_divergence(indicator_1, 1) : 0)
-    array.set(divs, 2, cond and (searchdiv == 'Hidden' or searchdiv == 'Regular/Hidden') ? positive_regular_positive_hidden_divergence(indicator_1, 2) : 0)
-    array.set(divs, 3, cond and (searchdiv == 'Hidden' or searchdiv == 'Regular/Hidden') ? negative_regular_negative_hidden_divergence(indicator_1, 2) : 0)
+    array.set(divs, 0, (searchdiv == 'Regular' or searchdiv == 'Regular/Hidden') ? positive_regular_positive_hidden_divergence(indicator_1, 1) : 0)
+    array.set(divs, 1, (searchdiv == 'Regular' or searchdiv == 'Regular/Hidden') ? negative_regular_negative_hidden_divergence(indicator_1, 1) : 0)
+    array.set(divs, 2, (searchdiv == 'Hidden' or searchdiv == 'Regular/Hidden') ? positive_regular_positive_hidden_divergence(indicator_1, 2) : 0)
+    array.set(divs, 3, (searchdiv == 'Hidden' or searchdiv == 'Regular/Hidden') ? negative_regular_negative_hidden_divergence(indicator_1, 2) : 0)
     divs
 
 // array to keep all divergences
-var all_divergences = array.new_int(4) // 1 indicators * 4 divergence = 44 elements
+var all_divergences = array.new_int(4)
 // set related array elements
 array_set_divs(div_pointer) =>
     for x = 0 to 3 by 1
         array.set(all_divergences, x, array.get(div_pointer, x))
 
 // set divergences array
-array_set_divs(calculate_divs(calcmacda, deltamacd))
+array_set_divs(calculate_divs(deltamacd))
 
 
 // check minimum number of divergence, if less than showlimit then delete all divergence
@@ -371,7 +364,7 @@ if div_type >= 0
 
 
 // draw labels
-if true or shownum
+if shownum
     if shownum and dnumdiv_top > 0
         divergence_text_top := divergence_text_top + str.tostring(dnumdiv_top)
         divergence_text_top
