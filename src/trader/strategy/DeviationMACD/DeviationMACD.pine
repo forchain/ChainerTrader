@@ -64,7 +64,6 @@ if barstate.islast
 // deviation
 source = input.string(defval = 'Close', title = 'Source for Pivot Points', options = ['Close', 'High/Low'],group = "Deviation")
 searchdiv = input.string(defval = 'Regular', title = 'Divergence Type', options = ['Regular', 'Hidden', 'Regular/Hidden'],group = "Deviation")
-showindis = input.string(defval = 'Full', title = 'Show Indicator Names', options = ['Full', 'First Letter', 'Don\'t Show'],group = "Deviation")
 showlimit = input.int(1, title = 'Minimum Number of Divergence', minval = 1, maxval = 11,group = "Deviation")
 maxpp = input.int(defval = 10, title = 'Maximum Pivot Points to Check', minval = 1, maxval = 20,group = "Deviation")
 maxbars = input.int(defval = 100, title = 'Maximum Bars to Check', minval = 30, maxval = 200,group = "Deviation")
@@ -105,7 +104,7 @@ var indicators_name = array.new_string(1)
 var div_colors = array.new_color(4)
 if barstate.isfirst
     // names
-    array.set(indicators_name, 0, showindis == 'Full' ? 'Hist' : 'H')
+    array.set(indicators_name, 0, Hist')
     //colors
     array.set(div_colors, 0, pos_reg_div_col)
     array.set(div_colors, 1, neg_reg_div_col)
@@ -233,7 +232,6 @@ array_set_divs(calculate_divs(calcmacda, deltamacd))
 total_div = 0
 for x = 0 to array.size(all_divergences) - 1 by 1
     total_div := total_div + math.round(math.sign(array.get(all_divergences, x)))
-    total_div
 
 if total_div < showlimit
     array.fill(all_divergences, 0)
@@ -304,11 +302,9 @@ var remove_last_neg_divs = false
 if bool(pl)
     remove_last_pos_divs := false
     last_pos_div_lines := 0
-    last_pos_div_lines
 if bool(ph)
     remove_last_neg_divs := false
     last_neg_div_lines := 0
-    last_neg_div_lines
 
 // draw divergences lines and labels
 divergence_text_top = ''
@@ -329,11 +325,9 @@ for y = 0 to 3 by 1
         if y % 2 == 1
             dnumdiv_top := dnumdiv_top + 1
             top_label_col := array.get(div_colors, y)
-            top_label_col
         if y % 2 == 0
             dnumdiv_bottom := dnumdiv_bottom + 1
             bottom_label_col := array.get(div_colors, y)
-            bottom_label_col
         if not array.includes(distances, array.get(all_divergences, y)) // line not exist ?
             array.push(distances, array.get(all_divergences, y))
             new_line = showlines ? line.new(x1 = bar_index - array.get(all_divergences, y), y1 = source == 'Close' ? close[array.get(all_divergences, y)] : y % 2 == 0 ? low[array.get(all_divergences, y)] : high[array.get(all_divergences, y)], x2 = bar_index - startpoint, y2 = source == 'Close' ? close[startpoint] : y % 2 == 0 ? low[startpoint] : high[startpoint], color = array.get(div_colors, y), style = y < 2 ? reg_div_l_style : hid_div_l_style, width = y < 2 ? reg_div_l_width : hid_div_l_width) : na
@@ -343,13 +337,11 @@ for y = 0 to 3 by 1
                     if not showlast and remove_last_pos_divs
                         delete_last_pos_div_lines_label(last_pos_div_lines)
                         last_pos_div_lines := 0
-                        last_pos_div_lines
                     if showlast
                         delete_old_pos_div_lines()
                 array.push(pos_div_lines, new_line)
                 last_pos_div_lines := last_pos_div_lines + 1
                 remove_last_pos_divs := true
-                remove_last_pos_divs
 
             if y % 2 == 1
                 if old_neg_divs_can_be_removed
@@ -357,36 +349,29 @@ for y = 0 to 3 by 1
                     if not showlast and remove_last_neg_divs
                         delete_last_neg_div_lines_label(last_neg_div_lines)
                         last_neg_div_lines := 0
-                        last_neg_div_lines
                     if showlast
                         delete_old_neg_div_lines()
                 array.push(neg_div_lines, new_line)
                 last_neg_div_lines := last_neg_div_lines + 1
                 remove_last_neg_divs := true
-                remove_last_neg_divs
 
         // set variables for alerts
         if y == 0
             pos_reg_div_detected := true
-            pos_reg_div_detected
         if y == 1
             neg_reg_div_detected := true
-            neg_reg_div_detected
         if y == 2
             pos_hid_div_detected := true
-            pos_hid_div_detected
         if y == 3
             neg_hid_div_detected := true
-            neg_hid_div_detected
 // get text for labels
 if div_type >= 0
-    divergence_text_top := divergence_text_top + (div_type % 2 == 1 ? showindis != 'Don\'t Show' ? array.get(indicators_name, 0) + '\n' : '' : '')
-    divergence_text_bottom := divergence_text_bottom + (div_type % 2 == 0 ? showindis != 'Don\'t Show' ? array.get(indicators_name, 0) + '\n' : '' : '')
-    divergence_text_bottom
+    divergence_text_top := divergence_text_top + (div_type % 2 == 1 ? array.get(indicators_name, 0) + '\n' : '')
+    divergence_text_bottom := divergence_text_bottom + (div_type % 2 == 0 ? array.get(indicators_name, 0) + '\n' : '')
 
 
 // draw labels
-if showindis != 'Don\'t Show' or shownum
+if true or shownum
     if shownum and dnumdiv_top > 0
         divergence_text_top := divergence_text_top + str.tostring(dnumdiv_top)
         divergence_text_top
