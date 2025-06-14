@@ -144,12 +144,12 @@ positive_regular_positive_hidden_divergence(src, cond) =>
     if dontconfirm or src > src[1] or close > close[1]
         startpoint = dontconfirm ? 0 : 1 // don't check last candle
         // we search last 15 PPs
-        for x = 0 to maxpp - 1 by 1
-            len = bar_index - array.get(pl_positions, x) + period
+        for i = 0 to maxpp - 1 by 1
+            len = bar_index - array.get(pl_positions, i) + period
             // if we reach non valued array element or arrived 101. or previous bars then we don't search more
-            if array.get(pl_positions, x) == 0 or len > maxbars
+            if array.get(pl_positions, i) == 0 or len > maxbars
                 break
-            if len > 5 and (cond == 1 and src[startpoint] > src[len] and prsc[startpoint] < nz(array.get(pl_vals, x)) or cond == 2 and src[startpoint] < src[len] and prsc[startpoint] > nz(array.get(pl_vals, x)))
+            if len > 5 and (cond == 1 and src[startpoint] > src[len] and prsc[startpoint] < nz(array.get(pl_vals, i)) or cond == 2 and src[startpoint] < src[len] and prsc[startpoint] > nz(array.get(pl_vals, i)))
                 slope1 = (src[startpoint] - src[len]) / (len - startpoint)
                 virtual_line1 = src[startpoint] - slope1
                 slope2 = (close[startpoint] - close[len]) / (len - startpoint)
@@ -177,12 +177,12 @@ negative_regular_negative_hidden_divergence(src, cond) =>
     if dontconfirm or src < src[1] or close < close[1]
         startpoint = dontconfirm ? 0 : 1 // don't check last candle
         // we search last 15 PPs
-        for x = 0 to maxpp - 1 by 1
-            len = bar_index - array.get(ph_positions, x) + period
+        for i = 0 to maxpp - 1 by 1
+            len = bar_index - array.get(ph_positions, i) + period
             // if we reach non valued array element or arrived 101. or previous bars then we don't search more
-            if array.get(ph_positions, x) == 0 or len > maxbars
+            if array.get(ph_positions, i) == 0 or len > maxbars
                 break
-            if len > 5 and (cond == 1 and src[startpoint] < src[len] and prsc[startpoint] > nz(array.get(ph_vals, x)) or cond == 2 and src[startpoint] > src[len] and prsc[startpoint] < nz(array.get(ph_vals, x)))
+            if len > 5 and (cond == 1 and src[startpoint] < src[len] and prsc[startpoint] > nz(array.get(ph_vals, i)) or cond == 2 and src[startpoint] > src[len] and prsc[startpoint] < nz(array.get(ph_vals, i)))
                 slope1 = (src[startpoint] - src[len]) / (len - startpoint)
                 virtual_line1 = src[startpoint] - slope1
                 slope2 = (close[startpoint] - nz(close[len])) / (len - startpoint)
@@ -214,8 +214,8 @@ calculate_divs(indicator_1) =>
 var all_divergences = array.new_int(4)
 // set related array elements
 array_set_divs(div_pointer) =>
-    for x = 0 to 3 by 1
-        array.set(all_divergences, x, array.get(div_pointer, x))
+    for i = 0 to 3 by 1
+        array.set(all_divergences, i, array.get(div_pointer, i))
 
 // set divergences array
 array_set_divs(calculate_divs(deltamacd))
@@ -223,8 +223,8 @@ array_set_divs(calculate_divs(deltamacd))
 
 // check minimum number of divergence, if less than showlimit then delete all divergence
 total_div = 0
-for x = 0 to array.size(all_divergences) - 1 by 1
-    total_div := total_div + math.round(math.sign(array.get(all_divergences, x)))
+for i = 0 to array.size(all_divergences) - 1 by 1
+    total_div := total_div + math.round(math.sign(array.get(all_divergences, i)))
 
 if total_div < showlimit
     array.fill(all_divergences, 0)
