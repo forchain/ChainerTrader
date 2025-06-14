@@ -97,7 +97,7 @@ var indicators_name = array.new_string(1)
 var div_colors = array.new_color(4)
 if barstate.isfirst
     // names
-    array.set(indicators_name, 0, Hist')
+    array.set(indicators_name, 0, 'Hist')
     //colors
     array.set(div_colors, 0, pos_reg_div_col)
     array.set(div_colors, 1, neg_reg_div_col)
