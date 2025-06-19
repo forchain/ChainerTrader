@@ -9,7 +9,7 @@ import backtrader as bt
 class DeviationMACDStrategy(BaseStrategy):
     params = (
         ("lookback",20),
-        ("range", 10)
+        ("maxpp", 10)
     )
 
     def __init__(self):
@@ -73,3 +73,9 @@ class DeviationMACDStrategy(BaseStrategy):
 
     def is_local_max(self, data, look=2):
         return data[-look] < data[-1] and data[0] > data[-1]
+
+    def positive_regular_positive_hidden_divergence(self) -> bool:
+        if self.data.close[0] <= self.data.close[-1]:
+            return False
+        #for i in range(self.params.maxpp):
+        return True
