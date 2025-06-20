@@ -1,0 +1,32 @@
+import backtrader as bt
+
+class PivotLow(bt.Indicator):
+    lines = ('pivotlow',)
+    params = (('left', 3), ('right', 3),)
+    plotinfo = dict(subplot=False)
+    plotlines = dict(
+        pivotlow=dict(marker='v', markersize=8.0, color='green', fillstyle='full')
+    )
+
+    def __init__(self):
+        self.window_size = self.p.left + self.p.right+1
+        self.addminperiod(self.window_size)
+
+    def next(self):
+        if len(self.data) < self.window_size:
+            self.lines.pivotlow[0] = float('nan')
+            return
+
+        mid_idx = -self.p.right
+        mid_val = self.data[mid_idx]
+
+        is_pivot = True
+        for i in range(-self.p.left - self.p.right, 1):
+            if i == mid_idx:
+                continue
+            if self.data[i] <= mid_val:
+                is_pivot = False
+                break
+
+        if is_pivot:
+            self.lines.pivotlow[mid_idx] = mid_val
