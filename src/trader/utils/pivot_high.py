@@ -18,7 +18,7 @@ class PivotHigh(bt.Indicator):
             self.lines.pivothigh[0] = float('nan')
             return
 
-        mid_idx = -self.p.right
+        mid_idx = self.middle_idx()
         mid_val = self.data[mid_idx]
 
         is_pivot = True
@@ -31,3 +31,9 @@ class PivotHigh(bt.Indicator):
 
         if is_pivot:
             self.lines.pivothigh[mid_idx] = mid_val
+
+    def middle_value(self):
+        return self.lines.pivothigh[self.middle_idx()]
+
+    def middle_idx(self):
+        return -self.p.right

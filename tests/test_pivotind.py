@@ -4,6 +4,9 @@ from __future__ import (absolute_import, division, print_function,
 import datetime
 import math
 import os.path
+
+from backtrader import num2date
+
 from trader.common import path
 
 import backtrader as bt
@@ -23,11 +26,11 @@ class TestStrategy(bt.Strategy):
         self.pl = PivotLow(self.data.low, left=3, right=3)
 
     def next(self):
-        if not math.isnan(self.ph[-3]):
-            self.log(f"Pivot High on {self.ph[-3]}")
+        if not math.isnan(self.ph.middle_value()):
+            self.log(f"Pivot High on {num2date(self.datas[0].datetime[self.ph.middle_idx()])}:{self.ph.middle_value()}")
 
-        if not math.isnan(self.pl[-3]):
-            self.log(f"Pivot Low on {self.pl[-3]}")
+        if not math.isnan(self.pl.middle_value()):
+            self.log(f"Pivot Low on {num2date(self.datas[0].datetime[self.ph.middle_idx()])}:{self.pl.middle_value()}")
 
 
 def test_pivotind(main=False):

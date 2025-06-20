@@ -17,7 +17,7 @@ class PivotLow(bt.Indicator):
             self.lines.pivotlow[0] = float('nan')
             return
 
-        mid_idx = -self.p.right
+        mid_idx = self.middle_idx()
         mid_val = self.data[mid_idx]
 
         is_pivot = True
@@ -30,3 +30,9 @@ class PivotLow(bt.Indicator):
 
         if is_pivot:
             self.lines.pivotlow[mid_idx] = mid_val
+
+    def middle_value(self):
+        return self.lines.pivotlow[self.middle_idx()]
+
+    def middle_idx(self):
+        return -self.p.right

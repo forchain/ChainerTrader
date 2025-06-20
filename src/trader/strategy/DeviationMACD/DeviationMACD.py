@@ -6,6 +6,10 @@ from trader.strategy.base_strategy import BaseStrategy
 from trader.utils.operate import OperateType
 import backtrader as bt
 
+from trader.utils.pivot_high import PivotHigh
+from trader.utils.pivot_low import PivotLow
+
+
 class DeviationMACDStrategy(BaseStrategy):
     params = (
         ("lookback",20),
@@ -21,6 +25,9 @@ class DeviationMACDStrategy(BaseStrategy):
         self.macd_lows = []
         self.price_highs = []
         self.macd_highs = []
+
+        self.ph = PivotHigh(self.data.high, left=self.params.period, right=self.params.period)
+        self.pl = PivotLow(self.data.low, left=self.params.period, right=self.params.period)
 
     def next(self):
         super().next()
@@ -77,5 +84,7 @@ class DeviationMACDStrategy(BaseStrategy):
     def positive_regular_positive_hidden_divergence(self) -> bool:
         if self.data.close[0] <= self.data.close[-1]:
             return False
-        #for i in range(self.params.maxpp):
+        for i in range(self.params.maxpp):
+            len = bar_index - array.get(pl_positions, x) + period
+
         return True
