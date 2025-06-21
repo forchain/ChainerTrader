@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "trader"
-version = "0.1.0"
+version = "0.33.10"
 description = "Awesome trader created by socoldlight"
 authors = [
     {name = "socoldlight", email = "socoldlight@example.com"},
@@ -37,6 +37,7 @@ dev = [
     "gitchangelog",
     "mkdocs",
     "httpx",
+    "cryptography",
 ]
 
 [project.scripts]
