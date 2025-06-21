@@ -24,7 +24,7 @@ from collections import deque
 from trader.strategy.base_strategy import BaseStrategy
 
 
-class DeviationMACDO3(BaseStrategy):
+class DeviationMACDO3Strategy(BaseStrategy):
     """DeviationMACD strategy – o3 implementation"""
 
     params = (

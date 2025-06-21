@@ -8,7 +8,7 @@ from collections import deque
 from trader.strategy.base_strategy import BaseStrategy
 
 
-class DeviationMACDClaude4(BaseStrategy):
+class DeviationMACDClaude4Strategy(BaseStrategy):
     """
     DeviationMACD Strategy - Python implementation of Pine Script
     Based on MACD divergence detection with ATR-based stop loss
