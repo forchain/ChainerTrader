@@ -35,6 +35,7 @@ class DeviationMACDStrategy(BaseStrategy):
 
     def __init__(self):
         super().__init__()
+        self.params.atrdist=15
         self.set_default_period(12)
         self.macd_hist = bt.indicators.MACDHisto(self.data)
 
@@ -82,6 +83,9 @@ class DeviationMACDStrategy(BaseStrategy):
         else:
             if willOpt == OperateType.SELL:
                 self.log_info(f'Kline:{self.cur_datetime()}, 创建 卖单:{self.data.close[0]:.2f}')
+                self.order = self.sell()
+            elif self.need_stop_loss():
+                self.log_info(f'Kline:{self.cur_datetime()}, 创建 清单:{self.data.close[0]:.2f}')
                 self.order = self.sell()
 
     def positive_regular_positive_hidden_divergence(self,pr:bool) -> bool:
