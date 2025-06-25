@@ -11,11 +11,12 @@ from trader.utils.symbol_interval import SymbolInterval, Interval, add_time_dura
 from trader.utils.symbols_interval import SymbolsInterval
 
 class TaskConfig:
-    def __init__(self,ttype:TaskType,symbol_interval=SymbolInterval("BTCUSDT",Interval("1d")),csv=None,start_time=0,end_time=0,strategys:[str]=None,auto_download=False):
+    def __init__(self,ttype:TaskType,symbol_interval=SymbolInterval("BTCUSDT",Interval("1d")),csv=None,start_time=0,end_time=0,limit=0,strategys:[str]=None,auto_download=False):
         self.ttype=ttype
         self.csv = csv
         self.start_time=start_time
         self.end_time=end_time
+        self.limit=limit
         self.strategys=strategys
         self.symbol_interval = symbol_interval
         self.auto_download = auto_download
@@ -36,6 +37,7 @@ class TaskConfig:
             'csv': self.csv,
             'start_time': f"{s_time}({self.start_time})",
             'end_time': f"{e_time}({self.end_time})",
+            'limit':self.limit,
             'strategys': self.strategys,
             'auto_download': self.auto_download,
         }
@@ -82,7 +84,8 @@ def parse_task_config(cfg)->[TaskConfig]:
         if "start_time" in tcd:
             stime = parse_datetime(tcd['start_time'])
             start_time = int(stime.timestamp())
-        elif "limit" in tcd:
+
+        if "limit" in tcd:
             limit=tcd['limit']
 
         end_time = 0
@@ -117,20 +120,16 @@ def parse_task_config(cfg)->[TaskConfig]:
             auto_download = tcd['auto_download']
 
         for si in sis.symbol_intervals:
-            s_time=start_time
-            if limit > 0:
-                s_time = add_time_duration(cur_time, si.interval, -limit)
-
             if task_type == TaskType.IMPORT_CSV or task_type == TaskType.CHECK_KLINES or task_type == TaskType.UPDATE_KLINES:
-                tc,index=new_TaskConfig(id,index,task_type, si, csv, s_time, end_time, None, auto_download)
+                tc,index=new_TaskConfig(id,index,task_type, si, csv, start_time, end_time, None, auto_download)
                 ret.append(tc)
             else:
                 for strategy in strategys:
-                    tc, index = new_TaskConfig(id, index, task_type, si, csv, s_time, end_time, [strategy], auto_download)
+                    tc, index = new_TaskConfig(id, index, task_type, si, csv, start_time, end_time, [strategy], auto_download)
                     ret.append(tc)
 
                 if len(strategys_bunch) > 0:
-                    tc, index = new_TaskConfig(id, index, task_type, si, csv, s_time, end_time, strategys_bunch,auto_download)
+                    tc, index = new_TaskConfig(id, index, task_type, si, csv, start_time, end_time, strategys_bunch,auto_download)
                     ret.append(tc)
 
     return ret
@@ -144,8 +143,8 @@ def get_symbols(tcfgs:[TaskConfig]):
 def get_symbols_from_cfg(cfg):
     return get_symbols(parse_task_config(cfg))
 
-def new_TaskConfig(id,index,task_type, si, csv, start_time, end_time, strategy, auto_download):
-    tc = TaskConfig(task_type, si, csv, start_time, end_time, strategy, auto_download)
+def new_TaskConfig(id,index,task_type, si, csv, start_time, end_time,limit, strategy, auto_download):
+    tc = TaskConfig(task_type, si, csv, start_time, end_time,limit, strategy, auto_download)
     if id == 0:
         tc.id = index
         index += 1
