@@ -31,11 +31,11 @@ class UpdateKlinesTask(BaseTask):
 
         self.collection = self.db_manager.get_collection(self.cfg.db_name, self.tcfg.symbol_interval.name())
 
-        await download(self.name(),self.log,self.db_manager,self.collection,self.exchange,self.tcfg.symbol_interval,quit)
+        await download(self.name(),self.log,self.db_manager,self.collection,self.exchange,self.tcfg.symbol_interval,self.tcfg.start_time,quit)
 
         self.stop()
 
-async def download(name,log:Logger,db_manager:DatabaseManager,collection:Collection,exchange:BinanceExchange,symbol_interval:SymbolInterval,quit:Event):
+async def download(name,log:Logger,db_manager:DatabaseManager,collection:Collection,exchange:BinanceExchange,symbol_interval:SymbolInterval,start_time:int,quit:Event):
     update_completed = False
     max_try = 5
     while not update_completed:
@@ -45,7 +45,7 @@ async def download(name,log:Logger,db_manager:DatabaseManager,collection:Collect
 
         latest_kline = db_manager.get_latest_kline(collection)
         if latest_kline is None:
-            kls = exchange.get_klines_by_start(symbol_interval)
+            kls = exchange.get_klines_by_start(symbol_interval,start_time)
         else:
             next_time = add_time_duration(latest_kline.open_time, symbol_interval.interval, 1)
             if next_time < int(datetime.now().timestamp()):

@@ -47,7 +47,7 @@ class TraderTask(BaseTask):
         self.collection = self.db_manager.get_collection(self.cfg.db_name, self.tcfg.symbol_interval.name())
 
         while Context.running:
-            ret = await download(self.name(),self.log,self.db_manager,self.collection,self.exchange,self.tcfg.symbol_interval,quit)
+            ret = await download(self.name(),self.log,self.db_manager,self.collection,self.exchange,self.tcfg.symbol_interval,self.tcfg.start_time,quit)
             if not ret:
                break
 
