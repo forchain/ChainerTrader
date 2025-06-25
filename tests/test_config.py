@@ -27,3 +27,9 @@ def test_taskconfig():
     tcfgs=parse_task_config(file)
     for tcfg in tcfgs:
         print(tcfg.to_dict())
+
+def test_taskconfig():
+    file=os.path.join(GetScriptsDir(),"update_klines.json")
+    tcfgs=parse_task_config(file)
+    for tcfg in tcfgs:
+        print(tcfg.to_dict())
