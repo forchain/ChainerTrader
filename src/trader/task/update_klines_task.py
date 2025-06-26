@@ -35,7 +35,9 @@ class UpdateKlinesTask(BaseTask):
             if self.tcfg.end_time > 0:
                 start_time = add_time_duration(self.tcfg.end_time, self.tcfg.symbol_interval.interval, -self.tcfg.limit)
             else:
-
+                latest_kline = self.db_manager.get_latest_kline(self.collection)
+                if latest_kline:
+                    start_time = add_time_duration(latest_kline.open_time, self.tcfg.symbol_interval.interval,-self.tcfg.limit)
 
         await download(self.name(),self.log,self.db_manager,self.collection,self.exchange,self.tcfg.symbol_interval,start_time,quit)
 

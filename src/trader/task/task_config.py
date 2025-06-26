@@ -70,7 +70,6 @@ def parse_task_config(cfg)->[TaskConfig]:
 
     ret=[]
     index = 0
-    cur_time = int(datetime.now().timestamp())
     for tcd in parsed_list:
         task_type = parse_task_type(tcd['task_type'])
 
@@ -120,16 +119,16 @@ def parse_task_config(cfg)->[TaskConfig]:
             auto_download = tcd['auto_download']
 
         for si in sis.symbol_intervals:
-            if task_type == TaskType.IMPORT_CSV or task_type == TaskType.CHECK_KLINES or task_type == TaskType.UPDATE_KLINES:
-                tc,index=new_TaskConfig(id,index,task_type, si, csv, start_time, end_time, None, auto_download)
+            if task_type == TaskType.IMPORT_CSV or task_type == TaskType.CHECK_KLINES or task_type == TaskType.CHECK_KLINES_NUM or task_type == TaskType.UPDATE_KLINES:
+                tc,index=new_TaskConfig(id,index,task_type, si, csv, start_time, end_time,limit, None, auto_download)
                 ret.append(tc)
             else:
                 for strategy in strategys:
-                    tc, index = new_TaskConfig(id, index, task_type, si, csv, start_time, end_time, [strategy], auto_download)
+                    tc, index = new_TaskConfig(id, index, task_type, si, csv, start_time, end_time,limit, [strategy], auto_download)
                     ret.append(tc)
 
                 if len(strategys_bunch) > 0:
-                    tc, index = new_TaskConfig(id, index, task_type, si, csv, start_time, end_time, strategys_bunch,auto_download)
+                    tc, index = new_TaskConfig(id, index, task_type, si, csv, start_time, end_time,limit, strategys_bunch,auto_download)
                     ret.append(tc)
 
     return ret
