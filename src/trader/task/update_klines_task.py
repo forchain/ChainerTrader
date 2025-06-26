@@ -38,6 +38,8 @@ class UpdateKlinesTask(BaseTask):
                 latest_kline = self.db_manager.get_latest_kline(self.collection)
                 if latest_kline:
                     start_time = add_time_duration(latest_kline.open_time, self.tcfg.symbol_interval.interval,-self.tcfg.limit)
+                else:
+                    start_time = add_time_duration(int(datetime.now().timestamp()), self.tcfg.symbol_interval.interval, -self.tcfg.limit)
 
         await download(self.name(),self.log,self.db_manager,self.collection,self.exchange,self.tcfg.symbol_interval,start_time,quit)
 
