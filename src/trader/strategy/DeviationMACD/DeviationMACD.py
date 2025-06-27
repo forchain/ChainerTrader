@@ -75,18 +75,25 @@ class DeviationMACDStrategy(BaseStrategy):
         if self.negative_regular_negative_hidden_divergence(True) or self.negative_regular_negative_hidden_divergence(False):
             willOpt=OperateType.SELL
 
+        price = self.data.close[0]
         if not self.position:
             if willOpt == OperateType.BUY:
-                self.log_info(f'Kline:{self.cur_datetime()}, 创建 买单:{self.data.close[0]:.2f}')
-                self.order = self.buy()
-                self.update_stop_loss_point()
+                commission_info = self.broker.getcommissioninfo(self.data)
+                cash = self.broker.getcash()
+                size = int(cash / (price * (1 + commission_info.p.commission)))
+
+                if size > 0:
+                    self.order = self.buy(size=size)
+                    self.log_info(f'Kline:{self.cur_datetime()}, 创建 买单:{self.data.close[0]:.2f}')
+                    self.update_stop_loss_point()
+
         else:
             if willOpt == OperateType.SELL:
                 self.log_info(f'Kline:{self.cur_datetime()}, 创建 卖单:{self.data.close[0]:.2f}')
-                self.order = self.sell()
+                self.order = self.close()
             elif self.need_stop_loss():
                 self.log_info(f'Kline:{self.cur_datetime()}, 创建 清单:{self.data.close[0]:.2f}')
-                self.order = self.sell()
+                self.order = self.close()
 
     def positive_regular_positive_hidden_divergence(self,pr:bool) -> bool:
         if self.bar_idx() <=5:
