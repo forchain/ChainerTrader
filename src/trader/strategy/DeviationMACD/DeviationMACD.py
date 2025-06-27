@@ -63,9 +63,9 @@ class DeviationMACDStrategy(BaseStrategy):
             return
 
         if not math.isnan(self.ph.middle_value()):
-            self.ph_pivots.appendleft(Pivot(self.ph.middle_value(),self.macd_hist[self.ph.middle_idx()],self.bar_idx()))
+            self.ph_pivots.appendleft(Pivot(self.ph.middle_value(),self.macd_hist[self.ph.middle_idx()],self.bar_idx()+self.ph.middle_idx()))
         if not math.isnan(self.pl.middle_value()):
-            self.pl_pivots.appendleft(Pivot(self.pl.middle_value(),self.macd_hist[self.pl.middle_idx()],self.bar_idx()))
+            self.pl_pivots.appendleft(Pivot(self.pl.middle_value(),self.macd_hist[self.pl.middle_idx()],self.bar_idx()+self.pl.middle_idx()))
 
         willOpt = OperateType.UNKNOWN
 
@@ -98,7 +98,8 @@ class DeviationMACDStrategy(BaseStrategy):
         price=self.get_pivot_source()[self.startpoint]
         macdh=self.macd_hist[self.startpoint]
         for item in self.ph_pivots:
-            if (self.bar_idx()-item.bar_idx) > self.params.maxbars:
+            leng = self.bar_idx()+self.ph.middle_idx()-item.bar_idx
+            if leng > self.params.maxbars:
                 break
             need=False
             if pr and macdh > item.macd and price < item.price:
@@ -106,8 +107,6 @@ class DeviationMACDStrategy(BaseStrategy):
             elif (not pr) and macdh < item.macd and price > item.price:
                 need=True
             if need:
-                leng=self.bar_idx()-item.bar_idx
-
                 slope1 = (macdh - price) / (leng - self.startpoint)
                 virtual_line1 = macdh - slope1
                 slope2 = (self.data.close[self.startpoint] - self.data.close[-leng]) / (leng - self.startpoint)
@@ -136,7 +135,8 @@ class DeviationMACDStrategy(BaseStrategy):
         price=self.get_pivot_source()[self.startpoint]
         macdh=self.macd_hist[self.startpoint]
         for item in self.pl_pivots:
-            if (self.bar_idx()-item.bar_idx) > self.params.maxbars:
+            leng = self.bar_idx() + self.ph.middle_idx() - item.bar_idx
+            if leng > self.params.maxbars:
                 break
             need=False
             if pr and macdh < item.macd and price > item.price:
@@ -144,7 +144,6 @@ class DeviationMACDStrategy(BaseStrategy):
             elif (not pr) and macdh > item.macd and price < item.price:
                 need=True
             if need:
-                leng=self.bar_idx()-item.bar_idx
 
                 slope1 = (macdh - price) / (leng - self.startpoint)
                 virtual_line1 = macdh - slope1
