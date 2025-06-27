@@ -61,8 +61,9 @@ class Statistics:
                                (f"{bts.tret.buys}/{bts.tret.sells}")])
                 index+=1
 
-            print("\n")
-            print(table)
+            self.log.info(f"\n{table}")
+
+
 
     def get_operates(self,limit:int = 10):
         ret=[]

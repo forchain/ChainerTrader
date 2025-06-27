@@ -139,9 +139,7 @@ class Node:
         table.add_row(["操作买单数", optstat['buys']])
         table.add_row(["操作卖单数", optstat['sells']])
 
-
-        print("\n")
-        print(table)
+        self.log.info(f"\n{table}")
 
         return TraderResult(totalReturnRate,
                             maxDrawdown,
