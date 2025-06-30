@@ -152,4 +152,5 @@ class Node:
                             optstat['buys'],
                             optstat['sells'],
                             optstat['latest'],
-                            hold_rate)
+                            hold_rate,
+                            data_len)
