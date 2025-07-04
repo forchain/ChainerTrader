@@ -166,34 +166,26 @@ qqeDown=secondaryRSI - 50 < -thresholdSecondary and primaryRSI - 50 < bollingerL
 opt_buy = false
 opt_sell = false
 
-if buySignal and qqeUp > 0 and trend > 0
+if buySignal and qqeUp > 0 and av_trend > 0
     opt_buy := true    
 
-if sellSignal and qqeDown < 0 and trend < 0
+if sellSignal and qqeDown < 0 and av_trend < 0
     opt_sell := true
 
 
-var float profit_price = 0
 var float los_price = 0
 if opt_buy
     strategy.entry('long', strategy.long)
     //strategy.exit("profit_loss_exit", from_entry="long",profit = atr_x,loss = atr_x2)
-    profit_price := up[0]
-    los_price := dn[0]
+    los_price := up[0]
 else
     if opt_sell
-        strategy.close_all()
-        profit_price := 0
+        strategy.close_all('sell')
         los_price := 0
 
-if profit_price > 0 and los_price > 0
-    //if close > profit_price
-        //strategy.close_all('stop profit')
-        //profit_price := 0
-        //los_price := 0
+if los_price > 0
     if close < los_price
         strategy.close_all('stop loss')
-        profit_price := 0
         los_price := 0
 
 
