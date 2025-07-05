@@ -6,6 +6,7 @@ import numpy as np
 from enum import Enum
 
 from trader.strategy.base_strategy import BaseStrategy
+from trader.task.super_trend import SuperTrend
 
 
 class MAType(Enum):
@@ -21,21 +22,7 @@ class MAType(Enum):
 
 
 class SupertrendStrategy(BaseStrategy):
-    """
-    Supertrend Strategy - Python implementation of Pine Script
-    Combines Supertrend, QQE, and Heikin Ashi indicators for trend following
-    """
-    
     params = (
-        ('name', 'Supertrend'),
-        ('period', 12),
-        
-        # Supertrend parameters
-        ('atr_period', 9),
-        ('atr_multiplier', 3.9),
-        ('change_atr_method', True),
-        ('source_type', 'hl2'),  # 'hl2', 'close', 'high', 'low'
-        
         # QQE parameters
         ('rsi_length_primary', 6),
         ('rsi_smoothing_primary', 5),
@@ -59,19 +46,11 @@ class SupertrendStrategy(BaseStrategy):
 
     def __init__(self):
         super().__init__()
-        
-        # Initialize ATR
-        if self.params.change_atr_method:
-            self.atr = bt.indicators.ATR(self.data, period=self.params.atr_period)
-        else:
-            self.atr = bt.indicators.SimpleMovingAverage(
-                bt.indicators.TrueRange(self.data), 
-                period=self.params.atr_period
-            )
-        
-        # Initialize Supertrend
-        self.supertrend = self._calculate_supertrend()
-        
+        self.st = SuperTrend(self.data,
+                             period=self.params.atrperiod,
+                             multiplier=self.params.atrdist,
+                             change_atr=True)
+
         # Initialize QQE indicators
         self.primary_qqe, self.primary_rsi = self._calculate_qqe(
             self.params.rsi_length_primary,
@@ -117,50 +96,6 @@ class SupertrendStrategy(BaseStrategy):
             return self.data.low
         else:
             return (self.data.high + self.data.low) / 2
-
-    def _calculate_supertrend(self):
-        """Calculate Supertrend indicator"""
-        src = self._get_source()
-        
-        # Calculate up and down bands
-        up = src - self.params.atr_multiplier * self.atr
-        dn = src + self.params.atr_multiplier * self.atr
-        
-        # Initialize arrays to store values
-        up_vals = []
-        dn_vals = []
-        trend_vals = []
-        
-        for i in range(len(self.data)):
-            if i == 0:
-                up_vals.append(up[i])
-                dn_vals.append(dn[i])
-                trend_vals.append(1)
-            else:
-                # Update up band
-                up1 = up_vals[i-1] if i > 0 else up[i]
-                if self.data.close[i-1] > up1:
-                    up_vals.append(max(up[i], up1))
-                else:
-                    up_vals.append(up[i])
-                
-                # Update down band
-                dn1 = dn_vals[i-1] if i > 0 else dn[i]
-                if self.data.close[i-1] < dn1:
-                    dn_vals.append(min(dn[i], dn1))
-                else:
-                    dn_vals.append(dn[i])
-                
-                # Update trend
-                prev_trend = trend_vals[i-1] if i > 0 else 1
-                if prev_trend == -1 and self.data.close[i] > dn1:
-                    trend_vals.append(1)
-                elif prev_trend == 1 and self.data.close[i] < up1:
-                    trend_vals.append(-1)
-                else:
-                    trend_vals.append(prev_trend)
-        
-        return trend_vals
 
     def _calculate_qqe(self, rsi_length, smoothing_factor, qqe_factor):
         """Calculate QQE indicator"""
@@ -303,15 +238,12 @@ class SupertrendStrategy(BaseStrategy):
         
         if self.order:
             return
-        
-        # Update trend
-        if len(self.data) > 0:
-            self.prev_trend = self.trend
-            self.trend = self.supertrend[-1] if len(self.supertrend) > 0 else 1
-        
-        # Get signals
-        buy_signal = self.trend == 1 and self.prev_trend == -1
-        sell_signal = self.trend == -1 and self.prev_trend == 1
+
+        dir = self.st.direction[0]
+        prev_dir = self.st.direction[-1]
+
+        buy_signal = (dir == 1 and prev_dir == -1)
+        sell_signal = (dir == -1 and prev_dir == 1)
         
         qqe_up, qqe_down = self._get_qqe_signals()
         ha_trend = self._get_heikin_ashi_trend()
