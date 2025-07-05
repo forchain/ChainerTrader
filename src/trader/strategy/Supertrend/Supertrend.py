@@ -343,20 +343,3 @@ class SupertrendStrategy(BaseStrategy):
                 self.log_info(f'止损触发 - 价格: {self.data.close[0]:.2f}')
                 self.order = self.sell()
                 self.stop_loss_price = 0.0
-
-    def notify_order(self, order):
-        """Handle order notifications"""
-        super().notify_order(order)
-        
-        if order.status in [order.Completed]:
-            if order.isbuy():
-                self.log_info(f'买入执行 - 价格: {order.executed.price:.2f}')
-            else:
-                self.log_info(f'卖出执行 - 价格: {order.executed.price:.2f}')
-
-    def notify_trade(self, trade):
-        """Handle trade notifications"""
-        super().notify_trade(trade)
-        
-        if trade.isclosed:
-            self.log_info(f'交易完成 - 毛利润: {trade.pnl:.2f}, 净利润: {trade.pnlcomm:.2f}')
