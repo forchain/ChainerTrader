@@ -35,7 +35,7 @@ class SupertrendStrategy(BaseStrategy):
         self.st = SuperTrend(self.data,
                              period=self.params.atrperiod,
                              multiplier=self.params.atrdist,
-                             change_atr=True)
+                             use_atr=True)
 
         self.qqe_p = QQECalc(self.data,
                              rsi_len=self.params.rsi_length_primary,
@@ -95,13 +95,13 @@ class SupertrendStrategy(BaseStrategy):
         opt_sell = False
         
         # Buy condition: Supertrend buy signal + QQE up + Heikin Ashi bullish
-        if buy_signal and self.buy_sig[0] and ha_trend > 0:
+        if buy_signal and self.st.buy_signal[0] and ha_trend > 0:
             opt_buy = True
         
         # Sell condition: Supertrend sell signal + QQE down + Heikin Ashi bearish
-        if sell_signal and self.sell_sig[0] and ha_trend < 0:
+        if sell_signal and self.st.sell_signal[0] and ha_trend < 0:
             opt_sell = True
-        
+
         # Execute trades
         if not self.position:
             if opt_buy:
