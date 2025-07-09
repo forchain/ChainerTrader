@@ -82,12 +82,6 @@ class SupertrendStrategy(BaseStrategy):
         if self.order:
             return
 
-        dir = self.st.direction[0]
-        prev_dir = self.st.direction[-1]
-
-        buy_signal = (dir == 1 and prev_dir == -1)
-        sell_signal = (dir == -1 and prev_dir == 1)
-
         ha_trend = self.ind.trend[0]
         
         # Trading logic
@@ -95,11 +89,11 @@ class SupertrendStrategy(BaseStrategy):
         opt_sell = False
         
         # Buy condition: Supertrend buy signal + QQE up + Heikin Ashi bullish
-        if buy_signal and self.st.buy_signal[0] and ha_trend > 0:
+        if self.st.buy_signal[0] and self.buy_sig[0] and ha_trend > 0:
             opt_buy = True
         
         # Sell condition: Supertrend sell signal + QQE down + Heikin Ashi bearish
-        if sell_signal and self.st.sell_signal[0] and ha_trend < 0:
+        if self.st.sell_signal[0] and self.sell_sig[0] and ha_trend < 0:
             opt_sell = True
 
         # Execute trades
