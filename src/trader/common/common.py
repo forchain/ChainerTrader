@@ -40,3 +40,5 @@ def dynamic_load(module_name, class_name):
     except (ModuleNotFoundError, AttributeError) as e:
         print(f"Error: {e}")
         return None
+
+MIN_RECORDS_NUM = 100

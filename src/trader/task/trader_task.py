@@ -4,7 +4,7 @@ from logging import Logger
 from trader.app.database_manager import DatabaseManager
 from trader.binance_exchange.data import BinanceData
 from trader.binance_exchange.exchange import BinanceExchange
-from trader.common.common import Context, sleep
+from trader.common.common import Context, sleep, MIN_RECORDS_NUM
 from trader.common.config import Config
 from trader.common.message import new_stat_msg
 from trader.statistics.stat import TraderStat
@@ -52,11 +52,15 @@ class TraderTask(BaseTask):
                break
 
             kls_cache = self.db_manager.get_latest_klines(self.collection, self.cfg.window)
-            if len(kls_cache) <= 0:
+            if len(kls_cache) <= MIN_RECORDS_NUM:
+                await sleep(self.log, 2, "Try again...")
                 continue
             latest_kline = kls_cache[len(kls_cache) - 1]
             node = Node(self.tcfg.strategy_name(),strategy,self.tcfg.symbol_interval.interval,self.cfg, self.log,BinanceData(kls_cache))
             ret=node.start()
+            if ret is None:
+                continue
+
             await queue.put(new_stat_msg(TraderStat(self.tcfg.strategy_name(), self.tcfg.symbol_interval.name(), ret),self.tcfg.id))
 
             while Context.running:
