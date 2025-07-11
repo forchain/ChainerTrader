@@ -4,7 +4,7 @@ from logging import Logger
 from trader.app.database_manager import DatabaseManager
 from trader.binance_exchange.data import BinanceData
 from trader.binance_exchange.exchange import BinanceExchange
-from trader.common.common import sleep, MIN_RECORDS_NUM
+from trader.common.common import sleep, MIN_RECORDS_NUM, sleep_loop
 from trader.common.config import Config
 from trader.common.message import new_stat_msg
 from trader.statistics.stat import TraderStat
@@ -70,6 +70,6 @@ class TraderTask(BaseTask):
                 else:
                     dist = next_time - int(datetime.now().timestamp())
                     dist +=1
-                    await sleep(self.log,dist,"next K-line...")
+                    await sleep_loop(self.log,dist,quit,"next K-line...")
 
         self.stop()
