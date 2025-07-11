@@ -4,7 +4,7 @@ from logging import Logger
 from trader.app.database_manager import DatabaseManager
 from trader.binance_exchange.data import BinanceData
 from trader.binance_exchange.exchange import BinanceExchange
-from trader.common.common import Context, sleep, MIN_RECORDS_NUM
+from trader.common.common import sleep, MIN_RECORDS_NUM
 from trader.common.config import Config
 from trader.common.message import new_stat_msg
 from trader.statistics.stat import TraderStat
@@ -46,7 +46,7 @@ class TraderTask(BaseTask):
 
         self.collection = self.db_manager.get_collection(self.cfg.db_name, self.tcfg.symbol_interval.name())
 
-        while Context.running:
+        while not quit.is_set():
             ret = await download(self.name(),self.log,self.db_manager,self.collection,self.exchange,self.tcfg.symbol_interval,self.tcfg.start_time,quit)
             if not ret:
                break
@@ -63,7 +63,7 @@ class TraderTask(BaseTask):
 
             await queue.put(new_stat_msg(TraderStat(self.tcfg.strategy_name(), self.tcfg.symbol_interval.name(), ret),self.tcfg.id))
 
-            while Context.running:
+            while not quit.is_set():
                 next_time = add_time_duration(latest_kline.open_time, self.tcfg.symbol_interval.interval, 1)
                 if next_time < int(datetime.now().timestamp()):
                      break
