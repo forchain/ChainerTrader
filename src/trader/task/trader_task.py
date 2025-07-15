@@ -61,6 +61,9 @@ class TraderTask(BaseTask):
             if ret is None:
                 continue
 
+            if ret.operate:
+                ret.operate.symbol_interval=self.tcfg.symbol_interval
+
             await queue.put(new_stat_msg(TraderStat(self.tcfg.strategy_name(), self.tcfg.symbol_interval.name(), ret),self.tcfg.id))
 
             while not quit.is_set():
