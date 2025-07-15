@@ -7,18 +7,27 @@ import os
 from fastapi import FastAPI,Request
 
 from trader.app.app import App
-from trader.common.config import NewConfigFromEnv, Config
+from trader.common.config import Config
 from trader.common import path
-from multiprocessing import Process, Manager
+from contextlib import asynccontextmanager
 
-rpc = FastAPI()
+@asynccontextmanager
+async def lifespan(rpc: FastAPI):
+    app = App(rpc.state.cfg)
+    rpc.state.app=app
 
-def start(shared_dict):
+    app.start(False)
+    yield
+    await app.stop()
+
+rpc = FastAPI(lifespan=lifespan)
+
+def start(cfg:Config,api:str):
     app_dir = os.path.join(path.GetTraderDir(), 'rpc')
 
     bind_addr: str = "127.0.0.1:8000"
-    if shared_dict['api']:
-        bind_addr = shared_dict['api']
+    if api:
+        bind_addr = api
 
     # Parse bind address and port
     if ':' in bind_addr:
@@ -30,10 +39,8 @@ def start(shared_dict):
         host = bind_addr
         port = 8000
 
-    app = shared_dict['app']
-    app.log().info(f"Start RPC")
-    rpc.state.app=app
-    uvicorn.run(rpc, host=host, port=port, reload=False, app_dir=app_dir, log_level=app.cfg.get_log_level())
+    rpc.state.cfg = cfg
+    uvicorn.run(rpc, host=host, port=port, reload=False, app_dir=app_dir, log_level=cfg.get_log_level())
 
 @rpc.get("/version")
 def read_app_version():
