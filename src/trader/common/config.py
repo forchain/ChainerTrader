@@ -22,7 +22,8 @@ class Config:
                       tasks=None,
                       cash=100000,
                       stat=50,
-                      notice=None):
+                      notice=None,
+                      api=None):
         self.mode=parseTrendType(mode)
         self.commission=commission
         self.atr=atr
@@ -39,6 +40,7 @@ class Config:
         self.cash=cash
         self.stat=stat
         self.notice=notice
+        self.api=api
 
     def exportEnv(self):
         os.environ['commission'] = str(self.commission)
@@ -61,6 +63,7 @@ class Config:
         os.environ['cash'] = str(self.cash)
         os.environ['stat'] = str(self.stat)
         os.environ['notice'] = str(self.notice)
+        os.environ['api'] = str(self.api)
 
     def to_dict(self):
         return {
@@ -79,7 +82,8 @@ class Config:
             'tasks':self.tasks,
             'cash':self.cash,
             'stat':self.stat,
-            'notice':self.notice
+            'notice':self.notice,
+            'api': self.api
         }
 
     def get_log_level(self)->int:
@@ -112,7 +116,8 @@ def NewConfigFromEnv():
         os.environ.get('tasks'),
         os.environ.get('cash'),
         os.environ.get('stat'),
-        os.environ.get('notice')
+        os.environ.get('notice'),
+        os.environ.get('api')
     )
 
 def default()->Config:
