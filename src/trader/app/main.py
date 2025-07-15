@@ -51,14 +51,15 @@ def main():
                  args.tasks,
                  args.cash,
                  args.stat,
-                 args.notice)
+                 args.notice,
+                 args.api)
     if args.version:
         print(version())
         return
 
 
-    if args.api:
-        start(cfg,args.api)
+    if cfg.api:
+        start(cfg)
 
     else:
         app = App(cfg)

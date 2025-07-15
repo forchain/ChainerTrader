@@ -6,28 +6,30 @@ import os
 
 from fastapi import FastAPI,Request
 
-from trader.app.app import App
 from trader.common.config import Config
 from trader.common import path
 from contextlib import asynccontextmanager
 
+from trader.rpc.rpc_app import RpcApp
+
+
 @asynccontextmanager
 async def lifespan(rpc: FastAPI):
-    app = App(rpc.state.cfg)
+    app = RpcApp(rpc.state.cfg)
     rpc.state.app=app
 
-    app.start(False)
+    app.start()
     yield
     await app.stop()
 
 rpc = FastAPI(lifespan=lifespan)
 
-def start(cfg:Config,api:str):
+def start(cfg:Config):
     app_dir = os.path.join(path.GetTraderDir(), 'rpc')
 
     bind_addr: str = "127.0.0.1:8000"
-    if api:
-        bind_addr = api
+    if cfg.api:
+        bind_addr = cfg.api
 
     # Parse bind address and port
     if ':' in bind_addr:

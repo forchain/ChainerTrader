@@ -47,7 +47,7 @@ class App:
     def log(self):
         return self.logger.log()
 
-    def start(self,alone:bool=True):
+    def start(self):
         if self.cfg.tasks is None:
             self.log().warn(f"No tasks can be executed")
             return True
@@ -61,16 +61,10 @@ class App:
         if  self.exchange:
             self.exchange.start()
 
-        self.process(alone)
+        self.process()
         return True
 
-    async def stop(self):
-        if self.main_task:
-            if not self.main_task.done():
-                self.log().info(f"Retry quit main task")
-                self.quit.set()
-                await self.main_task
-
+    def stop(self):
         self.stat.report()
 
         if self.task_manager:
@@ -99,27 +93,23 @@ class App:
     def config(self):
         return self.cfg
 
-    def process(self,alone:bool=True):
+    def process(self):
         try:
-            self.loop = asyncio.get_running_loop()
+            loop = asyncio.get_running_loop()
         except RuntimeError:
-            self.loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(self.loop)
-        self.quit = asyncio.Event()
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        quit = asyncio.Event()
 
-        if alone:
-            for sig in (signal.SIGINT, signal.SIGTERM):
-                self.loop.add_signal_handler(sig, self.shutdown, self.quit)
-            try:
-                self.loop.run_until_complete(self.start_handler(self.quit))
-            except asyncio.CancelledError:
-                self.log().debug("All tasks have been cancelled.")
-            finally:
-                self.loop.close()
-                self.log().info(f"{self.name()} tasks exited.")
-        else:
-            self.main_task = self.loop.create_task(self.start_handler(self.quit))
-
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            loop.add_signal_handler(sig, self.shutdown, quit)
+        try:
+            loop.run_until_complete(self.start_handler(quit))
+        except asyncio.CancelledError:
+            self.log().debug("All tasks have been cancelled.")
+        finally:
+            loop.close()
+            self.log().info(f"{self.name()} tasks exited.")
 
     def shutdown(self,quit:Event):
         self.log().info(f"Received shutdown signal, stopping {self.name()}...")
