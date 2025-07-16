@@ -56,13 +56,10 @@ class TraderTask(BaseTask):
                 await sleep(self.log, 2, "Try again...")
                 continue
             latest_kline = kls_cache[len(kls_cache) - 1]
-            node = Node(self.tcfg.strategy_name(),strategy,self.tcfg.symbol_interval.interval,self.cfg, self.log,BinanceData(kls_cache))
+            node = Node(self.tcfg.strategy_name(),strategy,self.tcfg.symbol_interval,self.cfg, self.log,BinanceData(kls_cache))
             ret=node.start()
             if ret is None:
                 continue
-
-            if ret.operate:
-                ret.operate.symbol_interval=self.tcfg.symbol_interval
 
             await queue.put(new_stat_msg(TraderStat(self.tcfg.strategy_name(), self.tcfg.symbol_interval.name(), ret),self.tcfg.id))
 

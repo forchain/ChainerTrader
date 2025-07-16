@@ -13,14 +13,15 @@ from prettytable import PrettyTable
 from trader.common.config import Config
 from trader.strategy.trader_result import TraderResult
 from trader.utils.operation_state import OptStatAnalyzer
-from trader.utils.symbol_interval import Interval, get_time_duration
+from trader.utils.symbol_interval import get_time_duration, SymbolInterval
+
 
 class Node:
-    def __init__(self,name,strategy,interval:Interval,cfg:Config=None,log:logging.Logger=None,data=None):
+    def __init__(self,name,strategy,si:SymbolInterval,cfg:Config=None,log:logging.Logger=None,data=None):
         self.log=log
         self.name=name
         self.cfg=cfg
-        self.interval=interval
+        self.si=si
 
         log.info(f"New node")
 
@@ -39,7 +40,7 @@ class Node:
         cerebro.addanalyzer(bt.analyzers.VWR, _name='volatility')
         cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name='trade_analyzer')
 
-        cerebro.addanalyzer(OptStatAnalyzer, _name="optstat")
+        cerebro.addanalyzer(OptStatAnalyzer, _name="optstat",si=self.si)
 
         self.cerebro=cerebro
 
@@ -103,7 +104,7 @@ class Node:
         maxDrawdown = drawdown.max.drawdown
 
         maxDrawdownLen = drawdown.max.len
-        maxDrawdownLen = get_time_duration(self.interval)*maxDrawdownLen
+        maxDrawdownLen = get_time_duration(self.si.interval)*maxDrawdownLen
         maxDrawdownDuration = timedelta(seconds=maxDrawdownLen)
 
         sharpeRatio = ret.analyzers.sharpe.get_analysis()

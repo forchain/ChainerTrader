@@ -95,7 +95,7 @@ def process_backtrader(parmas,result):
     logger = Logger(cfg)
 
     logger.log().info(f"start do backtrader: {tcfg.id}")
-    node = Node(tcfg.strategy_name(),strategy,tcfg.symbol_interval.interval, cfg, logger.log(), data)
+    node = Node(tcfg.strategy_name(),strategy,tcfg.symbol_interval, cfg, logger.log(), data)
     ret = node.start()
     logger.log().info(f"end do backtrader: {tcfg.id}")
     if ret is None:
@@ -104,6 +104,5 @@ def process_backtrader(parmas,result):
         next_time = add_time_duration(ret.operate.dtime, tcfg.symbol_interval.interval, 1)
         if next_time < int(datetime.now().timestamp()):
             ret.operate=None
-        else:
-            ret.operate.symbol_interval=tcfg.symbol_interval
+
     result.append(new_stat_msg(BackTraderStat(tcfg.strategy_name(), tcfg.symbol_interval.name(), ret), tcfg.id))
