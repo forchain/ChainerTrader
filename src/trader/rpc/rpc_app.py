@@ -34,7 +34,7 @@ class RpcApp(App):
 
 
     async def stop(self):
-        if not self.main_task.done():
+        if self.main_task and not self.main_task.done():
             self.log().info(f"Retry quit main task")
             self.quit.set()
             await self.main_task
