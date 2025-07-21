@@ -5,13 +5,12 @@ import math
 from collections import deque
 from enum import Enum
 
-from trader.common.config import DEFAULT_PERIOD
 from trader.strategy.base_strategy import BaseStrategy
 from trader.utils.operate import OperateType
 import backtrader as bt
 
-from trader.utils.pivot_high import PivotHigh
-from trader.utils.pivot_low import PivotLow
+from trader.indicators.pivot_high import PivotHigh
+from trader.indicators.pivot_low import PivotLow
 
 class Pivot:
     def __init__(self,price:float,macd:float,bar_idx:int):
