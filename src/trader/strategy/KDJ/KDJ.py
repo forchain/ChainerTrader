@@ -1,11 +1,8 @@
 from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
 
-from dns.asyncbackend import set_default_backend
-
-from trader.common.config import DEFAULT_PERIOD
 from trader.strategy.base_strategy import BaseStrategy
-from trader.utils.kdj import KDJIndicator
+from trader.indicators.kdj import KDJIndicator
 from trader.utils.operate import OperateType
 
 
