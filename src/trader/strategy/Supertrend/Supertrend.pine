@@ -29,8 +29,8 @@ plotshape(sellSignal and showsignals ? dn : na, title = 'Sell', text = 'Sell', l
 mPlot = plot(ohlc4, title = '', style = plot.style_circles, linewidth = math.max(1, 0))
 longFillColor = highlighting ? trend == 1 ? color.green : color.white : color.white
 shortFillColor = highlighting ? trend == -1 ? color.red : color.white : color.white
-fill(mPlot, upPlot, title = 'UpTrend Highligter', color = longFillColor)
-fill(mPlot, dnPlot, title = 'DownTrend Highligter', color = shortFillColor)
+//fill(mPlot, upPlot, title = 'UpTrend Highligter', color = longFillColor)
+//fill(mPlot, dnPlot, title = 'DownTrend Highligter', color = shortFillColor)
 alertcondition(buySignal, title = 'SuperTrend Buy', message = 'SuperTrend Buy!')
 alertcondition(sellSignal, title = 'SuperTrend Sell', message = 'SuperTrend Sell!')
 changeCond = trend != trend[1]
@@ -98,13 +98,13 @@ rsiColorPrimary = primaryRSI - 50 > bollingerUpper ? color.new(#00c3ff, 0) : pri
 
 rsiColorSecondary = secondaryRSI - 50 > thresholdSecondary ? color.new(#707070, 20) : secondaryRSI - 50 < -thresholdSecondary ? color.new(#707070, 20) : na
 
-plot(secondaryQQETrendLine - 50, title="Secondary QQE Trend Line", color=color.white, linewidth=2)
-plot(secondaryRSI - 50, color=rsiColorSecondary, title="Secondary RSI Histogram", style=plot.style_columns)
+//plot(secondaryQQETrendLine - 50, title="Secondary QQE Trend Line", color=color.white, linewidth=2)
+//plot(secondaryRSI - 50, color=rsiColorSecondary, title="Secondary RSI Histogram", style=plot.style_columns)
 
-plot(secondaryRSI - 50 > thresholdSecondary and primaryRSI - 50 > bollingerUpper ? secondaryRSI - 50 : na, title="QQE Up Signal", style=plot.style_columns, color=#00c3ff)
-plot(secondaryRSI - 50 < -thresholdSecondary and primaryRSI - 50 < bollingerLower ? secondaryRSI - 50 : na, title="QQE Down Signal", style=plot.style_columns, color=#ff0062)
+//plot(secondaryRSI - 50 > thresholdSecondary and primaryRSI - 50 > bollingerUpper ? secondaryRSI - 50 : na, title="QQE Up Signal", style=plot.style_columns, color=#00c3ff)
+//plot(secondaryRSI - 50 < -thresholdSecondary and primaryRSI - 50 < bollingerLower ? secondaryRSI - 50 : na, title="QQE Down Signal", style=plot.style_columns, color=#ff0062)
 
-hline(0, title="Zero Line", color=color.white, linestyle=hline.style_dotted)
+//hline(0, title="Zero Line", color=color.white, linestyle=hline.style_dotted)
 
 alertcondition(ta.crossover(primaryRSI, 50), title="Primary RSI Cross Above Zero", message="Primary RSI crossed above zero")
 alertcondition(ta.crossunder(primaryRSI, 50), title="Primary RSI Cross Below Zero", message="Primary RSI crossed below zero")
@@ -167,26 +167,41 @@ opt_buy = false
 opt_sell = false
 
 if buySignal and qqeUp > 0 and av_trend > 0
-    opt_buy := true    
+    opt_buy := true  
 
 if sellSignal and qqeDown < 0 and av_trend < 0
     opt_sell := true
 
 
 var float los_price = 0
+var float profit_price = 0
+
 if opt_buy
     strategy.entry('long', strategy.long)
     //strategy.exit("profit_loss_exit", from_entry="long",profit = atr_x,loss = atr_x2)
-    los_price := up[0]
+    los_price := ma_heikinashi_low[0]
+    if los_price > low[0]
+        los_price := low[0]
+
+    profit_price := (close[0] - los_price[0])*2 + close[0]
+
 else
     if opt_sell
         strategy.close_all('sell')
         los_price := 0
+        profit_price := 0
 
 if los_price > 0
     if close < los_price
         strategy.close_all('stop loss')
         los_price := 0
+        profit_price := 0
+
+if profit_price > 0
+    if close > profit_price
+        strategy.close_all('stop profit')
+        los_price := 0
+        profit_price := 0
 
 
 plotshape(opt_buy, title = 'buy', location = location.belowbar, color = color.green, style = shape.labelup, text = 'buy')
