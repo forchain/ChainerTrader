@@ -21,11 +21,11 @@ trend := trend == -1 and close > dn1 ? 1 : trend == 1 and close < up1 ? -1 : tre
 upPlot = plot(trend == 1 ? up : na, title = 'Up Trend', style = plot.style_linebr, linewidth = 2, color = color.new(color.green, 0))
 buySignal = trend == 1 and trend[1] == -1
 plotshape(buySignal ? up : na, title = 'UpTrend Begins', location = location.absolute, style = shape.circle, size = size.tiny, color = color.new(color.green, 0))
-plotshape(buySignal and showsignals ? up : na, title = 'Buy', text = 'Buy', location = location.absolute, style = shape.labelup, size = size.tiny, color = color.new(color.green, 0), textcolor = color.new(color.white, 0))
+//plotshape(buySignal and showsignals ? up : na, title = 'Buy', text = 'Buy', location = location.absolute, style = shape.labelup, size = size.tiny, color = color.new(color.green, 0), textcolor = color.new(color.white, 0))
 dnPlot = plot(trend == 1 ? na : dn, title = 'Down Trend', style = plot.style_linebr, linewidth = 2, color = color.new(color.red, 0))
 sellSignal = trend == -1 and trend[1] == 1
 plotshape(sellSignal ? dn : na, title = 'DownTrend Begins', location = location.absolute, style = shape.circle, size = size.tiny, color = color.new(color.red, 0))
-plotshape(sellSignal and showsignals ? dn : na, title = 'Sell', text = 'Sell', location = location.absolute, style = shape.labeldown, size = size.tiny, color = color.new(color.red, 0), textcolor = color.new(color.white, 0))
+//plotshape(sellSignal and showsignals ? dn : na, title = 'Sell', text = 'Sell', location = location.absolute, style = shape.labeldown, size = size.tiny, color = color.new(color.red, 0), textcolor = color.new(color.white, 0))
 mPlot = plot(ohlc4, title = '', style = plot.style_circles, linewidth = math.max(1, 0))
 longFillColor = highlighting ? trend == 1 ? color.green : color.white : color.white
 shortFillColor = highlighting ? trend == -1 ? color.red : color.white : color.white
@@ -74,7 +74,7 @@ calculateQQE(rsiLength, smoothingFactor, qqeFactor, source) =>
     longBand := smoothedRsi[1] > longBand[1] and smoothedRsi > longBand[1] ? math.max(longBand[1], newLongBand) : newLongBand
     shortBand := smoothedRsi[1] < shortBand[1] and smoothedRsi < shortBand[1] ? math.min(shortBand[1], newShortBand) : newShortBand
     longBandCross = ta.cross(longBand[1], smoothedRsi)
-    
+
     if ta.cross(smoothedRsi, shortBand[1])
         trendDirection := 1
     else if longBandCross
@@ -110,11 +110,15 @@ alertcondition(ta.crossover(primaryRSI, 50), title="Primary RSI Cross Above Zero
 alertcondition(ta.crossunder(primaryRSI, 50), title="Primary RSI Cross Below Zero", message="Primary RSI crossed below zero")
 
 //
-ma_type = input.string('EMA', 'MA Type', ['ALMA', 'HMA', 'SMA', 'SWMA', 'VWMA', 'WMA', 'ZLEMA', 'EMA'], group = 'Setup')
+ma_type = input.string('EMA', 'MA Type', ['ALMA', 'HMA', 'SMA', 'SWMA', 'VWMA', 'WMA', 'ZLEMA', 'EMA', 'EMA2'], group = 'Setup')
 ma_period = input.int(9, 'MA Period (Length)', 1, group = 'Setup')
+ma_period2 = input.int(10, title="EMA Length(Smoothing)")
 
 alma_offset = input.float(0.85, 'ALMA Shift', 0, 1, 0.05, group = 'Setup (ALMA)')
 alma_sigma = input.int(6, 'ALMA Deviation', 1, step = 1, group = 'Setup (ALMA)')
+
+ema1 = ta.ema(x, ma_period)
+ema2 = ta.ema(ema1, ma_period2)
 
 show_line_1(x) =>
     input.bool(true, 'Show Close line', group = 'On/Off') ? x : na
@@ -131,6 +135,7 @@ f(x) =>
         'VWMA' => ta.vwma(x, ma_period)
         'WMA' => ta.vwma(x, ma_period)
         'ZLEMA' => ta.ema(x + x - x[math.floor((ma_period - 1) / 2)], ma_period)
+        'EMA2' => ema2
         => ta.ema(x, ma_period)
 
 ma_heikinashi_open = f(request.security(ticker.heikinashi(syminfo.tickerid), timeframe.period, open))
@@ -166,42 +171,39 @@ qqeDown=secondaryRSI - 50 < -thresholdSecondary and primaryRSI - 50 < bollingerL
 opt_buy = false
 opt_sell = false
 
-if buySignal and qqeUp > 0 and av_trend > 0
-    opt_buy := true  
+var int confirm = 0
 
-if sellSignal and qqeDown < 0 and av_trend < 0
+if confirm == 0
+    if buySignal and qqeUp > 0 and av_trend > 0 and strategy.position_size == 0
+        confirm :=confirm+1
+else
+    if qqeUp > 0 and av_trend > 0 and strategy.position_size == 0
+        confirm :=confirm+1
+
+if confirm >= 2
+    opt_buy := true
+    confirm :=0
+
+if sellSignal and qqeDown < 0 and av_trend < 0 and strategy.position_size > 0
     opt_sell := true
 
 
 var float los_price = 0
-var float profit_price = 0
 
 if opt_buy
     strategy.entry('long', strategy.long)
-    //strategy.exit("profit_loss_exit", from_entry="long",profit = atr_x,loss = atr_x2)
     los_price := ma_heikinashi_low[0]
     if los_price > low[0]
         los_price := low[0]
 
-    profit_price := (close[0] - los_price[0])*2 + close[0]
+if opt_sell
+    strategy.close_all('sell')
+    los_price := 0
 
-else
-    if opt_sell
-        strategy.close_all('sell')
-        los_price := 0
-        profit_price := 0
-
-if los_price > 0
-    if close < los_price
+if strategy.position_size > 0
+    if los_price > 0 and close < los_price
         strategy.close_all('stop loss')
         los_price := 0
-        profit_price := 0
-
-if profit_price > 0
-    if close > profit_price
-        strategy.close_all('stop profit')
-        los_price := 0
-        profit_price := 0
 
 
 plotshape(opt_buy, title = 'buy', location = location.belowbar, color = color.green, style = shape.labelup, text = 'buy')
