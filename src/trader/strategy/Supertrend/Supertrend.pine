@@ -188,24 +188,11 @@ if opt_buy
     if los_price > low[0]
         los_price := low[0]
 
-    profit_price = (high - los_price) * 2 + high
+    profit_price = up[0]
 
 
 stopLossPct = 0.01
 trailingPct = 0.02
-
-var float highestSinceEntry = na
-
-if profit_price > 0
-    if strategy.position_size > 0
-        highestSinceEntry := na(highestSinceEntry) ? high : math.max(highestSinceEntry, high)
-        stopPrice = highestSinceEntry * (1 - trailingPct)
-        slPrice = strategy.position_avg_price * (1 - stopLossPct)
-        finalStop = math.max(stopPrice, slPrice)
-        profit_price:=finalStop
-    else
-        highestSinceEntry := na
-
 
 
 if opt_sell
@@ -220,7 +207,8 @@ if strategy.position_size > 0
         profit_price := 0
     
     if profit_price > 0
-        if close > profit_price
+        profit_price = up[0]
+        if close < profit_price
             strategy.close_all('stop profit')
             los_price := 0
             profit_price := 0
