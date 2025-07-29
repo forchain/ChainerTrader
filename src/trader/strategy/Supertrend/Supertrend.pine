@@ -168,52 +168,45 @@ fill(plot_lowest, plot_low, show_fill(color.new(color_neutral, 87.5)), title = '
 qqeUp=secondaryRSI - 50 > thresholdSecondary and primaryRSI - 50 > bollingerUpper ? secondaryRSI - 50 : na
 qqeDown=secondaryRSI - 50 < -thresholdSecondary and primaryRSI - 50 < bollingerLower ? secondaryRSI - 50 : na
 
-opt_buy = false
-opt_sell = false
+var opt_long = false
+var opt_short = false
 
+start_long = false
+start_short = false
 
-if buySignal and qqeUp > 0 and av_trend > 0 and strategy.position_size == 0
-    opt_buy := true
-
-if sellSignal and qqeDown < 0 and av_trend < 0 and strategy.position_size > 0
-    opt_sell := true
-
-
-var float los_price = 0
-var float profit_price = 0
-
-if opt_buy
+if buySignal and qqeUp > 0 and av_trend > 0
+    opt_long := true
     strategy.entry('long', strategy.long)
-    los_price := ma_heikinashi_low[0]
-    if los_price > low[0]
-        los_price := low[0]
-
-    profit_price = up[0]
+    start_long := true
 
 
-stopLossPct = 0.01
-trailingPct = 0.02
 
-
-if opt_sell
-    strategy.close_all('sell')
-    los_price := 0
-    profit_price := 0
+if sellSignal and qqeDown < 0 and av_trend < 0
+    opt_short := true
+    strategy.entry('short', strategy.short)
+    start_short:=true
 
 if strategy.position_size > 0
-    if los_price > 0 and close < los_price
-        strategy.close_all('stop loss')
-        los_price := 0
-        profit_price := 0
+    if opt_long
+        if close < up[0]
+            strategy.close_all('stop long loss')
+            opt_long:=false
+            opt_short:=false
+        if close > dn[0]-up[0]+dn[0]
+            strategy.close_all('stop long profit')
+            opt_long:=false
+            opt_short:=false
     
-    if profit_price > 0
-        profit_price = up[0]
-        if close < profit_price
-            strategy.close_all('stop profit')
-            los_price := 0
-            profit_price := 0
+    if opt_short
+        if close < up[0]-(dn[0]-up[0])
+            strategy.close_all('stop short profit')
+            opt_long:=false
+            opt_short:=false
+        if close > dn[0]
+            strategy.close_all('stop short loss')
+            opt_long:=false
+            opt_short:=false
+    
 
-
-
-plotshape(opt_buy, title = 'buy', location = location.belowbar, color = color.green, style = shape.labelup, text = 'buy')
-plotshape(opt_sell, title = 'sell', location = location.abovebar, color = color.red, style = shape.labeldown, text = 'sell')
+plotshape(start_long, title = 'start long', location = location.belowbar, color = color.green, style = shape.labelup, text = 'long')
+plotshape(start_short, title = 'start short', location = location.abovebar, color = color.red, style = shape.labeldown, text = 'short')
