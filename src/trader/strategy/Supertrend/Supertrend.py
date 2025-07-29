@@ -96,12 +96,14 @@ class SupertrendStrategy(BaseStrategy):
         if self.st.sell_signal[0] and self.sell_sig[0] and ha_trend < 0:
             opt_sell = True
 
+        self.update_stop_loss_point()
+
         # Execute trades
         if not self.position:
             if opt_buy:
                 self.log_info(f'买入信号 - 价格: {self.data.close[0]:.2f}')
                 self.order = self.buy()
-                self.update_stop_loss_point()
+
         else:
             if opt_sell:
                 self.log_info(f'卖出信号 - 价格: {self.data.close[0]:.2f}')
@@ -110,3 +112,10 @@ class SupertrendStrategy(BaseStrategy):
             elif self.need_stop_loss():
                 self.log_info(f'止损触发 - 价格: {self.data.close[0]:.2f}')
                 self.order = self.sell()
+
+    def update_stop_loss_point(self):
+        if self.params.atr:
+            self.stopLossPoint = self.datas[0].close[0] - self.atr[0] * self.params.atrdist
+        else:
+            self.stopLossPoint = self.datas[0].close[0] - self.st.lines.up[0]
+

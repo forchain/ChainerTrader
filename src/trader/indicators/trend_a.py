@@ -1,7 +1,6 @@
 import backtrader as bt
 
 from trader.utils.ma import MAType
-from backtrader.indicators import ALMA
 
 def get_ma(data, period, ma_type, alma_offset=0.85, alma_sigma=6):
     if ma_type == MAType.EMA:
@@ -12,8 +11,6 @@ def get_ma(data, period, ma_type, alma_offset=0.85, alma_sigma=6):
         return bt.ind.WMA(data, period=period)
     elif ma_type == MAType.HMA:
         return bt.ind.HullMovingAverage(data, period=period)
-    elif ma_type == MAType.ALMA:
-        return ALMA(data, period=period, offset=alma_offset, sigma=alma_sigma)
     else:
         return bt.ind.EMA(data, period=period)
 
