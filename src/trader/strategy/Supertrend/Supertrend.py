@@ -93,11 +93,11 @@ class SupertrendStrategy(BaseStrategy):
         willOpt = OperateType.UNKNOWN
         
         # Buy condition: Supertrend buy signal + QQE up + Heikin Ashi bullish
-        if self.st.buy_signal[0]:
+        if self.st.buy_signal[0] and self.buy_sig[0] and ha_trend > 0:
             willOpt=OperateType.BUY
         
         # Sell condition: Supertrend sell signal + QQE down + Heikin Ashi bearish
-        if self.st.sell_signal[0]:
+        if self.st.sell_signal[0] and self.sell_sig[0] and ha_trend < 0:
             willOpt=OperateType.SELL
 
         self.update_stop_loss_point()

@@ -13,12 +13,12 @@ class QQECalc(bt.Indicator):
     params = dict(rsi_len=6, rsi_smooth=5, qqe_factor=3.0)
 
     def __init__(self):
-        rsi = bt.ind.RSI(self.data, period=self.p.rsi_len)
-        smoothed = bt.ind.EMA(rsi, period=self.p.rsi_smooth)
+        rsi = bt.ind.RSI(self.data, period=self.p.rsi_len,plot=False)
+        smoothed = bt.ind.EMA(rsi, period=self.p.rsi_smooth,plot=False)
 
         wilders = self.p.rsi_len * 2 - 1
-        abs_delta = Abs(src=smoothed)
-        atr_rsi = bt.ind.EMA(abs_delta.out, period=wilders)
+        abs_delta = Abs(src=smoothed,plot=False)
+        atr_rsi = bt.ind.EMA(abs_delta.out, period=wilders,plot=False)
         dyn_atr = atr_rsi * self.p.qqe_factor
 
         lb = smoothed - dyn_atr
