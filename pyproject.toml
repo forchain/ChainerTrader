@@ -15,15 +15,16 @@ include = [
 ]
 
 [tool.poetry.dependencies]
-python = ">=3.11"
+python = ">=3.11,<=3.13"
 backtrader = "*"
 matplotlib = "*"
 prettytable = "*"
-binance-connector = "*"
 python-dotenv = "*"
 fastapi = {extras = ["standard"], version = "*"}
 pymongo = "*"
 statsmodels = "*"
+binance-common = "^1.0.0"
+binance-sdk-spot = "^1.0.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "*"
