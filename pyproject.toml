@@ -1,57 +1,46 @@
-[build-system]
-requires = ["setuptools>=42", "wheel"]
-build-backend = "setuptools.build_meta"
-
-[project]
+[tool.poetry]
 name = "trader"
 version = "0.38.7"
 description = "Awesome trader created by socoldlight"
-authors = [
-    {name = "socoldlight", email = "socoldlight@example.com"},
-]
-license = { text = "MIT" }
+authors = ["socoldlight <socoldlight@example.com>"]
+license = "MIT"
 readme = "README.md"
-requires-python = ">=3.11"
 
-dependencies = [
-    "backtrader",
-    "matplotlib",
-    "prettytable",
-    "binance-connector",
-    "python-dotenv",
-    "fastapi[standard]",
-    "pymongo",
-    "statsmodels"
+packages = [
+    { include = "trader", from = "src" }
+]
+include = [
+    { path = "src/trader/VERSION", format = "sdist" },
+    { path = "src/trader/VERSION", format = "wheel" },
 ]
 
-# These requirements are for development and testing only, not for production.
-[project.optional-dependencies]
-dev = [
-    "pytest",
-    "coverage",
-    "flake8",
-    "black",
-    "isort",
-    "pytest-cov",
-    "mypy",
-    "gitchangelog",
-    "mkdocs",
-    "httpx",
-    "cryptography",
-]
+[tool.poetry.dependencies]
+python = ">=3.11"
+backtrader = "*"
+matplotlib = "*"
+prettytable = "*"
+binance-connector = "*"
+python-dotenv = "*"
+fastapi = {extras = ["standard"], version = "*"}
+pymongo = "*"
+statsmodels = "*"
 
-[project.scripts]
+[tool.poetry.group.dev.dependencies]
+pytest = "*"
+coverage = "*"
+flake8 = "*"
+black = "*"
+isort = "*"
+pytest-cov = "*"
+mypy = "*"
+gitchangelog = "*"
+mkdocs = "*"
+httpx = "*"
+cryptography = "*"
+
+[tool.poetry.scripts]
 trader = "trader.app.main:main"
 
-[tool.setuptools]
-include-package-data = true
-
-# 显式指定每个包需要包含的非 .py 文件（支持通配符）
-[tool.setuptools.package-data]
-trader = [
-    "VERSION",
-    "data/*",
-]
-
-[tool.setuptools.packages.find]
-where = ["src"]
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
