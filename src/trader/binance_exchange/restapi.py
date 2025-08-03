@@ -16,10 +16,3 @@ def get_restapi_by_index(index):
     if index >= len(apis):
         index = len(apis)-1
     return apis[index]
-
-def getMarketRestAPI():
-    # 对于仅发送公开市场数据的 API
-    return "https://data-api.binance.vision"
-
-def getTestnetRestAPI():
-    return "https://testnet.binance.vision"

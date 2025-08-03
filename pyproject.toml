@@ -37,7 +37,6 @@ mypy = "*"
 gitchangelog = "*"
 mkdocs = "*"
 httpx = "*"
-cryptography = "*"
 
 [tool.poetry.scripts]
 trader = "trader.app.main:main"
