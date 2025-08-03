@@ -1,9 +1,11 @@
+import os
 import sys
 from datetime import datetime
 
-from binance.spot import Spot as Client
+from binance_common.configuration import ConfigurationRestAPI
+from binance_common.constants import SPOT_REST_API_PROD_URL
+from binance_sdk_spot import Spot
 
-from trader.binance_exchange.restapi import get_restapi
 from trader.common.logger import default
 from trader.utils.kline import Kline
 from trader.utils.symbol_interval import SymbolInterval
@@ -23,19 +25,21 @@ class BinanceExchange:
         self.cfg=cfg
         self.log.info(f"Init Exchange {self.name()}")
 
-        base_url=get_restapi(False)
-        self.spot_client=Client(base_url=base_url)
-        #self.spot_ws_client = SpotWebsocketAPIClient(on_message=on_spot_ws_handler, on_close=on_spot_ws_close)
-        #self.spot_ws_client.socket_manager.host = self
+        configuration_rest_api = ConfigurationRestAPI(
+            base_path=SPOT_REST_API_PROD_URL,
+            timeout=10000,
+            backoff=1,
+        )
+        self.spot_client = Spot(config_rest_api=configuration_rest_api)
 
     def name(self):
         return EXCHANGE_NAME
 
     def start(self):
         try:
-            self.spot_client.ping()
-            self.server_time = self.spot_client.time()["serverTime"]
-            self.server_time = self.server_time /1000
+            self.spot_client.rest_api.ping()
+            st = self.spot_client.rest_api.time().data().server_time
+            self.server_time = st /1000
             offset = self.server_time_offset()
             if offset >= RECV_WINDOW/1000:
                 raise Exception(f"server time offset:{offset}")
@@ -65,7 +69,7 @@ class BinanceExchange:
 
     def get_exchange_info(self,symbol):
         self.log.debug(f"get_exchange_info:{symbol}")
-        exchange_info = self.spot_client.exchange_info(symbol=symbol)
+        exchange_info = self.spot_client.rest_api.exchange_info(symbol=symbol)
         return exchange_info
 
     def get_klines(self,si:SymbolInterval,start_time:int=None,end_time:int=None,limit:int=KLINE_LIMIT_DEFAULT)->[Kline]:
@@ -77,9 +81,10 @@ class BinanceExchange:
             if start_time and end_time:
                 start_time *= 1000
                 end_time *= 1000
-                ret = self.spot_client.klines(si.symbol, si.interval.value, startTime=start_time, endTime=end_time,limit=r_limit)
+                rsp = self.spot_client.rest_api.klines(si.symbol, si.interval.value, start_time=start_time, end_time=end_time,limit=r_limit)
             else:
-                ret = self.spot_client.klines(si.symbol, si.interval.value, limit=r_limit)
+                rsp = self.spot_client.rest_api.klines(si.symbol, si.interval.value, limit=r_limit)
+            ret = rsp.data()
         except Exception as e:
             self.log.error(f"{e}")
             return None

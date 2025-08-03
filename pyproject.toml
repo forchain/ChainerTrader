@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "trader"
-version = "0.38.7"
+version = "0.39.9"
 description = "Awesome trader created by socoldlight"
 authors = ["socoldlight <socoldlight@example.com>"]
 license = "MIT"

@@ -58,6 +58,7 @@ def test_klines():
         response = client.rest_api.klines(
             symbol="BTCUSDT",
             interval=KlinesIntervalEnum["INTERVAL_1h"].value,
+            limit=5,
         )
 
         rate_limits = response.rate_limits
