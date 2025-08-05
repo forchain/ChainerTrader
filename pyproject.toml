@@ -1,46 +1,54 @@
-[tool.poetry]
+[project]
 name = "trader"
 version = "0.39.9"
 description = "Awesome trader created by socoldlight"
-authors = ["socoldlight <socoldlight@example.com>"]
-license = "MIT"
+authors = [
+    {name = "socoldlight", email = "socoldlight@example.com"},
+]
+license = { text = "MIT" }
 readme = "README.md"
-
-packages = [
-    { include = "trader", from = "src" }
+requires-python = ">=3.11"
+dependencies = [
+    "backtrader",
+    "matplotlib",
+    "prettytable",
+    "python-dotenv",
+    "fastapi[standard]",
+    "pymongo",
+    "statsmodels",
+    "binance-common>=1.0.0",
+    "binance-sdk-spot>=1.0.0",
 ]
-include = [
-    { path = "src/trader/VERSION", format = "sdist" },
-    { path = "src/trader/VERSION", format = "wheel" },
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "coverage",
+    "flake8",
+    "black",
+    "isort",
+    "pytest-cov",
+    "mypy",
+    "gitchangelog",
+    "mkdocs",
+    "httpx"
 ]
-
-[tool.poetry.dependencies]
-python = ">=3.11,<=3.13"
-backtrader = "*"
-matplotlib = "*"
-prettytable = "*"
-python-dotenv = "*"
-fastapi = {extras = ["standard"], version = "*"}
-pymongo = "*"
-statsmodels = "*"
-binance-common = "^1.0.0"
-binance-sdk-spot = "^1.0.0"
-
-[tool.poetry.group.dev.dependencies]
-pytest = "*"
-coverage = "*"
-flake8 = "*"
-black = "*"
-isort = "*"
-pytest-cov = "*"
-mypy = "*"
-gitchangelog = "*"
-mkdocs = "*"
-httpx = "*"
-
-[tool.poetry.scripts]
-trader = "trader.app.main:main"
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project.scripts]
+trader = "trader.app.main:main"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.package-data]
+trader = [
+    "VERSION",
+    "data/*",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -1,6 +1,6 @@
 .ONESHELL:
 ENV_PREFIX=$(shell python -c "if __import__('pathlib').Path('.venv/bin/pip').exists(): print('.venv/bin/')")
-USING_POETRY=$(shell grep "tool.poetry" pyproject.toml && echo "yes")
+USING_UV=$(shell command -v uv >/dev/null 2>&1 && echo "yes")
 
 .PHONY: help
 help:             ## Show the help.
@@ -13,25 +13,27 @@ help:             ## Show the help.
 .PHONY: show
 show:             ## Show the current environment.
 	@echo "Current environment:"
-	@if [ "$(USING_POETRY)" ]; then poetry env info && exit; fi
+	@if [ "$(USING_UV)" ]; then uv --version && exit; fi
 	@echo "Running using $(ENV_PREFIX)"
 	@$(ENV_PREFIX)python -V
 	@$(ENV_PREFIX)python -m site
 
 .PHONY: install
 install:          ## Install the project in dev mode.
-	@if [ "$(USING_POETRY)" ]; then poetry install --with dev && exit; fi
+	@if [ "$(USING_UV)" ]; then uv sync --dev && exit; fi
 	@echo "Don't forget to run 'make virtualenv' if you got errors."
 	$(ENV_PREFIX)pip install -e .[dev] -i https://pypi.tuna.tsinghua.edu.cn/simple
 
 .PHONY: fmt
 fmt:              ## Format code using black & isort.
+	@if [ "$(USING_UV)" ]; then uv run isort trader/ && uv run black -l 79 trader/ && uv run black -l 79 tests/ && exit; fi
 	$(ENV_PREFIX)isort trader/
 	$(ENV_PREFIX)black -l 79 trader/
 	$(ENV_PREFIX)black -l 79 tests/
 
 .PHONY: lint
 lint:             ## Run pep8, black, mypy linters.
+	@if [ "$(USING_UV)" ]; then uv run flake8 trader/ && uv run black -l 79 --check trader/ && uv run black -l 79 --check tests/ && uv run mypy --ignore-missing-imports trader/ && exit; fi
 	$(ENV_PREFIX)flake8 trader/
 	$(ENV_PREFIX)black -l 79 --check trader/
 	$(ENV_PREFIX)black -l 79 --check tests/
@@ -39,12 +41,14 @@ lint:             ## Run pep8, black, mypy linters.
 
 .PHONY: test
 test: lint        ## Run tests and generate coverage report.
+	@if [ "$(USING_UV)" ]; then uv run pytest -v --cov-config .coveragerc --cov=trader -l --tb=short --maxfail=1 tests/ && uv run coverage xml && uv run coverage html && exit; fi
 	$(ENV_PREFIX)pytest -v --cov-config .coveragerc --cov=trader -l --tb=short --maxfail=1 tests/
 	$(ENV_PREFIX)coverage xml
 	$(ENV_PREFIX)coverage html
 
 .PHONY: watch
 watch:            ## Run tests on every change.
+	@if [ "$(USING_UV)" ]; then ls **/**.py | entr uv run pytest -s -vvv -l --tb=long --maxfail=1 tests/ && exit; fi
 	ls **/**.py | entr $(ENV_PREFIX)pytest -s -vvv -l --tb=long --maxfail=1 tests/
 
 .PHONY: clean
@@ -62,10 +66,11 @@ clean:            ## Clean unused files.
 	@rm -rf htmlcov
 	@rm -rf .tox/
 	@rm -rf docs/_build
+	@rm -rf .uv/
 
 .PHONY: virtualenv
-virtualenv:       ## Create a virtual environment.
-	@if [ "$(USING_POETRY)" ]; then poetry install --with dev && exit; fi
+virtualenv:       ## Create a virtual environment using uv.
+	@if [ "$(USING_UV)" ]; then echo "Creating virtual environment with uv..." && uv venv && uv sync --dev && echo "Virtual environment created successfully with uv!" && echo "Run 'uv shell' to activate the environment" && exit; fi
 	@echo "creating virtualenv ..."
 	@rm -rf .venv
 	@python3 -m venv .venv
@@ -90,26 +95,57 @@ release:          ## Create a new tag for release.
 .PHONY: docs
 docs:             ## Build the documentation.
 	@echo "building documentation ..."
+	@if [ "$(USING_UV)" ]; then uv run mkdocs build && URL="site/index.html"; xdg-open $$URL || sensible-browser $$URL || x-www-browser $$URL || gnome-open $$URL || open $$URL && exit; fi
 	@$(ENV_PREFIX)mkdocs build
 	URL="site/index.html"; xdg-open $$URL || sensible-browser $$URL || x-www-browser $$URL || gnome-open $$URL || open $$URL
 
-.PHONY: switch-to-poetry
-switch-to-poetry: ## Switch to poetry package manager.
-	@echo "Switching to poetry ..."
-	@if ! poetry --version > /dev/null; then echo 'poetry is required, install from https://python-poetry.org/'; exit 1; fi
+.PHONY: switch-to-uv
+switch-to-uv:     ## Switch to uv package manager.
+	@echo "Switching to uv ..."
+	@if ! uv --version > /dev/null; then echo 'uv is required, install from https://docs.astral.sh/uv/getting-started/installation/'; exit 1; fi
 	@rm -rf .venv
-	@poetry init --no-interaction --name=a_flask_test --author=socoldlight
+	@uv init --name trader --author "Your Name <your.email@example.com>"
 	@echo "" >> pyproject.toml
-	@echo "[tool.poetry.scripts]" >> pyproject.toml
-	@echo "trader = 'trader.__main__:main'" >> pyproject.toml
-	@cat requirements.txt | while read in; do poetry add --no-interaction "$${in}"; done
-	@cat requirements-test.txt | while read in; do poetry add --no-interaction "$${in}" --dev; done
-	@poetry install --no-interaction
+	@echo "[project.optional-dependencies]" >> pyproject.toml
+	@echo "dev = [" >> pyproject.toml
+	@echo '    "pytest>=7.0.0",' >> pyproject.toml
+	@echo '    "pytest-cov>=4.0.0",' >> pyproject.toml
+	@echo '    "black>=23.0.0",' >> pyproject.toml
+	@echo '    "isort>=5.0.0",' >> pyproject.toml
+	@echo '    "flake8>=6.0.0",' >> pyproject.toml
+	@echo '    "mypy>=1.0.0",' >> pyproject.toml
+	@echo '    "coverage>=7.0.0",' >> pyproject.toml
+	@echo '    "mkdocs>=1.0.0",' >> pyproject.toml
+	@echo '    "mkdocs-material>=9.0.0",' >> pyproject.toml
+	@echo '    "gitchangelog>=3.0.0",' >> pyproject.toml
+	@echo "]" >> pyproject.toml
+	@echo "" >> pyproject.toml
+	@echo "[project.scripts]" >> pyproject.toml
+	@echo 'trader = "trader.__main__:main"' >> pyproject.toml
+	@uv sync --dev
 	@mkdir -p .github/backup
-	@mv requirements* .github/backup
-	@mv setup.py .github/backup
-	@echo "You have switched to https://python-poetry.org/ package manager."
-	@echo "Please run 'poetry shell' or 'poetry run trader'"
+	@mv requirements* .github/backup 2>/dev/null || true
+	@mv setup.py .github/backup 2>/dev/null || true
+	@echo "You have switched to https://docs.astral.sh/uv/ package manager."
+	@echo "Please run 'uv shell' or 'uv run trader'"
+
+.PHONY: add-deps
+add-deps:         ## Add dependencies using uv.
+	@if [ "$(USING_UV)" ]; then read -p "Package name: " PKG && uv add "$${PKG}" && exit; fi
+	@echo "uv is not available, using pip instead"
+	@read -p "Package name: " PKG && $(ENV_PREFIX)pip install "$${PKG}"
+
+.PHONY: add-dev-deps
+add-dev-deps:     ## Add development dependencies using uv.
+	@if [ "$(USING_UV)" ]; then read -p "Package name: " PKG && uv add --dev "$${PKG}" && exit; fi
+	@echo "uv is not available, using pip instead"
+	@read -p "Package name: " PKG && $(ENV_PREFIX)pip install "$${PKG}"
+
+.PHONY: update-deps
+update-deps:      ## Update dependencies using uv.
+	@if [ "$(USING_UV)" ]; then uv lock --upgrade && uv sync && exit; fi
+	@echo "uv is not available, using pip instead"
+	@$(ENV_PREFIX)pip install --upgrade -r requirements.txt
 
 .PHONY: init
 init:             ## Initialize the project based on an application template.
