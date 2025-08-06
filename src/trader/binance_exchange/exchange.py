@@ -17,12 +17,13 @@ RECV_WINDOW = 5000
 KLINE_LIMIT_MAX = 1000
 KLINE_LIMIT_DEFAULT = 500
 
-OLDEST_TIME  = "2000-01-01 00:00:00"
+OLDEST_TIME = "2000-01-01 00:00:00"
+
 
 class BinanceExchange:
-    def __init__(self,cfg,log=default()):
-        self.log=log
-        self.cfg=cfg
+    def __init__(self, cfg, log=default()):
+        self.log = log
+        self.cfg = cfg
         self.log.info(f"Init Exchange {self.name()}")
 
         configuration_rest_api = ConfigurationRestAPI(
@@ -41,16 +42,18 @@ class BinanceExchange:
         try:
             self.spot_client.rest_api.ping()
             st = self.spot_client.rest_api.time().data().server_time
-            self.server_time = st /1000
+            self.server_time = st / 1000
             offset = self.server_time_offset()
-            if offset >= RECV_WINDOW/1000:
+            if offset >= RECV_WINDOW / 1000:
                 raise Exception(f"server time offset:{offset}")
 
         except Exception as e:
             self.log.error(f"Start {self.name()} exchange: {e}")
             return False
 
-        self.log.info(f"Start {self.name()} exchange: server_time={self.server_datetime()} server_time_offset={self.server_time_offset()}")
+        self.log.info(
+            f"Start {self.name()} exchange: server_time={self.server_datetime()} server_time_offset={self.server_time_offset()}"
+        )
 
         return True
 
@@ -67,25 +70,39 @@ class BinanceExchange:
         return dt
 
     def server_time_offset(self):
-        return self.server_time-datetime.now().timestamp()
+        return self.server_time - datetime.now().timestamp()
 
-    def get_exchange_info(self,symbol):
+    def get_exchange_info(self, symbol):
         self.log.debug(f"get_exchange_info:{symbol}")
         exchange_info = self.spot_client.rest_api.exchange_info(symbol=symbol)
         return exchange_info
 
-    def get_klines(self,si:SymbolInterval,start_time:int=None,end_time:int=None,limit:int=KLINE_LIMIT_DEFAULT)->[Kline]:
-        r_limit=limit
+    def get_klines(
+        self,
+        si: SymbolInterval,
+        start_time: int = None,
+        end_time: int = None,
+        limit: int = KLINE_LIMIT_DEFAULT,
+    ) -> [Kline]:
+        r_limit = limit
         if r_limit > KLINE_LIMIT_MAX:
-            r_limit=KLINE_LIMIT_MAX
+            r_limit = KLINE_LIMIT_MAX
 
         try:
             if start_time and end_time:
                 start_time *= 1000
                 end_time *= 1000
-                rsp = self.spot_client.rest_api.klines(si.symbol, si.interval.value, start_time=start_time, end_time=end_time,limit=r_limit)
+                rsp = self.spot_client.rest_api.klines(
+                    si.symbol,
+                    si.interval.value,
+                    start_time=start_time,
+                    end_time=end_time,
+                    limit=r_limit,
+                )
             else:
-                rsp = self.spot_client.rest_api.klines(si.symbol, si.interval.value, limit=r_limit)
+                rsp = self.spot_client.rest_api.klines(
+                    si.symbol, si.interval.value, limit=r_limit
+                )
             ret = rsp.data()
         except Exception as e:
             self.log.error(f"{e}")
@@ -94,59 +111,76 @@ class BinanceExchange:
         kls = parse_klines(ret)
 
         if kls and len(kls) > 0:
-            self.log.info(f"get klines: {len(kls)}/{len(ret)}  start={kls[0].open_datetime()} end={kls[len(kls)-1].close_datetime()}")
+            self.log.info(
+                f"get klines: {len(kls)}/{len(ret)}  start={kls[0].open_datetime()} end={kls[len(kls)-1].close_datetime()}"
+            )
         else:
             self.log.info(f"get klines: 0/{len(ret)}")
 
         return kls
 
-    def get_latest_klines(self,si:SymbolInterval,limit:int=KLINE_LIMIT_DEFAULT)->[Kline]:
-        return self.get_klines(si,None,None,limit)
+    def get_latest_klines(
+        self, si: SymbolInterval, limit: int = KLINE_LIMIT_DEFAULT
+    ) -> [Kline]:
+        return self.get_klines(si, None, None, limit)
 
-    def get_klines_by_start(self,si:SymbolInterval,start_time:int=None,limit:int=KLINE_LIMIT_DEFAULT)->[Kline]:
+    def get_klines_by_start(
+        self,
+        si: SymbolInterval,
+        start_time: int = None,
+        limit: int = KLINE_LIMIT_DEFAULT,
+    ) -> [Kline]:
         r_end_time = int(datetime.now().timestamp())
         if start_time is None or start_time == 0:
             start_time = int(get_oldest_time().timestamp())
-        return self.get_klines(si,start_time,r_end_time,limit)
+        return self.get_klines(si, start_time, r_end_time, limit)
 
     def get_account(self):
         self.log.debug(f"get account")
-        self.account=self.spot_client.rest_api.get_account()
+        self.account = self.spot_client.rest_api.get_account()
         return self.account
 
 
 def on_spot_ws_close(socket_manager):
-    socket_manager.host.log.info(f"{socket_manager.host.name()} exchange spot websocket api client close")
+    socket_manager.host.log.info(
+        f"{socket_manager.host.name()} exchange spot websocket api client close"
+    )
 
-def on_spot_ws_handler(socket_manager,message):
-    socket_manager.host.log.info(f"{socket_manager.host.name()} handle message: {message}")
+
+def on_spot_ws_handler(socket_manager, message):
+    socket_manager.host.log.info(
+        f"{socket_manager.host.name()} handle message: {message}"
+    )
 
 
-def get_oldest_time()->datetime:
+def get_oldest_time() -> datetime:
     return datetime.strptime(OLDEST_TIME, "%Y-%m-%d %H:%M:%S")
 
-def parse_klines(data)->[Kline]:
+
+def parse_klines(data) -> [Kline]:
     if data is None:
         return None
 
-    R_LIST_LEN=12
-    ret:[Kline]=[]
+    R_LIST_LEN = 12
+    ret: [Kline] = []
     for d in data:
         if len(d) < R_LIST_LEN:
             raise Exception(f"kline length is error:{len(d)} != {R_LIST_LEN}")
 
-        ret.append(Kline(
-            int(d[0]/1000),
-            float(d[1]),
-            float(d[2]),
-            float(d[3]),
-            float(d[4]),
-            int(d[6]/1000),
-            float(d[5]),
-            float(d[7]),
-            int(d[8]),
-            float(d[9]),
-            float(d[10]),
-            float(d[11]),
-        ))
+        ret.append(
+            Kline(
+                int(d[0] / 1000),
+                float(d[1]),
+                float(d[2]),
+                float(d[3]),
+                float(d[4]),
+                int(d[6] / 1000),
+                float(d[5]),
+                float(d[7]),
+                int(d[8]),
+                float(d[9]),
+                float(d[10]),
+                float(d[11]),
+            )
+        )
     return ret
