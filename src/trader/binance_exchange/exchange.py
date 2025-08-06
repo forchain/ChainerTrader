@@ -32,6 +32,8 @@ class BinanceExchange:
         )
         self.spot_client = Spot(config_rest_api=configuration_rest_api)
 
+        self.account = None
+
     def name(self):
         return EXCHANGE_NAME
 
@@ -54,7 +56,7 @@ class BinanceExchange:
 
     def stop(self):
         self.log.info(f"Stop {self.name()} exchange")
-        #if self.spot_ws_client:
+        # if self.spot_ws_client:
         #    self.spot_ws_client.stop()
 
     def server_datetime(self):
@@ -106,6 +108,11 @@ class BinanceExchange:
         if start_time is None or start_time == 0:
             start_time = int(get_oldest_time().timestamp())
         return self.get_klines(si,start_time,r_end_time,limit)
+
+    def get_account(self):
+        self.log.debug(f"get account")
+        self.account=self.spot_client.rest_api.get_account()
+        return self.account
 
 
 def on_spot_ws_close(socket_manager):
