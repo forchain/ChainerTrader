@@ -1,7 +1,7 @@
 import argparse
 
 from trader.app.app import App, version
-from trader.common.config import Config
+from trader.common.config import Config, new_and_env
 from trader.rpc.rpc import start
 
 
@@ -36,7 +36,7 @@ def main():
     if args.db:
         db_uri=args.db_uri
 
-    cfg = Config(args.commission,
+    cfg = new_and_env(args.commission,
                  args.atr,
                  args.stoploss,
                  args.period,
