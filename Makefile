@@ -54,7 +54,7 @@ clean:            ## Clean unused files.
 
 .PHONY: virtualenv
 virtualenv:       ## Create a virtual environment using uv.
-	@if [ "$(USING_UV)" ]; then echo "Creating virtual environment with uv..." && uv venv && uv sync --dev && echo "Virtual environment created successfully with uv!" && echo "Run 'uv shell' to activate the environment"; else echo "creating virtualenv ..."; rm -rf .venv; python3 -m venv .venv; ./.venv/bin/pip install -U pip -i https://pypi.tuna.tsinghua.edu.cn/simple; ./.venv/bin/pip install -e .[dev] -i https://pypi.tuna.tsinghua.edu.cn/simple; echo; echo "!!! Please run 'source .venv/bin/activate' to enable the environment !!!"; fi
+	@if [ "$(USING_UV)" ]; then if [ -d ".venv" ]; then echo "Virtual environment .venv already exists. Exiting."; exit 0; fi; echo "Creating virtual environment with uv..." && uv venv && uv sync --dev && echo "Virtual environment created successfully with uv!" && echo "Run 'uv shell' to activate the environment"; else echo "creating virtualenv ..."; rm -rf .venv; python3 -m venv .venv; ./.venv/bin/pip install -U pip -i https://pypi.tuna.tsinghua.edu.cn/simple; ./.venv/bin/pip install -e .[dev] -i https://pypi.tuna.tsinghua.edu.cn/simple; echo; echo "!!! Please run 'source .venv/bin/activate' to enable the environment !!!"; fi
 
 .PHONY: release
 release:          ## Create a new tag for release.
