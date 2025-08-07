@@ -1,6 +1,6 @@
 import os
 
-from trader.common.config import Config, NewConfigFromEnv
+from trader.common.config import Config, new_and_env
 from trader.common.path import GetScriptsDir
 from trader.task.task_config import TaskConfig, get_symbols, parse_task_config
 from trader.task.task_type import TaskType
@@ -52,6 +52,6 @@ def test_taskconfig_ckn():
 
 def test_config_from_env():
     cfg = Config()
-    cfg.exportEnv()
-    ncfg = NewConfigFromEnv()
+    cfg.export_env()
+    ncfg = new_and_env()
     print(ncfg.to_dict())

@@ -41,7 +41,7 @@ class Config:
         db_name=NAME,
         window=1000,
         tasks=None,
-        cash=100000,
+        cash=100000.0,
         stat=50,
         notice=None,
         api=None,
@@ -64,7 +64,7 @@ class Config:
         self.notice = notice
         self.api = api
 
-    def exportEnv(self):
+    def export_env(self):
         os.environ[TRADER_COMMISSION] = str(self.commission)
         os.environ[TRADER_ATR] = str(self.atr)
         os.environ[TRADER_STOPLOSS] = str(self.stoploss)
@@ -114,3 +114,62 @@ class Config:
 
 def default() -> Config:
     return Config()
+
+
+def new_and_env(
+    commission=0.001,
+    atr=True,
+    stoploss=False,
+    period=DEFAULT_PERIOD,
+    log_file=False,
+    plot=False,
+    mode=None,
+    log_level="INFO",
+    exchange=None,
+    db_uri=None,
+    db_name=NAME,
+    window=1000,
+    tasks=None,
+    cash=100000,
+    stat=50,
+    notice=None,
+    api=None,
+) -> Config:
+
+    commission = float(os.environ.get(TRADER_COMMISSION, commission))
+    atr = os.environ.get(TRADER_ATR, str(atr)).lower() == "true"
+    stoploss = os.environ.get(TRADER_STOPLOSS, str(stoploss)).lower() == "true"
+    period = int(os.environ.get(TRADER_PERIOD, period))
+    log_file = os.environ.get(TRADER_LOG_FILE, str(log_file)).lower() == "true"
+    plot = os.environ.get(TRADER_PLOT, str(plot)).lower() == "true"
+    mode = os.environ.get(TRADER_MODE, mode)
+    log_level = os.environ.get(TRADER_LOG_LEVEL, log_level)
+    exchange = os.environ.get(TRADER_EXCHANGE, exchange)
+    db_uri = os.environ.get(TRADER_DB_URI, db_uri)
+    db_name = os.environ.get(TRADER_DB_NAME, db_name)
+    window = int(os.environ.get(TRADER_WINDOW, window))
+    tasks = os.environ.get(TRADER_TASKS, tasks)
+    cash = float(os.environ.get(TRADER_CASH, cash))
+    stat = int(os.environ.get(TRADER_STAT, stat))
+    notice = os.environ.get(TRADER_NOTICE, notice)
+    api = os.environ.get(TRADER_API, api)
+
+    return Config(
+        commission=commission,
+        atr=atr,
+        stoploss=stoploss,
+        period=period,
+        log_file=log_file,
+        plot=plot,
+        mode=mode,
+        log_level=log_level,
+        exchange=exchange,
+        db_uri=db_uri,
+        db_name=db_name,
+        window=window,
+        tasks=tasks,
+        cash=cash,
+        stat=stat,
+        notice=notice,
+        api=api,
+    )
