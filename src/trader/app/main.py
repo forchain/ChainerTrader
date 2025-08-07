@@ -3,6 +3,7 @@ import argparse
 from trader.app.app import App, version
 from trader.common.config import Config, new_and_env
 from trader.rpc.rpc import start
+from dotenv import load_dotenv
 
 
 def main():
@@ -50,7 +51,7 @@ def main():
         default="INFO",
     )
     parser.add_argument(
-        "--exchange", help="Which remote exchange is connected to:BINANCE", type=str
+        "--exchange", help="Which remote exchange is connected to.support json:BINANCE or {name:BINANCE,api_key:'',api_secret:''}", type=str
     )
     parser.add_argument("--db", help="Enable database for MongoDB", action="store_true")
     parser.add_argument(
@@ -98,6 +99,8 @@ def main():
     db_uri = None
     if args.db:
         db_uri = args.db_uri
+
+    load_dotenv()
 
     cfg = new_and_env(
         args.commission,
