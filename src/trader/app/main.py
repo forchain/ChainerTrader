@@ -51,7 +51,9 @@ def main():
         default="INFO",
     )
     parser.add_argument(
-        "--exchange", help="Which remote exchange is connected to.support json:BINANCE or {name:BINANCE,api_key:'',api_secret:''}", type=str
+        "--exchange",
+        help="Which remote exchange is connected to.support json:BINANCE or {name:BINANCE,api_key:'',api_secret:''}",
+        type=str,
     )
     parser.add_argument("--db", help="Enable database for MongoDB", action="store_true")
     parser.add_argument(
