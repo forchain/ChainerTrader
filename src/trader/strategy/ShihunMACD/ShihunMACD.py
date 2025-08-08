@@ -1,14 +1,13 @@
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals)
+from __future__ import absolute_import, division, print_function, unicode_literals
 
 import backtrader as bt
+
 from trader.strategy.trilogy_strategy import TrilogyStrategy
+
 
 # Shihun MACD strategy
 class ShihunMACDStrategy(TrilogyStrategy):
-    params = (
-        ('confirm', 3),
-    )
+    params = (("confirm", 3),)
 
     def __init__(self):
         super().__init__()
@@ -35,16 +34,16 @@ class ShihunMACDStrategy(TrilogyStrategy):
         # histo1 = self.macd.macd[-1] - self.macd.signal[-1]
         # histo0 = self.macd.macd[0] - self.macd.signal[0]
         if self.mcross[0] > 0:
-           self.goldenFork = self.params.confirm
-           self.deathFork = 0
+            self.goldenFork = self.params.confirm
+            self.deathFork = 0
 
         if self.mcross[0] < 0:
-           self.goldenFork = 0
-           self.deathFork = self.params.confirm
+            self.goldenFork = 0
+            self.deathFork = self.params.confirm
 
         if self.goldenFork > 0:
             if not self.position and self.macd.signal[-2] > 0 and self.macd.signal[-1] > 0 and self.macd.signal[0] > 0 and self.canBuy():
-                self.log_info(f'Kline:{self.cur_datetime()}, 创建 买单:{price:.2f}')
+                self.log_info(f"Kline:{self.cur_datetime()}, 创建 买单:{price:.2f}")
 
                 commission_info = self.broker.getcommissioninfo(self.data)
                 cash = self.broker.getcash()
@@ -56,9 +55,8 @@ class ShihunMACDStrategy(TrilogyStrategy):
             else:
                 self.goldenFork -= 1
 
-
         if self.deathFork > 0:
             if self.position and (self.macd.signal[-2] > self.macd.signal[-1] and self.macd.signal[-1] > self.macd.signal[0] or self.canSell()):
-                self.log_info(f'Kline:{self.cur_datetime()}, 创建 卖单:{self.dataclose[0]:.2f}')
+                self.log_info(f"Kline:{self.cur_datetime()}, 创建 卖单:{self.dataclose[0]:.2f}")
                 self.order = self.close()
                 self.deathFork = 0

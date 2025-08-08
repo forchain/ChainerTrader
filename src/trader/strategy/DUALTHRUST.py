@@ -1,7 +1,7 @@
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals)
+from __future__ import absolute_import, division, print_function, unicode_literals
 
 import backtrader as bt
+
 from trader.strategy.base_strategy import BaseStrategy
 from trader.utils.operate import OperateType
 
@@ -9,7 +9,7 @@ from trader.utils.operate import OperateType
 class DUALTHRUSTStrategy(BaseStrategy):
     params = (
         ("upper_track", 0.5),  # uppper track param
-        ("lower_track", 0.5)  # lower track param
+        ("lower_track", 0.5),  # lower track param
     )
 
     def __init__(self):
@@ -47,12 +47,11 @@ class DUALTHRUSTStrategy(BaseStrategy):
                 if self.data.close[0] < lower_bound:
                     willOpt = OperateType.SELL
 
-
         if willOpt == OperateType.SELL:
-            self.log_info(f'Kline:{self.cur_datetime()}, 创建 卖单:{self.data.close[0]:.2f}')
+            self.log_info(f"Kline:{self.cur_datetime()}, 创建 卖单:{self.data.close[0]:.2f}")
             self.order = self.sell()
 
         elif willOpt == OperateType.BUY:
-            self.log_info(f'Kline:{self.cur_datetime()}, 创建 买单:{self.data.close[0]:.2f}')
+            self.log_info(f"Kline:{self.cur_datetime()}, 创建 买单:{self.data.close[0]:.2f}")
             self.order = self.buy()
             self.update_stop_loss_point()

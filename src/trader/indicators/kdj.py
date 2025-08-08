@@ -1,5 +1,6 @@
 import backtrader as bt
 
+
 class KDJIndicator(bt.Indicator):
     lines = ("K", "D", "J")
     params = (("period", 9), ("smooth", 3))

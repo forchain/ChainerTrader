@@ -1,18 +1,12 @@
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals)
+from __future__ import absolute_import, division, print_function, unicode_literals
 
-from trader.strategy.base_strategy import BaseStrategy
 from trader.indicators.kdj import KDJIndicator
+from trader.strategy.base_strategy import BaseStrategy
 from trader.utils.operate import OperateType
 
 
 class KDJStrategy(BaseStrategy):
-    params = (
-        ("smooth", 3),
-        ("upper",80),
-        ("lower",20),
-        ("range", 10)
-    )
+    params = (("smooth", 3), ("upper", 80), ("lower", 20), ("range", 10))
 
     def __init__(self):
         super().__init__()
@@ -27,7 +21,7 @@ class KDJStrategy(BaseStrategy):
         willOpt = OperateType.UNKNOWN
 
         if not self.position:
-            if self.kdj.K[0] > self.kdj.D[0] and abs(self.kdj.J[0]-self.params.lower) < self.params.range:
+            if self.kdj.K[0] > self.kdj.D[0] and abs(self.kdj.J[0] - self.params.lower) < self.params.range:
                 willOpt = OperateType.BUY
 
         else:
@@ -37,12 +31,11 @@ class KDJStrategy(BaseStrategy):
                 if self.kdj.K[0] < self.kdj.D[0] and abs(self.kdj.J[0] - self.params.upper) < self.params.range:
                     willOpt = OperateType.SELL
 
-
         if willOpt == OperateType.SELL:
-            self.log_info(f'Kline:{self.cur_datetime()}, 创建 卖单:{self.data.close[0]:.2f}')
+            self.log_info(f"Kline:{self.cur_datetime()}, 创建 卖单:{self.data.close[0]:.2f}")
             self.order = self.sell()
 
         elif willOpt == OperateType.BUY:
-            self.log_info(f'Kline:{self.cur_datetime()}, 创建 买单:{self.data.close[0]:.2f}')
+            self.log_info(f"Kline:{self.cur_datetime()}, 创建 买单:{self.data.close[0]:.2f}")
             self.order = self.buy()
             self.update_stop_loss_point()

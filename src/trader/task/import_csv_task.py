@@ -1,22 +1,28 @@
+import csv
 import os
+from asyncio import Event, Queue
 
 from trader.app.database_manager import DatabaseManager
 from trader.binance_exchange.exchange import BinanceExchange
 from trader.common import path
 from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig
-from asyncio import Queue, Event
-import csv
-
 from trader.utils.kline import Kline
 from trader.utils.symbol_interval import add_time_duration
 
 
 class ImportCSVTask(BaseTask):
-    def __init__(self,tcfg:TaskConfig,cfg,log,db_manager:DatabaseManager,exchange:BinanceExchange):
+    def __init__(
+        self,
+        tcfg: TaskConfig,
+        cfg,
+        log,
+        db_manager: DatabaseManager,
+        exchange: BinanceExchange,
+    ):
         super().__init__(tcfg, cfg, log, db_manager, exchange)
 
-    async def start(self,queue:Queue,quit:Event):
+    async def start(self, queue: Queue, quit: Event):
         if not self.tcfg.csv:
             self.log.error(f"No config data_file for {self.tcfg.to_dict()}")
             return
@@ -24,7 +30,7 @@ class ImportCSVTask(BaseTask):
             self.log.error(f"No config db_uri for {self.tcfg.to_dict()}")
             return
 
-        super().start(queue,quit)
+        super().start(queue, quit)
 
         if not self.tcfg.csv:
             self.log.error(f"{self.name()} no data_file")
@@ -35,16 +41,42 @@ class ImportCSVTask(BaseTask):
         if not os.path.isabs(self.tcfg.csv):
             data_file = os.path.join(path.GetDataDir(), self.tcfg.csv)
 
-        with open(data_file, mode='r', newline='', encoding='utf-8') as file:
+        with open(data_file, mode="r", newline="", encoding="utf-8") as file:
             reader = csv.reader(file)
             next(reader)
             for row in reader:
                 if len(row) != 12:
                     continue
-                open_time,openp,high,low,close,volume,close_time,quote_volume,count,taker_buy_volume,taker_buy_quote_volume,ignore = row
-                kls.append(Kline(int(int(open_time)/1000),float(openp),float(high),float(low),float(close),int(int(close_time)/1000),
-                                 float(volume),float(quote_volume),int(count),
-                                 float(taker_buy_volume),float(taker_buy_quote_volume),float(ignore)))
+                (
+                    open_time,
+                    openp,
+                    high,
+                    low,
+                    close,
+                    volume,
+                    close_time,
+                    quote_volume,
+                    count,
+                    taker_buy_volume,
+                    taker_buy_quote_volume,
+                    ignore,
+                ) = row
+                kls.append(
+                    Kline(
+                        int(int(open_time) / 1000),
+                        float(openp),
+                        float(high),
+                        float(low),
+                        float(close),
+                        int(int(close_time) / 1000),
+                        float(volume),
+                        float(quote_volume),
+                        int(count),
+                        float(taker_buy_volume),
+                        float(taker_buy_quote_volume),
+                        float(ignore),
+                    )
+                )
 
         if len(kls) <= 0:
             self.log.error(f"No kline in {data_file}")
@@ -55,7 +87,6 @@ class ImportCSVTask(BaseTask):
             if next_open_time != kls[1].open_time:
                 self.log.error(f"{self.name()} kline interval is not {self.tcfg.symbol_interval.interval.name}")
                 return
-
 
         collection = self.db_manager.get_collection(self.cfg.db_name, self.tcfg.symbol_interval.name())
 

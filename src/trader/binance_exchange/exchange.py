@@ -1,5 +1,3 @@
-import os
-import sys
 from datetime import datetime
 
 from binance_common.configuration import ConfigurationRestAPI
@@ -51,9 +49,7 @@ class BinanceExchange:
             self.log.error(f"Start {self.name()} exchange: {e}")
             return False
 
-        self.log.info(
-            f"Start {self.name()} exchange: server_time={self.server_datetime()} server_time_offset={self.server_time_offset()}"
-        )
+        self.log.info(f"Start {self.name()} exchange: server_time={self.server_datetime()} server_time_offset={self.server_time_offset()}")
 
         return True
 
@@ -100,9 +96,7 @@ class BinanceExchange:
                     limit=r_limit,
                 )
             else:
-                rsp = self.spot_client.rest_api.klines(
-                    si.symbol, si.interval.value, limit=r_limit
-                )
+                rsp = self.spot_client.rest_api.klines(si.symbol, si.interval.value, limit=r_limit)
             ret = rsp.data()
         except Exception as e:
             self.log.error(f"{e}")
@@ -111,17 +105,13 @@ class BinanceExchange:
         kls = parse_klines(ret)
 
         if kls and len(kls) > 0:
-            self.log.info(
-                f"get klines: {len(kls)}/{len(ret)}  start={kls[0].open_datetime()} end={kls[len(kls)-1].close_datetime()}"
-            )
+            self.log.info(f"get klines: {len(kls)}/{len(ret)}  start={kls[0].open_datetime()} end={kls[len(kls)-1].close_datetime()}")
         else:
             self.log.info(f"get klines: 0/{len(ret)}")
 
         return kls
 
-    def get_latest_klines(
-        self, si: SymbolInterval, limit: int = KLINE_LIMIT_DEFAULT
-    ) -> [Kline]:
+    def get_latest_klines(self, si: SymbolInterval, limit: int = KLINE_LIMIT_DEFAULT) -> [Kline]:
         return self.get_klines(si, None, None, limit)
 
     def get_klines_by_start(
@@ -136,21 +126,17 @@ class BinanceExchange:
         return self.get_klines(si, start_time, r_end_time, limit)
 
     def get_account(self):
-        self.log.debug(f"get account")
+        self.log.debug("get account")
         self.account = self.spot_client.rest_api.get_account()
         return self.account
 
 
 def on_spot_ws_close(socket_manager):
-    socket_manager.host.log.info(
-        f"{socket_manager.host.name()} exchange spot websocket api client close"
-    )
+    socket_manager.host.log.info(f"{socket_manager.host.name()} exchange spot websocket api client close")
 
 
 def on_spot_ws_handler(socket_manager, message):
-    socket_manager.host.log.info(
-        f"{socket_manager.host.name()} handle message: {message}"
-    )
+    socket_manager.host.log.info(f"{socket_manager.host.name()} handle message: {message}")
 
 
 def get_oldest_time() -> datetime:

@@ -1,6 +1,5 @@
 import os
 
-
 from trader.app.app import App
 from trader.common import path
 from trader.common.common import NAME

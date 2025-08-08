@@ -1,5 +1,4 @@
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals)
+from __future__ import absolute_import, division, print_function, unicode_literals
 
 from datetime import datetime
 
@@ -10,7 +9,7 @@ from trader.utils.kline import Kline
 
 
 class BinanceData(bt.feed.DataBase):
-    def __init__(self, data:[Kline]):
+    def __init__(self, data: [Kline]):
         super().__init__()
         self.data = data
         self.index = 0

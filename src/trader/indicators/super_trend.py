@@ -4,11 +4,11 @@ import backtrader as bt
 
 
 class SuperTrend(bt.Indicator):
-    lines = ('up', 'down','trend', 'buy_signal', 'sell_signal')
+    lines = ("up", "down", "trend", "buy_signal", "sell_signal")
     params = (
-        ('period', 10),
-        ('multiplier', 3.0),
-        ('use_atr', True),  # True: use ATR, False: use SMA of TR
+        ("period", 10),
+        ("multiplier", 3.0),
+        ("use_atr", True),  # True: use ATR, False: use SMA of TR
     )
 
     def __init__(self):
@@ -19,11 +19,10 @@ class SuperTrend(bt.Indicator):
         else:
             self.atr = bt.indicators.SMA(bt.indicators.TrueRange(), period=self.p.period)
 
-
     def next(self):
         self.lines.trend[0] = 1
-        self.lines.up[0] = float('nan')
-        self.lines.down[0] = float('nan')
+        self.lines.up[0] = float("nan")
+        self.lines.down[0] = float("nan")
         self.lines.buy_signal[0] = False
         self.lines.sell_signal[0] = False
 

@@ -1,4 +1,4 @@
-from asyncio import Queue, Event
+from asyncio import Event, Queue
 from datetime import datetime
 from logging import Logger
 
@@ -9,16 +9,23 @@ from trader.task.task_config import TaskConfig
 
 
 class BaseTask:
-    def __init__(self,tcfg:TaskConfig,cfg:Config,log:Logger,db_manager:DatabaseManager,exchange:BinanceExchange):
+    def __init__(
+        self,
+        tcfg: TaskConfig,
+        cfg: Config,
+        log: Logger,
+        db_manager: DatabaseManager,
+        exchange: BinanceExchange,
+    ):
         self.log = log
         self.cfg = cfg
         self.db_manager = db_manager
         self.exchange = exchange
         self.tcfg = tcfg
         self.log.info(f"Init {self.name()}")
-        self.start_time= datetime.now()
+        self.start_time = datetime.now()
 
-    def start(self,queue:Queue,quit:Event):
+    def start(self, queue: Queue, quit: Event):
         self.start_time = datetime.now()
         self.log.info(f"Start {self.name()}")
 

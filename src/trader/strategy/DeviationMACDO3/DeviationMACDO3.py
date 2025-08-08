@@ -1,5 +1,4 @@
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals)
+from __future__ import absolute_import, division, print_function, unicode_literals
 
 """
 DeviationMACD (o3 edition)
@@ -18,8 +17,9 @@ No existing source files are modified – this module is completely
 self-contained under the *DeviationMACD* package.
 """
 
-import backtrader as bt
 from collections import deque
+
+import backtrader as bt
 
 from trader.strategy.base_strategy import BaseStrategy
 
@@ -30,26 +30,23 @@ class DeviationMACDO3Strategy(BaseStrategy):
     params = (
         # Basic
         ("name", "DeviationMACDO3"),
-
         # MACD configuration (identical to Pine defaults)
-        ("macd_fast", 12),   # period
+        ("macd_fast", 12),  # period
         ("macd_slow", 26),
         ("macd_signal", 9),
-
         # Divergence / pivot-point configuration
-        ("pivot_period", 12),        # same meaning as Pine `period`
+        ("pivot_period", 12),  # same meaning as Pine `period`
         ("max_pivot_points", 10),
         ("max_bars", 100),
         ("search_div", "Regular/Hidden"),  # options: Regular / Hidden / Regular/Hidden
-        ("show_limit", 1),             # minimum #divergences required
+        ("show_limit", 1),  # minimum #divergences required
         ("dont_confirm", False),
-        ("source_type", "Close"),      # Close or High/Low
-
+        ("source_type", "Close"),  # Close or High/Low
         # Risk management
-        ("take_profit_perc", 15.0),    # expressed in percent of ATR
+        ("take_profit_perc", 15.0),  # expressed in percent of ATR
         ("stop_loss_perc", 15.0),
         ("atr_period", 12),
-        ("atr_smoothing", "RMA"),      # RMA, SMA, EMA, WMA
+        ("atr_smoothing", "RMA"),  # RMA, SMA, EMA, WMA
     )
 
     # ---------------------------------------------------------------------
@@ -80,8 +77,8 @@ class DeviationMACDO3Strategy(BaseStrategy):
         # --- Containers to hold recent pivot information ------------------
         self.ph_positions = deque(maxlen=self.params.max_pivot_points)  # indexes of pivot-high bars
         self.pl_positions = deque(maxlen=self.params.max_pivot_points)  # indexes of pivot-low bars
-        self.ph_values = deque(maxlen=self.params.max_pivot_points)     # prices at pivot-high
-        self.pl_values = deque(maxlen=self.params.max_pivot_points)     # prices at pivot-low
+        self.ph_values = deque(maxlen=self.params.max_pivot_points)  # prices at pivot-high
+        self.pl_values = deque(maxlen=self.params.max_pivot_points)  # prices at pivot-low
 
         # Trade management helpers
         self.profit_price = 0.0
@@ -159,7 +156,7 @@ class DeviationMACDO3Strategy(BaseStrategy):
 
             pivot_price = self.pl_values[idx]
             ind_at_pivot = hist[diff] if diff < len(hist) else 0
-            price_cmp = (self.data.low[sp] if self.params.source_type == "High/Low" else self.data.close[sp])
+            price_cmp = self.data.low[sp] if self.params.source_type == "High/Low" else self.data.close[sp]
 
             if div_type == 1:  # regular bullish
                 if cur_ind > ind_at_pivot and price_cmp < pivot_price:
@@ -192,7 +189,7 @@ class DeviationMACDO3Strategy(BaseStrategy):
 
             pivot_price = self.ph_values[idx]
             ind_at_pivot = hist[diff] if diff < len(hist) else 0
-            price_cmp = (self.data.high[sp] if self.params.source_type == "High/Low" else self.data.close[sp])
+            price_cmp = self.data.high[sp] if self.params.source_type == "High/Low" else self.data.close[sp]
 
             if div_type == 1:  # regular bearish
                 if cur_ind < ind_at_pivot and price_cmp > pivot_price:
@@ -275,5 +272,10 @@ class DeviationMACDO3Strategy(BaseStrategy):
     def notify_order(self, order):
         super().notify_order(order)
         # Reset local order tracker so new signals can be executed
-        if order.status in (order.Completed, order.Canceled, order.Margin, order.Rejected):
-            self.order = None 
+        if order.status in (
+            order.Completed,
+            order.Canceled,
+            order.Margin,
+            order.Rejected,
+        ):
+            self.order = None

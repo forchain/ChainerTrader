@@ -1,10 +1,11 @@
-
 from enum import Enum
+
 
 class TrendType(Enum):
     NORMAL = 0
     UP = 1
     DOWN = 2
+
 
 def parseTrendType(name):
     if name == TrendType.NORMAL.name:

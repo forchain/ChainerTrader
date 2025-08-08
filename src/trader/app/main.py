@@ -1,9 +1,10 @@
 import argparse
 
-from trader.app.app import App, version
-from trader.common.config import Config, new_and_env
-from trader.rpc.rpc import start
 from dotenv import load_dotenv
+
+from trader.app.app import App, version
+from trader.common.config import new_and_env
+from trader.rpc.rpc import start
 
 
 def main():
@@ -30,9 +31,7 @@ def main():
         default=0.001,
         required=False,
     )
-    parser.add_argument(
-        "--atr", help="Use atr for stop-loss-point", action="store_true"
-    )
+    parser.add_argument("--atr", help="Use atr for stop-loss-point", action="store_true")
     parser.add_argument("--stoploss", help="Use stop-loss-point", action="store_true")
     parser.add_argument(
         "--api",
@@ -62,9 +61,7 @@ def main():
         type=str,
         default="mongodb://localhost:27017/",
     )
-    parser.add_argument(
-        "--db_name", help="Database name for MongoDB", type=str, default="trader"
-    )
+    parser.add_argument("--db_name", help="Database name for MongoDB", type=str, default="trader")
     parser.add_argument(
         "--window",
         help="Window for backtesting",

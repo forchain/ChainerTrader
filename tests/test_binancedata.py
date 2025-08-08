@@ -1,5 +1,4 @@
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals)
+from __future__ import absolute_import, division, print_function, unicode_literals
 
 import datetime
 import os
@@ -22,14 +21,14 @@ class TestStrategy(backtrader.Strategy):
         self.dataclose = self.datas[0].close
 
     def next(self):
-        self.log('Close, %.2f' % self.dataclose[0])
+        self.log("Close, %.2f" % self.dataclose[0])
 
 
 def test_binanceData():
     cerebro = backtrader.Cerebro()
     cerebro.addstrategy(TestStrategy)
 
-    datapath = os.path.join(path.GetDataDir(), 'ETHUSDT-1h-202301-202401.csv')
+    datapath = os.path.join(path.GetDataDir(), "ETHUSDT-1h-202301-202401.csv")
 
     data = BinanceCSVData(
         dataname=datapath,
@@ -38,6 +37,6 @@ def test_binanceData():
     )
     cerebro.adddata(data)
     cerebro.broker.setcash(100000.0)
-    print('Starting Portfolio Value: %.2f' % cerebro.broker.getvalue())
+    print("Starting Portfolio Value: %.2f" % cerebro.broker.getvalue())
     cerebro.run()
-    print('Final Portfolio Value: %.2f' % cerebro.broker.getvalue())
+    print("Final Portfolio Value: %.2f" % cerebro.broker.getvalue())

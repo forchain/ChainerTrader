@@ -1,26 +1,26 @@
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals)
+from __future__ import absolute_import, division, print_function, unicode_literals
 
 from datetime import datetime
 
 import backtrader as bt
+from backtrader import num2date
 
 from trader.common.config import DEFAULT_PERIOD
 from trader.utils.trend import TrendType
-from backtrader import num2date
+
 
 # chainer basic framework strategy
 class BaseStrategy(bt.Strategy):
     params = (
-        ('name','Unkown'),
-        ('atr', False),
-        ('atrperiod', 14),
-        ('atrdist', 5),  # ATR distance for stop price
-        ('mode', TrendType.NORMAL),
-        ('period', DEFAULT_PERIOD),
-        ('log', None),
-        ('stoploss', False),
-        ('takeprofit', False),
+        ("name", "Unkown"),
+        ("atr", False),
+        ("atrperiod", 14),
+        ("atrdist", 5),  # ATR distance for stop price
+        ("mode", TrendType.NORMAL),
+        ("period", DEFAULT_PERIOD),
+        ("log", None),
+        ("stoploss", False),
+        ("takeprofit", False),
     )
 
     def __init__(self):
@@ -39,18 +39,17 @@ class BaseStrategy(bt.Strategy):
         if self.params.atr:
             self.atr = bt.indicators.ATR(self.datas[0], period=self.params.atrperiod)
 
-        self.start_time=datetime.fromtimestamp(0)
-        self.end_time=datetime.fromtimestamp(0)
+        self.start_time = datetime.fromtimestamp(0)
+        self.end_time = datetime.fromtimestamp(0)
 
     def next(self):
         cur = self.cur_datetime()
         if cur > self.end_time:
-            self.end_time=cur
+            self.end_time = cur
         if int(self.start_time.timestamp()) == 0:
-            self.start_time=cur
+            self.start_time = cur
 
-        self.log_debug(f'Kline:{cur} 收盘价, {self.data.close[0]:.2f}')
-
+        self.log_debug(f"Kline:{cur} 收盘价, {self.data.close[0]:.2f}")
 
     def notify_order(self, order):
         if order.status in [order.Submitted, order.Accepted]:
@@ -58,20 +57,13 @@ class BaseStrategy(bt.Strategy):
 
         if order.status in [order.Completed]:
             if order.isbuy():
-                self.log_info(
-                    '买入, 价格: %.2f, 花费: %.2f, 手续费: %.2f' %
-                    (order.executed.price,
-                     order.executed.value,
-                     order.executed.comm))
+                self.log_info("买入, 价格: %.2f, 花费: %.2f, 手续费: %.2f" % (order.executed.price, order.executed.value, order.executed.comm))
 
             else:  # Sell
-                self.log_info('卖出, 价格: %.2f, 花费: %.2f, 手续费: %.2f' %
-                         (order.executed.price,
-                          order.executed.value,
-                          order.executed.comm))
+                self.log_info("卖出, 价格: %.2f, 花费: %.2f, 手续费: %.2f" % (order.executed.price, order.executed.value, order.executed.comm))
 
         elif order.status in [order.Canceled, order.Margin, order.Rejected]:
-            self.log_info('Order Canceled/Margin/Rejected')
+            self.log_info("Order Canceled/Margin/Rejected")
 
         self.order = None
 
@@ -79,16 +71,15 @@ class BaseStrategy(bt.Strategy):
         if not trade.isclosed:
             return
 
-        self.log_info('营业利润, 毛利润: %.2f, 净利润: %.2f' %
-                 (trade.pnl, trade.pnlcomm))
+        self.log_info("营业利润, 毛利润: %.2f, 净利润: %.2f" % (trade.pnl, trade.pnlcomm))
 
-    def log_info(self,msg):
+    def log_info(self, msg):
         if self.params.log is None:
             print(msg)
             return
         self.params.log.info(f"{msg}, [{self.name()}]")
 
-    def log_debug(self,msg):
+    def log_debug(self, msg):
         if self.params.log is None:
             print(msg)
             return
@@ -98,7 +89,7 @@ class BaseStrategy(bt.Strategy):
         return num2date(self.datas[0].datetime[0])
 
     def bar_idx(self):
-        return len(self)-1
+        return len(self) - 1
 
     def need_stop_loss(self):
         if not self.params.stoploss:
@@ -129,6 +120,6 @@ class BaseStrategy(bt.Strategy):
     def name(self):
         return self.params.name
 
-    def set_default_period(self,period):
+    def set_default_period(self, period):
         if self.params.period == DEFAULT_PERIOD:
             self.params.period = period
