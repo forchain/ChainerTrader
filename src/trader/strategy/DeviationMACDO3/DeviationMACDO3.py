@@ -1,5 +1,11 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
+from collections import deque
+
+import backtrader as bt
+
+from trader.strategy.base_strategy import BaseStrategy
+
 """
 DeviationMACD (o3 edition)
 --------------------------
@@ -16,12 +22,6 @@ loaded exactly like every other built-in strategy:
 No existing source files are modified – this module is completely
 self-contained under the *DeviationMACD* package.
 """
-
-from collections import deque
-
-import backtrader as bt
-
-from trader.strategy.base_strategy import BaseStrategy
 
 
 class DeviationMACDO3Strategy(BaseStrategy):

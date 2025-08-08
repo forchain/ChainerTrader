@@ -119,7 +119,6 @@ class ShihunMACDRISBBStrategy(BaseStrategy):
 
     def processTrend(self):
         upperBand = self.bollinger.lines.top[0]
-        lowerBand = self.bollinger.lines.bot[0]
         midBand = self.bollinger.lines.mid[0]
 
         # find criticalK

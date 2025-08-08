@@ -20,8 +20,8 @@ class TrilogyStrategy(BaseStrategy):
 
         # Current trend judgment
         minK = 3
-        l = len(self.datas[0].close)
-        if l <= minK:
+        le = len(self.datas[0].close)
+        if le <= minK:
             return False
         curTrend = TrendType.NORMAL
 
@@ -59,8 +59,8 @@ class TrilogyStrategy(BaseStrategy):
 
     def getInflectionPoints(self):
         minK = 5
-        l = len(self.datas[0].close)
-        if l <= minK:
+        le = len(self.datas[0].close)
+        if le <= minK:
             return None
 
         band = 5
@@ -68,7 +68,7 @@ class TrilogyStrategy(BaseStrategy):
         index = -2
         high = 0
         low = 0
-        while index > -l and len(points) <= band:
+        while index > -le and len(points) <= band:
             av_0 = (self.datas[0].open[index - 2] + self.datas[0].close[index - 2]) / 2
             av_1 = (self.datas[0].open[index - 1] + self.datas[0].close[index - 1]) / 2
             av_2 = (self.datas[0].open[index] + self.datas[0].close[index]) / 2

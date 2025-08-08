@@ -56,5 +56,5 @@ class TrendIndicatorA(bt.Indicator):
         o = self.lines.open_ma[0]
         c = self.lines.close_ma[0]
         h = self.lines.high_ma[0]
-        l = self.lines.low_ma[0]
-        self.lines.trend[0] = 100 * (c - o) / (h - l) if (h - l) != 0 else 0
+        lo = self.lines.low_ma[0]
+        self.lines.trend[0] = 100 * (c - o) / (h - lo) if (h - lo) != 0 else 0
