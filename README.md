@@ -5,7 +5,7 @@ Implement TradvingView Algorithms of Youtube Channel Shi Hun
 ```bash
 git clone https://github.com/ChainerLabs/Trader.git
 cd trader 
-make virtualenv
+make install
 ```
 Read the [CONTRIBUTING.md](CONTRIBUTING.md) file.
 

@@ -23,13 +23,8 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest",
-    "coverage",
-    "flake8",
     "black",
-    "isort",
-    "pytest-cov",
-    "mypy",
-    "gitchangelog",
+    "ruff",
     "mkdocs",
     "httpx"
 ]
@@ -52,3 +47,23 @@ trader = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.black]
+line-length = 88
+target-version = ["py312"]
+exclude = '''
+/(
+    \.git
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+exclude = ["build", "dist", ".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]  # 基础错误 + 格式 + import 排序
