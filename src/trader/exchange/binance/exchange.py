@@ -4,6 +4,7 @@ from binance_common.configuration import ConfigurationRestAPI
 from binance_common.constants import SPOT_REST_API_PROD_URL
 from binance_sdk_spot import Spot
 
+from trader.exchange.exchange_type import ExchangeType
 from trader.common.logger import default
 from trader.utils.kline import Kline
 from trader.utils.symbol_interval import SymbolInterval
@@ -34,7 +35,7 @@ class BinanceExchange:
         self.account = None
 
     def name(self):
-        return EXCHANGE_NAME
+        return ExchangeType.BINANCE.name
 
     def start(self):
         try:

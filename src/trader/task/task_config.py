@@ -65,7 +65,7 @@ class TaskConfig:
 
 # '[{"task_type": "CHECK_KLINES", "start_time": "2023-09-24 14:30:00","end_time":"0","limit":1000,"symbol":"BTCUSDT","interval":"1d",
 # "csv":"ETHUSDT-1h-202301-202401.csv","strategy","ShihunRSI2"}]'
-def parse_task_config(cfg) -> [TaskConfig]:
+def parse_task_config(cfg) -> list[TaskConfig]:
     file_path = path.get_file_path(cfg)
     if os.path.isfile(file_path):
         try:
@@ -182,7 +182,7 @@ def parse_task_config(cfg) -> [TaskConfig]:
     return ret
 
 
-def get_symbols(tcfgs: [TaskConfig]):
+def get_symbols(tcfgs: list[TaskConfig]):
     ret = []
     for tcfg in tcfgs:
         ret.append(tcfg.symbol_interval.symbol)
