@@ -1,4 +1,4 @@
-from trader.binance_exchange.exchange import BinanceExchange, get_oldest_time
+from trader.exchange.binance.exchange import BinanceExchange, get_oldest_time
 from trader.task.task_config import TaskConfig
 from trader.task.task_type import TaskType
 from trader.utils.symbol_interval import Interval, get_time_duration

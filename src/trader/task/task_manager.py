@@ -4,7 +4,7 @@ from logging import Logger
 from multiprocessing import Manager, Process
 
 from trader.app.database_manager import DatabaseManager
-from trader.binance_exchange.exchange import BinanceExchange
+from trader.exchange.binance.exchange import BinanceExchange
 from trader.common.config import Config
 from trader.task.backtrader_task import BackTraderTask, process_backtrader
 from trader.task.check_klines_num_task import CheckKlinesNumTask

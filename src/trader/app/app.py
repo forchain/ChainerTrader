@@ -5,12 +5,12 @@ from asyncio import Event, Queue
 from datetime import datetime
 
 from trader.app.database_manager import DatabaseManager
-from trader.binance_exchange.exchange import EXCHANGE_NAME, BinanceExchange
 from trader.common import path
 from trader.common.common import NAME
 from trader.common.config import Config, default
 from trader.common.logger import Logger
 from trader.common.message import Message, new_exit_msg
+from trader.exchange.binance.exchange import EXCHANGE_NAME, BinanceExchange
 from trader.notify.notify_manager import NotifyManager
 from trader.statistics.statistics import Statistics
 from trader.task.task_manager import TaskManager

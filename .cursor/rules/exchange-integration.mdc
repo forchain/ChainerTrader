@@ -5,15 +5,15 @@ alwaysApply: false
 ---
 # Exchange Integration System
 
-ChainerTrader provides a modular exchange integration system, currently supporting Binance through the [src/trader/binance_exchange/](mdc:src/trader/binance_exchange) module.
+ChainerTrader provides a modular exchange integration system, currently supporting Binance through the [src/trader/exchange/binance/](mdc:src/trader/exchange/binance) module.
 
 ## Binance Exchange Module
 
 ### Core Components
-- **Exchange Class**: [src/trader/binance_exchange/exchange.py](mdc:src/trader/binance_exchange/exchange.py) - Main exchange interface
-- **REST API**: [src/trader/binance_exchange/restapi.py](mdc:src/trader/binance_exchange/restapi.py) - HTTP API client
-- **Data Management**: [src/trader/binance_exchange/data.py](mdc:src/trader/binance_exchange/data.py) - Market data handling
-- **CSV Data**: [src/trader/binance_exchange/csvdata.py](mdc:src/trader/binance_exchange/csvdata.py) - Historical data import
+- **Exchange Class**: [src/trader/exchange/binance/exchange.py](mdc:src/trader/exchange/binance/exchange.py) - Main exchange interface
+- **REST API**: [src/trader/exchange/binance/restapi.py](mdc:src/trader/exchange/binance/restapi.py) - HTTP API client
+- **Data Management**: [src/trader/exchange/binance/data.py](mdc:src/trader/exchange/binance/data.py) - Market data handling
+- **CSV Data**: [src/trader/exchange/binance/csvdata.py](mdc:src/trader/exchange/binance/csvdata.py) - Historical data import
 
 ## Exchange Features
 

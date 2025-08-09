@@ -5,7 +5,7 @@ from logging import Logger
 from pymongo.synchronous.collection import Collection
 
 from trader.app.database_manager import DatabaseManager
-from trader.binance_exchange.exchange import BinanceExchange
+from trader.exchange.binance.exchange import BinanceExchange
 from trader.common.common import sleep
 from trader.common.config import Config
 from trader.task.base_task import BaseTask

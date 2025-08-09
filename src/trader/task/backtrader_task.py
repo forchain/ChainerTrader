@@ -2,9 +2,9 @@ from asyncio import Event
 from datetime import datetime
 
 from trader.app.database_manager import DatabaseManager
-from trader.binance_exchange.csvdata import BinanceCSVData
-from trader.binance_exchange.data import BinanceData
-from trader.binance_exchange.exchange import BinanceExchange
+from trader.exchange.binance.csvdata import BinanceCSVData
+from trader.exchange.binance.data import BinanceData
+from trader.exchange.binance.exchange import BinanceExchange
 from trader.common import path
 from trader.common.common import MIN_RECORDS_NUM
 from trader.common.config import Config
