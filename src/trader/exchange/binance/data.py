@@ -9,7 +9,7 @@ from trader.utils.kline import Kline
 
 
 class BinanceData(bt.feed.DataBase):
-    def __init__(self, data: [Kline]):
+    def __init__(self, data: list[Kline]):
         super().__init__()
         self.data = data
         self.index = 0

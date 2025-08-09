@@ -48,7 +48,7 @@ class DatabaseManager:
         self.log.debug(f"get latest kline({max_record['_id']}):{kl.to_json()}")
         return kl
 
-    def get_latest_klines(self, col: Collection, limit: int) -> [Kline]:
+    def get_latest_klines(self, col: Collection, limit: int) -> list[Kline]:
         results = col.find().sort(PRIMARY_KEY, DESCENDING).limit(limit)
         if results is None:
             return None
@@ -61,7 +61,7 @@ class DatabaseManager:
 
         return kls
 
-    def add_klines(self, col: Collection, klines: [Kline]) -> int:
+    def add_klines(self, col: Collection, klines: list[Kline]) -> int:
         if len(klines) <= 0:
             return 0
         insert_data = []
@@ -104,7 +104,7 @@ class DatabaseManager:
         self.log.debug(f"get kline({result['_id']}):{kl.to_json()}")
         return kl
 
-    def get_all_klines(self, col: Collection) -> [Kline]:
+    def get_all_klines(self, col: Collection) -> list[Kline]:
         results = col.find().sort(PRIMARY_KEY, ASCENDING)
         if results is None:
             return None
@@ -114,7 +114,7 @@ class DatabaseManager:
             kls.append(parse_kline(ret))
         return kls
 
-    def get_klines(self, col: Collection, start_time: int = 0, end_time: int = 0) -> [Kline]:
+    def get_klines(self, col: Collection, start_time: int = 0, end_time: int = 0) -> list[Kline]:
         if start_time == 0 and end_time == 0:
             return self.get_all_klines(col)
         elif start_time > end_time and end_time > 0:

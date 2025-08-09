@@ -79,7 +79,7 @@ class BinanceExchange:
         start_time: int = None,
         end_time: int = None,
         limit: int = KLINE_LIMIT_DEFAULT,
-    ) -> [Kline]:
+    ) -> list[Kline]:
         r_limit = limit
         if r_limit > KLINE_LIMIT_MAX:
             r_limit = KLINE_LIMIT_MAX
@@ -111,7 +111,7 @@ class BinanceExchange:
 
         return kls
 
-    def get_latest_klines(self, si: SymbolInterval, limit: int = KLINE_LIMIT_DEFAULT) -> [Kline]:
+    def get_latest_klines(self, si: SymbolInterval, limit: int = KLINE_LIMIT_DEFAULT) -> list[Kline]:
         return self.get_klines(si, None, None, limit)
 
     def get_klines_by_start(
@@ -119,7 +119,7 @@ class BinanceExchange:
         si: SymbolInterval,
         start_time: int = None,
         limit: int = KLINE_LIMIT_DEFAULT,
-    ) -> [Kline]:
+    ) -> list[Kline]:
         r_end_time = int(datetime.now().timestamp())
         if start_time is None or start_time == 0:
             start_time = int(get_oldest_time().timestamp())
@@ -143,12 +143,12 @@ def get_oldest_time() -> datetime:
     return datetime.strptime(OLDEST_TIME, "%Y-%m-%d %H:%M:%S")
 
 
-def parse_klines(data) -> [Kline]:
+def parse_klines(data) -> list[Kline]:
     if data is None:
         return None
 
     R_LIST_LEN = 12
-    ret: [Kline] = []
+    ret: list[Kline] = []
     for d in data:
         if len(d) < R_LIST_LEN:
             raise Exception(f"kline length is error:{len(d)} != {R_LIST_LEN}")
