@@ -22,15 +22,14 @@ OLDEST_TIME = "2000-01-01 00:00:00"
 
 
 class BinanceExchange:
-    def __init__(self, cfg: Config, ex_cfg: ExchangeConfig, log=default()):
+    def __init__(self, cfg: ExchangeConfig, log=default()):
         self.log = log
         self.cfg = cfg
-        self.ex_cfg = ex_cfg
         self.log.info(f"Init Exchange {self.name()}")
 
         configuration_rest_api = ConfigurationRestAPI(
-            api_key=ex_cfg.api_key,
-            api_secret=ex_cfg.api_secret,
+            api_key=cfg.api_key,
+            api_secret=cfg.api_secret,
             base_path=SPOT_REST_API_PROD_URL,
             timeout=10000,
             backoff=1,

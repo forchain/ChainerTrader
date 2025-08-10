@@ -35,7 +35,7 @@ class App:
         if self.cfg.exchange:
             ex_cfg = parse_exchange_config(self.cfg.exchange)
             if ex_cfg and ex_cfg.ty == ExchangeType.BINANCE:
-                self.exchange = BinanceExchange(self.cfg, self.log())
+                self.exchange = BinanceExchange(ex_cfg, self.log())
 
         self.notify_mgr = NotifyManager(cfg, self.logger)
 

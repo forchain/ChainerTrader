@@ -1,19 +1,19 @@
 from trader.exchange.binance.exchange import BinanceExchange, get_oldest_time
+from trader.exchange.exchange_config import ExchangeConfig
 from trader.task.task_config import TaskConfig
 from trader.task.task_type import TaskType
 from trader.utils.symbol_interval import Interval, get_time_duration
 
 
 def get_exchange():
-    cfg = TaskConfig(TaskType.TRADER)
-    exchange = BinanceExchange(cfg)
+    exchange = BinanceExchange(ExchangeConfig())
     exchange.start()
-    return exchange
+    return exchange, TaskConfig(TaskType.TRADER)
 
 
 def test_get_latest_klines():
-    exchange = get_exchange()
-    ret = exchange.get_latest_klines(exchange.cfg.symbol_interval, 3)
+    exchange, cfg = get_exchange()
+    ret = exchange.get_latest_klines(cfg.symbol_interval, 3)
     assert ret is not None
     print(f"get latest klines total:{len(ret)}")
     for kl in ret:
@@ -21,11 +21,11 @@ def test_get_latest_klines():
 
 
 def test_get_klines():
-    exchange = get_exchange()
+    exchange, cfg = get_exchange()
     start_time = 1503446400  # 2017-08-23 08:00:00
     end_time = 1504051200  # 2017-08-30 08:00:00
 
-    ret = exchange.get_klines(exchange.cfg.symbol_interval, start_time, end_time)
+    ret = exchange.get_klines(cfg.symbol_interval, start_time, end_time)
     assert ret is not None
     print(f"get klines total:{len(ret)}")
     for kl in ret:
@@ -33,11 +33,11 @@ def test_get_klines():
 
 
 def test_get_klines_limit():
-    exchange = get_exchange()
+    exchange, cfg = get_exchange()
     start_time = 1503446400  # 2017-08-23 08:00:00
     end_time = 1504051200  # 2017-08-30 08:00:00
 
-    ret = exchange.get_klines(exchange.cfg.symbol_interval, start_time, end_time, 3)
+    ret = exchange.get_klines(cfg.symbol_interval, start_time, end_time, 3)
     assert ret is not None
     print(f"get klines total:{len(ret)}")
     for kl in ret:
@@ -45,8 +45,8 @@ def test_get_klines_limit():
 
 
 def test_get_klines_by_start():
-    exchange = get_exchange()
-    ret = exchange.get_klines_by_start(exchange.cfg.symbol_interval, None, 1)
+    exchange, cfg = get_exchange()
+    ret = exchange.get_klines_by_start(cfg.symbol_interval, None, 1)
     assert ret is not None
 
     print(f"get start kline:{len(ret)}")
