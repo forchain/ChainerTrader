@@ -11,6 +11,8 @@ from trader.common.config import Config, default
 from trader.common.logger import Logger
 from trader.common.message import Message, new_exit_msg
 from trader.exchange.binance.exchange import EXCHANGE_NAME, BinanceExchange
+from trader.exchange.exchange_config import parse_exchange_config
+from trader.exchange.exchange_type import ExchangeType
 from trader.notify.notify_manager import NotifyManager
 from trader.statistics.statistics import Statistics
 from trader.task.task_manager import TaskManager
@@ -29,8 +31,11 @@ class App:
 
         if self.cfg.db_uri:
             self.db_manager = DatabaseManager(cfg, self.logger)
-        if self.cfg.exchange == EXCHANGE_NAME:
-            self.exchange = BinanceExchange(self.cfg, self.log())
+
+        if self.cfg.exchange:
+            ex_cfg = parse_exchange_config(self.cfg.exchange)
+            if ex_cfg and ex_cfg.ty == ExchangeType.BINANCE:
+                self.exchange = BinanceExchange(self.cfg, self.log())
 
         self.notify_mgr = NotifyManager(cfg, self.logger)
 

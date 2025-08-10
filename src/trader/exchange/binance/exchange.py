@@ -4,6 +4,8 @@ from binance_common.configuration import ConfigurationRestAPI
 from binance_common.constants import SPOT_REST_API_PROD_URL
 from binance_sdk_spot import Spot
 
+from trader.common.config import Config
+from trader.exchange.exchange_config import ExchangeConfig
 from trader.exchange.exchange_type import ExchangeType
 from trader.common.logger import default
 from trader.utils.kline import Kline
@@ -20,12 +22,15 @@ OLDEST_TIME = "2000-01-01 00:00:00"
 
 
 class BinanceExchange:
-    def __init__(self, cfg, log=default()):
+    def __init__(self, cfg: Config, ex_cfg: ExchangeConfig, log=default()):
         self.log = log
         self.cfg = cfg
+        self.ex_cfg = ex_cfg
         self.log.info(f"Init Exchange {self.name()}")
 
         configuration_rest_api = ConfigurationRestAPI(
+            api_key=ex_cfg.api_key,
+            api_secret=ex_cfg.api_secret,
             base_path=SPOT_REST_API_PROD_URL,
             timeout=10000,
             backoff=1,

@@ -75,13 +75,6 @@ def read_app_config():
     return rpc.state.app.cfg.to_dict()
 
 
-@rpc.get("/exchange_info")
-def read_exchange_info(symbol: str):
-    if len(symbol) <= 0:
-        return {"error": "must config symbol"}
-    return rpc.state.app.exchange.get_exchange_info(symbol)
-
-
 @rpc.get("/update_klines_task")
 def update_kines_task():
     return rpc.state.app.task_manager.add_task()
@@ -90,3 +83,15 @@ def update_kines_task():
 @rpc.get("/operates/")
 def read_start_app(limit: int = 10):
     return rpc.state.app.stat.get_operates()
+
+
+@rpc.get("/exchange_info")
+def read_exchange_info(symbol: str):
+    if len(symbol) <= 0:
+        return {"error": "must config symbol"}
+    return rpc.state.app.exchange.get_exchange_info(symbol)
+
+
+@rpc.get("/accout")
+def read_account():
+    return rpc.state.app.exchange.get_account()
