@@ -10,7 +10,7 @@ from trader.common.common import NAME
 from trader.common.config import Config, default
 from trader.common.logger import Logger
 from trader.common.message import Message, new_exit_msg
-from trader.exchange.binance.exchange import EXCHANGE_NAME, BinanceExchange
+from trader.exchange.binance.exchange import BinanceExchange
 from trader.exchange.exchange_config import parse_exchange_config
 from trader.exchange.exchange_type import ExchangeType
 from trader.notify.notify_manager import NotifyManager

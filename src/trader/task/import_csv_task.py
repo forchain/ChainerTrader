@@ -3,8 +3,8 @@ import os
 from asyncio import Event, Queue
 
 from trader.app.database_manager import DatabaseManager
-from trader.exchange.binance.exchange import BinanceExchange
 from trader.common import path
+from trader.exchange.binance.exchange import BinanceExchange
 from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig
 from trader.utils.kline import Kline

@@ -3,11 +3,11 @@ from datetime import datetime
 from logging import Logger
 
 from trader.app.database_manager import DatabaseManager
-from trader.exchange.binance.data import BinanceData
-from trader.exchange.binance.exchange import BinanceExchange
 from trader.common.common import MIN_RECORDS_NUM, sleep, sleep_loop
 from trader.common.config import Config
 from trader.common.message import new_stat_msg
+from trader.exchange.binance.data import BinanceData
+from trader.exchange.binance.exchange import BinanceExchange
 from trader.statistics.stat import TraderStat
 from trader.strategy.node import Node
 from trader.strategy.strategy import parse_strategys

@@ -3,8 +3,8 @@ from datetime import datetime
 from logging import Logger
 
 from trader.app.database_manager import DatabaseManager
-from trader.exchange.binance.exchange import BinanceExchange
 from trader.common.config import Config
+from trader.exchange.binance.exchange import BinanceExchange
 from trader.task.task_config import TaskConfig
 
 

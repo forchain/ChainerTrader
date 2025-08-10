@@ -4,10 +4,9 @@ from binance_common.configuration import ConfigurationRestAPI
 from binance_common.constants import SPOT_REST_API_PROD_URL
 from binance_sdk_spot import Spot
 
-from trader.common.config import Config
+from trader.common.logger import default
 from trader.exchange.exchange_config import ExchangeConfig
 from trader.exchange.exchange_type import ExchangeType
-from trader.common.logger import default
 from trader.utils.kline import Kline
 from trader.utils.symbol_interval import SymbolInterval
 

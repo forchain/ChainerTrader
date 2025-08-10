@@ -5,9 +5,9 @@ from logging import Logger
 from pymongo.synchronous.collection import Collection
 
 from trader.app.database_manager import DatabaseManager
-from trader.exchange.binance.exchange import BinanceExchange
 from trader.common.common import sleep
 from trader.common.config import Config
+from trader.exchange.binance.exchange import BinanceExchange
 from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig
 from trader.utils.symbol_interval import SymbolInterval, add_time_duration

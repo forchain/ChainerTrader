@@ -7,8 +7,8 @@ import backtrader as bt
 import backtrader.indicators as btind
 from backtrader import num2date
 
-from trader.exchange.binance.csvdata import BinanceCSVData
 from trader.common import path
+from trader.exchange.binance.csvdata import BinanceCSVData
 from trader.strategy.trilogy_strategy import TrilogyStrategy
 
 
