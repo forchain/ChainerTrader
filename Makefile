@@ -78,3 +78,11 @@ docs:             ## Build the documentation.
 		gnome-open $$URL || \
 		open $$URL; \
 	fi
+
+.PHONY: serve
+serve:            ## Run the API server.
+	@if [ "$(USING_UV)" ]; then \
+		uv run trader --api 0.0.0.0:8000; \
+	else \
+		$(ENV_PREFIX)python -m trader --api 0.0.0.0:8000; \
+	fi
