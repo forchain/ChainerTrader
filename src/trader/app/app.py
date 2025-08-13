@@ -29,7 +29,7 @@ class App:
         self.exchange = None
         self.main_task = None
 
-        if self.cfg.db_uri:
+        if self.cfg.db:
             self.db_manager = DatabaseManager(cfg, self.logger)
 
         if self.cfg.exchange:
