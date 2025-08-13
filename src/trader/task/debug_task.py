@@ -31,7 +31,7 @@ class DebugTask(BaseTask):
 
             self.log.info(f"Run {self.name()}. process={count}/{self.tcfg.limit}")
 
-            await asyncio.sleep(1)
+            await sleep(self.log, 1)
 
         return True
 
