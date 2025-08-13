@@ -121,6 +121,6 @@ async def download(
         else:
             log.info(f"{name} add klines to DB: {ret}/{total_records}")
 
-        # await sleep(log,DOWLOAD_SPACE_TIME,name)
+        await sleep(log, 0.1)
 
     return True
