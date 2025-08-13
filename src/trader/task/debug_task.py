@@ -1,4 +1,3 @@
-import asyncio
 from asyncio import Event, Queue
 from logging import Logger
 
