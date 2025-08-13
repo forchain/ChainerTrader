@@ -26,7 +26,7 @@ class RpcApp(App):
 
     async def main_task_handler(self, quit: Event):
         self.log().info("Enter main_task_handler")
-        await self.start_handler(self.quit)
+        await self.start_handler(quit)
 
         # exit uvicorn
         # os.kill(os.getpid(), signal.SIGTERM)

@@ -111,6 +111,9 @@ class Config:
     def get_log_level(self) -> int:
         return logging.getLevelName(self.log_level)
 
+    def is_server(self) -> bool:
+        return self.api is not None
+
 
 def default() -> Config:
     return Config()

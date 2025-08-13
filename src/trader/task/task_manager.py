@@ -9,6 +9,7 @@ from trader.exchange.binance.exchange import BinanceExchange
 from trader.task.backtrader_task import BackTraderTask, process_backtrader
 from trader.task.check_klines_num_task import CheckKlinesNumTask
 from trader.task.check_klines_task import CheckKlinesTask
+from trader.task.debug_task import DebugTask
 from trader.task.import_csv_task import ImportCSVTask
 from trader.task.task_config import parse_task_config
 from trader.task.task_type import TaskType
@@ -66,6 +67,8 @@ class TaskManager:
             task = ImportCSVTask(cfg, self.cfg, self.log, self.db_manager, self.exchange)
         elif cfg.ttype == TaskType.CHECK_KLINES_NUM:
             task = CheckKlinesNumTask(cfg, self.cfg, self.log, self.db_manager, self.exchange)
+        elif cfg.ttype == TaskType.DEBUG:
+            task = DebugTask(cfg, self.cfg, self.log)
 
         if task is None:
             self.log.error(f"Can't add task:{cfg.to_dict()}")
