@@ -9,7 +9,7 @@ from trader.common import path
 from trader.common.common import NAME
 from trader.common.config import Config, default
 from trader.common.logger import Logger
-from trader.common.message import Message, new_exit_msg
+from trader.common.message import Message, new_exit_msg, new_add_tasks_msg
 from trader.exchange.binance.exchange import BinanceExchange
 from trader.exchange.exchange_config import parse_exchange_config
 from trader.exchange.exchange_type import ExchangeType
@@ -27,7 +27,6 @@ class App:
 
         self.db_manager = None
         self.exchange = None
-        self.main_task = None
 
         if self.cfg.db:
             self.db_manager = DatabaseManager(cfg, self.logger)
@@ -40,9 +39,7 @@ class App:
         self.notify_mgr = NotifyManager(cfg, self.logger)
 
         self.stat = Statistics(self.cfg, self.log())
-        self.task_manager = None
-        if self.cfg.tasks:
-            self.task_manager = TaskManager(self.cfg, self.log(), self.db_manager, self.exchange)
+        self.task_manager = TaskManager(self.cfg, self.log(), self.db_manager, self.exchange)
 
         self.startTime = datetime.now()
         self.queue = None
@@ -172,6 +169,18 @@ class App:
                 self.queue.put_nowait(new_exit_msg())
             except asyncio.QueueFull:
                 self.log().error("QueueFull")
+
+    def send_add_tasks_msg(self, tasks_cfg: str):
+        if not tasks_cfg:
+            return {
+                "result": "fail",
+                "error": "The input parameter is empty",
+            }
+        msg = new_add_tasks_msg(tasks_cfg)
+
+        self.queue.put_nowait(msg)
+
+        return {"result": "success", "id": msg.get_id()}
 
 
 def version():
