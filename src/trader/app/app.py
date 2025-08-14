@@ -132,7 +132,7 @@ class App:
 
     def shutdown(self, quit: Event):
         self.log().info(f"Received shutdown signal, stopping {self.name()}...")
-        quit.set()
+        self.exit_handle(quit)
 
     async def handler(self, msgs: list[Message], quit: Event):
         queue = asyncio.Queue()
@@ -159,6 +159,10 @@ class App:
             queue.task_done()
 
         self.log().info(f"{self.name()} exit handler")
+
+    def exit_handle(self, quit: Event):
+        quit.set()
+        self.send_exit_msg()
 
     def send_exit_msg(self):
         if self.queue:
