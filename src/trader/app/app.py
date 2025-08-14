@@ -155,6 +155,8 @@ class App:
 
             elif msg.is_add_tasks():
                 await self.task_manager.add_tasks(msg.get_data(), queue, quit)
+                if not self.cfg.is_server():
+                    self.exit_handle(quit)
 
             queue.task_done()
 
