@@ -4,9 +4,8 @@ from enum import Enum
 class MessageType(Enum):
     EXIT = 0
     STR = 1
-    TASK = 2
+    ADD_TASKS = 2
     STAT = 3
-    BACKTRADER = 4
 
 
 class Message:
@@ -35,8 +34,8 @@ class Message:
     def is_exit(self):
         return self.tp == MessageType.EXIT
 
-    def is_task(self):
-        return self.tp == MessageType.TASK
+    def is_add_tasks(self):
+        return self.tp == MessageType.ADD_TASKS
 
     def is_stat(self):
         return self.tp == MessageType.STAT
@@ -50,8 +49,8 @@ def new_str_msg(string: str) -> Message:
     return Message(MessageType.STR, string)
 
 
-def new_task_msg(data) -> Message:
-    return Message(MessageType.TASK, data)
+def new_add_tasks_msg(data) -> Message:
+    return Message(MessageType.ADD_TASKS, data)
 
 
 def new_stat_msg(data, id=0) -> Message:

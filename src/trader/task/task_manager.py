@@ -5,6 +5,7 @@ from multiprocessing import Manager, Process
 
 from trader.app.database_manager import DatabaseManager
 from trader.common.config import Config
+from trader.common.message import new_add_tasks_msg
 from trader.exchange.binance.exchange import BinanceExchange
 from trader.task.backtrader_task import BackTraderTask, process_backtrader
 from trader.task.check_klines_num_task import CheckKlinesNumTask
@@ -31,27 +32,38 @@ class TaskManager:
         self.exchange = exchange
         self.log.info("Init TaskManager")
 
-    def start(self, queue: Queue, quit: Event):
-        taskcs = parse_task_config(self.cfg.tasks)
-        self.log.info(f"Load task config:{len(taskcs)}")
+    def start(self):
+        self.log.info(f"TaskManager start")
+        if self.cfg.tasks:
+            return new_add_tasks_msg(self.cfg.tasks)
+        return None
 
-        ret = []
+    def stop(self):
+        pass
+
+    async def add_tasks(self, cfg: str, queue: Queue, quit: Event):
+        if not cfg:
+            self.log.error(f"Empty task config for add")
+            return
+
+        taskcs = parse_task_config(cfg)
+        self.log.info(f"Parse tasks:{len(taskcs)}")
+
+        tasks = []
         bttaskcs = []
         for taskc in taskcs:
             if taskc.ttype == TaskType.BACK_TRADER:
                 bttaskcs.append(taskc)
         if len(bttaskcs) > 0:
-            ret.append(asyncio.create_task(self.add_backtrader_task(bttaskcs, queue, quit)))
+            tasks.append(asyncio.create_task(self.add_backtrader_task(bttaskcs, queue, quit)))
 
         for taskc in taskcs:
             if taskc.ttype == TaskType.BACK_TRADER:
                 continue
-            ret.append(asyncio.create_task(self.add_task(taskc, queue, quit)))
+            tasks.append(asyncio.create_task(self.add_task(taskc, queue, quit)))
 
-        return ret
-
-    def stop(self):
-        pass
+        self.log.info(f"All tasks are created to running:{len(tasks)}")
+        await asyncio.gather(*tasks)
 
     async def add_task(self, cfg, queue: Queue, quit: Event):
         task = None

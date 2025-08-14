@@ -45,6 +45,7 @@ class App:
             self.task_manager = TaskManager(self.cfg, self.log(), self.db_manager, self.exchange)
 
         self.startTime = datetime.now()
+        self.queue = None
 
     def name(self):
         return NAME
@@ -72,7 +73,13 @@ class App:
         if self.exchange:
             self.exchange.start()
 
-        self.process()
+        msgs: list[Message] = []
+        if self.task_manager:
+            msg = self.task_manager.start()
+            if msg:
+                msgs.append(msg)
+
+        self.process(msgs)
         return True
 
     def stop(self):
@@ -105,7 +112,7 @@ class App:
     def config(self):
         return self.cfg
 
-    def process(self):
+    def process(self, msgs: list[Message]):
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
@@ -116,7 +123,7 @@ class App:
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.add_signal_handler(sig, self.shutdown, quit)
         try:
-            loop.run_until_complete(self.start_handler(quit))
+            loop.run_until_complete(self.handler(msgs, quit))
         except asyncio.CancelledError:
             self.log().debug("All tasks have been cancelled.")
         finally:
@@ -127,22 +134,14 @@ class App:
         self.log().info(f"Received shutdown signal, stopping {self.name()}...")
         quit.set()
 
-    async def start_handler(self, quit: Event):
+    async def handler(self, msgs: list[Message], quit: Event):
         queue = asyncio.Queue()
+        self.queue = queue
 
-        tasks = []
-        if self.task_manager:
-            tasks = tasks + self.task_manager.start(queue, quit)
+        for msg in msgs:
+            await queue.put(msg)
 
-        handlers = asyncio.create_task(self.handler(queue))
-        self.log().info(f"All task is created:{len(tasks)}")
-        await asyncio.gather(*tasks)
-
-        await queue.put(new_exit_msg())
-        await handlers
-
-    async def handler(self, queue: Queue):
-        self.log().info(f"{self.name()} enter listen_to_queue")
+        self.log().info(f"{self.name()} enter handler: init messages={len(msgs)}")
 
         while True:
             msg: Message = await queue.get()
@@ -150,13 +149,23 @@ class App:
             if msg.is_exit():
                 self.log().info("Received exit message, shutting down...")
                 break
-            if msg.is_stat():
+            elif msg.is_stat():
                 self.stat.handler(msg)
                 self.notify_mgr.handler(msg)
 
+            elif msg.is_add_tasks():
+                await self.task_manager.add_tasks(msg.get_data(), queue, quit)
+
             queue.task_done()
 
-        self.log().info(f"{self.name()} exit listen_to_queue")
+        self.log().info(f"{self.name()} exit handler")
+
+    def send_exit_msg(self):
+        if self.queue:
+            try:
+                self.queue.put_nowait(new_exit_msg())
+            except asyncio.QueueFull:
+                self.log().error("QueueFull")
 
 
 def version():
