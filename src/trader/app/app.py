@@ -52,12 +52,18 @@ class App:
     def log(self):
         return self.logger.log()
 
-    def start(self):
-        if self.cfg.tasks is None:
-            self.log().warn("No tasks can be executed")
-            return True
+    def get_running_mode(self) -> str:
+        if self.cfg.is_server():
+            return "server"
+        return "CLI"
 
-        self.log().info(f"Start {self.name()} App, config:{self.cfg.to_dict()}")
+    def start(self):
+        self.log().info(f"Start {self.name()} App, config:{self.cfg.to_dict()}, running mode:{self.get_running_mode()}")
+
+        if not self.cfg.is_server():
+            if self.cfg.tasks is None:
+                self.log().warn("No tasks can be executed")
+                return False
 
         self.notify_mgr.start()
 
@@ -93,6 +99,7 @@ class App:
             "commission": self.cfg.commission,
             "period": self.cfg.period,
             "atr": self.cfg.atr,
+            "mode": self.get_running_mode(),
         }
 
     def config(self):

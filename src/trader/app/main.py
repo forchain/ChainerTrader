@@ -36,9 +36,10 @@ def main():
     parser.add_argument(
         "--api",
         help="Start the Web API service with optional binding address and port (e.g. 127.0.0.1:8000, :8000, 127.0.0.1)",
+        nargs="?",
         type=str,
         const="127.0.0.1:8000",
-        nargs="?",
+        default=None,
     )
     parser.add_argument("--log_file", help="Write log to file", action="store_true")
     parser.add_argument("--plot", help="Plot data", action="store_true")

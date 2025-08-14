@@ -4,6 +4,7 @@ import signal
 from asyncio import Event
 
 from trader.app.app import App
+from trader.common.common import sleep
 from trader.common.config import Config
 
 
@@ -27,7 +28,7 @@ class RpcApp(App):
     async def main_task_handler(self, quit: Event):
         self.log().info("Enter main_task_handler")
         await self.start_handler(quit)
-
+        await sleep(self.log(), 1, "Try to exit rpc...")
         # exit uvicorn
         # os.kill(os.getpid(), signal.SIGTERM)
         os.kill(os.getpid(), signal.SIGINT)
