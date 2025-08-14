@@ -33,7 +33,7 @@ class TaskManager:
         self.log.info("Init TaskManager")
 
     def start(self):
-        self.log.info(f"TaskManager start")
+        self.log.info("TaskManager start")
         if self.cfg.tasks:
             return new_add_tasks_msg(self.cfg.tasks)
         return None
@@ -43,7 +43,7 @@ class TaskManager:
 
     async def add_tasks(self, cfg: str, queue: Queue, quit: Event):
         if not cfg:
-            self.log.error(f"Empty task config for add")
+            self.log.error("Empty task config for add")
             return
 
         taskcs = parse_task_config(cfg)

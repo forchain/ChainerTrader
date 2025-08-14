@@ -1,7 +1,7 @@
 import asyncio
 import os
 import signal
-from asyncio import Event, Queue
+from asyncio import Event
 from datetime import datetime
 
 from trader.app.database_manager import DatabaseManager
