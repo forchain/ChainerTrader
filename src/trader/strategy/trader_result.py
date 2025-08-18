@@ -1,4 +1,4 @@
-from fastapi.openapi.models import Operation
+from trader.utils.operate import Operate
 
 
 class TraderResult:
@@ -14,7 +14,7 @@ class TraderResult:
         avg_loss,
         buys,
         sells,
-        operate: Operation,
+        operate: Operate,
         hold_rate,
         data_len: int,
     ):
