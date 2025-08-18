@@ -64,7 +64,7 @@ class BackTraderTask(BaseTask):
                     todate=datetime.fromtimestamp(self.tcfg.end_time),
                 )
         if self.db_manager and data is None:
-            collection = self.db_manager.get_collection(self.cfg.db_name, self.tcfg.symbol_interval.name())
+            collection = self.db_manager.get_klines_collection(self.cfg.db_name, self.tcfg.symbol_interval.name())
             kls_cache = self.db_manager.get_klines(collection, self.tcfg.start_time, self.tcfg.end_time)
             if kls_cache is None or len(kls_cache) <= 0:
                 if self.tcfg.auto_download:

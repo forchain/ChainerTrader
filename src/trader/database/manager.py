@@ -2,6 +2,8 @@ from pymongo import ASCENDING, DESCENDING, MongoClient
 from pymongo.synchronous.collection import Collection
 
 from trader.common.logger import Logger
+from trader.database.collection import get_name_for_klines, get_name_for_tasks
+from trader.utils.task_state import TaskState
 from trader.utils.kline import PRIMARY_KEY, Kline, parse_kline
 
 
@@ -29,9 +31,15 @@ class DatabaseManager:
     def get_database(self, name):
         return self.client[name]
 
-    def get_collection(self, db_name, collection_name) -> Collection:
-        db = self.get_database(db_name)
+    def get_klines_collection(self, db_name: str, name: str) -> Collection:
+        return self.get_collection(db_name,get_name_for_klines(name))
 
+    def get_tasks_collection(self, db_name: str) -> Collection:
+        return self.get_collection(db_name, get_name_for_tasks())
+
+    def get_collection(self, db_name: str, name: str) -> Collection:
+        db = self.get_database(db_name)
+        collection_name = name
         if collection_name in db.list_collection_names():
             return db[collection_name]
         else:
@@ -133,3 +141,30 @@ class DatabaseManager:
         for ret in results:
             kls.append(parse_kline(ret))
         return kls
+
+    def add_tasks(self, col: Collection, tasks: list[TaskState]) -> int:
+        if len(tasks) <= 0:
+            return 0
+        insert_data = []
+        duplicate = True
+        total = 0
+        for ta in tasks:
+            tad = ta.get_digest()
+            if duplicate:
+                try:
+                    col.insert_one(tad)
+                except Exception:
+                    duplicate = True
+                else:
+                    duplicate = False
+                    total += 1
+                finally:
+                    continue
+
+            insert_data.append(tad)
+
+        if len(insert_data) > 0:
+            col.insert_many(insert_data)
+            total += len(insert_data)
+        self.log.debug(f"add tasks, total:{total}")
+        return total

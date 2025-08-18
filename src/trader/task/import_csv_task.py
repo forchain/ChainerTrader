@@ -88,7 +88,7 @@ class ImportCSVTask(BaseTask):
                 self.log.error(f"{self.name()} kline interval is not {self.tcfg.symbol_interval.interval.name}")
                 return
 
-        collection = self.db_manager.get_collection(self.cfg.db_name, self.tcfg.symbol_interval.name())
+        collection = self.db_manager.get_klines_collection(self.cfg.db_name, self.tcfg.symbol_interval.name())
 
         ret = self.db_manager.add_klines(collection, kls)
         if ret != len(kls):

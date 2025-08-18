@@ -28,7 +28,7 @@ class CheckKlinesNumTask(BaseTask):
         super().start(queue, quit)
 
         self.log.info(f"Start {self.name()}")
-        collection = self.db_manager.get_collection(self.cfg.db_name, self.tcfg.symbol_interval.name())
+        collection = self.db_manager.get_klines_collection(self.cfg.db_name, self.tcfg.symbol_interval.name())
 
         first_kl = self.db_manager.get_first_kline(collection)
         if first_kl is None:

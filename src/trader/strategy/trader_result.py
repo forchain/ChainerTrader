@@ -1,3 +1,5 @@
+from typing import Any
+
 from trader.utils.operate import Operate
 
 
@@ -31,3 +33,20 @@ class TraderResult:
         self.operate = operate
         self.hold_rate = hold_rate
         self.data_len = data_len
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "total_return_rate": self.total_return_rate,
+            "max_drawdown": self.max_drawdown,
+            "max_drawdown_duration": self.max_drawdown_duration,
+            "volatility": self.volatility,
+            "win_rate": self.win_rate,
+            "plr": self.plr,
+            "avg_profit": self.avg_profit,
+            "avg_loss": self.avg_loss,
+            "buys": self.buys,
+            "sells": self.sells,
+            "operate": self.operate.to_dict(),
+            "hold_rate": self.hold_rate,
+            "data_len": self.data_len,
+        }

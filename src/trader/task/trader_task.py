@@ -51,7 +51,7 @@ class TraderTask(BaseTask):
         # if self.exchange.spot_ws_client:
         #    self.exchange.spot_ws_client.klines(symbol=self.symbol_interval.symbol, interval=self.symbol_interval.interval.value, limit=1)
 
-        self.collection = self.db_manager.get_collection(self.cfg.db_name, self.tcfg.symbol_interval.name())
+        self.collection = self.db_manager.get_klines_collection(self.cfg.db_name, self.tcfg.symbol_interval.name())
 
         while not quit.is_set():
             ret = await download(
