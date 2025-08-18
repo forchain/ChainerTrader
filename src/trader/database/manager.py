@@ -3,8 +3,8 @@ from pymongo.synchronous.collection import Collection
 
 from trader.common.logger import Logger
 from trader.database.collection import get_name_for_klines, get_name_for_tasks
-from trader.utils.task_state import TaskState
 from trader.utils.kline import PRIMARY_KEY, Kline, parse_kline
+from trader.utils.task_state import TaskState
 
 
 class DatabaseManager:
@@ -32,7 +32,7 @@ class DatabaseManager:
         return self.client[name]
 
     def get_klines_collection(self, db_name: str, name: str) -> Collection:
-        return self.get_collection(db_name,get_name_for_klines(name))
+        return self.get_collection(db_name, get_name_for_klines(name))
 
     def get_tasks_collection(self, db_name: str) -> Collection:
         return self.get_collection(db_name, get_name_for_tasks())
