@@ -1,6 +1,7 @@
 from enum import Enum
 
 from trader.strategy.trader_result import TraderResult
+from trader.utils.operate import Operate
 
 
 class TaskStateType(Enum):
@@ -10,7 +11,8 @@ class TaskStateType(Enum):
 
 
 class TaskState:
-    def __init__(self, id: int, tret: TraderResult):
+    def __init__(self, id: int,opts:list[Operate]=None, tret: TraderResult=None):
         self.id = id
         self.state = TaskStateType.READY
         self.tret = tret
+        self.opts = opts
