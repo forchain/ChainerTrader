@@ -11,7 +11,7 @@ class TaskStateType(Enum):
 
 
 class TaskState:
-    def __init__(self, id: int,opts:list[Operate]=None, tret: TraderResult=None):
+    def __init__(self, id: int, opts: list[Operate] = None, tret: TraderResult = None):
         self.id = id
         self.state = TaskStateType.READY
         self.tret = tret

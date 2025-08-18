@@ -1,12 +1,12 @@
 from asyncio import Event
 from datetime import datetime
 
-from trader.app.database_manager import DatabaseManager
 from trader.common import path
 from trader.common.common import MIN_RECORDS_NUM
 from trader.common.config import Config
 from trader.common.logger import Logger
 from trader.common.message import new_stat_msg
+from trader.database.manager import DatabaseManager
 from trader.exchange.binance.csvdata import BinanceCSVData
 from trader.exchange.binance.data import BinanceData
 from trader.exchange.binance.exchange import BinanceExchange

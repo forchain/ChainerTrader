@@ -1,8 +1,8 @@
 from asyncio import Event, Queue
 from logging import Logger
 
-from trader.app.database_manager import DatabaseManager
 from trader.common.config import Config
+from trader.database.manager import DatabaseManager
 from trader.exchange.binance.exchange import BinanceExchange
 from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig
