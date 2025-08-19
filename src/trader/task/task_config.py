@@ -12,6 +12,7 @@ from trader.utils.symbols_interval import SymbolsInterval
 class TaskConfig:
     def __init__(
         self,
+        id: int,
         ttype: TaskType,
         symbol_interval=SymbolInterval("BTCUSDT", Interval("1d")),
         csv=None,
@@ -30,7 +31,7 @@ class TaskConfig:
         self.symbol_interval = symbol_interval
         self.auto_download = auto_download
 
-        self.id = 0
+        self.id = id
 
     def to_dict(self):
         s_time = ""
@@ -65,7 +66,7 @@ class TaskConfig:
 
 # '[{"task_type": "CHECK_KLINES", "start_time": "2023-09-24 14:30:00","end_time":"0","limit":1000,"symbol":"BTCUSDT","interval":"1d",
 # "csv":"ETHUSDT-1h-202301-202401.csv","strategy","ShihunRSI2"}]'
-def parse_task_config(cfg: str) -> list[TaskConfig]:
+def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
     file_path = path.get_file_path(cfg)
     if os.path.isfile(file_path):
         try:
@@ -79,27 +80,18 @@ def parse_task_config(cfg: str) -> list[TaskConfig]:
         parsed_list = json.loads(cfg)
 
     ret = []
-    index = 0
     for tcd in parsed_list:
         task_type = parse_task_type(tcd["task_type"])
-
-        id = 0
-        if "id" in tcd:
-            id = tcd["id"]
 
         limit = 0
         if "limit" in tcd:
             limit = tcd["limit"]
 
         if task_type == TaskType.DEBUG:
-            tc = TaskConfig(task_type)
+            tc = TaskConfig(create_task_id(last_task_id), task_type)
             tc.limit = limit
-            if id == 0:
-                tc.id = index
-                index += 1
-            else:
-                tc.id = id
             ret.append(tc)
+            last_task_id = tc.id
             continue
 
         if "symbols" in tcd:
@@ -147,9 +139,8 @@ def parse_task_config(cfg: str) -> list[TaskConfig]:
                 or task_type == TaskType.CHECK_KLINES_NUM
                 or task_type == TaskType.UPDATE_KLINES
             ):
-                tc, index = new_TaskConfig(
-                    id,
-                    index,
+                tc = TaskConfig(
+                    create_task_id(last_task_id),
                     task_type,
                     si,
                     csv,
@@ -160,11 +151,11 @@ def parse_task_config(cfg: str) -> list[TaskConfig]:
                     auto_download,
                 )
                 ret.append(tc)
+                last_task_id = tc.id
             else:
                 for strategy in strategys:
-                    tc, index = new_TaskConfig(
-                        id,
-                        index,
+                    tc = TaskConfig(
+                        create_task_id(last_task_id),
                         task_type,
                         si,
                         csv,
@@ -175,11 +166,11 @@ def parse_task_config(cfg: str) -> list[TaskConfig]:
                         auto_download,
                     )
                     ret.append(tc)
+                    last_task_id = tc.id
 
                 if len(strategys_bunch) > 0:
-                    tc, index = new_TaskConfig(
-                        id,
-                        index,
+                    tc = TaskConfig(
+                        create_task_id(last_task_id),
                         task_type,
                         si,
                         csv,
@@ -190,6 +181,7 @@ def parse_task_config(cfg: str) -> list[TaskConfig]:
                         auto_download,
                     )
                     ret.append(tc)
+                    last_task_id = tc.id
 
     return ret
 
@@ -205,11 +197,10 @@ def get_symbols_from_cfg(cfg):
     return get_symbols(parse_task_config(cfg))
 
 
-def new_TaskConfig(id, index, task_type, si, csv, start_time, end_time, limit, strategy, auto_download):
-    tc = TaskConfig(task_type, si, csv, start_time, end_time, limit, strategy, auto_download)
-    if id == 0:
-        tc.id = index
-        index += 1
-    else:
-        tc.id = id
-    return tc, index
+def create_task_id(last_task_id: int) -> int:
+    current_timestamp = datetime.now().timestamp()
+    task_id = int(current_timestamp * 1000)
+    while True:
+        if task_id > last_task_id:
+            return task_id
+        task_id += 1
