@@ -15,6 +15,7 @@ from trader.exchange.exchange_config import parse_exchange_config
 from trader.exchange.exchange_type import ExchangeType
 from trader.notify.notify_manager import NotifyManager
 from trader.statistics.statistics import Statistics
+from trader.task.task_config import parse_task_config, TaskConfig
 from trader.task.task_manager import TaskManager
 
 
@@ -171,16 +172,24 @@ class App:
                 self.log().error("QueueFull")
 
     def send_add_tasks_msg(self, tasks_cfg: str):
-        if not tasks_cfg:
+        taskcs: list[TaskConfig] = []
+        if tasks_cfg:
+            taskcs = parse_task_config(tasks_cfg)
+
+        if len(taskcs) <= 0:
             return {
                 "result": "fail",
                 "error": "The input parameter is empty",
             }
-        msg = new_add_tasks_msg(tasks_cfg)
+
+        msg = new_add_tasks_msg(taskcs)
 
         self.queue.put_nowait(msg)
 
-        return {"result": "success", "id": msg.get_id()}
+        ids = []
+        for tc in taskcs:
+            ids.append(tc.to_dict())
+        return {"result": "success", "tasks": ids}
 
 
 def version():

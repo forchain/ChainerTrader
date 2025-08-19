@@ -12,7 +12,7 @@ from trader.task.check_klines_num_task import CheckKlinesNumTask
 from trader.task.check_klines_task import CheckKlinesTask
 from trader.task.debug_task import DebugTask
 from trader.task.import_csv_task import ImportCSVTask
-from trader.task.task_config import parse_task_config
+from trader.task.task_config import parse_task_config, TaskConfig
 from trader.task.task_type import TaskType
 from trader.task.trader_task import TraderTask
 from trader.task.update_klines_task import UpdateKlinesTask
@@ -35,19 +35,21 @@ class TaskManager:
     def start(self):
         self.log.info("TaskManager start")
         if self.cfg.tasks:
-            return new_add_tasks_msg(self.cfg.tasks)
+            taskcs = parse_task_config(self.cfg.tasks)
+            if len(taskcs) <= 0:
+                return None
+            return new_add_tasks_msg(taskcs)
         return None
 
     def stop(self):
         pass
 
-    async def add_tasks(self, cfg: str, queue: Queue, quit: Event):
-        if not cfg:
+    async def add_tasks(self, taskcs: list[TaskConfig], queue: Queue, quit: Event):
+        if len(taskcs) <= 0:
             self.log.error("Empty task config for add")
             return
 
-        taskcs = parse_task_config(cfg)
-        self.log.info(f"Parse tasks:{len(taskcs)}")
+        self.log.info(f"Try to add tasks:{len(taskcs)}")
 
         tasks = []
         bttaskcs = []

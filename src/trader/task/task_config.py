@@ -40,6 +40,12 @@ class TaskConfig:
         e_time = ""
         if self.end_time > 0:
             e_time = datetime.fromtimestamp(self.end_time)
+        if self.ttype == TaskType.DEBUG:
+            return {
+                "id": self.id,
+                "type": self.ttype,
+                "limit": self.limit,
+            }
         return {
             "id": self.id,
             "type": self.ttype,
