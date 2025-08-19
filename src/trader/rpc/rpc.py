@@ -75,7 +75,7 @@ def read_app_config():
     return rpc.state.app.cfg.to_dict()
 
 
-@rpc.post("/add_tasks")
+@rpc.post("/tasks")
 async def add_tasks(request: Request):
     raw_bytes = await request.body()
     cfg = raw_bytes.decode("utf-8")
