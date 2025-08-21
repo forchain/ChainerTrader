@@ -1,10 +1,8 @@
 from pymongo import ASCENDING, DESCENDING, MongoClient
-from pymongo.synchronous.collection import Collection
 
 from trader.common.logger import Logger
-from trader.database.collection import get_name_for_klines, get_name_for_tasks
-from trader.utils.kline import PRIMARY_KEY, Kline, parse_kline
-from trader.utils.task_state import TaskState
+from trader.database.kline import KlineCol
+from trader.database.task import TaskCol
 
 
 class DatabaseManager:
@@ -22,149 +20,19 @@ class DatabaseManager:
         """
         # log.apply(logging.getLogger("pymongo.command"))
 
+        self.client = None
+        self.task = None
+        self.kline = None
+
     def start(self):
         self.client = MongoClient(self.cfg.db)
+        db = self.get_database(self.cfg.db_name)
+        self.kline = KlineCol(db, self.log)
+        self.task = TaskCol(db, self.log)
 
     def stop(self):
         self.client.close()
+        self.client = None
 
     def get_database(self, name):
         return self.client[name]
-
-    def get_klines_collection(self, db_name: str, name: str) -> Collection:
-        return self.get_collection(db_name, get_name_for_klines(name))
-
-    def get_tasks_collection(self, db_name: str) -> Collection:
-        return self.get_collection(db_name, get_name_for_tasks())
-
-    def get_collection(self, db_name: str, name: str) -> Collection:
-        db = self.get_database(db_name)
-        collection_name = name
-        if collection_name in db.list_collection_names():
-            return db[collection_name]
-        else:
-            self.log.info(f"Create collection {collection_name} and index")
-            col = db[collection_name]
-            col.create_index([(PRIMARY_KEY, ASCENDING)], unique=True)
-            return col
-
-    def get_latest_kline(self, col: Collection) -> Kline | None:
-        max_record = col.find_one(sort=[(PRIMARY_KEY, DESCENDING)])
-        if max_record is None:
-            return None
-        kl = parse_kline(max_record)
-        self.log.debug(f"get latest kline({max_record['_id']}):{kl.to_json()}")
-        return kl
-
-    def get_latest_klines(self, col: Collection, limit: int) -> list[Kline]:
-        results = col.find().sort(PRIMARY_KEY, DESCENDING).limit(limit)
-        if results is None:
-            return None
-
-        kls = []
-        for ret in results:
-            kls.append(parse_kline(ret))
-        if len(kls) > 1:
-            kls.reverse()
-
-        return kls
-
-    def add_klines(self, col: Collection, klines: list[Kline]) -> int:
-        if len(klines) <= 0:
-            return 0
-        insert_data = []
-        duplicate = True
-        total = 0
-        for kl in klines:
-            kld = kl.to_dict()
-            if duplicate:
-                try:
-                    col.insert_one(kld)
-                except Exception:
-                    duplicate = True
-                else:
-                    duplicate = False
-                    total += 1
-                finally:
-                    continue
-
-            insert_data.append(kld)
-
-        if len(insert_data) > 0:
-            col.insert_many(insert_data)
-            total += len(insert_data)
-        self.log.debug(f"add klines, total:{total}")
-        return total
-
-    def get_first_kline(self, col: Collection) -> Kline | None:
-        max_record = col.find_one(sort=[(PRIMARY_KEY, ASCENDING)])
-        if max_record is None:
-            return None
-        kl = parse_kline(max_record)
-        self.log.debug(f"get first kline({max_record['_id']}):{kl.to_json()}")
-        return kl
-
-    def get_kline(self, col: Collection, open_time: int) -> Kline | None:
-        result = col.find_one({PRIMARY_KEY: open_time})
-        if result is None:
-            return None
-        kl = parse_kline(result)
-        self.log.debug(f"get kline({result['_id']}):{kl.to_json()}")
-        return kl
-
-    def get_all_klines(self, col: Collection) -> list[Kline]:
-        results = col.find().sort(PRIMARY_KEY, ASCENDING)
-        if results is None:
-            return None
-
-        kls = []
-        for ret in results:
-            kls.append(parse_kline(ret))
-        return kls
-
-    def get_klines(self, col: Collection, start_time: int = 0, end_time: int = 0) -> list[Kline]:
-        if start_time == 0 and end_time == 0:
-            return self.get_all_klines(col)
-        elif start_time > end_time and end_time > 0:
-            return self.get_all_klines(col)
-        elif start_time != 0 and end_time == 0:
-            results = col.find({PRIMARY_KEY: {"$gte": start_time}}).sort(PRIMARY_KEY, ASCENDING)
-        elif start_time == 0 and end_time != 0:
-            results = col.find({PRIMARY_KEY: {"$lte": end_time}}).sort(PRIMARY_KEY, ASCENDING)
-        else:
-            results = col.find({PRIMARY_KEY: {"$gte": start_time, "$lte": end_time}}).sort(PRIMARY_KEY, ASCENDING)
-
-        if results is None:
-            return None
-
-        kls = []
-        for ret in results:
-            kls.append(parse_kline(ret))
-        return kls
-
-    def add_tasks(self, col: Collection, tasks: list[TaskState]) -> int:
-        if len(tasks) <= 0:
-            return 0
-        insert_data = []
-        duplicate = True
-        total = 0
-        for ta in tasks:
-            tad = ta.get_digest()
-            if duplicate:
-                try:
-                    col.insert_one(tad)
-                except Exception:
-                    duplicate = True
-                else:
-                    duplicate = False
-                    total += 1
-                finally:
-                    continue
-
-            insert_data.append(tad)
-
-        if len(insert_data) > 0:
-            col.insert_many(insert_data)
-            total += len(insert_data)
-        self.log.debug(f"add tasks, total:{total}")
-        return total

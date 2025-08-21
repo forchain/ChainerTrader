@@ -82,6 +82,11 @@ async def add_tasks(request: Request):
     return rpc.state.app.send_add_tasks_msg(cfg)
 
 
+@rpc.get("/task")
+def read_start_app(id: int):
+    pass
+
+
 @rpc.get("/update_klines_task")
 def update_kines_task():
     return rpc.state.app.task_manager.add_task()

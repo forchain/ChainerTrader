@@ -39,7 +39,7 @@ class App:
 
         self.notify_mgr = NotifyManager(cfg, self.logger)
 
-        self.stat = Statistics(self.cfg, self.log())
+        self.stat = Statistics(self.cfg, self.log(), self.db_manager)
         self.task_manager = TaskManager(self.cfg, self.log(), self.db_manager, self.exchange)
 
         self.startTime = datetime.now()

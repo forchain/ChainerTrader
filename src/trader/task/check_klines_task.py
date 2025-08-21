@@ -28,14 +28,14 @@ class CheckKlinesTask(BaseTask):
         super().start(queue, quit)
 
         self.log.info(f"Start {self.name()}")
-        collection = self.db_manager.get_klines_collection(self.cfg.db_name, self.tcfg.symbol_interval.name())
+        collection = self.db_manager.kline.get_collection(self.tcfg.symbol_interval.name())
 
-        first_kl = self.db_manager.get_first_kline(collection)
+        first_kl = self.db_manager.kline.get_first_kline(collection)
         if first_kl is None:
             self.log.error(f"{self.name()} can't find first kline")
             return
 
-        latest_kl = self.db_manager.get_latest_kline(collection)
+        latest_kl = self.db_manager.kline.get_latest_kline(collection)
         if latest_kl is None:
             self.log.error(f"{self.name()} can't find latest kline")
             return
@@ -52,7 +52,7 @@ class CheckKlinesTask(BaseTask):
             total += 1
             next_time = add_time_duration(next_time, self.tcfg.symbol_interval.interval, 1)
             if next_time < latest_kl.open_time:
-                kl = self.db_manager.get_kline(collection, next_time)
+                kl = self.db_manager.kline.get_kline(collection, next_time)
                 if kl is None:
                     count += 1
                     self.log.warning(f"{self.name()} no kline: open_time={next_time}")
