@@ -418,6 +418,18 @@ standard = [
 ]
 
 [[package]]
+name = "fastapi-auto-router"
+version = "0.1.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "fastapi" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/44/d5/8b496023c0ba549b62f1722ad3e71a36125bf9ff5a3f1400fdf085ccfdff/fastapi_auto_router-0.1.1.tar.gz", hash = "sha256:c07168dadd5769e29c055d6a24bf6f14d0775747da6e38fd2293d1217252a98e", size = 6494, upload-time = "2024-12-20T08:00:50.798Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/bb/9e/7b7c51162f5e12d8152cb24710f5e9d7100103fe91fee606565bf1308814/fastapi_auto_router-0.1.1-py3-none-any.whl", hash = "sha256:d593f21050c14dd0355aa99efabb9be6317ffce964952952a80424178bc67cba", size = 4192, upload-time = "2024-12-20T08:00:49.631Z" },
+]
+
+[[package]]
 name = "fastapi-cli"
 version = "0.0.8"
 source = { registry = "https://pypi.org/simple" }
@@ -1936,6 +1948,7 @@ dependencies = [
     { name = "binance-common" },
     { name = "binance-sdk-spot" },
     { name = "fastapi", extra = ["standard"] },
+    { name = "fastapi-auto-router" },
     { name = "matplotlib" },
     { name = "prettytable" },
     { name = "pymongo" },
@@ -1958,6 +1971,7 @@ requires-dist = [
     { name = "binance-common", specifier = ">=1.0.0" },
     { name = "binance-sdk-spot", specifier = ">=1.0.0" },
     { name = "fastapi", extras = ["standard"] },
+    { name = "fastapi-auto-router", specifier = ">=0.1.1" },
     { name = "matplotlib" },
     { name = "prettytable" },
     { name = "pymongo" },

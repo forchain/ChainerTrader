@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import FastAPI, Request
+from fastapi_auto_router import AutoRouter
 
 from trader.common import path
 from trader.common.config import Config
@@ -40,6 +41,14 @@ def start(cfg: Config):
         port = 8000
 
     rpc.state.cfg = cfg
+
+    # Initialize and load routers
+    routers_dir = os.path.abspath(os.path.dirname(__file__))
+    routers_dir = os.path.join(routers_dir, "api")
+
+    auto_router = AutoRouter(app=rpc, routers_dir=routers_dir, api_prefix="/api")  # relative to current file
+    auto_router.load_routers()
+
     uvicorn.run(
         rpc,
         host=host,
@@ -48,11 +57,6 @@ def start(cfg: Config):
         app_dir=app_dir,
         log_level=cfg.get_log_level(),
     )
-
-
-@rpc.get("/version")
-def read_app_version():
-    return {"version": rpc.state.app.version()}
 
 
 @rpc.get("/")
@@ -107,3 +111,7 @@ def read_exchange_info(symbol: str):
 @rpc.get("/accout")
 def read_account():
     return rpc.state.app.exchange.get_account()
+
+
+def rpc_instance():
+    return rpc

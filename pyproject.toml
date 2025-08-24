@@ -18,6 +18,7 @@ dependencies = [
     "statsmodels",
     "binance-common>=1.0.0",
     "binance-sdk-spot>=1.0.0",
+    "fastapi-auto-router>=0.1.1",
 ]
 
 [dependency-groups]
