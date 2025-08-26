@@ -5,4 +5,4 @@ router = APIRouter()
 
 @router.get("")
 def task(id: int, request: Request):
-    pass
+    return request.app.state.app.db_manager.task.get_task(id)

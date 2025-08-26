@@ -1,3 +1,4 @@
+from datetime import timedelta
 from typing import Any
 
 from trader.utils.operate import Operate
@@ -8,7 +9,7 @@ class TraderResult:
         self,
         total_return_rate,
         max_drawdown,
-        max_drawdown_duration,
+        max_drawdown_duration: timedelta,
         volatility,
         win_rate,
         plr,
@@ -38,7 +39,7 @@ class TraderResult:
         ret = {
             "total_return_rate": self.total_return_rate,
             "max_drawdown": self.max_drawdown,
-            "max_drawdown_duration": f"{self.max_drawdown_duration}",
+            "max_drawdown_duration": self.max_drawdown_duration.total_seconds(),
             "volatility": self.volatility,
             "win_rate": self.win_rate,
             "plr": self.plr,
@@ -53,3 +54,23 @@ class TraderResult:
             ret["operate"] = self.operate.to_dict()
 
         return ret
+
+
+def parse_trader_result(data) -> TraderResult:
+    tr = TraderResult(
+        data["total_return_rate"],
+        data["max_drawdown"],
+        timedelta(seconds=data["max_drawdown_duration"]),
+        data["volatility"],
+        data["win_rate"],
+        data["plr"],
+        data["avg_profit"],
+        data["avg_loss"],
+        data["buys"],
+        data["sells"],
+        None,
+        data["hold_rate"],
+        data["data_len"],
+    )
+
+    return tr

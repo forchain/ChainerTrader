@@ -3,7 +3,7 @@ from pymongo.synchronous.collection import Collection
 from trader.database.collection import get_name_for_tasks
 from pymongo import ASCENDING, DESCENDING
 
-from trader.utils.task_state import PRIMARY_KEY, TaskState
+from trader.utils.task_state import PRIMARY_KEY, TaskState, parse_task_state
 
 
 class TaskCol:
@@ -50,3 +50,13 @@ class TaskCol:
             total += len(insert_data)
         self.log.debug(f"add tasks, total:{total}")
         return total
+
+    def get_task(self, id: int) -> TaskState | None:
+        col = self.get_collection()
+
+        result = col.find_one({PRIMARY_KEY: id})
+        if result is None:
+            return None
+        ts = parse_task_state(result)
+        self.log.debug(f"get task({result['_id']}):{ts.to_json()}")
+        return ts
