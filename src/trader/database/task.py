@@ -60,3 +60,14 @@ class TaskCol:
         ts = parse_task_state(result)
         self.log.debug(f"get task({result['_id']}):{ts.to_json()}")
         return ts
+
+    def get_all_tasks(self) -> list[TaskState]:
+        col = self.get_collection()
+        results = col.find().sort(PRIMARY_KEY, ASCENDING)
+        if results is None:
+            return None
+
+        ts: list[TaskState] = []
+        for ret in results:
+            ts.append(parse_task_state(ret))
+        return ts
