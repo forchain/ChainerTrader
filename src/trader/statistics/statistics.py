@@ -70,7 +70,7 @@ class Statistics:
                         index,
                         bts.strategy,
                         bts.symbol_interval,
-                        format(bts.tret.total_return_rate, ".2f") + "%",
+                        format(bts.ts.tret.total_return_rate, ".2f") + "%",
                         (f"{bts.ts.tret.hold_rate:.2f}%"),
                         (f"{bts.ts.tret.max_drawdown:.2f}%"),
                         (f"{bts.ts.tret.max_drawdown_duration}"),
