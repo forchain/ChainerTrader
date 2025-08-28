@@ -8,6 +8,7 @@ from trader.common.message import new_add_tasks_msg
 from trader.database.manager import DatabaseManager
 from trader.exchange.binance.exchange import BinanceExchange
 from trader.task.backtrader_task import BackTraderTask, process_backtrader
+from trader.task.base_task import BaseTask
 from trader.task.check_klines_num_task import CheckKlinesNumTask
 from trader.task.check_klines_task import CheckKlinesTask
 from trader.task.debug_task import DebugTask
@@ -31,6 +32,7 @@ class TaskManager:
         self.db_manager = db_manager
         self.exchange = exchange
         self.log.info("Init TaskManager")
+        self.tasks: list[BaseTask] = []
 
     def start(self):
         self.log.info("TaskManager start")
@@ -51,21 +53,24 @@ class TaskManager:
 
         self.log.info(f"Try to add tasks:{len(taskcs)}")
 
-        tasks = []
+        async_tasks = []
         bttaskcs = []
         for taskc in taskcs:
             if taskc.ttype == TaskType.BACK_TRADER:
                 bttaskcs.append(taskc)
         if len(bttaskcs) > 0:
-            tasks.append(asyncio.create_task(self.add_backtrader_task(bttaskcs, queue, quit)))
+            async_tasks.append(asyncio.create_task(self.add_backtrader_task(bttaskcs, queue, quit)))
 
         for taskc in taskcs:
             if taskc.ttype == TaskType.BACK_TRADER:
                 continue
-            tasks.append(asyncio.create_task(self.add_task(taskc, queue, quit)))
+            async_tasks.append(asyncio.create_task(self.add_task(taskc, queue, quit)))
 
-        self.log.info(f"All tasks are created to running:{len(tasks)}")
-        await asyncio.gather(*tasks)
+        self.log.info(f"All tasks are created to running:{len(async_tasks)}")
+        await asyncio.gather(*async_tasks)
+
+        for tc in taskcs:
+            self.remove_task(tc.id)
 
     async def add_task(self, cfg, queue: Queue, quit: Event):
         task = None
@@ -87,21 +92,23 @@ class TaskManager:
         if task is None:
             self.log.error(f"Can't add task:{cfg.to_dict()}")
             return
+        self.tasks.append(task)
+
         await task.start(queue, quit)
 
     async def add_backtrader_task(self, cfgs, queue: Queue, quit: Event):
         with Manager() as manager:
             result = manager.list()
             processes = []
-            tasks = []
             for cfg in cfgs:
                 task = BackTraderTask(cfg, self.cfg, self.log, self.db_manager, self.exchange)
+                self.tasks.append(task)
+
                 ret = await task.start(queue, quit)
                 if ret is None:
                     continue
                 strategy = ret[0]
                 data = ret[1]
-                tasks.append(task)
 
                 # parmas = manager.list()
                 parmas = []
@@ -122,5 +129,5 @@ class TaskManager:
                 self.log.info(f"Relay process queue message:{msg.name()}")
                 await queue.put(msg)
 
-        for task in tasks:
-            task.stop()
+    def remove_task(self, id: int) -> bool:
+        pass
