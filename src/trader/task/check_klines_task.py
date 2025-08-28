@@ -20,12 +20,12 @@ class CheckKlinesTask(BaseTask):
     ):
         super().__init__(tcfg, cfg, log, db_manager, exchange)
 
-    async def start(self, queue: Queue, quit: Event):
+    async def start(self, queue: Queue):
         if not self.db_manager:
             self.log.error(f"No config db_uri for {self.tcfg.to_dict()}")
             return
 
-        super().start(queue, quit)
+        super().start(queue)
 
         self.log.info(f"Start {self.name()}")
         collection = self.db_manager.kline.get_collection(self.tcfg.symbol_interval.name())
@@ -47,7 +47,7 @@ class CheckKlinesTask(BaseTask):
         total = 0
         next_time = first_kl.open_time
         while True:
-            if quit.is_set():
+            if self.quit.is_set():
                 break
             total += 1
             next_time = add_time_duration(next_time, self.tcfg.symbol_interval.interval, 1)
