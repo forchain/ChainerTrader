@@ -57,20 +57,48 @@ class TraderResult:
 
 
 def parse_trader_result(data) -> TraderResult:
+    # Helper function to safely convert numeric values
+    def safe_float(value, default=0.0):
+        if value is None:
+            return default
+        if isinstance(value, (int, float)):
+            return float(value)
+        if isinstance(value, str):
+            try:
+                return float(value)
+            except (ValueError, TypeError):
+                return default
+        return default
+    
+    def safe_int(value, default=0):
+        if value is None:
+            return default
+        if isinstance(value, int):
+            return value
+        if isinstance(value, (float, str)):
+            try:
+                return int(float(value))
+            except (ValueError, TypeError):
+                return default
+        return default
+    
+    # Handle max_drawdown_duration conversion safely
+    max_drawdown_duration = safe_float(data.get("max_drawdown_duration", 0.0))
+    
     tr = TraderResult(
-        data["total_return_rate"],
-        data["max_drawdown"],
-        timedelta(seconds=data["max_drawdown_duration"]),
-        data["volatility"],
-        data["win_rate"],
-        data["plr"],
-        data["avg_profit"],
-        data["avg_loss"],
-        data["buys"],
-        data["sells"],
-        None,
-        data["hold_rate"],
-        data["data_len"],
+        safe_float(data.get("total_return_rate", 0.0)),
+        safe_float(data.get("max_drawdown", 0.0)),
+        timedelta(seconds=max_drawdown_duration),
+        safe_float(data.get("volatility", 0.0)),
+        safe_float(data.get("win_rate", 0.0)),
+        safe_float(data.get("plr", 0.0)),
+        safe_float(data.get("avg_profit", 0.0)),
+        safe_float(data.get("avg_loss", 0.0)),
+        safe_int(data.get("buys", 0)),
+        safe_int(data.get("sells", 0)),
+        None,  # operate field
+        safe_float(data.get("hold_rate", 0.0)),
+        safe_int(data.get("data_len", 0)),
     )
 
     return tr

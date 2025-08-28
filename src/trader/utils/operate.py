@@ -19,9 +19,9 @@ class Operate:
 
     def to_dict(self):
         return {
-            "type": self.otype.name,
-            "symbol": self.symbol_interval.symbol,
-            "interval": self.symbol_interval.interval.value,
-            "datetime": f"{datetime.fromtimestamp(self.dtime)}",
-            "price": self.price,
+            "type": self.otype.name if self.otype else "UNKNOWN",
+            "symbol": self.symbol_interval.symbol if self.symbol_interval else "",
+            "interval": self.symbol_interval.interval.value if self.symbol_interval else 0,
+            "datetime": f"{datetime.fromtimestamp(self.dtime)}" if self.dtime else "",
+            "price": self.price if self.price is not None else 0.0,
         }
