@@ -1,3 +1,4 @@
+import asyncio
 from asyncio import Event, Queue
 from datetime import datetime
 from logging import Logger
@@ -24,8 +25,9 @@ class BaseTask:
         self.tcfg = tcfg
         self.log.info(f"Init {self.name()}")
         self.start_time = datetime.now()
+        self.quit: Event = asyncio.Event()
 
-    def start(self, queue: Queue, quit: Event):
+    def start(self, queue: Queue):
         self.start_time = datetime.now()
         self.log.info(f"Start {self.name()}")
 
@@ -38,3 +40,9 @@ class BaseTask:
 
     def type(self):
         return self.tcfg.ttype
+
+    def id(self) -> int:
+        return self.tcfg.id
+
+    def close(self):
+        self.quit.set()
