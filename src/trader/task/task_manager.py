@@ -160,3 +160,10 @@ class TaskManager:
                 self.log.info(f"Remove task:id={id}")
                 return ret
         return None
+
+    def close_task(self, id: int):
+        task = self.get_task(id)
+        if task:
+            task.close()
+            return True
+        return False

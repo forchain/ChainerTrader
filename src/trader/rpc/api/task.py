@@ -10,4 +10,5 @@ def task(id: int, request: Request):
 
 @router.delete("")
 def task(id: int, request: Request):
-    pass
+    ret = request.app.state.app.task_manager.close_task(id)
+    return {"id": id, "result": ret}
