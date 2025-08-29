@@ -31,7 +31,7 @@ class TraderTask(BaseTask):
     ):
         super().__init__(tcfg, cfg, log, db_manager, exchange)
 
-    async def start(self, queue: Queue, quit: Event):
+    async def start(self, queue: Queue):
         if not self.tcfg.strategys:
             self.log.error(f"No config strategy for {self.tcfg.to_dict()}")
             return
@@ -42,7 +42,7 @@ class TraderTask(BaseTask):
             self.log.error(f"No config db_uri for {self.tcfg.to_dict()}")
             return
 
-        super().start(queue, quit)
+        super().start(queue)
 
         strategy = parse_strategys(self.tcfg.strategys)
         if strategy is None:
@@ -54,7 +54,7 @@ class TraderTask(BaseTask):
 
         self.collection = self.db_manager.kline.get_collection(self.tcfg.symbol_interval.name())
 
-        while not quit.is_set():
+        while not self.quit.is_set():
             ret = await download(
                 self.name(),
                 self.log,
@@ -63,7 +63,7 @@ class TraderTask(BaseTask):
                 self.exchange,
                 self.tcfg.symbol_interval,
                 self.tcfg.start_time,
-                quit,
+                self.quit,
             )
             if not ret:
                 break
@@ -94,7 +94,7 @@ class TraderTask(BaseTask):
                 )
             )
 
-            while not quit.is_set():
+            while not self.quit.is_set():
                 next_time = add_time_duration(latest_kline.open_time, self.tcfg.symbol_interval.interval, 1)
                 if next_time < int(datetime.now().timestamp()):
                     break
@@ -102,5 +102,3 @@ class TraderTask(BaseTask):
                     dist = next_time - int(datetime.now().timestamp())
                     dist += 1
                     await sleep_loop(self.log, dist, quit, "next K-line...")
-
-        self.stop()

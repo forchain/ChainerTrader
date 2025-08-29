@@ -65,5 +65,3 @@ class CheckKlinesNumTask(BaseTask):
             else:
                 self.log.info(f"{self.name()} is all completed. Process:{count}/{total}")
                 break
-
-        self.stop()

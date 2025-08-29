@@ -26,7 +26,7 @@ class UpdateKlinesTask(BaseTask):
     ):
         super().__init__(tcfg, cfg, log, db_manager, exchange)
 
-    async def start(self, queue: Queue, quit: Event):
+    async def start(self, queue: Queue):
         if not self.exchange:
             self.log.error(f"No config exchange for {self.tcfg.to_dict()}")
             return
@@ -34,7 +34,7 @@ class UpdateKlinesTask(BaseTask):
             self.log.error(f"No config db_uri for {self.tcfg.to_dict()}")
             return
 
-        super().start(queue, quit)
+        super().start(queue)
 
         self.collection = self.db_manager.kline.get_collection(self.tcfg.symbol_interval.name())
         start_time = self.tcfg.start_time
@@ -68,7 +68,7 @@ class UpdateKlinesTask(BaseTask):
             self.exchange,
             self.tcfg.symbol_interval,
             start_time,
-            quit,
+            self.quit,
         )
 
         self.stop()

@@ -61,4 +61,3 @@ class CheckKlinesTask(BaseTask):
                 break
 
         self.log.info(f"{self.name()} process result:{count}/{total}")
-        self.stop()
