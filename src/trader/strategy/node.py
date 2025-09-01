@@ -176,7 +176,7 @@ class Node:
             avgLoss,
             optstat["buys"],
             optstat["sells"],
-            optstat["latest"],
+            optstat["opts"],
             hold_rate,
             data_len,
         )

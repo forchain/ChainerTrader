@@ -85,11 +85,12 @@ class TraderTask(BaseTask):
             if ret is None:
                 continue
 
-            ts = TaskState(self.tcfg.id, [ret.operate], ret)
+            self.ts.tret = ret
+            self.db_manager.task.add_tasks(self.ts)
 
             await queue.put(
                 new_stat_msg(
-                    TraderStat(self.tcfg.strategy_name(), self.tcfg.symbol_interval.name(), ts),
+                    TraderStat(self.tcfg.strategy_name(), self.tcfg.symbol_interval.name(), self.ts),
                     self.tcfg.id,
                 )
             )

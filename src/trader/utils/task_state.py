@@ -30,22 +30,16 @@ PRIMARY_KEY = "task_id"
 
 
 class TaskState:
-    def __init__(self, id: int, opts: list[Operate] = None, tret: TraderResult = None):
+    def __init__(self, id: int, tret: TraderResult = None):
         self.id = id
         self.state = TaskStateType.READY
         self.tret = tret
-        self.opts = opts
 
     def to_dict(self) -> dict[str, Any]:
         ret: dict[str, Any] = {
             PRIMARY_KEY: self.id,
             "state": self.state.name,
         }
-        if self.opts:
-            opts: list[Any] = []
-            for opt in self.opts:
-                opts.append(opt.to_dict())
-            ret["opts"] = opts
 
         if self.tret:
             ret["tret"] = self.tret.to_dict()
@@ -54,17 +48,6 @@ class TaskState:
 
     def to_json(self):
         return json.dumps(self.to_dict(), indent=4)
-
-    def get_digest(self) -> dict[str, Any]:
-        ret: dict[str, Any] = {
-            PRIMARY_KEY: self.id,
-            "state": self.state.name,
-        }
-
-        if self.tret:
-            ret["tret"] = self.tret.to_dict()
-
-        return ret
 
     def is_running(self) -> bool:
         return self.state == TaskStateType.RUNNING

@@ -135,6 +135,8 @@ class TaskManager:
                 parmas.append(data)
                 parmas.append(strategy)
                 parmas.append(cfg)
+                parmas.append(task.ts)
+                parmas.append(self.db_manager)
 
                 proc = Process(target=process_backtrader, args=(parmas, result))
                 processes.append(proc)

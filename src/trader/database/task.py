@@ -26,28 +26,18 @@ class TaskCol:
 
         if len(tasks) <= 0:
             return 0
-        insert_data = []
-        duplicate = True
         total = 0
         for ta in tasks:
-            tad = ta.get_digest()
-            if duplicate:
-                try:
-                    col.insert_one(tad)
-                except Exception as e:
-                    self.log.error(e)
-                    duplicate = True
-                else:
-                    duplicate = False
-                    total += 1
-                finally:
-                    continue
+            tad = ta.to_dict()
+            try:
+                col.replace_one({"_id": ta.id}, tad, upsert=True)
+            except Exception as e:
+                self.log.error(e)
+            else:
+                total += 1
+            finally:
+                continue
 
-            insert_data.append(tad)
-
-        if len(insert_data) > 0:
-            col.insert_many(insert_data)
-            total += len(insert_data)
         self.log.debug(f"add tasks, total:{total}")
         return total
 

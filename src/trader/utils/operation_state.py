@@ -10,7 +10,7 @@ class OptStatAnalyzer(bt.Analyzer):
     def __init__(self):
         self.buys = 0
         self.sells = 0
-        self.opts:list[Operate] = []
+        self.opts: list[Operate] = []
 
     def notify_order(self, order):
         if order.status == order.Completed:
@@ -21,11 +21,13 @@ class OptStatAnalyzer(bt.Analyzer):
                 self.sells += 1
                 otype = OperateType.SELL
 
-            self.opts.append(Operate(
-                otype,
-                num2date(self.data.datetime[0]).timestamp(),
-                self.data.close[0],
-            ))
+            self.opts.append(
+                Operate(
+                    otype,
+                    num2date(self.data.datetime[0]).timestamp(),
+                    self.data.close[0],
+                )
+            )
 
     def notify_trade(self, trade):
         pass
