@@ -27,9 +27,6 @@ class Statistics:
         if isinstance(msg.data, TraderStat):
             self.bts_list.append(msg.data)
             add = True
-        if add and self.db_manager:
-            msg.data.ts.state = TaskStateType.DONE
-            self.db_manager.task.add_tasks([msg.data.ts])
 
         if self.cfg.stat == 0:
             return
