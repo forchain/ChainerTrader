@@ -17,6 +17,7 @@ from trader.task.task_config import TaskConfig, parse_task_config
 from trader.task.task_type import TaskType
 from trader.task.trader_task import TraderTask
 from trader.task.update_klines_task import UpdateKlinesTask
+from trader.utils.task_state import TaskState
 
 
 class TaskManager:
@@ -153,6 +154,9 @@ class TaskManager:
             return self.tasks[id]
         return None
 
+    def has_task(self, id: int) -> bool:
+        return self.get_task(id) is not None
+
     def remove_task(self, id: int) -> BaseTask | None:
         if id in self.tasks:
             ret: BaseTask = self.tasks.pop(id)
@@ -167,3 +171,26 @@ class TaskManager:
             task.close()
             return True
         return False
+
+    def get_task_state(self, id: int) -> TaskState | None:
+        task = self.get_task(id)
+        if task:
+            return task.ts
+        if self.db_manager:
+            return self.db_manager.task.get_task(id)
+
+        return None
+
+    def get_all_task_state(self) -> list[TaskState]:
+        ret: list[TaskState] = []
+        for ts in self.tasks.values():
+            ret.append(ts.ts)
+
+        if self.db_manager:
+            tss = self.db_manager.task.get_all_tasks()
+            for ts in tss:
+                if self.has_task(ts.id):
+                    continue
+                ret.append(ts)
+
+        return ret

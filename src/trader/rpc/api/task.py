@@ -4,11 +4,14 @@ router = APIRouter()
 
 
 @router.get("")
-def task(id: int, request: Request):
-    return request.app.state.app.db_manager.task.get_task(id)
+def get_task(id: int, request: Request):
+    ts = request.app.state.app.task_manager.get_task_state(id)
+    if ts:
+        return ts.to_dict()
+    return {"id": id, "error": "invalid"}
 
 
 @router.delete("")
-def task(id: int, request: Request):
+def del_task(id: int, request: Request):
     ret = request.app.state.app.task_manager.close_task(id)
     return {"id": id, "result": ret}
