@@ -1,8 +1,9 @@
 from logging import Logger
-from pymongo.synchronous.collection import Collection
-from trader.database.collection import get_name_for_tasks
-from pymongo import ASCENDING, DESCENDING
 
+from pymongo import ASCENDING
+from pymongo.synchronous.collection import Collection
+
+from trader.database.collection import get_name_for_tasks
 from trader.utils.task_state import PRIMARY_KEY, TaskState, parse_task_state
 
 

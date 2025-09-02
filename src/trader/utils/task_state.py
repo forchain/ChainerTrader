@@ -1,9 +1,8 @@
+import json
 from enum import Enum
 from typing import Any
-import json
 
 from trader.strategy.trader_result import TraderResult, parse_trader_result
-from trader.utils.operate import Operate
 
 
 class TaskStateType(Enum):

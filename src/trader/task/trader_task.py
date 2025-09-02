@@ -1,4 +1,4 @@
-from asyncio import Event, Queue
+from asyncio import Queue
 from datetime import datetime
 from logging import Logger
 
@@ -15,7 +15,6 @@ from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig
 from trader.task.update_klines_task import download
 from trader.utils.symbol_interval import add_time_duration
-from trader.utils.task_state import TaskState
 
 DOWLOAD_SPACE_TIME = 5
 

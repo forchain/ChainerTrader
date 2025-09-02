@@ -1,9 +1,7 @@
 import asyncio
-import time
-from asyncio import Event, Queue
+from asyncio import Queue
 from logging import Logger
 from multiprocessing import Manager, Process
-from typing import Dict
 
 from trader.common.config import Config
 from trader.common.message import new_add_tasks_msg, new_exit_msg
@@ -15,7 +13,7 @@ from trader.task.check_klines_num_task import CheckKlinesNumTask
 from trader.task.check_klines_task import CheckKlinesTask
 from trader.task.debug_task import DebugTask
 from trader.task.import_csv_task import ImportCSVTask
-from trader.task.task_config import parse_task_config, TaskConfig
+from trader.task.task_config import TaskConfig, parse_task_config
 from trader.task.task_type import TaskType
 from trader.task.trader_task import TraderTask
 from trader.task.update_klines_task import UpdateKlinesTask
@@ -88,7 +86,7 @@ class TaskManager:
                 self.tasks.pop(tc.id)
 
         if not self.cfg.is_server():
-            self.log.info(f"Try to actively exit")
+            self.log.info("Try to actively exit")
             await queue.put(new_exit_msg())
 
     async def add_task(self, cfg, queue: Queue):

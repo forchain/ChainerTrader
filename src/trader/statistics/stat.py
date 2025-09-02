@@ -1,4 +1,3 @@
-from trader.strategy.trader_result import TraderResult
 from trader.utils.task_state import TaskState
 
 

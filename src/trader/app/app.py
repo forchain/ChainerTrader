@@ -15,7 +15,7 @@ from trader.exchange.exchange_config import parse_exchange_config
 from trader.exchange.exchange_type import ExchangeType
 from trader.notify.notify_manager import NotifyManager
 from trader.statistics.statistics import Statistics
-from trader.task.task_config import parse_task_config, TaskConfig
+from trader.task.task_config import TaskConfig, parse_task_config
 from trader.task.task_manager import TaskManager
 
 

@@ -1,4 +1,3 @@
-from asyncio import Event
 from datetime import datetime
 
 from trader.common import path
@@ -17,7 +16,6 @@ from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig
 from trader.task.update_klines_task import download
 from trader.utils.symbol_interval import add_time_duration
-from trader.utils.task_state import TaskState
 
 
 class BackTraderTask(BaseTask):
