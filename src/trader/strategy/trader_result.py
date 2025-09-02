@@ -99,7 +99,7 @@ def parse_trader_result(data) -> TraderResult:
         safe_float(data.get("avg_loss", 0.0)),
         safe_int(data.get("buys", 0)),
         safe_int(data.get("sells", 0)),
-        parse_opts(data.get("opts","")),  # operate field
+        parse_opts(data.get("opts", "")),  # operate field
         safe_float(data.get("hold_rate", 0.0)),
         safe_int(data.get("data_len", 0)),
     )

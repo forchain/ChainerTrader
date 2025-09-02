@@ -9,6 +9,7 @@ class OperateType(Enum):
     BUY = 1
     SELL = 2
 
+
 def parse_operate_type(name):
     if name is None:
         return OperateType.UNKNOWN
@@ -24,7 +25,7 @@ def parse_operate_type(name):
 
 
 class Operate:
-    def __init__(self, otype: OperateType, dtime: int, price:float=0):
+    def __init__(self, otype: OperateType, dtime: int, price: float = 0):
         self.otype = otype
         self.dtime = dtime
         self.price = price
@@ -44,7 +45,7 @@ def parse_opts(cfg: str) -> list[Operate]:
     parsed_list = json.loads(cfg)
     ret = []
     for opc in parsed_list:
-        op = Operate(parse_operate_type(opc["type"]),opc["datetime"],opc["price"])
+        op = Operate(parse_operate_type(opc["type"]), opc["datetime"], opc["price"])
         ret.append(op)
 
     return ret
