@@ -4,7 +4,5 @@ router = APIRouter()
 
 
 @router.get("")
-def info(symbol: str, request: Request):
-    if len(symbol) <= 0:
-        return {"error": "must config symbol"}
-    return request.app.state.app.exchange.get_exchange_info(symbol)
+def info(request: Request, symbol: str = None):
+    return request.app.state.app.exchange.exchange_info(symbol)

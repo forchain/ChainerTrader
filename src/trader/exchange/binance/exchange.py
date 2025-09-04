@@ -66,11 +66,6 @@ class BinanceExchange:
     def server_time_offset(self):
         return self.server_time - datetime.now().timestamp()
 
-    def get_exchange_info(self, symbol):
-        self.log.debug(f"get_exchange_info:{symbol}")
-        exchange_info = self.spot_client.rest_api.exchange_info(symbol=symbol)
-        return exchange_info
-
     def get_klines(
         self,
         si: SymbolInterval,
@@ -168,6 +163,24 @@ class BinanceExchange:
             self.log.error(e)
 
         return self.server_datetime()
+
+    def exchange_info(self, symbol: str = None):
+        if self.has_rate_limit():
+            self.log.error(f"Rate limit")
+            return None
+
+        try:
+            response = self.spot_client.rest_api.exchange_info(symbol=symbol)
+            rate_limits = response.rate_limits
+            if rate_limits:
+                self.update_rate_limits(rate_limits)
+
+            return response.data()
+
+        except Exception as e:
+            self.log.error(e)
+
+        return None
 
     def update_rate_limits(self, rate_limits: list[RateLimit]):
         for rl in rate_limits:
