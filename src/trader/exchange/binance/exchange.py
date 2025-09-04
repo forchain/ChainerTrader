@@ -1,7 +1,8 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from binance_common.configuration import ConfigurationRestAPI
 from binance_common.constants import SPOT_REST_API_PROD_URL
+from binance_common.models import RateLimit
 from binance_sdk_spot import Spot
 
 from trader.common.logger import default
@@ -36,13 +37,16 @@ class BinanceExchange:
         self.spot_client = Spot(config_rest_api=configuration_rest_api)
 
         self.account = None
+        self.rate_limits: dict[str, datetime] = {}
 
     def name(self):
         return ExchangeType.BINANCE.name
 
     def start(self):
+        if not self.ping():
+            return False
+
         try:
-            self.spot_client.rest_api.ping()
             st = self.spot_client.rest_api.time().data().server_time
             self.server_time = st / 1000
             offset = self.server_time_offset()
@@ -133,6 +137,35 @@ class BinanceExchange:
         self.log.debug("get account")
         self.account = self.spot_client.rest_api.get_account()
         return self.account
+
+    def ping(self) -> bool:
+        if self.has_rate_limit():
+            self.log.error(f"Rate limit")
+            return False
+
+        try:
+            response = self.spot_client.rest_api.ping()
+            rate_limits = response.rate_limits
+            if rate_limits:
+                self.update_rate_limits(rate_limits)
+
+        except Exception as e:
+            self.log.error(e)
+            return False
+
+        return True
+
+    def update_rate_limits(self, rate_limits: list[RateLimit]):
+        for rl in rate_limits:
+            if rl.retryAfter:
+                self.rate_limits[rl.rateLimitType] = datetime.now() + timedelta(seconds=rl.retryAfter)
+                self.log.info(f"Set rate limit:{rl.rateLimitType}={self.rate_limits[rl.rateLimitType]}")
+
+    def has_rate_limit(self, typ: str = "REQUEST_WEIGHT") -> bool:
+        if typ in self.rate_limits:
+            if datetime.now() <= self.rate_limits[typ]:
+                return True
+        return False
 
 
 def on_spot_ws_close(socket_manager):
