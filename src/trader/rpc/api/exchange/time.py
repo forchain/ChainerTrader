@@ -5,4 +5,7 @@ router = APIRouter()
 
 @router.get("")
 def time(request: Request):
-    pass
+    ret = {"time": request.app.state.app.exchange.time()}
+    ret["offset"] = request.app.state.app.exchange.server_time_offset()
+
+    return ret

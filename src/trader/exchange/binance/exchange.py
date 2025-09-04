@@ -13,7 +13,7 @@ from trader.utils.symbol_interval import SymbolInterval
 
 EXCHANGE_NAME = "BINANCE"
 
-RECV_WINDOW = 5000
+RECV_WINDOW = 5
 
 KLINE_LIMIT_MAX = 1000
 KLINE_LIMIT_DEFAULT = 500
@@ -46,18 +46,8 @@ class BinanceExchange:
         if not self.ping():
             return False
 
-        try:
-            st = self.spot_client.rest_api.time().data().server_time
-            self.server_time = st / 1000
-            offset = self.server_time_offset()
-            if offset >= RECV_WINDOW / 1000:
-                raise Exception(f"server time offset:{offset}")
-
-        except Exception as e:
-            self.log.error(f"Start {self.name()} exchange: {e}")
-            return False
-
-        self.log.info(f"Start {self.name()} exchange: server_time={self.server_datetime()} server_time_offset={self.server_time_offset()}")
+        dt = self.time()
+        self.log.info(f"Start {self.name()} exchange: server_time={dt} server_time_offset={self.server_time_offset()}")
 
         return True
 
@@ -154,6 +144,30 @@ class BinanceExchange:
             return False
 
         return True
+
+    def time(self) -> datetime:
+        if self.has_rate_limit():
+            self.log.error(f"Rate limit")
+            return self.server_datetime()
+
+        try:
+            response = self.spot_client.rest_api.time()
+            rate_limits = response.rate_limits
+            if rate_limits:
+                self.update_rate_limits(rate_limits)
+
+            st = response.data().server_time
+            self.server_time = st / 1000
+            self.log.info(f"set server time:{self.server_datetime()}")
+
+            offset = self.server_time_offset()
+            if offset >= RECV_WINDOW:
+                raise Exception(f"server time offset:{offset}")
+
+        except Exception as e:
+            self.log.error(e)
+
+        return self.server_datetime()
 
     def update_rate_limits(self, rate_limits: list[RateLimit]):
         for rl in rate_limits:

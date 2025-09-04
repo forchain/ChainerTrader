@@ -5,4 +5,4 @@ router = APIRouter()
 
 @router.get("")
 def ping(request: Request):
-    pass
+    return {"result": request.app.state.app.exchange.ping()}
