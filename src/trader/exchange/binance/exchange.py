@@ -118,9 +118,23 @@ class BinanceExchange:
             start_time = int(get_oldest_time().timestamp())
         return self.get_klines(si, start_time, r_end_time, limit)
 
-    def get_account(self):
-        self.log.debug("get account")
-        self.account = self.spot_client.rest_api.get_account()
+    def account(self):
+        if self.has_rate_limit():
+            self.log.error(f"Rate limit")
+            return self.account
+
+        try:
+            response = self.spot_client.rest_api.get_account()
+            rate_limits = response.rate_limits
+            if rate_limits:
+                self.update_rate_limits(rate_limits)
+
+            self.account = response.data()
+            self.log.info(f"set account:{self.account}")
+
+        except Exception as e:
+            self.log.error(e)
+
         return self.account
 
     def ping(self) -> bool:
