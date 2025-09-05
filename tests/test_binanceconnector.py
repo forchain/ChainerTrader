@@ -7,16 +7,21 @@ from binance_sdk_spot import Spot
 from binance_sdk_spot.rest_api.models import KlinesIntervalEnum
 from dotenv import load_dotenv
 
+from trader.common.config import new_and_env
+from trader.exchange.exchange_config import parse_exchange_config
+
 
 def init_spot_client():
     # Configure logging
     logging.basicConfig(level=logging.INFO)
     # load .env file
     load_dotenv()
+    cfg = new_and_env()
+    ex_cfg = parse_exchange_config(cfg.exchange)
     # Create configuration for the REST API
     configuration_rest_api = ConfigurationRestAPI(
-        api_key=os.getenv("binanceAPIKey"),
-        api_secret=os.getenv("binancePrivateKey"),
+        api_key=ex_cfg.api_key,
+        api_secret=ex_cfg.api_secret,
         base_path=os.getenv("BASE_PATH", SPOT_REST_API_TESTNET_URL),
         timeout=10000,
         backoff=1,  # 当前的官方版本有bug，我门必须改成seconds才能避免卡死问题。
@@ -72,3 +77,17 @@ def test_klines():
         logging.info(f"klines() response: {data}")
     except Exception as e:
         logging.error(f"klines() error: {e}")
+
+
+def test_get_acount():
+    client = init_spot_client()
+    try:
+        response = client.rest_api.get_account()
+
+        rate_limits = response.rate_limits
+        logging.info(f"time() rate limits: {rate_limits}")
+
+        data = response.data()
+        logging.info(f"time() response: {data}")
+    except Exception as e:
+        logging.error(f"time() error: {e}")
