@@ -37,6 +37,7 @@ class BinanceExchange:
         self.spot_client = Spot(config_rest_api=configuration_rest_api)
 
         self.account = None
+        self.commission = None
         self.rate_limits: dict[str, datetime] = {}
 
     def name(self):
@@ -118,7 +119,7 @@ class BinanceExchange:
             start_time = int(get_oldest_time().timestamp())
         return self.get_klines(si, start_time, r_end_time, limit)
 
-    def account(self):
+    def get_account(self):
         if self.has_rate_limit():
             self.log.error(f"Rate limit")
             return self.account
@@ -136,6 +137,25 @@ class BinanceExchange:
             self.log.error(e)
 
         return self.account
+
+    def account_commission(self, symbol: str = None):
+        if self.has_rate_limit():
+            self.log.error(f"Rate limit")
+            return self.commission
+
+        try:
+            response = self.spot_client.rest_api.account_commission(symbol=symbol)
+            rate_limits = response.rate_limits
+            if rate_limits:
+                self.update_rate_limits(rate_limits)
+
+            self.commission = response.data()
+            self.log.info(f"set account commission:{self.commission}")
+
+        except Exception as e:
+            self.log.error(e)
+
+        return self.commission
 
     def ping(self) -> bool:
         if self.has_rate_limit():

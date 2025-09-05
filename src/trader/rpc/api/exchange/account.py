@@ -4,5 +4,5 @@ router = APIRouter()
 
 
 @router.get("")
-def account(request: Request):
-    return request.app.state.app.exchange.account()
+def get_account(request: Request):
+    return request.app.state.app.exchange.get_account()
