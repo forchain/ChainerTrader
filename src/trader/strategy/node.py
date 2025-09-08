@@ -67,7 +67,7 @@ class Node:
 
         cerebro.addsizer(bt.sizers.FixedSize, stake=10)
 
-        cerebro.broker.setcommission(commission=cfg.commission)
+        cerebro.broker.setcommission(commission=cfg.commission, commtype=bt.CommInfoBase.COMM_PERC, stocklike=True)
 
     def get_win_rate(self, strategy: bt.Strategy):
         trade_analysis = strategy.analyzers.trade_analyzer.get_analysis()
