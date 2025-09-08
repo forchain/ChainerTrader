@@ -54,7 +54,7 @@ class BinanceExchange:
         if commission:
             if commission.standard_commission:
                 if commission.standard_commission.maker:
-                    self.cfg.commission=float(commission.standard_commission.maker)
+                    self.cfg.commission = float(commission.standard_commission.maker)
         return True
 
     def stop(self):
@@ -126,7 +126,7 @@ class BinanceExchange:
 
     def get_account(self):
         if self.has_rate_limit():
-            self.log.error(f"Rate limit")
+            self.log.error("Rate limit")
             return self.account
 
         try:
@@ -145,7 +145,7 @@ class BinanceExchange:
 
     def account_commission(self, symbol: str = None):
         if self.has_rate_limit():
-            self.log.error(f"Rate limit")
+            self.log.error("Rate limit")
             return self.commission
 
         try:
@@ -164,7 +164,7 @@ class BinanceExchange:
 
     def ping(self) -> bool:
         if self.has_rate_limit():
-            self.log.error(f"Rate limit")
+            self.log.error("Rate limit")
             return False
 
         try:
@@ -181,7 +181,7 @@ class BinanceExchange:
 
     def time(self) -> datetime:
         if self.has_rate_limit():
-            self.log.error(f"Rate limit")
+            self.log.error("Rate limit")
             return self.server_datetime()
 
         try:
@@ -205,7 +205,7 @@ class BinanceExchange:
 
     def exchange_info(self, symbol: str = None):
         if self.has_rate_limit():
-            self.log.error(f"Rate limit")
+            self.log.error("Rate limit")
             return None
 
         try:
