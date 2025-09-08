@@ -50,6 +50,11 @@ class BinanceExchange:
         dt = self.time()
         self.log.info(f"Start {self.name()} exchange: server_time={dt} server_time_offset={self.server_time_offset()}")
 
+        commission = self.account_commission("USDT")
+        if commission:
+            if commission.standard_commission:
+                if commission.standard_commission.maker:
+                    self.cfg.commission=float(commission.standard_commission.maker)
         return True
 
     def stop(self):
