@@ -21,6 +21,7 @@ class BaseStrategy(bt.Strategy):
         ("log", None),
         ("stoploss", False),
         ("takeprofit", False),
+        ("position", 0),
     )
 
     def __init__(self):
@@ -41,6 +42,10 @@ class BaseStrategy(bt.Strategy):
 
         self.start_time = datetime.fromtimestamp(0)
         self.end_time = datetime.fromtimestamp(0)
+
+    def start(self):
+        if self.params.position:
+            self.broker._positions[self.data] = bt.position.Position(size=self.params.position)
 
     def next(self):
         cur = self.cur_datetime()

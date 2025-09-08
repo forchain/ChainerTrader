@@ -53,6 +53,11 @@ class TraderTask(BaseTask):
 
         self.collection = self.db_manager.kline.get_collection(self.tcfg.symbol_interval.name())
 
+        commission = self.exchange.get_account_commission(self.tcfg.symbol_interval.symbol)
+        if commission:
+            self.cfg.commission = commission
+            self.log.info(f"set commission for trader task config:{self.cfg.commission}")
+
         while not self.quit.is_set():
             ret = await download(
                 self.name(),
@@ -72,14 +77,11 @@ class TraderTask(BaseTask):
                 await sleep(self.log, 2, "Try again...")
                 continue
             latest_kline = kls_cache[len(kls_cache) - 1]
-            node = Node(
-                self.tcfg.strategy_name(),
-                strategy,
-                self.tcfg.symbol_interval,
-                self.cfg,
-                self.log,
-                BinanceData(kls_cache),
-            )
+
+            self.cfg.cash = self.exchange.get_account_balance("USDT")
+            position = self.exchange.get_account_balance("")
+
+            node = Node(self.tcfg.strategy_name(), strategy, self.tcfg.symbol_interval, self.cfg, self.log, BinanceData(kls_cache), position)
             ret = node.start()
             if ret is None:
                 continue

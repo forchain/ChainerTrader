@@ -1,9 +1,11 @@
 from datetime import datetime, timedelta
+from typing import Optional
 
 from binance_common.configuration import ConfigurationRestAPI
 from binance_common.constants import SPOT_REST_API_PROD_URL
 from binance_common.models import RateLimit
 from binance_sdk_spot import Spot
+from binance_sdk_spot.rest_api.models import AccountCommissionResponse
 
 from trader.common.logger import default
 from trader.exchange.exchange_config import ExchangeConfig
@@ -37,7 +39,7 @@ class BinanceExchange:
         self.spot_client = Spot(config_rest_api=configuration_rest_api)
 
         self.account = None
-        self.commission = None
+        self.commission: AccountCommissionResponse | None = None
         self.rate_limits: dict[str, datetime] = {}
 
     def name(self):
@@ -125,7 +127,7 @@ class BinanceExchange:
             return self.account
 
         try:
-            response = self.spot_client.rest_api.get_account()
+            response = self.spot_client.rest_api.get_account(omit_zero_balances=True)
             rate_limits = response.rate_limits
             if rate_limits:
                 self.update_rate_limits(rate_limits)
@@ -138,7 +140,15 @@ class BinanceExchange:
 
         return self.account
 
-    def account_commission(self, symbol: str = None):
+    def get_account_balance(self, asset: str) -> float:
+        acct = self.get_account()
+        if acct and acct.balances:
+            for ba in acct.balances:
+                if ba.asset == asset:
+                    return float(ba.free)
+        return 0
+
+    def account_commission(self, symbol: str = None) -> AccountCommissionResponse:
         if self.has_rate_limit():
             self.log.error("Rate limit")
             return self.commission
@@ -156,6 +166,12 @@ class BinanceExchange:
             self.log.error(e)
 
         return self.commission
+
+    def get_account_commission(self, symbol: str) -> float | None:
+        commission = self.account_commission(symbol)
+        if commission and commission.standard_commission and commission.standard_commission.taker:
+            return float(commission.standard_commission.taker)
+        return None
 
     def ping(self) -> bool:
         if self.has_rate_limit():

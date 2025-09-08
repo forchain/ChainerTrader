@@ -14,15 +14,7 @@ from trader.utils.symbol_interval import SymbolInterval, get_time_duration
 
 
 class Node:
-    def __init__(
-        self,
-        name,
-        strategy,
-        si: SymbolInterval,
-        cfg: Config = None,
-        log: logging.Logger = None,
-        data=None,
-    ):
+    def __init__(self, name, strategy, si: SymbolInterval, cfg: Config = None, log: logging.Logger = None, data=None, position: float = 0):
         self.log = log
         self.name = name
         self.cfg = cfg
@@ -42,6 +34,7 @@ class Node:
                 period=cfg.period,
                 log=log,
                 name=st.__name__,
+                position=position,
             )
             if st.__name__ == "SupertrendStrategy" and not data_ha:
                 data_ha = data.clone()
