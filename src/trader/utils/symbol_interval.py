@@ -74,10 +74,33 @@ def add_time_duration(cur: int, interval: Interval, num: int) -> int:
     return cur + get_time_duration(interval) * num
 
 
+class Symbol:
+    def __init__(self, symbol: str):
+        symbol_list = symbol.split("-")
+        if symbol_list and len(symbol_list) == 2:
+            self.base = symbol_list[0]
+            self.quote = symbol_list[1]
+        else:
+            self.base = ""
+            self.quote = ""
+
+    def name(self):
+        return self.base + self.quote
+
+    def is_empty(self):
+        return len(self.name()) == 0
+
+
 class SymbolInterval:
     def __init__(self, symbol: str, interval: Interval):
-        self.symbol = symbol
+        self.sy = Symbol(symbol)
         self.interval = interval
 
     def name(self):
-        return self.symbol + "-" + self.interval.value
+        return self.symbol() + "-" + self.interval.value
+
+    def symbol(self):
+        return self.sy.name()
+
+    def is_empty(self):
+        return self.sy.is_empty() or len(self.interval.value) == 0

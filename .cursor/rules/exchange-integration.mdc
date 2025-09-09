@@ -47,7 +47,7 @@ Exchange settings are configured through:
 ### Kline Data Structure
 ```python
 {
-    'symbol': 'BTCUSDT',
+    'symbol': 'BTC-USDT',
     'interval': '1h',
     'open_time': timestamp,
     'open': float,

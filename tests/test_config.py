@@ -16,16 +16,16 @@ def test_config():
 
 def test_symbols():
     cfgs = [
-        TaskConfig(TaskType.TRADER, SymbolInterval("BTCUSDT", Interval.INTERVAL_1d)),
-        TaskConfig(TaskType.TRADER, SymbolInterval("ETHUSDT", Interval.INTERVAL_1d)),
+        TaskConfig(0, TaskType.TRADER, SymbolInterval("BTC-USDT", Interval.INTERVAL_1d)),
+        TaskConfig(0, TaskType.TRADER, SymbolInterval("ETH-USDT", Interval.INTERVAL_1d)),
     ]
     print(get_symbols(cfgs))
 
 
 def test_symbols_intervals():
     cfgs = [
-        TaskConfig(TaskType.TRADER, SymbolInterval("BTCUSDT", Interval.INTERVAL_1d)),
-        TaskConfig(TaskType.TRADER, SymbolInterval("ETHUSDT", Interval.INTERVAL_1d)),
+        TaskConfig(0, TaskType.TRADER, SymbolInterval("BTC-USDT", Interval.INTERVAL_1d)),
+        TaskConfig(0, TaskType.TRADER, SymbolInterval("ETH-USDT", Interval.INTERVAL_1d)),
     ]
     for si in cfgs:
         print(si.symbol_interval.name())

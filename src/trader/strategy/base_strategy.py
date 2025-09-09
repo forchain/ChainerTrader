@@ -46,6 +46,7 @@ class BaseStrategy(bt.Strategy):
     def start(self):
         if self.params.position:
             self.broker._positions[self.data] = bt.position.Position(size=self.params.position)
+            self.log_info(f"set first position:{self.params.position}")
 
     def next(self):
         cur = self.cur_datetime()

@@ -1,91 +1,91 @@
 [
   {
     "task_type": "BACK_TRADER",
-    "symbol": "ETHUSDT",
+    "symbol": "ETH-USDT",
     "interval": "1h",
     "csv":"ETHUSDT-1h-202301-202401.csv",
     "strategy":"ShihunMACD"
   },
   {
     "task_type": "BACK_TRADER",
-    "symbol": "ETHUSDT",
+    "symbol": "ETH-USDT",
     "interval": "1h",
     "csv":"ETHUSDT-1h-202301-202401.csv",
     "strategy":"ShihunMACD2"
   },
   {
     "task_type": "BACK_TRADER",
-    "symbol": "ETHUSDT",
+    "symbol": "ETH-USDT",
     "interval": "1h",
     "csv":"ETHUSDT-1h-202301-202401.csv",
     "strategy":"ShihunRSI"
   },
   {
     "task_type": "BACK_TRADER",
-    "symbol": "ETHUSDT",
+    "symbol": "ETH-USDT",
     "interval": "1h",
     "csv":"ETHUSDT-1h-202301-202401.csv",
     "strategy":"ShihunRSI2"
   },
   {
     "task_type": "BACK_TRADER",
-    "symbol": "ETHUSDT",
+    "symbol": "ETH-USDT",
     "interval": "1h",
     "csv":"ETHUSDT-1h-202301-202401.csv",
     "strategy":"ShihunMACDRISBB"
   },
   {
     "task_type": "BACK_TRADER",
-    "symbol": "ETHUSDT",
+    "symbol": "ETH-USDT",
     "interval": "1h",
     "csv":"ETHUSDT-1h-202301-202401.csv",
     "strategy":"MACDRSI"
   },
   {
     "task_type": "BACK_TRADER",
-    "symbol": "ETHUSDT",
+    "symbol": "ETH-USDT",
     "interval": "1h",
     "csv":"ETHUSDT-1h-202301-202401.csv",
     "strategy":"GRID"
   },
   {
     "task_type": "BACK_TRADER",
-    "symbol": "ETHUSDT",
+    "symbol": "ETH-USDT",
     "interval": "1h",
     "csv":"ETHUSDT-1h-202301-202401.csv",
     "strategy":"BOLLMEANREG"
   },
   {
     "task_type": "BACK_TRADER",
-    "symbol": "ETHUSDT",
+    "symbol": "ETH-USDT",
     "interval": "1h",
     "csv":"ETHUSDT-1h-202301-202401.csv",
     "strategy":"TURTLE"
   },
   {
     "task_type": "BACK_TRADER",
-    "symbol": "ETHUSDT",
+    "symbol": "ETH-USDT",
     "interval": "1h",
     "csv":"ETHUSDT-1h-202301-202401.csv",
     "strategy":"DUALMA"
   },
   {
     "task_type": "BACK_TRADER",
-    "symbol": "ETHUSDT",
+    "symbol": "ETH-USDT",
     "interval": "1h",
     "csv":"ETHUSDT-1h-202301-202401.csv",
     "strategy":"DUALTHRUST"
   },
   {
     "task_type": "BACK_TRADER",
-    "symbol": "ETHUSDT",
+    "symbol": "ETH-USDT",
     "interval": "1h",
     "csv":"ETHUSDT-1h-202301-202401.csv",
     "strategy":"KDJ"
   },
   {
     "task_type": "BACK_TRADER",
-    "symbol": "ETHUSDT",
+    "symbol": "ETH-USDT",
     "interval": "1h",
     "csv":"ETHUSDT-1h-202301-202401.csv",
     "strategy":"RSRS"
