@@ -78,8 +78,8 @@ class TraderTask(BaseTask):
                 continue
             latest_kline = kls_cache[len(kls_cache) - 1]
 
-            self.cfg.cash = self.exchange.get_account_balance("USDT")
-            position = self.exchange.get_account_balance("")
+            self.cfg.cash = self.exchange.get_account_balance(self.tcfg.symbol_interval.sy.quote)
+            position = self.exchange.get_account_balance(self.tcfg.symbol_interval.sy.base)
 
             node = Node(self.tcfg.strategy_name(), strategy, self.tcfg.symbol_interval, self.cfg, self.log, BinanceData(kls_cache), position)
             ret = node.start()
@@ -103,4 +103,4 @@ class TraderTask(BaseTask):
                 else:
                     dist = next_time - int(datetime.now().timestamp())
                     dist += 1
-                    await sleep_loop(self.log, dist, quit, "next K-line...")
+                    await sleep_loop(self.log, dist, self.quit, "next K-line...")
