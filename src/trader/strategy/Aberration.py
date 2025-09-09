@@ -23,6 +23,9 @@ class AberrationStrategy(BaseStrategy):
         if self.order:
             return
 
+        if not self.can_trade():
+            return
+
         if not self.position:
             if self.data.close[0] > self.upper[0]:
                 self.buy()

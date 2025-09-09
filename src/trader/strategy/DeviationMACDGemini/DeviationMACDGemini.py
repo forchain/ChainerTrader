@@ -125,6 +125,9 @@ class DeviationMACDGeminiStrategy(BaseStrategy):
             self.pl_positions.appendleft(pivot_bar_index)
             self.pl_vals.appendleft(self.pivot_low.pl[0])
 
+        if not self.can_trade():
+            return
+
         # Divergence detection
         pos_div = self.check_positive_divergence()
         neg_div = self.check_negative_divergence()

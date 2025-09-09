@@ -25,6 +25,9 @@ class BOLLMEANREGStrategy(BaseStrategy):
         if self.order:
             return
 
+        if not self.can_trade():
+            return
+
         upperBand = self.bollinger.lines.top[0]
         lowerBand = self.bollinger.lines.bot[0]
 

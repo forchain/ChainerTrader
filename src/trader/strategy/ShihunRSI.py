@@ -27,6 +27,9 @@ class ShihunRSIStrategy(TrilogyStrategy):
         if self.order:
             return
 
+        if not self.can_trade():
+            return
+
         if not self.position:
             if not self.trilogy:
                 if self.canBuy():

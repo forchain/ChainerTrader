@@ -35,6 +35,9 @@ class ShihunMACDRISBBStrategy(BaseStrategy):
         if self.order:
             return
 
+        if not self.can_trade():
+            return
+
         willOpt = OperateType.UNKNOWN
         curTrend = self.getTrend()
 

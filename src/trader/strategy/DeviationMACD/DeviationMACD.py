@@ -78,6 +78,8 @@ class DeviationMACDStrategy(BaseStrategy):
                     self.bar_idx() + self.pl.middle_idx(),
                 )
             )
+        if not self.can_trade():
+            return
 
         willOpt = OperateType.UNKNOWN
 

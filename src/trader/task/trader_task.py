@@ -81,7 +81,7 @@ class TraderTask(BaseTask):
             self.cfg.cash = self.exchange.get_account_balance(self.tcfg.symbol_interval.sy.quote)
             position = self.exchange.get_account_balance(self.tcfg.symbol_interval.sy.base)
 
-            node = Node(self.tcfg.strategy_name(), strategy, self.tcfg.symbol_interval, self.cfg, self.log, BinanceData(kls_cache), position)
+            node = Node(self.tcfg.strategy_name(), strategy, self.tcfg.symbol_interval, self.cfg, self.log, BinanceData(kls_cache), position, True)
             ret = node.start()
             if ret is None:
                 continue

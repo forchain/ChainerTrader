@@ -22,7 +22,8 @@ class TURTLEStrategy(BaseStrategy):
         super().next()
         if self.order:
             return
-
+        if not self.can_trade():
+            return
         position_size = (self.broker.getvalue() * self.params.risk) / (self.atr[0] * 100)
         if not self.position:
             if self.data.close[0] > self.highest[-1]:

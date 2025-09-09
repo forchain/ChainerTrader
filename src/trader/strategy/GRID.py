@@ -50,6 +50,9 @@ class GRIDStrategy(BaseStrategy):
                 self.buy_levels.append(self.latest_price - (i + 1) * self.params.grid_size)
                 self.sell_levels.append(self.latest_price + (i + 1) * self.params.grid_size)
 
+        if not self.can_trade():
+            return
+
         for buy_level in self.buy_levels:
             if current_price <= buy_level and buy_level not in self.order_dict:
                 if cash >= self.params.once_size * current_price:
