@@ -1,5 +1,4 @@
 from datetime import datetime, timedelta
-from typing import Optional
 
 from binance_common.configuration import ConfigurationRestAPI
 from binance_common.constants import SPOT_REST_API_PROD_URL
@@ -248,7 +247,6 @@ class BinanceExchange:
             rate_limits = response.rate_limits
             if rate_limits:
                 self.update_rate_limits(rate_limits)
-
 
             data = response.data()
             self.log.info(f"new_order() response: {data}")

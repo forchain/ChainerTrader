@@ -90,8 +90,8 @@ class TraderTask(BaseTask):
             self.db_manager.task.add_tasks(self.ts)
 
             if ret.opts:
-                op=ret.opts[-1]
-                self.exchange.new_order(self.tcfg.symbol_interval.symbol(),op.otype)
+                op = ret.opts[-1]
+                self.exchange.new_order(self.tcfg.symbol_interval.symbol(), op.otype)
 
             await queue.put(
                 new_stat_msg(
