@@ -14,6 +14,7 @@ from trader.strategy.strategy import parse_strategys
 from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig
 from trader.task.update_klines_task import download
+from trader.utils.operate import OperateType
 from trader.utils.symbol_interval import add_time_duration
 
 DOWLOAD_SPACE_TIME = 5
@@ -78,7 +79,7 @@ class TraderTask(BaseTask):
                 continue
             latest_kline = kls_cache[len(kls_cache) - 1]
 
-            self.cfg.cash = self.exchange.get_account_balance(self.tcfg.symbol_interval.sy.quote)
+            cash = self.exchange.get_account_balance(self.tcfg.symbol_interval.sy.quote)
             position = self.exchange.get_account_balance(self.tcfg.symbol_interval.sy.base)
 
             node = Node(self.tcfg.strategy_name(), strategy, self.tcfg.symbol_interval, self.cfg, self.log, BinanceData(kls_cache), position, True)
@@ -91,7 +92,13 @@ class TraderTask(BaseTask):
 
             if ret.opts:
                 op = ret.opts[-1]
-                self.exchange.new_order(self.tcfg.symbol_interval.symbol(), op.otype)
+                if op.otype == OperateType.BUY:
+                    if cash > 0:
+                        self.exchange.new_order(self.tcfg.symbol_interval.symbol(), op.otype)
+                    else:
+                        self.log.info(f"Due to insufficient balance, we have given up placing orders with the exchange")
+                else:
+                    self.exchange.new_order(self.tcfg.symbol_interval.symbol(), op.otype)
 
             await queue.put(
                 new_stat_msg(
