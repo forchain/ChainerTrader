@@ -11,6 +11,7 @@ from trader.exchange.binance.exchange import BinanceExchange
 from trader.statistics.stat import TraderStat
 from trader.strategy.node import Node
 from trader.strategy.strategy import parse_strategys
+from trader.strategy.trader_result import TraderResult
 from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig
 from trader.task.update_klines_task import download
@@ -79,7 +80,6 @@ class TraderTask(BaseTask):
                 continue
             latest_kline = kls_cache[len(kls_cache) - 1]
 
-            cash = self.exchange.get_account_balance(self.tcfg.symbol_interval.sy.quote)
             position = self.exchange.get_account_balance(self.tcfg.symbol_interval.sy.base)
 
             node = Node(self.tcfg.strategy_name(), strategy, self.tcfg.symbol_interval, self.cfg, self.log, BinanceData(kls_cache), position, True)
@@ -90,15 +90,7 @@ class TraderTask(BaseTask):
             self.ts.tret = ret
             self.db_manager.task.add_tasks(self.ts)
 
-            if ret.opts:
-                op = ret.opts[-1]
-                if op.otype == OperateType.BUY:
-                    if cash > 0:
-                        self.exchange.new_order(self.tcfg.symbol_interval.symbol(), op.otype)
-                    else:
-                        self.log.info(f"Due to insufficient balance, we have given up placing orders with the exchange")
-                else:
-                    self.exchange.new_order(self.tcfg.symbol_interval.symbol(), op.otype)
+            self.operate_exchange(ret)
 
             await queue.put(
                 new_stat_msg(
@@ -115,3 +107,15 @@ class TraderTask(BaseTask):
                     dist = next_time - int(datetime.now().timestamp())
                     dist += 1
                     await sleep_loop(self.log, dist, self.quit, "next K-line...")
+
+    def operate_exchange(self, ret: TraderResult):
+        if ret.opts:
+            op = ret.opts[-1]
+            if op.otype == OperateType.BUY:
+                cash = self.exchange.get_account_balance(self.tcfg.symbol_interval.sy.quote)
+                if cash > 0:
+                    self.exchange.new_order(self.tcfg.symbol_interval.symbol(), op.otype)
+                else:
+                    self.log.info(f"Due to insufficient balance, we have given up placing orders with the exchange")
+            else:
+                self.exchange.new_order(self.tcfg.symbol_interval.symbol(), op.otype)
