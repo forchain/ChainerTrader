@@ -87,8 +87,7 @@ class TraderTask(BaseTask):
             if ret is None:
                 continue
 
-            self.ts.tret = ret
-            self.db_manager.task.add_tasks(self.ts)
+            self.process_result(ret)
 
             self.operate_exchange(ret)
 
@@ -107,6 +106,14 @@ class TraderTask(BaseTask):
                     dist = next_time - int(datetime.now().timestamp())
                     dist += 1
                     await sleep_loop(self.log, dist, self.quit, "next K-line...")
+
+    def process_result(self, ret: TraderResult):
+        last_task = self.db_manager.task.get_task(self.tcfg.id)
+        if last_task and last_task.tret:
+            ret.opts.append(last_task.tret.opts)
+
+        self.ts.tret = ret
+        self.db_manager.task.add_tasks(self.ts)
 
     def operate_exchange(self, ret: TraderResult):
         if ret.opts:
