@@ -3,8 +3,13 @@ from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 from fastapi_auto_router import AutoRouter
+from fastapi.responses import HTMLResponse
+from fastapi import Request
 
+from trader.app.app import version
 from trader.common import path
 from trader.common.config import Config
 from trader.rpc.rpc_app import RpcApp
@@ -20,7 +25,17 @@ async def lifespan(rpc: FastAPI):
     await app.stop()
 
 
-rpc = FastAPI(lifespan=lifespan)
+def get_directory(sub: str) -> str:
+    baseDir = os.path.abspath(os.path.dirname(__file__))
+    filePath = os.path.join(baseDir, sub)
+    return os.path.realpath(filePath)
+
+
+rpc = FastAPI(lifespan=lifespan, title="ChainerTrader", description="ChainerTrader", version=version())
+
+rpc.mount("/static", StaticFiles(directory=get_directory("static")), name="static")
+
+templates = Jinja2Templates(directory=get_directory("templates"))
 
 
 def start(cfg: Config):
@@ -59,6 +74,21 @@ def start(cfg: Config):
     )
 
 
-@rpc.get("/")
-def read_root():
-    return {"Hello": "I am " + rpc.state.app.name()}
+@rpc.get("/", response_class=HTMLResponse)
+async def read_root(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
+
+
+@rpc.get("/tasks", response_class=HTMLResponse)
+async def tasks_page(request: Request):
+    return templates.TemplateResponse("tasks.html", {"request": request})
+
+
+@rpc.get("/klines", response_class=HTMLResponse)
+async def about_page(request: Request):
+    return templates.TemplateResponse("klines.html", {"request": request})
+
+
+@rpc.get("/logs", response_class=HTMLResponse)
+async def contact_page(request: Request):
+    return templates.TemplateResponse("logs.html", {"request": request})
