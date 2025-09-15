@@ -89,6 +89,32 @@
         </div>
     </div>
 </div>
+
+<!-- 任务详情模态框 -->
+<div class="modal fade" id="taskDetailModal" tabindex="-1" aria-labelledby="taskDetailModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="taskDetailModalLabel">
+                    <i class="fas fa-info-circle me-2"></i>任务详情
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="taskDetailContent">
+                    <div class="text-center py-4" id="taskDetailLoading" style="display:none;">
+                        <div class="loading" style="vertical-align: middle;"></div>
+                        <div class="mt-2 text-muted">正在加载...</div>
+                    </div>
+                    <div id="taskDetailGrid" class="container-fluid"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" data-bs-dismiss="modal">确定</button>
+            </div>
+        </div>
+    </div>
+    </div>
 {% endblock %}
 
 {% block scripts %}
@@ -99,6 +125,19 @@ document.addEventListener('DOMContentLoaded', function() {
         addTask(document.getElementById('quickTitle').value, document.getElementById('quickDescription').value);
         this.reset();
     });
+
+    // 绑定任务项点击，打开详情模态框
+    const tasksList = document.getElementById('tasksList');
+    if (tasksList) {
+        tasksList.addEventListener('click', async function(e) {
+            const target = e.target.closest('.task-item');
+            if (!target) return;
+            const taskId = target.getAttribute('data-task-id');
+            if (!taskId) return;
+
+            openTaskDetailModal(taskId);
+        });
+    }
 });
 
 async function addTask(title, description) {
@@ -120,6 +159,91 @@ async function addTask(title, description) {
         console.error('Error:', error);
         alert('添加任务失败');
     }
+}
+
+// 打开并填充任务详情模态框
+async function openTaskDetailModal(taskId) {
+    const modalEl = document.getElementById('taskDetailModal');
+    const loadingEl = document.getElementById('taskDetailLoading');
+    const gridEl = document.getElementById('taskDetailGrid');
+
+    // 重置内容
+    gridEl.innerHTML = '';
+    loadingEl.style.display = 'block';
+
+    const modal = new bootstrap.Modal(modalEl);
+    modal.show();
+
+    try {
+        const resp = await fetch(`/api/task?id=${encodeURIComponent(taskId)}`);
+        if (!resp.ok) throw new Error('请求失败');
+        const data = await resp.json();
+        renderTaskDetailGrid(gridEl, data);
+    } catch (err) {
+        gridEl.innerHTML = `<div class="alert alert-danger" role="alert">加载失败：${(err && err.message) || '未知错误'}</div>`;
+    } finally {
+        loadingEl.style.display = 'none';
+    }
+}
+
+// 将对象渲染成两列的漂亮格子
+function renderTaskDetailGrid(container, data) {
+    // 兼容非对象返回
+    if (data == null || typeof data !== 'object') {
+        container.innerHTML = `<pre class="mb-0 bg-light p-3 rounded">${escapeHtml(String(data))}</pre>`;
+        return;
+    }
+
+    // 展平一级：如果包含 data 或 result 字段，优先显示其内容
+    const source = (data && (data.data || data.result)) || data;
+    const entries = Object.entries(source);
+
+    if (entries.length === 0) {
+        container.innerHTML = '<div class="text-muted">无可显示的数据</div>';
+        return;
+    }
+
+    // 构造两列栅格，每行两项
+    let html = '<div class="row g-3">';
+    for (let i = 0; i < entries.length; i++) {
+        const [key, value] = entries[i];
+        const displayValue = formatValue(value);
+        html += `
+        <div class="col-12 col-md-6">
+            <div class="border rounded p-3 h-100">
+                <div class="text-muted small mb-1">${escapeHtml(key)}</div>
+                <div class="fw-semibold">${displayValue}</div>
+            </div>
+        </div>`;
+    }
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+function formatValue(val) {
+    if (val == null) return '<span class="text-muted">-</span>';
+    if (typeof val === 'object') {
+        try {
+            return `<pre class="mb-0 bg-light p-2 rounded small">${escapeHtml(JSON.stringify(val, null, 2))}</pre>`;
+        } catch (_) {
+            return `<pre class="mb-0 bg-light p-2 rounded small">${escapeHtml(String(val))}</pre>`;
+        }
+    }
+    if (typeof val === 'boolean') {
+        return val
+            ? '<span class="badge bg-success">true</span>'
+            : '<span class="badge bg-secondary">false</span>';
+    }
+    return escapeHtml(String(val));
+}
+
+function escapeHtml(str) {
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
 }
 </script>
 {% endblock %}
