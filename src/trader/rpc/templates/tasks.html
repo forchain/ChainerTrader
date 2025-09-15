@@ -10,37 +10,21 @@
                 <h5 class="card-title mb-0">
                     <i class="fas fa-tasks me-2"></i>任务列表
                 </h5>
-                <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addTaskModal">
-                    <i class="fas fa-plus me-1"></i>添加任务
-                </button>
             </div>
             <div class="card-body">
                 <div id="tasksList">
-                    {% if tasks %}
-                        {% for task in tasks %}
-                        <div class="task-item border rounded p-3 mb-3" data-task-id="{{ task.id }}">
+                    {% if tasks_info.tasks %}
+                        {% for task in tasks_info.tasks %}
+                        <div class="task-item border rounded p-3 mb-3" data-task-id="{{ task.task_id }}">
                             <div class="d-flex align-items-start">
-                                <div class="form-check me-3">
-                                    <input class="form-check-input task-checkbox" type="checkbox" 
-                                           data-task-id="{{ task.id }}"
-                                           {% if task.completed %}checked{% endif %}>
-                                </div>
                                 <div class="flex-grow-1">
-                                    <h6 class="mb-1 {% if task.completed %}text-decoration-line-through text-muted{% endif %}">
-                                        {{ task.title }}
-                                    </h6>
-                                    {% if task.description %}
-                                    <p class="text-muted mb-2 small">{{ task.description }}</p>
+                                    {% if task.name %}
+                                    <p class="text-muted mb-2 small">{{ task.name }}</p>
                                     {% endif %}
                                     <small class="text-muted">
                                         <i class="fas fa-calendar me-1"></i>
-                                        {{ task.created_at.strftime('%Y-%m-%d %H:%M') if task.created_at else '未知时间' }}
+                                        {{ task.start_time if task.start_time else '未知时间' }}
                                     </small>
-                                </div>
-                                <div class="task-actions">
-                                    <button class="btn btn-outline-danger btn-sm" onclick="deleteTask({{ task.id }})">
-                                        <i class="fas fa-trash"></i>
-                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -67,11 +51,11 @@
             <div class="card-body">
                 <form id="quickAddForm">
                     <div class="mb-3">
-                        <label for="quickTitle" class="form-label">任务标题</label>
+                        <label for="quickTitle" class="form-label">交易对</label>
                         <input type="text" class="form-control" id="quickTitle" required>
                     </div>
                     <div class="mb-3">
-                        <label for="quickDescription" class="form-label">任务描述</label>
+                        <label for="quickDescription" class="form-label">策略</label>
                         <textarea class="form-control" id="quickDescription" rows="3"></textarea>
                     </div>
                     <button type="submit" class="btn btn-primary w-100">
@@ -91,12 +75,12 @@
             <div class="card-body">
                 <div class="row text-center">
                     <div class="col-6">
-                        <h4 class="text-primary" id="totalTasks">{{ tasks|length }}</h4>
+                        <h4 class="text-primary" id="totalTasks">{{ tasks_info.total }}</h4>
                         <small class="text-muted">总任务</small>
                     </div>
                     <div class="col-6">
                         <h4 class="text-success" id="completedTasks">
-                            {{ tasks|selectattr('completed')|list|length }}
+                            {{ tasks_info.completed }}
                         </h4>
                         <small class="text-muted">已完成</small>
                     </div>
@@ -105,60 +89,15 @@
         </div>
     </div>
 </div>
-
-<!-- 添加任务模态框 -->
-<div class="modal fade" id="addTaskModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">添加新任务</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <form id="addTaskForm">
-                <div class="modal-body">
-                    <div class="mb-3">
-                        <label for="taskTitle" class="form-label">任务标题 *</label>
-                        <input type="text" class="form-control" id="taskTitle" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="taskDescription" class="form-label">任务描述</label>
-                        <textarea class="form-control" id="taskDescription" rows="3"></textarea>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                    <button type="submit" class="btn btn-primary">添加任务</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-// 任务管理功能
 document.addEventListener('DOMContentLoaded', function() {
-    // 快速添加表单
     document.getElementById('quickAddForm').addEventListener('submit', function(e) {
         e.preventDefault();
         addTask(document.getElementById('quickTitle').value, document.getElementById('quickDescription').value);
         this.reset();
-    });
-
-    // 模态框表单
-    document.getElementById('addTaskForm').addEventListener('submit', function(e) {
-        e.preventDefault();
-        addTask(document.getElementById('taskTitle').value, document.getElementById('taskDescription').value);
-        this.reset();
-        bootstrap.Modal.getInstance(document.getElementById('addTaskModal')).hide();
-    });
-
-    // 任务复选框
-    document.querySelectorAll('.task-checkbox').forEach(checkbox => {
-        checkbox.addEventListener('change', function() {
-            updateTaskStatus(this.dataset.taskId, this.checked);
-        });
     });
 });
 
@@ -169,10 +108,7 @@ async function addTask(title, description) {
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-                title: title,
-                description: description
-            })
+            body: JSON.stringify([{"task_type": "DEBUG","limit":10}])
         });
         
         if (response.ok) {
@@ -183,46 +119,6 @@ async function addTask(title, description) {
     } catch (error) {
         console.error('Error:', error);
         alert('添加任务失败');
-    }
-}
-
-async function updateTaskStatus(taskId, completed) {
-    try {
-        const response = await fetch(`/api/tasks/${taskId}`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ completed: completed })
-        });
-        
-        if (response.ok) {
-            location.reload();
-        } else {
-            alert('更新任务失败');
-        }
-    } catch (error) {
-        console.error('Error:', error);
-        alert('更新任务失败');
-    }
-}
-
-async function deleteTask(taskId) {
-    if (confirm('确定要删除这个任务吗？')) {
-        try {
-            const response = await fetch(`/api/tasks/${taskId}`, {
-                method: 'DELETE'
-            });
-            
-            if (response.ok) {
-                location.reload();
-            } else {
-                alert('删除任务失败');
-            }
-        } catch (error) {
-            console.error('Error:', error);
-            alert('删除任务失败');
-        }
     }
 }
 </script>
