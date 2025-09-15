@@ -27,7 +27,7 @@ class BaseTask:
         self.log.info(f"Init {self.name()}")
         self.start_time = datetime.now()
         self.quit: Event = asyncio.Event()
-        self.ts = TaskState(tcfg.id)
+        self.ts = TaskState(tcfg.id, self.name(), self.start_time)
 
     def start(self, queue: Queue):
         self.start_time = datetime.now()
