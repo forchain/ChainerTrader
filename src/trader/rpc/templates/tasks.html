@@ -118,6 +118,20 @@
 {% endblock %}
 
 {% block scripts %}
+<style>
+/* 简易树形视图样式（类似资源管理器） */
+.tree-container { font-family: var(--bs-body-font-family); }
+.tree-node { margin-left: 16px; }
+.tree-item { cursor: pointer; user-select: none; display: flex; align-items: center; gap: 6px; }
+.tree-item .caret { width: 14px; display: inline-block; text-align: center; color: var(--bs-secondary-color); }
+.tree-item .key { font-weight: 600; }
+.tree-item .meta { color: var(--bs-secondary-color); font-size: 12px; }
+.tree-leaf { cursor: default; }
+.tree-children { margin-top: 4px; margin-left: 14px; border-left: 1px dashed var(--bs-border-color); padding-left: 10px; }
+.tree-value { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+.tree-badge { display: inline-block; padding: 0.1rem 0.35rem; border-radius: 0.25rem; font-size: 0.75rem; background: var(--bs-tertiary-bg); color: var(--bs-secondary-color); }
+pre.tree-json { background: var(--bs-tertiary-bg); padding: 8px; border-radius: 6px; margin: 0; }
+</style>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('quickAddForm').addEventListener('submit', function(e) {
@@ -178,7 +192,7 @@ async function openTaskDetailModal(taskId) {
         const resp = await fetch(`/api/task?id=${encodeURIComponent(taskId)}`);
         if (!resp.ok) throw new Error('请求失败');
         const data = await resp.json();
-        renderTaskDetailGrid(gridEl, data);
+        renderTaskDetailTree(gridEl, data);
     } catch (err) {
         gridEl.innerHTML = `<div class="alert alert-danger" role="alert">加载失败：${(err && err.message) || '未知错误'}</div>`;
     } finally {
@@ -186,55 +200,101 @@ async function openTaskDetailModal(taskId) {
     }
 }
 
-// 将对象渲染成两列的漂亮格子
-function renderTaskDetailGrid(container, data) {
-    // 兼容非对象返回
-    if (data == null || typeof data !== 'object') {
-        container.innerHTML = `<pre class="mb-0 bg-light p-3 rounded">${escapeHtml(String(data))}</pre>`;
+// 递归渲染树形 TaskState（完整展示服务端返回的数据）
+function renderTaskDetailTree(container, rawData) {
+    // 直接使用完整返回，不再优先 data/result
+    const data = rawData;
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'tree-container';
+
+    if (data == null) {
+        wrapper.innerHTML = '<div class="text-muted">无可显示的数据</div>';
+        container.innerHTML = '';
+        container.appendChild(wrapper);
         return;
     }
 
-    // 展平一级：如果包含 data 或 result 字段，优先显示其内容
-    const source = (data && (data.data || data.result)) || data;
-    const entries = Object.entries(source);
+    // 构造根节点
+    const rootHtml = buildTreeHtml(undefined, data, true);
+    wrapper.innerHTML = rootHtml;
+    container.innerHTML = '';
+    container.appendChild(wrapper);
 
-    if (entries.length === 0) {
-        container.innerHTML = '<div class="text-muted">无可显示的数据</div>';
-        return;
-    }
+    // 事件委托：展开/收起
+    wrapper.addEventListener('click', function(e) {
+        const item = e.target.closest('.tree-item');
+        if (!item || item.classList.contains('tree-leaf')) return;
+        const node = item.parentElement; // .tree-node
+        const children = node.querySelector(':scope > .tree-children');
+        if (!children) return;
 
-    // 构造两列栅格，每行两项
-    let html = '<div class="row g-3">';
-    for (let i = 0; i < entries.length; i++) {
-        const [key, value] = entries[i];
-        const displayValue = formatValue(value);
-        html += `
-        <div class="col-12 col-md-6">
-            <div class="border rounded p-3 h-100">
-                <div class="text-muted small mb-1">${escapeHtml(key)}</div>
-                <div class="fw-semibold">${displayValue}</div>
-            </div>
-        </div>`;
-    }
-    html += '</div>';
-    container.innerHTML = html;
+        const expanded = item.getAttribute('data-expanded') !== 'false';
+        if (expanded) {
+            item.setAttribute('data-expanded', 'false');
+            const caret = item.querySelector(':scope > .caret');
+            if (caret) caret.textContent = '▸';
+            children.style.display = 'none';
+        } else {
+            item.setAttribute('data-expanded', 'true');
+            const caret = item.querySelector(':scope > .caret');
+            if (caret) caret.textContent = '▾';
+            children.style.display = '';
+        }
+    });
 }
 
-function formatValue(val) {
-    if (val == null) return '<span class="text-muted">-</span>';
-    if (typeof val === 'object') {
-        try {
-            return `<pre class="mb-0 bg-light p-2 rounded small">${escapeHtml(JSON.stringify(val, null, 2))}</pre>`;
-        } catch (_) {
-            return `<pre class="mb-0 bg-light p-2 rounded small">${escapeHtml(String(val))}</pre>`;
-        }
+function buildTreeHtml(key, value, isRoot = false) {
+    const type = getType(value);
+    if (type === 'object' || type === 'array') {
+        const size = type === 'array' ? value.length : Object.keys(value).length;
+        const label = isRoot
+            ? (type === 'array' ? `Root [Array(${size})]` : 'Root [Object]')
+            : (type === 'array' ? `${escapeHtml(String(key))} <span class="meta">[Array(${size})]</span>`
+                                : `${escapeHtml(String(key))} <span class="meta">[Object]</span>`);
+
+        const childrenHtml = Object.entries(type === 'array' ? value : value).map(([k, v]) => buildTreeHtml(k, v, false)).join('');
+
+        // 根默认展开，其他默认展开也行，这里设为展开
+        return `
+<div class="tree-node">
+  <div class="tree-item" data-expanded="true">
+    <span class="caret">▾</span>
+    <span class="key">${label}</span>
+  </div>
+  <div class="tree-children">${childrenHtml}</div>
+</div>`;
     }
+
+    // 叶子节点
+    return `
+<div class="tree-node">
+  <div class="tree-item tree-leaf">
+    <span class="caret"></span>
+    <span class="key">${escapeHtml(String(key))}:</span>
+    <span class="tree-value">${formatPrimitive(value)}</span>
+  </div>
+</div>`;
+}
+
+function getType(val) {
+    if (Array.isArray(val)) return 'array';
+    if (val === null) return 'null';
+    return typeof val === 'object' ? 'object' : 'primitive';
+}
+
+function formatPrimitive(val) {
+    if (val === null || val === undefined) return '<span class="text-muted">null</span>';
     if (typeof val === 'boolean') {
-        return val
-            ? '<span class="badge bg-success">true</span>'
-            : '<span class="badge bg-secondary">false</span>';
+        return val ? '<span class="badge bg-success">true</span>' : '<span class="badge bg-secondary">false</span>';
     }
-    return escapeHtml(String(val));
+    if (typeof val === 'number') return String(val);
+    if (typeof val === 'string') return escapeHtml(val);
+    try {
+        return `<span class="tree-badge">${escapeHtml(JSON.stringify(val))}</span>`;
+    } catch (_) {
+        return escapeHtml(String(val));
+    }
 }
 
 function escapeHtml(str) {

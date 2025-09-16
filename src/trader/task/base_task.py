@@ -37,11 +37,11 @@ class BaseTask:
     def stop(self):
         if not self.ts.is_running():
             return
+        self.ts.state = TaskStateType.DONE
         self.db_manager.task.add_tasks([self.ts])
         self.close()
         elapsed = datetime.now() - self.start_time
         self.log.info(f"Stop {self.name()}, elapsed time:{elapsed}")
-        self.ts.state = TaskStateType.DONE
 
     def name(self):
         return f"{self.tcfg.id}.{self.type().name}.{self.tcfg.symbol_interval.name()}"
