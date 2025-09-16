@@ -2,16 +2,22 @@ import logging
 
 from trader.common.common import NAME
 from trader.common.config import Config
+from trader.common.log_buffer import LogBuffer, LogBufferHandler
 
 
 class Logger:
-    def __init__(self, cfg: Config):
+    def __init__(self, cfg: Config, enable_log_buffer: bool = True, buffer_size: int = 100):
         self.cfg = cfg
         self.name = NAME
         self.logger = logging.getLogger(self.name)
+        self.enable_log_buffer = enable_log_buffer
+
+        if self.enable_log_buffer:
+            self.log_buffer = LogBuffer(buffer_size)
+        else:
+            self.log_buffer = None
 
         self.logger.setLevel(cfg.log_level)
-        self.logger.level
         self.initRoot()
 
     def setLevel(self, level):
@@ -56,7 +62,41 @@ class Logger:
         else:
             logging.basicConfig(level=self.cfg.log_level, format=formatter_str())
 
+        if self.enable_log_buffer and self.log_buffer:
+            buffer_handler = LogBufferHandler(self.log_buffer)
+            buffer_handler.setFormatter(get_formatter())
+            self.logger.addHandler(buffer_handler)
+
+            root_logger = logging.getLogger("root")
+            root_buffer_handler = LogBufferHandler(self.log_buffer)
+            root_buffer_handler.setFormatter(get_formatter())
+            root_logger.addHandler(root_buffer_handler)
+
         logging.info("Init root logger")
+
+    def get_buff_logs(self):
+        if not self.enable_log_buffer or not self.log_buffer:
+            return []
+        return self.log_buffer.get_logs()
+
+    def get_logs_as_string(self):
+        if not self.enable_log_buffer or not self.log_buffer:
+            return []
+        return self.log_buffer.get_logs_as_string()
+
+    def clear_logs(self):
+        if self.enable_log_buffer and self.log_buffer:
+            self.log_buffer.clear()
+
+    def get_log_count(self):
+        if not self.enable_log_buffer or not self.log_buffer:
+            return 0
+        return self.log_buffer.size()
+
+    def is_logs_empty(self):
+        if not self.enable_log_buffer or not self.log_buffer:
+            return True
+        return self.log_buffer.is_empty()
 
 
 def get_formatter():
