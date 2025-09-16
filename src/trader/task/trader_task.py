@@ -113,7 +113,7 @@ class TraderTask(BaseTask):
             ret.opts.append(last_task.tret.opts)
 
         self.ts.tret = ret
-        self.db_manager.task.add_tasks(self.ts)
+        self.db_manager.task.add_tasks([self.ts])
 
     def operate_exchange(self, ret: TraderResult):
         if ret.opts:
