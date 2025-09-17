@@ -51,12 +51,13 @@
             <div class="card-body">
                 <form id="quickAddForm">
                     <div class="mb-3">
-                        <label for="quickTitle" class="form-label">交易对</label>
-                        <input type="text" class="form-control" id="quickTitle" required>
-                    </div>
-                    <div class="mb-3">
                         <label for="json_str" class="form-label">json配置参数</label>
-                        <textarea class="form-control" id="json_str" rows="3"></textarea>
+                        <textarea class="form-control" id="json_str" rows="5" placeholder='[
+                        {
+                            "task_type": "DEBUG",
+                            "limit": 15
+                        }
+                    ]'></textarea>
                     </div>
                     <button type="submit" class="btn btn-primary w-100">
                         <i class="fas fa-plus me-1"></i>添加任务
@@ -136,7 +137,7 @@ pre.tree-json { background: var(--bs-tertiary-bg); padding: 8px; border-radius: 
 document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('quickAddForm').addEventListener('submit', function(e) {
         e.preventDefault();
-        addTask(document.getElementById('quickTitle').value, document.getElementById('json_str').value);
+        addTask(document.getElementById('json_str').value);
         this.reset();
     });
 
@@ -154,7 +155,12 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-async function addTask(title, json_str) {
+async function addTask(json_str) {
+    // 空值检测：为空或仅空白则提示并退出
+    if (!json_str || json_str.trim() === '') {
+        alert('请输入JSON配置后再提交');
+        return;
+    }
     try {
         const response = await fetch('/api/tasks', {
             method: 'POST',
