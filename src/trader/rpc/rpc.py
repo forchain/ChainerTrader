@@ -8,6 +8,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi_auto_router import AutoRouter
 from fastapi.responses import HTMLResponse
 from fastapi import Request
+from fastapi import Response
 
 from trader.app.app import version
 from trader.common import path
@@ -93,3 +94,8 @@ async def klines_page(request: Request):
 @rpc.get("/logs", response_class=HTMLResponse)
 async def logs_page(request: Request):
     return templates.TemplateResponse("logs.html", {"request": request})
+
+
+@rpc.get("/.well-known/appspecific/com.chrome.devtools.json")
+async def chrome_devtools_well_known():
+    return Response(status_code=204)
