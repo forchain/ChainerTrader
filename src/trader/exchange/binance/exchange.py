@@ -7,6 +7,7 @@ from binance_sdk_spot import Spot
 from binance_sdk_spot.rest_api.models import AccountCommissionResponse, NewOrderSideEnum, NewOrderTypeEnum
 
 from trader.common.logger import default
+from trader.exchange.balance import Balance
 from trader.exchange.exchange_config import ExchangeConfig
 from trader.exchange.exchange_type import ExchangeType
 from trader.utils.kline import Kline
@@ -147,6 +148,16 @@ class BinanceExchange:
                 if ba.asset == asset:
                     return float(ba.free)
         return 0
+
+    def get_account_balances(self) -> list[Balance]:
+        acct = self.get_account()
+
+        ret: list[Balance] = []
+        if acct and acct.balances:
+            for ba in acct.balances:
+                ret.append(Balance(asset=ba.asset, free=float(ba.free), locked=float(ba.locked)))
+
+        return ret
 
     def account_commission(self, symbol: str = None) -> AccountCommissionResponse:
         if self.has_rate_limit():

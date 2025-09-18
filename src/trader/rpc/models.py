@@ -22,3 +22,5 @@ def get_taskinfo(app: App) -> TasksInfo:
         tasks.append(ts.to_dict())
 
     return TasksInfo(total=len(tss), completed=completed, tasks=tasks)
+
+def
