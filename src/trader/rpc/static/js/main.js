@@ -62,6 +62,20 @@ function addThemeToggle() {
     themeToggle.title = '切换主题';
     themeToggle.style.cssText = 'position: fixed; top: 20px; right: 20px; z-index: 1000;';
     
+    function adjustThemeTogglePosition() {
+        if (window.innerWidth < 992) { // Bootstrap lg breakpoint
+            themeToggle.style.top = '80px';
+            themeToggle.style.right = '20px';
+        } else {
+            themeToggle.style.top = '20px';
+            themeToggle.style.right = '20px';
+        }
+    }
+    
+    adjustThemeTogglePosition();
+    
+    window.addEventListener('resize', adjustThemeTogglePosition);
+    
     themeToggle.addEventListener('click', () => {
         const currentTheme = document.documentElement.getAttribute('data-bs-theme');
         const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
