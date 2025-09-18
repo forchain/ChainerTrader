@@ -13,7 +13,7 @@ from fastapi import Response
 from trader.app.app import version
 from trader.common import path
 from trader.common.config import Config
-from trader.rpc.models import get_taskinfo
+from trader.rpc.models import get_taskinfo, get_accounts_info
 from trader.rpc.rpc_app import RpcApp
 
 
@@ -78,7 +78,9 @@ def start(cfg: Config):
 
 @rpc.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request, "tasks_info": get_taskinfo(request.app.state.app)})
+    return templates.TemplateResponse(
+        "index.html", {"request": request, "tasks_info": get_taskinfo(request.app.state.app), "accts_info": get_accounts_info(request.app.state.app)}
+    )
 
 
 @rpc.get("/tasks", response_class=HTMLResponse)

@@ -22,19 +22,25 @@
                 <table class="table table-sm table-striped table-bordered align-middle mb-0 bg-white text-dark">
                     <thead class="table-light">
                         <tr>
-                            <th scope="col">账户</th>
-                            <th scope="col">数值</th>
+                            <th scope="col">资产</th>
+                            <th scope="col">可用</th>
+                            <th scope="col">冻结</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr>
-                            <td>账户1</td>
-                            <td>123</td>
-                        </tr>
-                        <tr>
-                            <td>账户2</td>
-                            <td>456</td>
-                        </tr>
+                        {% if accts_info and accts_info.balances %}
+                            {% for b in accts_info.balances %}
+                            <tr>
+                                <td>{{ b.asset }}</td>
+                                <td>{{ b.free | round(8) }}</td>
+                                <td>{{ b.locked | round(8) }}</td>
+                            </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr>
+                                <td colspan="3" class="text-center text-muted">暂无账户余额数据</td>
+                            </tr>
+                        {% endif %}
                     </tbody>
                 </table>
             </div>
