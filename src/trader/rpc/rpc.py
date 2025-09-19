@@ -13,7 +13,7 @@ from fastapi import Response
 from trader.app.app import version
 from trader.common import path
 from trader.common.config import Config
-from trader.rpc.models import get_taskinfo, get_accounts_info
+from trader.rpc.models import get_taskinfo, get_accounts_info, get_logs_info
 from trader.rpc.rpc_app import RpcApp
 
 
@@ -95,7 +95,7 @@ async def klines_page(request: Request):
 
 @rpc.get("/logs", response_class=HTMLResponse)
 async def logs_page(request: Request):
-    return templates.TemplateResponse("logs.html", {"request": request})
+    return templates.TemplateResponse("logs.html", {"request": request,"logs_info":get_logs_info(request.app.state.app)})
 
 
 @rpc.get("/.well-known/appspecific/com.chrome.devtools.json")

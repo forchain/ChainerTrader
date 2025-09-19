@@ -11,6 +11,16 @@
                     <i class="fas fa-envelope text-primary me-3"></i>日志
                 </h1>
                 
+                <div class="mb-3">
+                    <label class="form-label">日志内容 (共 {{ logs_info.total }} 条)</label>
+                    <textarea 
+                        id="logsTextarea" 
+                        class="form-control font-monospace" 
+                        rows="20" 
+                        readonly 
+                        style="background-color: #f8f9fa; font-size: 0.9em; line-height: 1.4;"
+                    >{% if logs_info and logs_info.logs %}{{ logs_info.logs | join('\n') }}{% else %}暂无日志数据{% endif %}</textarea>
+                </div>
 
             </div>
         </div>
@@ -19,4 +29,12 @@
 {% endblock %}
 
 {% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const logsTextarea = document.getElementById('logsTextarea');
+    if (logsTextarea) {
+        logsTextarea.scrollTop = logsTextarea.scrollHeight;
+    }
+});
+</script>
 {% endblock %}

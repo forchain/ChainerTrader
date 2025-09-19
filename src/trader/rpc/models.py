@@ -18,6 +18,11 @@ class AcctsInfo(BaseModel):
     balances: list[Balance]
 
 
+class LogsInfo(BaseModel):
+    total: int = 0
+    logs: list[str]
+
+
 def get_taskinfo(app: App) -> TasksInfo:
     tss = app.task_manager.get_all_task_state()
     completed = 0
@@ -34,3 +39,9 @@ def get_accounts_info(app: App) -> AcctsInfo:
     balances = app.exchange.get_account_balances()
 
     return AcctsInfo(total=len(balances), balances=balances)
+
+
+def get_logs_info(app: App) -> LogsInfo:
+    logs = app.logger.get_buffer_str()
+
+    return LogsInfo(total=len(logs), logs=logs)
