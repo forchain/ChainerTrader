@@ -28,11 +28,11 @@ class LogBuffer:
         with self._lock:
             self.buffer.append(log_entry)
 
-    def get_logs(self) -> List[Dict[str, Any]]:
+    def get_logs(self) -> list[dict[str, Any]]:
         with self._lock:
             return list(self.buffer)
 
-    def get_logs_as_string(self) -> List[str]:
+    def get_logs_as_string(self) -> list[str]:
         logs = self.get_logs()
         return [f"[{log['timestamp']}] {log['level']}:{log['name']} {log['message']}" for log in logs]
 
@@ -44,7 +44,7 @@ class LogBuffer:
         return len(self.buffer)
 
     def is_empty(self) -> bool:
-        return len(self.buffer) == 0
+        return self.size() == 0
 
 
 class LogBufferHandler(logging.Handler):

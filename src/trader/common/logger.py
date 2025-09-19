@@ -6,11 +6,11 @@ from trader.common.log_buffer import LogBuffer, LogBufferHandler
 
 
 class Logger:
-    def __init__(self, cfg: Config, enable_log_buffer: bool = True, buffer_size: int = 100):
+    def __init__(self, cfg: Config, buffer_size: int = 100):
         self.cfg = cfg
         self.name = NAME
         self.logger = logging.getLogger(self.name)
-        self.enable_log_buffer = enable_log_buffer
+        self.enable_log_buffer = cfg.is_server()
 
         if self.enable_log_buffer:
             self.log_buffer = LogBuffer(buffer_size)
@@ -74,29 +74,18 @@ class Logger:
 
         logging.info("Init root logger")
 
-    def get_buff_logs(self):
-        if not self.enable_log_buffer or not self.log_buffer:
-            return []
-        return self.log_buffer.get_logs()
-
-    def get_logs_as_string(self):
+    def get_buffer_str(self) -> list[str]:
         if not self.enable_log_buffer or not self.log_buffer:
             return []
         return self.log_buffer.get_logs_as_string()
 
-    def clear_logs(self):
-        if self.enable_log_buffer and self.log_buffer:
-            self.log_buffer.clear()
-
-    def get_log_count(self):
+    def get_buffer_size(self):
         if not self.enable_log_buffer or not self.log_buffer:
             return 0
         return self.log_buffer.size()
 
-    def is_logs_empty(self):
-        if not self.enable_log_buffer or not self.log_buffer:
-            return True
-        return self.log_buffer.is_empty()
+    def is_buffer_empty(self):
+        return self.get_buffer_size() == 0
 
 
 def get_formatter():
