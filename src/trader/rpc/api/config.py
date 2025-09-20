@@ -5,4 +5,4 @@ router = APIRouter()
 
 @router.get("")
 def config(request: Request):
-    return request.app.state.app.cfg.to_dict()
+    return request.app.state.app.cfg.safe_to_dict()

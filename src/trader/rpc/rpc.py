@@ -2,18 +2,17 @@ import os
 from contextlib import asynccontextmanager
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi_auto_router import AutoRouter
-from fastapi.responses import HTMLResponse
-from fastapi import Request
-from fastapi import Response
 
 from trader.app.app import version
 from trader.common import path
 from trader.common.config import Config
-from trader.rpc.models import get_taskinfo, get_accounts_info, get_logs_info
+from trader.rpc.auth import BasicAuthMiddleware
+from trader.rpc.models import get_accounts_info, get_logs_info, get_taskinfo
 from trader.rpc.rpc_app import RpcApp
 
 
@@ -59,6 +58,10 @@ def start(cfg: Config):
 
     rpc.state.cfg = cfg
 
+    # Add authentication middleware if enabled
+    if cfg.is_auth_enabled():
+        rpc.add_middleware(BasicAuthMiddleware, config=cfg)
+
     # Initialize and load routers
     routers_dir = os.path.abspath(os.path.dirname(__file__))
     routers_dir = os.path.join(routers_dir, "api")
@@ -78,23 +81,29 @@ def start(cfg: Config):
 
 @rpc.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/admin")
+
+
+@rpc.get("/admin", response_class=HTMLResponse)
+async def admin_dashboard(request: Request):
     return templates.TemplateResponse(
         "index.html", {"request": request, "tasks_info": get_taskinfo(request.app.state.app), "accts_info": get_accounts_info(request.app.state.app)}
     )
 
 
-@rpc.get("/tasks", response_class=HTMLResponse)
-async def tasks_page(request: Request):
+@rpc.get("/admin/tasks", response_class=HTMLResponse)
+async def admin_tasks_page(request: Request):
     return templates.TemplateResponse("tasks.html", {"request": request, "tasks_info": get_taskinfo(request.app.state.app)})
 
 
-@rpc.get("/klines", response_class=HTMLResponse)
-async def klines_page(request: Request):
+@rpc.get("/admin/klines", response_class=HTMLResponse)
+async def admin_klines_page(request: Request):
     return templates.TemplateResponse("klines.html", {"request": request})
 
 
-@rpc.get("/logs", response_class=HTMLResponse)
-async def logs_page(request: Request):
+@rpc.get("/admin/logs", response_class=HTMLResponse)
+async def admin_logs_page(request: Request):
     return templates.TemplateResponse("logs.html", {"request": request,"logs_info":get_logs_info(request.app.state.app)})
 
 

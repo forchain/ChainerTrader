@@ -57,7 +57,7 @@ class App:
         return "CLI"
 
     def start(self):
-        self.log().info(f"Start {self.name()} App, config:{self.cfg.to_dict()}, running mode:{self.get_running_mode()}")
+        self.log().info(f"Start {self.name()} App, config:{self.cfg.safe_to_dict()}, running mode:{self.get_running_mode()}")
 
         if not self.cfg.is_server():
             if self.cfg.tasks is None:
