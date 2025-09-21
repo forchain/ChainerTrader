@@ -2,18 +2,17 @@ import asyncio
 import importlib
 from asyncio import Event
 from datetime import datetime
-from logging import Logger
 
 NAME = "trader"
 
 
-async def sleep(log: Logger, seconds, msg=None):
+async def sleep(log, seconds, msg=None):
     if msg:
         log.info(f"Waiting for {seconds} seconds for {msg}")
     await asyncio.sleep(seconds)
 
 
-async def sleep_loop(log: Logger, seconds, quit: Event, msg=None):
+async def sleep_loop(log, seconds, quit: Event, msg=None):
     if msg:
         log.info(f"Waiting for {seconds} seconds for {msg}")
     else:

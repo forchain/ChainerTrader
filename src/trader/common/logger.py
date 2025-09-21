@@ -2,7 +2,8 @@ import logging
 
 from trader.common.common import NAME
 from trader.common.config import Config
-from trader.common.log_buffer import LogBuffer, LogBufferHandler
+from trader.common.log_buffer import LogBuffer
+from trader.common.log_tag import LogTag
 
 
 class Logger:
@@ -62,22 +63,12 @@ class Logger:
         else:
             logging.basicConfig(level=self.cfg.log_level, format=formatter_str())
 
-        if self.enable_log_buffer and self.log_buffer:
-            buffer_handler = LogBufferHandler(self.log_buffer)
-            buffer_handler.setFormatter(get_formatter())
-            self.logger.addHandler(buffer_handler)
-
-            root_logger = logging.getLogger("root")
-            root_buffer_handler = LogBufferHandler(self.log_buffer)
-            root_buffer_handler.setFormatter(get_formatter())
-            root_logger.addHandler(root_buffer_handler)
-
         logging.info("Init root logger")
 
     def get_buffer_str(self) -> list[str]:
         if not self.enable_log_buffer or not self.log_buffer:
             return []
-        return self.log_buffer.get_logs_as_string()
+        return self.log_buffer.get_logs()
 
     def get_buffer_size(self):
         if not self.enable_log_buffer or not self.log_buffer:
@@ -86,6 +77,30 @@ class Logger:
 
     def is_buffer_empty(self):
         return self.get_buffer_size() == 0
+
+    def info(self, msg: str, tag: LogTag = LogTag.GENERAl):
+        if self.enable_log_buffer and self.log_buffer and tag != LogTag.PRIVATE and self.logger.isEnabledFor(logging.INFO):
+            self.log_buffer.add(msg)
+
+        self.logger.info(msg)
+
+    def debug(self, msg: str, tag: LogTag = LogTag.GENERAl):
+        if self.enable_log_buffer and self.log_buffer and tag != LogTag.PRIVATE and self.logger.isEnabledFor(logging.DEBUG):
+            self.log_buffer.add(msg)
+
+        self.logger.debug(msg)
+
+    def error(self, msg: str, tag: LogTag = LogTag.GENERAl):
+        if self.enable_log_buffer and self.log_buffer and tag != LogTag.PRIVATE and self.logger.isEnabledFor(logging.ERROR):
+            self.log_buffer.add(msg)
+
+        self.logger.error(msg)
+
+    def warning(self, msg: str, tag: LogTag = LogTag.GENERAl):
+        if self.enable_log_buffer and self.log_buffer and tag != LogTag.PRIVATE and self.logger.isEnabledFor(logging.WARNING):
+            self.log_buffer.add(msg)
+
+        self.logger.warning(msg)
 
 
 def get_formatter():

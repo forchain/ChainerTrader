@@ -1,5 +1,5 @@
 from asyncio import Queue
-from logging import Logger
+from trader.common.logger import Logger
 
 from trader.common.common import sleep
 from trader.common.config import Config

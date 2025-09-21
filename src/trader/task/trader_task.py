@@ -1,6 +1,6 @@
 from asyncio import Queue
 from datetime import datetime
-from logging import Logger
+from trader.common.logger import Logger
 
 from trader.common.common import MIN_RECORDS_NUM, sleep, sleep_loop
 from trader.common.config import Config

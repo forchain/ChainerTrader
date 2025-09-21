@@ -1,6 +1,6 @@
 import asyncio
 from asyncio import Queue
-from logging import Logger
+from trader.common.logger import Logger
 from multiprocessing import Manager, Process
 
 from trader.common.config import Config
