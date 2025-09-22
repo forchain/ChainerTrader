@@ -3,18 +3,15 @@ from trader.common.logger import Logger
 
 from trader.common.common import sleep
 from trader.common.config import Config
+from trader.database.manager import DatabaseManager
 from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig
 
 
 class DebugTask(BaseTask):
-    def __init__(
-        self,
-        tcfg: TaskConfig,
-        cfg: Config,
-        log: Logger,
-    ):
-        super().__init__(tcfg, cfg, log)
+
+    def __init__(self, tcfg: TaskConfig, cfg: Config, log: Logger, db_manager: DatabaseManager):
+        super().__init__(tcfg, cfg, log, db_manager)
 
     def name(self):
         return f"{self.tcfg.id}.{self.type().name}"

@@ -108,7 +108,7 @@ class TaskManager:
         elif cfg.ttype == TaskType.CHECK_KLINES_NUM:
             task = CheckKlinesNumTask(cfg, self.cfg, self.log, self.db_manager, self.exchange)
         elif cfg.ttype == TaskType.DEBUG:
-            task = DebugTask(cfg, self.cfg, self.log)
+            task = DebugTask(cfg, self.cfg, self.log, self.db_manager)
 
         if task is None:
             self.log.error(f"Can't add task:{cfg.to_dict()}")
