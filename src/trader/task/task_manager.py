@@ -1,5 +1,7 @@
 import asyncio
 from asyncio import Queue
+
+from trader.common.log_tag import LogTag
 from trader.common.logger import Logger
 from multiprocessing import Manager, Process
 
@@ -145,8 +147,13 @@ class TaskManager:
             for p in processes:
                 p.join()
 
-            for msg in result:
-                self.log.info(f"Relay process queue message:{msg.name()}")
+            for reArr in result:
+                msg = reArr[0]
+                logs = reArr[1]
+                for log_str in logs:
+                    self.log.info(log_str, LogTag.STRATEGY)
+
+                self.log.info(f"Relay process queue message:{msg.name()}", LogTag.STRATEGY)
                 bts: BackTraderStat = msg.get_data()
                 task = self.get_task(bts.ts.id)
                 if task:

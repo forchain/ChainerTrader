@@ -3,6 +3,7 @@ from datetime import datetime
 from trader.common import path
 from trader.common.common import MIN_RECORDS_NUM
 from trader.common.config import Config
+from trader.common.log_tag import LogTag
 from trader.common.logger import Logger
 from trader.common.message import new_stat_msg
 from trader.database.manager import DatabaseManager
@@ -111,20 +112,23 @@ def process_backtrader(parmas, result):
     tcfg = parmas[3]
     ts = parmas[4]
 
-    logger = Logger(cfg)
+    logger = Logger(cfg, 10000, True)
 
-    logger.log().info(f"start do backtrader: {tcfg.id}")
-    node = Node(tcfg.strategy_name(), strategy, tcfg.symbol_interval, cfg, logger.log(), data)
+    logger.info(f"start do backtrader: {tcfg.id}", LogTag.STRATEGY)
+    node = Node(tcfg.strategy_name(), strategy, tcfg.symbol_interval, cfg, logger, data)
     ret = node.start()
-    logger.log().info(f"end do backtrader: {tcfg.id}")
+    logger.info(f"end do backtrader: {tcfg.id}", LogTag.STRATEGY)
     if ret is None:
         return
 
     ts.tret = ret
 
     result.append(
-        new_stat_msg(
-            BackTraderStat(tcfg.strategy_name(), tcfg.symbol_interval.name(), ts),
-            tcfg.id,
-        )
+        [
+            new_stat_msg(
+                BackTraderStat(tcfg.strategy_name(), tcfg.symbol_interval.name(), ts),
+                tcfg.id,
+            ),
+            logger.log_buffer.get_logs(),
+        ]
     )

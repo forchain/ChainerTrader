@@ -7,11 +7,13 @@ from trader.common.log_tag import LogTag
 
 
 class Logger:
-    def __init__(self, cfg: Config, buffer_size: int = 100):
+    def __init__(self, cfg: Config, buffer_size: int = 100, enable_log_buffer: bool = False):
         self.cfg = cfg
         self.name = NAME
         self.logger = logging.getLogger(self.name)
-        self.enable_log_buffer = cfg.is_server()
+        self.enable_log_buffer = enable_log_buffer
+        if not self.enable_log_buffer:
+            self.enable_log_buffer = cfg.is_server()
 
         if self.enable_log_buffer:
             self.log_buffer = LogBuffer(buffer_size)
