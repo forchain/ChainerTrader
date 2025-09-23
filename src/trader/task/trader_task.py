@@ -120,7 +120,8 @@ class TraderTask(BaseTask):
             op = ret.opts[-1]
             if op.otype == OperateType.BUY:
                 cash = self.exchange.get_account_balance(self.tcfg.symbol_interval.sy.quote)
-                if cash > 0:
+                free = cash - self.cfg.locked
+                if free > 0:
                     self.exchange.new_order(self.tcfg.symbol_interval.symbol(), op.otype)
                 else:
                     self.log.info(f"Due to insufficient balance, we have given up placing orders with the exchange")
