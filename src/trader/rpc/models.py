@@ -23,6 +23,10 @@ class LogsInfo(BaseModel):
     logs: list[str]
 
 
+class KlinesInfo(BaseModel):
+    total: int = 0
+
+
 def get_taskinfo(app: App) -> TasksInfo:
     tss = app.task_manager.get_all_task_state()
     completed = 0
@@ -45,3 +49,8 @@ def get_logs_info(app: App) -> LogsInfo:
     logs = app.logger.get_buffer_str()
 
     return LogsInfo(total=len(logs), logs=logs)
+
+
+def get_klines_info(app: App) -> KlinesInfo:
+
+    return KlinesInfo(total=0)

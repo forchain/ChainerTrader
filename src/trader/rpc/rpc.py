@@ -12,7 +12,7 @@ from trader.app.app import version
 from trader.common import path
 from trader.common.config import Config
 from trader.rpc.auth import BasicAuthMiddleware
-from trader.rpc.models import get_accounts_info, get_logs_info, get_taskinfo
+from trader.rpc.models import get_accounts_info, get_logs_info, get_taskinfo, get_klines_info
 from trader.rpc.rpc_app import RpcApp
 
 
@@ -99,7 +99,7 @@ async def admin_tasks_page(request: Request):
 
 @rpc.get("/admin/klines", response_class=HTMLResponse)
 async def admin_klines_page(request: Request):
-    return templates.TemplateResponse("klines.html", {"request": request})
+    return templates.TemplateResponse("klines.html", {"request": request,"klines_info": get_klines_info(request.app.state.app)})
 
 
 @rpc.get("/admin/logs", response_class=HTMLResponse)
