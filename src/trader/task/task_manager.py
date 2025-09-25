@@ -20,6 +20,7 @@ from trader.task.task_config import TaskConfig, parse_task_config
 from trader.task.task_type import TaskType
 from trader.task.trader_task import TraderTask
 from trader.task.update_klines_task import UpdateKlinesTask
+from trader.utils.symbol_interval import SymbolInterval
 from trader.utils.task_state import TaskState
 
 
@@ -38,6 +39,7 @@ class TaskManager:
         self.log.info("Init TaskManager")
         self.tasks: dict[int, BaseTask] = {}
         self.async_tasks = []
+        self.latest_si: SymbolInterval | None = None
 
     def start(self):
         self.log.info("TaskManager start")
@@ -72,6 +74,9 @@ class TaskManager:
         for taskc in taskcs:
             if taskc.ttype == TaskType.BACK_TRADER:
                 bttaskcs.append(taskc)
+            if taskc.symbol_interval:
+                self.latest_si = taskc.symbol_interval
+
         if len(bttaskcs) > 0:
             async_tasks.append(asyncio.create_task(self.add_backtrader_task(bttaskcs, queue)))
 

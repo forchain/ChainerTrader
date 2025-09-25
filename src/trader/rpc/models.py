@@ -25,6 +25,7 @@ class LogsInfo(BaseModel):
 
 class KlinesInfo(BaseModel):
     total: int = 0
+    klines: list[dict[str, Any]]
 
 
 def get_taskinfo(app: App) -> TasksInfo:
@@ -52,5 +53,15 @@ def get_logs_info(app: App) -> LogsInfo:
 
 
 def get_klines_info(app: App) -> KlinesInfo:
+    if not app.task_manager.latest_si:
+        return KlinesInfo(total=0, klines=[])
 
-    return KlinesInfo(total=0)
+    collection = app.db_manager.kline.get_collection(app.task_manager.latest_si.name())
+    kls_cache = app.db_manager.kline.get_latest_klines(collection, 1000)
+
+    klines: list[dict[str, Any]] = []
+    if len(kls_cache) > 0:
+        for kl in kls_cache:
+            klines.append(kl.to_dict())
+
+    return KlinesInfo(total=0, klines=klines)
