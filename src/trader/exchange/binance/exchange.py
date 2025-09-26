@@ -86,14 +86,14 @@ class BinanceExchange:
                 start_time *= 1000
                 end_time *= 1000
                 rsp = self.spot_client.rest_api.klines(
-                    si.symbol,
+                    si.symbol(),
                     si.interval.value,
                     start_time=start_time,
                     end_time=end_time,
                     limit=r_limit,
                 )
             else:
-                rsp = self.spot_client.rest_api.klines(si.symbol, si.interval.value, limit=r_limit)
+                rsp = self.spot_client.rest_api.klines(si.symbol(), si.interval.value, limit=r_limit)
             ret = rsp.data()
         except Exception as e:
             self.log.error(f"{e}")

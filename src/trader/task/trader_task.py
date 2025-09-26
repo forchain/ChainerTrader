@@ -55,7 +55,7 @@ class TraderTask(BaseTask):
 
         self.collection = self.db_manager.kline.get_collection(self.tcfg.symbol_interval.name())
 
-        commission = self.exchange.get_account_commission(self.tcfg.symbol_interval.symbol)
+        commission = self.exchange.get_account_commission(self.tcfg.symbol_interval.symbol())
         if commission:
             self.cfg.commission = commission
             self.log.info(f"set commission for trader task config:{self.cfg.commission}")
