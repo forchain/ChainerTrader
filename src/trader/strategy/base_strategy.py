@@ -140,4 +140,5 @@ class BaseStrategy(bt.Strategy):
         if self.params.trader:
             if self.bar_idx() + 2 >= self.total_bars:
                 return True
-        return False
+            return False
+        return True
