@@ -115,18 +115,79 @@
 
 {% block scripts %}
 <style>
-/* 简易树形视图样式（类似资源管理器） */
-.tree-container { font-family: var(--bs-body-font-family); }
-.tree-node { margin-left: 16px; }
-.tree-item { cursor: pointer; user-select: none; display: flex; align-items: center; gap: 6px; }
-.tree-item .caret { width: 14px; display: inline-block; text-align: center; color: var(--bs-secondary-color); }
-.tree-item .key { font-weight: 600; }
-.tree-item .meta { color: var(--bs-secondary-color); font-size: 12px; }
-.tree-leaf { cursor: default; }
-.tree-children { margin-top: 4px; margin-left: 14px; border-left: 1px dashed var(--bs-border-color); padding-left: 10px; }
-.tree-value { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
-.tree-badge { display: inline-block; padding: 0.1rem 0.35rem; border-radius: 0.25rem; font-size: 0.75rem; background: var(--bs-tertiary-bg); color: var(--bs-secondary-color); }
-pre.tree-json { background: var(--bs-tertiary-bg); padding: 8px; border-radius: 6px; margin: 0; }
+/* 属性表格样式 */
+.property-table {
+    font-family: var(--bs-body-font-family);
+    border-collapse: collapse;
+    width: 100%;
+    margin: 0;
+}
+
+.property-table th {
+    background-color: var(--bs-light);
+    color: var(--bs-dark);
+    font-weight: 600;
+    text-align: left;
+    padding: 12px 16px;
+    border: 1px solid var(--bs-border-color);
+    width: 30%;
+    vertical-align: top;
+}
+
+.property-table td {
+    padding: 12px 16px;
+    border: 1px solid var(--bs-border-color);
+    vertical-align: top;
+    word-break: break-word;
+}
+
+.property-table tr:nth-child(even) {
+    background-color: var(--bs-tertiary-bg);
+}
+
+.property-table tr:hover {
+    background-color: var(--bs-secondary-bg);
+}
+
+.property-value {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: 0.9em;
+}
+
+.property-badge {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.375rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.badge-success { background-color: var(--bs-success); color: white; }
+.badge-warning { background-color: var(--bs-warning); color: var(--bs-dark); }
+.badge-danger { background-color: var(--bs-danger); color: white; }
+.badge-info { background-color: var(--bs-info); color: white; }
+.badge-secondary { background-color: var(--bs-secondary); color: white; }
+
+.section-header {
+    background-color: var(--bs-primary);
+    color: white;
+    font-weight: 600;
+    text-align: center;
+    padding: 8px 16px;
+    margin: 16px 0 8px 0;
+    border-radius: 0.375rem;
+}
+
+.section-header:first-child {
+    margin-top: 0;
+}
+
+.no-data {
+    text-align: center;
+    color: var(--bs-secondary);
+    font-style: italic;
+    padding: 20px;
+}
 </style>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
@@ -201,101 +262,165 @@ async function openTaskDetailModal(taskId) {
     }
 }
 
-// 递归渲染树形 TaskState（完整展示服务端返回的数据）
+// 渲染任务详情为属性表格
 function renderTaskDetailTree(container, rawData) {
-    // 直接使用完整返回，不再优先 data/result
     const data = rawData;
 
-    const wrapper = document.createElement('div');
-    wrapper.className = 'tree-container';
-
     if (data == null) {
-        wrapper.innerHTML = '<div class="text-muted">无可显示的数据</div>';
-        container.innerHTML = '';
-        container.appendChild(wrapper);
+        container.innerHTML = '<div class="no-data">无可显示的数据</div>';
         return;
     }
 
-    // 构造根节点
-    const rootHtml = buildTreeHtml(undefined, data, true);
-    wrapper.innerHTML = rootHtml;
+    // 创建表格容器
+    const tableContainer = document.createElement('div');
+    
+    // 基本信息部分
+    const basicInfoHtml = renderBasicInfoSection(data);
+    
+    // 交易结果部分
+    const traderResultHtml = renderTraderResultSection(data.tret);
+    
+    tableContainer.innerHTML = basicInfoHtml + traderResultHtml;
     container.innerHTML = '';
-    container.appendChild(wrapper);
-
-    // 事件委托：展开/收起
-    wrapper.addEventListener('click', function(e) {
-        const item = e.target.closest('.tree-item');
-        if (!item || item.classList.contains('tree-leaf')) return;
-        const node = item.parentElement; // .tree-node
-        const children = node.querySelector(':scope > .tree-children');
-        if (!children) return;
-
-        const expanded = item.getAttribute('data-expanded') !== 'false';
-        if (expanded) {
-            item.setAttribute('data-expanded', 'false');
-            const caret = item.querySelector(':scope > .caret');
-            if (caret) caret.textContent = '▸';
-            children.style.display = 'none';
-        } else {
-            item.setAttribute('data-expanded', 'true');
-            const caret = item.querySelector(':scope > .caret');
-            if (caret) caret.textContent = '▾';
-            children.style.display = '';
-        }
-    });
+    container.appendChild(tableContainer);
 }
 
-function buildTreeHtml(key, value, isRoot = false) {
-    const type = getType(value);
-    if (type === 'object' || type === 'array') {
-        const size = type === 'array' ? value.length : Object.keys(value).length;
-        const label = isRoot
-            ? (type === 'array' ? `Root [Array(${size})]` : 'Root [Object]')
-            : (type === 'array' ? `${escapeHtml(String(key))} <span class="meta">[Array(${size})]</span>`
-                                : `${escapeHtml(String(key))} <span class="meta">[Object]</span>`);
-
-        const childrenHtml = Object.entries(type === 'array' ? value : value).map(([k, v]) => buildTreeHtml(k, v, false)).join('');
-
-        // 根默认展开，其他默认展开也行，这里设为展开
-        return `
-<div class="tree-node">
-  <div class="tree-item" data-expanded="true">
-    <span class="caret">▾</span>
-    <span class="key">${label}</span>
-  </div>
-  <div class="tree-children">${childrenHtml}</div>
-</div>`;
-    }
-
-    // 叶子节点
+// 渲染基本信息部分
+function renderBasicInfoSection(data) {
+    const stateBadge = getStateBadge(data.state);
+    
     return `
-<div class="tree-node">
-  <div class="tree-item tree-leaf">
-    <span class="caret"></span>
-    <span class="key">${escapeHtml(String(key))}:</span>
-    <span class="tree-value">${formatPrimitive(value)}</span>
-  </div>
-</div>`;
+        <div class="section-header">基本信息</div>
+        <table class="property-table">
+            <tr>
+                <th>任务ID</th>
+                <td><span class="property-value">${escapeHtml(String(data.task_id || ''))}</span></td>
+            </tr>
+            <tr>
+                <th>任务名称</th>
+                <td><span class="property-value">${escapeHtml(String(data.name || ''))}</span></td>
+            </tr>
+            <tr>
+                <th>任务状态</th>
+                <td>${stateBadge}</td>
+            </tr>
+            <tr>
+                <th>开始时间</th>
+                <td><span class="property-value">${escapeHtml(String(data.start_time || ''))}</span></td>
+            </tr>
+        </table>
+    `;
 }
 
-function getType(val) {
-    if (Array.isArray(val)) return 'array';
-    if (val === null) return 'null';
-    return typeof val === 'object' ? 'object' : 'primitive';
+// 渲染交易结果部分
+function renderTraderResultSection(tret) {
+    if (!tret) {
+        return `
+            <div class="section-header">交易结果</div>
+            <div class="no-data">暂无交易结果数据</div>
+        `;
+    }
+
+    return `
+        <div class="section-header">交易结果</div>
+        <table class="property-table">
+            <tr>
+                <th>总收益率</th>
+                <td><span class="property-value">${formatPercentage(tret.total_return_rate)}</span></td>
+            </tr>
+            <tr>
+                <th>最大回撤</th>
+                <td><span class="property-value">${formatPercentage(tret.max_drawdown)}</span></td>
+            </tr>
+            <tr>
+                <th>回撤时长</th>
+                <td><span class="property-value">${formatDuration(tret.max_drawdown_duration)}</span></td>
+            </tr>
+            <tr>
+                <th>波动率</th>
+                <td><span class="property-value">${formatPercentage(tret.volatility)}</span></td>
+            </tr>
+            <tr>
+                <th>胜率</th>
+                <td><span class="property-value">${formatPercentage(tret.win_rate)}</span></td>
+            </tr>
+            <tr>
+                <th>盈亏比</th>
+                <td><span class="property-value">${formatNumber(tret.plr)}</span></td>
+            </tr>
+            <tr>
+                <th>平均盈利</th>
+                <td><span class="property-value">${formatNumber(tret.avg_profit)}</span></td>
+            </tr>
+            <tr>
+                <th>平均亏损</th>
+                <td><span class="property-value">${formatNumber(tret.avg_loss)}</span></td>
+            </tr>
+            <tr>
+                <th>操作买单数</th>
+                <td><span class="property-value">${formatNumber(tret.buys)}</span></td>
+            </tr>
+            <tr>
+                <th>操作卖单数</th>
+                <td><span class="property-value">${formatNumber(tret.sells)}</span></td>
+            </tr>
+            <tr>
+                <th>持有增长率</th>
+                <td><span class="property-value">${formatPercentage(tret.hold_rate)}</span></td>
+            </tr>
+            <tr>
+                <th>数据量</th>
+                <td><span class="property-value">${formatNumber(tret.data_len)}</span></td>
+            </tr>
+        </table>
+    `;
 }
 
-function formatPrimitive(val) {
-    if (val === null || val === undefined) return '<span class="text-muted">null</span>';
-    if (typeof val === 'boolean') {
-        return val ? '<span class="badge bg-success">true</span>' : '<span class="badge bg-secondary">false</span>';
+// 获取状态徽章
+function getStateBadge(state) {
+    const stateMap = {
+        'READY': { class: 'badge-secondary', text: '就绪' },
+        'RUNNING': { class: 'badge-info', text: '运行中' },
+        'DONE': { class: 'badge-success', text: '已完成' },
+        'ERROR': { class: 'badge-danger', text: '错误' },
+        'CANCELLED': { class: 'badge-warning', text: '已取消' }
+    };
+    
+    const stateInfo = stateMap[state] || { class: 'badge-secondary', text: state || '未知' };
+    return `<span class="property-badge ${stateInfo.class}">${stateInfo.text}</span>`;
+}
+
+// 格式化百分比
+function formatPercentage(value) {
+    if (value === null || value === undefined) return 'N/A';
+    return `${(value * 100).toFixed(2)}%`;
+}
+
+// 格式化数字
+function formatNumber(value) {
+    if (value === null || value === undefined) return 'N/A';
+    if (typeof value === 'number') {
+        return value.toFixed(2);
     }
-    if (typeof val === 'number') return String(val);
-    if (typeof val === 'string') return escapeHtml(val);
-    try {
-        return `<span class="tree-badge">${escapeHtml(JSON.stringify(val))}</span>`;
-    } catch (_) {
-        return escapeHtml(String(val));
-    }
+    return String(value);
+}
+
+// 格式化持续时间（秒）
+function formatDuration(seconds) {
+    if (seconds === null || seconds === undefined) return 'N/A';
+    
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+    
+    const parts = [];
+    if (days > 0) parts.push(`${days}天`);
+    if (hours > 0) parts.push(`${hours}小时`);
+    if (minutes > 0) parts.push(`${minutes}分钟`);
+    if (secs > 0 || parts.length === 0) parts.push(`${secs}秒`);
+    
+    return parts.join(' ');
 }
 
 function escapeHtml(str) {
