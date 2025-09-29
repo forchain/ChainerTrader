@@ -32,12 +32,13 @@ DATETIME_FORMART = "%Y-%m-%d %H:%M:%S"
 
 
 class TaskState:
-    def __init__(self, id: int, name: str, start_time: datetime, tret: TraderResult = None):
+    def __init__(self, id: int, name: str, start_time: datetime, tret: TraderResult = None, commission: float = 0):
         self.id = id
         self.state = TaskStateType.READY
         self.tret = tret
         self.name = name
         self.start_time = start_time
+        self.commission = commission
 
     def to_dict(self) -> dict[str, Any]:
         ret: dict[str, Any] = {
@@ -45,6 +46,7 @@ class TaskState:
             "state": self.state.name,
             "name": self.name,
             "start_time": self.start_time.strftime(DATETIME_FORMART),
+            "commission": self.commission,
         }
 
         if self.tret:
@@ -87,5 +89,9 @@ def parse_task_state(data) -> TaskState:
             # Log error and continue without tret
             print(f"Error parsing trader result: {e}")
             ts.tret = None
+
+    commission = data.get("commission")
+    if commission:
+        ts.commission = float(commission)
 
     return ts

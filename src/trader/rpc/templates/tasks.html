@@ -375,6 +375,10 @@ function renderBasicInfoSection(data) {
                 <th>开始时间</th>
                 <td><span class="property-value">${escapeHtml(String(data.start_time || ''))}</span></td>
             </tr>
+            <tr>
+                <th>手续费</th>
+                <td><span class="property-value">${formatNumber(data.commission)}</span></td>
+            </tr>
         </table>
     `;
 }

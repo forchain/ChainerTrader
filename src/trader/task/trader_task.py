@@ -59,6 +59,7 @@ class TraderTask(BaseTask):
         if commission:
             self.cfg.commission = commission
             self.log.info(f"set commission for trader task config:{self.cfg.commission}")
+            self.ts.commission = commission
 
         while not self.quit.is_set():
             ret = await download(
