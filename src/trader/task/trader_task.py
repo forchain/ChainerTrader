@@ -83,14 +83,24 @@ class TraderTask(BaseTask):
 
             position = self.exchange.get_account_balance(self.tcfg.symbol_interval.sy.base)
 
-            node = Node(self.tcfg.strategy_name(), strategy, self.tcfg.symbol_interval, self.cfg, self.log, BinanceData(kls_cache), position, True)
+            node = Node(
+                self.tcfg.strategy_name(),
+                strategy,
+                self.tcfg.symbol_interval,
+                self.cfg,
+                self.log,
+                BinanceData(kls_cache),
+                position,
+                True,
+                self.tcfg.free,
+            )
             ret = node.start()
             if ret is None:
                 continue
 
             self.process_result(ret)
 
-            self.operate_exchange(ret)
+            self.operate_exchange(ret, position)
 
             await queue.put(
                 new_stat_msg(
@@ -116,15 +126,17 @@ class TraderTask(BaseTask):
         self.ts.tret = ret
         self.db_manager.task.add_tasks([self.ts])
 
-    def operate_exchange(self, ret: TraderResult):
+    def operate_exchange(self, ret: TraderResult, position: float):
         if ret.opts:
             op = ret.opts[-1]
             if op.otype == OperateType.BUY:
                 cash = self.exchange.get_account_balance(self.tcfg.symbol_interval.sy.quote)
-                free = cash - self.cfg.locked
-                if free > 0:
-                    self.exchange.new_order(self.tcfg.symbol_interval.symbol(), op.otype)
+
+                if self.tcfg.free <= cash:
+                    quantity = self.tcfg.free / op.price
+                    self.log.info(f"New order:symbol={self.tcfg.symbol_interval.symbol()},operateType={op.otype},quantity={quantity}")
+                    self.exchange.new_order(self.tcfg.symbol_interval.symbol(), op.otype, quantity)
                 else:
                     self.log.info(f"Due to insufficient balance, we have given up placing orders with the exchange")
             else:
-                self.exchange.new_order(self.tcfg.symbol_interval.symbol(), op.otype)
+                self.exchange.new_order(self.tcfg.symbol_interval.symbol(), op.otype, position)

@@ -17,12 +17,22 @@ from trader.utils.symbol_interval import SymbolInterval, get_time_duration
 
 class Node:
     def __init__(
-        self, name, strategy, si: SymbolInterval, cfg: Config = None, log: Logger = None, data=None, position: float = 0, trader: bool = False
+        self,
+        name,
+        strategy,
+        si: SymbolInterval,
+        cfg: Config = None,
+        log: Logger = None,
+        data=None,
+        position: float = 0,
+        trader: bool = False,
+        free: float = 0,
     ):
         self.log = log
         self.name = name
         self.cfg = cfg
         self.si = si
+        self.free = free
 
         log.info("New node", LogTag.STRATEGY)
 
@@ -61,7 +71,7 @@ class Node:
             cerebro.adddata(data_ha)
             self.log.info(f"Add HeikinAshi data for {self.name}", LogTag.STRATEGY)
 
-        cerebro.broker.setcash(cfg.get_free())
+        cerebro.broker.setcash(free)
 
         cerebro.addsizer(bt.sizers.FixedSize, stake=10)
 
@@ -108,7 +118,7 @@ class Node:
         ret = rets[0]
 
         finalFund = self.cerebro.broker.getvalue()
-        totalReturnRate = (finalFund - self.cfg.get_free()) / self.cfg.cash * 100
+        totalReturnRate = (finalFund - self.free) / self.cfg.cash * 100
 
         hold_rate = self.get_hold_rate()
 
@@ -157,8 +167,8 @@ class Node:
         table.add_row(["手续费率", self.cfg.commission])
         table.add_row(["ATR", self.cfg.atr])
         table.add_row(["初始资金", format(self.cfg.cash, ".2f")])
-        table.add_row(["冻结资金", format(self.cfg.locked, ".2f")])
-        table.add_row(["可用资金", format(self.cfg.get_free(), ".2f")])
+        table.add_row(["冻结资金", format(self.cfg.cash - self.free, ".2f")])
+        table.add_row(["可用资金", format(self.free, ".2f")])
         table.add_row(["最终资金", format(finalFund, ".2f")])
         table.add_row(["操作买单数", optstat["buys"]])
         table.add_row(["操作卖单数", optstat["sells"]])
