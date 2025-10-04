@@ -16,7 +16,7 @@
                     {% if tasks_info.tasks %}
                         {% for task in tasks_info.tasks %}
                         <div class="task-item border rounded p-3 mb-3" data-task-id="{{ task.task_id }}">
-                            <div class="d-flex align-items-start">
+                            <div class="d-flex align-items-start justify-content-between">
                                 <div class="flex-grow-1">
                                     {% if task.name %}
                                     <p class="text-muted mb-2 small">{{ task.name }}</p>
@@ -25,6 +25,19 @@
                                         <i class="fas fa-calendar me-1"></i>
                                         {{ task.start_time if task.start_time else '未知时间' }}
                                     </small>
+                                </div>
+                                <div class="ms-3">
+                                    <span class="badge task-status-badge" data-state="{{ task.state }}">
+                                        {% if task.state == 'READY' %}
+                                            <i class="fas fa-clock me-1"></i>就绪
+                                        {% elif task.state == 'RUNNING' %}
+                                            <i class="fas fa-play me-1"></i>运行中
+                                        {% elif task.state == 'DONE' %}
+                                            <i class="fas fa-check me-1"></i>已完成
+                                        {% else %}
+                                            <i class="fas fa-question me-1"></i>{{ task.state }}
+                                        {% endif %}
+                                    </span>
                                 </div>
                             </div>
                         </div>
@@ -254,6 +267,40 @@
 .opts-unknown {
     background-color: var(--bs-secondary);
     color: white;
+}
+
+/* 任务状态徽章样式 */
+.task-status-badge {
+    font-size: 0.75rem;
+    font-weight: 500;
+    padding: 0.375rem 0.75rem;
+    border-radius: 0.5rem;
+    white-space: nowrap;
+}
+
+.task-status-badge[data-state="READY"] {
+    background-color: var(--bs-secondary);
+    color: white;
+}
+
+.task-status-badge[data-state="RUNNING"] {
+    background-color: var(--bs-info);
+    color: white;
+}
+
+.task-status-badge[data-state="DONE"] {
+    background-color: var(--bs-success);
+    color: white;
+}
+
+.task-status-badge[data-state="ERROR"] {
+    background-color: var(--bs-danger);
+    color: white;
+}
+
+.task-status-badge[data-state="CANCELLED"] {
+    background-color: var(--bs-warning);
+    color: var(--bs-dark);
 }
 </style>
 <script>
