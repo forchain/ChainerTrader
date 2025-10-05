@@ -403,6 +403,19 @@ function renderTaskDetailTree(container, rawData) {
 function renderBasicInfoSection(data) {
     const stateBadge = getStateBadge(data.state);
     
+    let configJsonSection = '';
+    if (data.config_json) {
+        configJsonSection = `
+            <div class="section-header">配置参数</div>
+            <div style="position: relative;">
+                <pre id="configJsonDisplay" style="background: #f8f9fa; padding: 12px; border-radius: 4px; overflow-x: auto; font-size: 13px; margin: 0;">${escapeHtml(data.config_json)}</pre>
+                <button onclick="copyConfigJson()" class="btn btn-sm btn-outline-primary" style="position: absolute; top: 8px; right: 8px;">
+                    <i class="fas fa-copy"></i> 复制
+                </button>
+            </div>
+        `;
+    }
+    
     return `
         <div class="section-header">基本信息</div>
         <table class="property-table">
@@ -419,14 +432,33 @@ function renderBasicInfoSection(data) {
                 <td>${stateBadge}</td>
             </tr>
             <tr>
-                <th>开始时间</th>
+                <th>任务执行时间</th>
                 <td><span class="property-value">${escapeHtml(String(data.start_time || ''))}</span></td>
             </tr>
+            ${data.strategy_start_time ? `
             <tr>
-                <th>手续费</th>
+                <th>策略开始时间</th>
+                <td><span class="property-value">${escapeHtml(String(data.strategy_start_time))}</span></td>
+            </tr>
+            ` : ''}
+            ${data.strategy_end_time ? `
+            <tr>
+                <th>策略结束时间</th>
+                <td><span class="property-value">${escapeHtml(String(data.strategy_end_time))}</span></td>
+            </tr>
+            ` : ''}
+            ${data.initial_cash ? `
+            <tr>
+                <th>初始资金</th>
+                <td><span class="property-value">${formatNumber(data.initial_cash)}</span></td>
+            </tr>
+            ` : ''}
+            <tr>
+                <th>手续费率</th>
                 <td><span class="property-value">${formatNumber(data.commission)}</span></td>
             </tr>
         </table>
+        ${configJsonSection}
     `;
 }
 
@@ -573,6 +605,27 @@ function formatDuration(seconds) {
     if (secs > 0 || parts.length === 0) parts.push(`${secs}秒`);
     
     return parts.join(' ');
+}
+
+// Copy config JSON to clipboard
+function copyConfigJson() {
+    const configText = document.getElementById('configJsonDisplay').textContent;
+    navigator.clipboard.writeText(configText).then(() => {
+        // Show success feedback
+        const btn = event.target.closest('button');
+        const originalHtml = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-check"></i> 已复制';
+        btn.classList.remove('btn-outline-primary');
+        btn.classList.add('btn-success');
+        setTimeout(() => {
+            btn.innerHTML = originalHtml;
+            btn.classList.remove('btn-success');
+            btn.classList.add('btn-outline-primary');
+        }, 2000);
+    }).catch(err => {
+        alert('复制失败，请手动复制');
+        console.error('Copy failed:', err);
+    });
 }
 
 // 格式化日期时间（时间戳）

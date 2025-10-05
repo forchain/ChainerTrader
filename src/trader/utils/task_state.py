@@ -1,9 +1,9 @@
 import json
+from datetime import datetime
 from enum import Enum
 from typing import Any
 
 from trader.strategy.trader_result import TraderResult, parse_trader_result
-from datetime import datetime
 
 
 class TaskStateType(Enum):
@@ -32,13 +32,28 @@ DATETIME_FORMART = "%Y-%m-%d %H:%M:%S"
 
 
 class TaskState:
-    def __init__(self, id: int, name: str, start_time: datetime, tret: TraderResult = None, commission: float = 0):
+    def __init__(
+        self,
+        id: int,
+        name: str,
+        start_time: datetime,
+        tret: TraderResult = None,
+        commission: float = 0,
+        strategy_start_time: int = 0,
+        strategy_end_time: int = 0,
+        initial_cash: float = 0,
+        config_json: str = None,
+    ):
         self.id = id
         self.state = TaskStateType.READY
         self.tret = tret
         self.name = name
         self.start_time = start_time
         self.commission = commission
+        self.strategy_start_time = strategy_start_time
+        self.strategy_end_time = strategy_end_time
+        self.initial_cash = initial_cash
+        self.config_json = config_json
 
     def to_dict(self) -> dict[str, Any]:
         ret: dict[str, Any] = {
@@ -48,6 +63,15 @@ class TaskState:
             "start_time": self.start_time.strftime(DATETIME_FORMART),
             "commission": self.commission,
         }
+
+        if self.strategy_start_time > 0:
+            ret["strategy_start_time"] = datetime.fromtimestamp(self.strategy_start_time).strftime(DATETIME_FORMART)
+        if self.strategy_end_time > 0:
+            ret["strategy_end_time"] = datetime.fromtimestamp(self.strategy_end_time).strftime(DATETIME_FORMART)
+        if self.initial_cash > 0:
+            ret["initial_cash"] = self.initial_cash
+        if self.config_json:
+            ret["config_json"] = self.config_json
 
         if self.tret:
             ret["tret"] = self.tret.to_dict()
@@ -74,7 +98,29 @@ def parse_task_state(data) -> TaskState:
         except (ValueError, TypeError):
             raise ValueError(f"Invalid task_id format: {task_id}")
 
-    ts = TaskState(task_id, data.get("name"), datetime.strptime(data.get("start_time"), DATETIME_FORMART))
+    # Parse optional timestamps
+    strategy_start_time = 0
+    strategy_end_time = 0
+    if data.get("strategy_start_time"):
+        try:
+            strategy_start_time = int(datetime.strptime(data.get("strategy_start_time"), DATETIME_FORMART).timestamp())
+        except (ValueError, TypeError):
+            pass
+    if data.get("strategy_end_time"):
+        try:
+            strategy_end_time = int(datetime.strptime(data.get("strategy_end_time"), DATETIME_FORMART).timestamp())
+        except (ValueError, TypeError):
+            pass
+
+    ts = TaskState(
+        task_id,
+        data.get("name"),
+        datetime.strptime(data.get("start_time"), DATETIME_FORMART),
+        strategy_start_time=strategy_start_time,
+        strategy_end_time=strategy_end_time,
+        initial_cash=float(data.get("initial_cash", 0)),
+        config_json=data.get("config_json"),
+    )
 
     # Safely handle state field
     state_name = data.get("state")
