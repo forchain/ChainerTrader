@@ -542,10 +542,10 @@ function getStateBadge(state) {
     return `<span class="property-badge ${stateInfo.class}">${stateInfo.text}</span>`;
 }
 
-// 格式化百分比
+// Format percentage (values are already in percentage form 0-100)
 function formatPercentage(value) {
     if (value === null || value === undefined) return 'N/A';
-    return `${(value * 100).toFixed(2)}%`;
+    return `${value.toFixed(2)}%`;
 }
 
 // 格式化数字

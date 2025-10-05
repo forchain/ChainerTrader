@@ -115,7 +115,9 @@ def process_backtrader(parmas, result):
     logger = Logger(cfg, 10000, True)
 
     logger.info(f"start do backtrader: {tcfg.id}", LogTag.STRATEGY)
-    node = Node(tcfg.strategy_name(), strategy, tcfg.symbol_interval, cfg, logger, data, tcfg.free)
+    # Calculate free cash: use tcfg.free if set, otherwise use config cash
+    free_cash = cfg.cash if tcfg.free < 0 else tcfg.free
+    node = Node(tcfg.strategy_name(), strategy, tcfg.symbol_interval, cfg, logger, data, position=0, trader=False, free=free_cash)
     ret = node.start()
     logger.info(f"end do backtrader: {tcfg.id}", LogTag.STRATEGY)
     if ret is None:
