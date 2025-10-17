@@ -64,8 +64,7 @@ class BackTraderTask(BaseTask):
                     todate=datetime.fromtimestamp(self.tcfg.end_time),
                 )
         if self.db_manager and data is None:
-            collection = self.db_manager.kline.get_collection(self.tcfg.symbol_interval.name())
-            kls_cache = self.db_manager.kline.get_klines(collection, self.tcfg.start_time, self.tcfg.end_time)
+            kls_cache = self.db_manager.kline.get_klines(self.tcfg.symbol_interval.name(), self.tcfg.start_time, self.tcfg.end_time)
             if kls_cache is None or len(kls_cache) <= 0:
                 if self.tcfg.auto_download:
                     if not self.exchange:
@@ -75,7 +74,7 @@ class BackTraderTask(BaseTask):
                         self.name(),
                         self.log,
                         self.db_manager,
-                        collection,
+                        self.tcfg.symbol_interval.name(),
                         self.exchange,
                         self.tcfg.symbol_interval,
                         self.tcfg.start_time,
@@ -83,7 +82,7 @@ class BackTraderTask(BaseTask):
                     ):
                         self.log.error(f"Fail download for {self.name()}")
                         return None
-                    kls_cache = self.db_manager.kline.get_klines(collection, self.tcfg.start_time, self.tcfg.end_time)
+                    kls_cache = self.db_manager.kline.get_klines(self.tcfg.symbol_interval.name(), self.tcfg.start_time, self.tcfg.end_time)
 
             if kls_cache is None or len(kls_cache) <= 0:
                 self.log.error(f"No klines for {self.name()}")

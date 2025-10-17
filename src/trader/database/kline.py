@@ -22,7 +22,8 @@ class KlineCol:
             col.create_index([(PRIMARY_KEY, ASCENDING)], unique=True)
             return col
 
-    def get_latest_kline(self, col: Collection) -> Kline | None:
+    def get_latest_kline(self, name: str) -> Kline | None:
+        col = self.get_collection(name)
         max_record = col.find_one(sort=[(PRIMARY_KEY, DESCENDING)])
         if max_record is None:
             return None
@@ -30,7 +31,8 @@ class KlineCol:
         self.log.debug(f"get latest kline({max_record['_id']}):{kl.to_json()}")
         return kl
 
-    def get_latest_klines(self, col: Collection, limit: int) -> list[Kline]:
+    def get_latest_klines(self, name: str, limit: int) -> list[Kline] | None:
+        col = self.get_collection(name)
         results = col.find().sort(PRIMARY_KEY, DESCENDING).limit(limit)
         if results is None:
             return None
@@ -43,9 +45,10 @@ class KlineCol:
 
         return kls
 
-    def add_klines(self, col: Collection, klines: list[Kline]) -> int:
+    def add_klines(self, name: str, klines: list[Kline]) -> int:
         if len(klines) <= 0:
             return 0
+        col = self.get_collection(name)
         insert_data = []
         duplicate = True
         total = 0
@@ -70,7 +73,8 @@ class KlineCol:
         self.log.debug(f"add klines, total:{total}")
         return total
 
-    def get_first_kline(self, col: Collection) -> Kline | None:
+    def get_first_kline(self, name: str) -> Kline | None:
+        col = self.get_collection(name)
         max_record = col.find_one(sort=[(PRIMARY_KEY, ASCENDING)])
         if max_record is None:
             return None
@@ -78,7 +82,8 @@ class KlineCol:
         self.log.debug(f"get first kline({max_record['_id']}):{kl.to_json()}")
         return kl
 
-    def get_kline(self, col: Collection, open_time: int) -> Kline | None:
+    def get_kline(self, name: str, open_time: int) -> Kline | None:
+        col = self.get_collection(name)
         result = col.find_one({PRIMARY_KEY: open_time})
         if result is None:
             return None
@@ -86,7 +91,8 @@ class KlineCol:
         self.log.debug(f"get kline({result['_id']}):{kl.to_json()}")
         return kl
 
-    def get_all_klines(self, col: Collection) -> list[Kline]:
+    def get_all_klines(self, name: str) -> list[Kline] | None:
+        col = self.get_collection(name)
         results = col.find().sort(PRIMARY_KEY, ASCENDING)
         if results is None:
             return None
@@ -96,16 +102,19 @@ class KlineCol:
             kls.append(parse_kline(ret))
         return kls
 
-    def get_klines(self, col: Collection, start_time: int = 0, end_time: int = 0) -> list[Kline]:
+    def get_klines(self, name: str, start_time: int = 0, end_time: int = 0) -> list[Kline]:
         if start_time == 0 and end_time == 0:
-            return self.get_all_klines(col)
+            return self.get_all_klines(name)
         elif start_time > end_time and end_time > 0:
-            return self.get_all_klines(col)
+            return self.get_all_klines(name)
         elif start_time != 0 and end_time == 0:
+            col = self.get_collection(name)
             results = col.find({PRIMARY_KEY: {"$gte": start_time}}).sort(PRIMARY_KEY, ASCENDING)
         elif start_time == 0 and end_time != 0:
+            col = self.get_collection(name)
             results = col.find({PRIMARY_KEY: {"$lte": end_time}}).sort(PRIMARY_KEY, ASCENDING)
         else:
+            col = self.get_collection(name)
             results = col.find({PRIMARY_KEY: {"$gte": start_time, "$lte": end_time}}).sort(PRIMARY_KEY, ASCENDING)
 
         if results is None:

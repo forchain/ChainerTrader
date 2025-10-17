@@ -39,7 +39,7 @@ def get_taskinfo(app: App) -> TasksInfo:
         tasks.append(ts.to_dict())
 
     # Sort tasks by start_time in descending order (newest first)
-    tasks.sort(key=lambda x: x.get('start_time', ''), reverse=True)
+    tasks.sort(key=lambda x: x.get("start_time", ""), reverse=True)
 
     return TasksInfo(total=len(tss), completed=completed, tasks=tasks)
 
@@ -60,8 +60,7 @@ def get_klines_info(app: App) -> KlinesInfo:
     if not app.task_manager.latest_si:
         return KlinesInfo(total=0, klines=[], name="")
 
-    collection = app.db_manager.kline.get_collection(app.task_manager.latest_si.name())
-    kls_cache = app.db_manager.kline.get_latest_klines(collection, 1000)
+    kls_cache = app.db_manager.kline.get_latest_klines(app.task_manager.latest_si.name(), 1000)
 
     klines: list[dict[str, Any]] = []
     if len(kls_cache) > 0:
