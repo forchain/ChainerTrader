@@ -1,8 +1,8 @@
 from asyncio import Queue
-from trader.common.logger import Logger
 
 from trader.common.common import sleep
 from trader.common.config import Config
+from trader.common.logger import Logger
 from trader.database.manager import DatabaseManager
 from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig

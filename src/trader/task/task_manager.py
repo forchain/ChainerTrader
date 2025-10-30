@@ -1,11 +1,10 @@
 import asyncio
 from asyncio import Queue
-
-from trader.common.log_tag import LogTag
-from trader.common.logger import Logger
 from multiprocessing import Manager, Process
 
 from trader.common.config import Config
+from trader.common.log_tag import LogTag
+from trader.common.logger import Logger
 from trader.common.message import new_add_tasks_msg, new_exit_msg
 from trader.database.manager import DatabaseManager
 from trader.exchange.binance.exchange import BinanceExchange

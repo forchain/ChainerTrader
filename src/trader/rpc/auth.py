@@ -59,10 +59,7 @@ class BasicAuthMiddleware(BaseHTTPMiddleware):
 
     def _verify_credentials(self, credentials: HTTPBasicCredentials) -> bool:
         """Verify the provided credentials against configured values"""
-        return (
-            credentials.username == self.config.auth_username
-            and credentials.password == self.config.auth_password
-        )
+        return credentials.username == self.config.auth_username and credentials.password == self.config.auth_password
 
     def _create_auth_response(self) -> Response:
         """Create a 401 response with Basic auth challenge"""

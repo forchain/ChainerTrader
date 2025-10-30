@@ -1,8 +1,5 @@
-import logging
 import threading
 from collections import deque
-from datetime import datetime
-from typing import List, Dict, Any
 
 
 class LogBuffer:

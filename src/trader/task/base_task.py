@@ -8,7 +8,6 @@ from trader.common.logger import Logger
 from trader.database.manager import DatabaseManager
 from trader.exchange.binance.exchange import BinanceExchange
 from trader.task.task_config import TaskConfig
-from trader.task.task_type import TaskType
 from trader.utils.task_state import TaskState, TaskStateType
 
 
@@ -29,10 +28,10 @@ class BaseTask:
         self.log.info(f"Init {self.name()}")
         self.start_time = datetime.now()
         self.quit: Event = asyncio.Event()
-        
+
         # Generate config JSON for display
         config_json = self._generate_config_json()
-        
+
         self.ts = TaskState(
             tcfg.id,
             self.name(),
@@ -52,28 +51,28 @@ class BaseTask:
             "symbol": self.tcfg.symbol_interval.symbol(),
             "interval": self.tcfg.symbol_interval.interval.value,
         }
-        
+
         if self.tcfg.csv:
             config_dict["csv"] = self.tcfg.csv
-        
+
         if self.tcfg.start_time > 0:
             config_dict["start_time"] = datetime.fromtimestamp(self.tcfg.start_time).strftime("%Y-%m-%d %H:%M:%S")
-        
+
         if self.tcfg.end_time > 0:
             config_dict["end_time"] = datetime.fromtimestamp(self.tcfg.end_time).strftime("%Y-%m-%d %H:%M:%S")
-        
+
         if self.tcfg.strategys:
             if len(self.tcfg.strategys) == 1:
                 config_dict["strategy"] = self.tcfg.strategys[0]
             else:
                 config_dict["strategys"] = ",".join(self.tcfg.strategys)
-        
+
         if self.tcfg.auto_download:
             config_dict["auto_download"] = True
-        
+
         if self.tcfg.free >= 0:
             config_dict["free"] = self.tcfg.free
-        
+
         return json.dumps([config_dict], indent=2, ensure_ascii=False)
 
     def start(self, queue: Queue):

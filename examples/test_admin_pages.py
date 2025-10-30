@@ -6,36 +6,39 @@ import os
 import subprocess
 import sys
 import time
+
 import requests
 from requests.auth import HTTPBasicAuth
+
 
 def start_server_with_admin_protection():
     """Start server with admin pages protected"""
     print("Starting ChainerTrader with admin pages protection...")
-    
+
     # Set environment variables
     os.environ["TRADER_AUTH_USERNAME"] = "admin"
     os.environ["TRADER_AUTH_PASSWORD"] = "password123"
     os.environ["TRADER_PROTECTED_PATHS"] = "/admin"
-    
+
     # Start server
     cmd = [sys.executable, "-m", "trader", "--api", "127.0.0.1:8000"]
     process = subprocess.Popen(cmd)
-    
+
     # Wait for server to start
     print("Waiting for server to start...")
     time.sleep(5)
-    
+
     return process
+
 
 def test_admin_pages():
     """Test all admin pages with and without authentication"""
     base_url = "http://127.0.0.1:8000"
     auth = HTTPBasicAuth("admin", "password123")
-    
+
     print("Testing Admin Pages")
     print("=" * 50)
-    
+
     # Test pages
     pages = [
         ("/", "Root redirect"),
@@ -44,10 +47,10 @@ def test_admin_pages():
         ("/admin/klines", "Admin klines page"),
         ("/admin/logs", "Admin logs page"),
     ]
-    
+
     print("\n1. Testing without authentication (should redirect or require auth):")
     print("-" * 60)
-    
+
     for path, description in pages:
         try:
             response = requests.get(f"{base_url}{path}")
@@ -63,10 +66,10 @@ def test_admin_pages():
                     print(f"✗ {path:<15} - {description} (should be protected: {response.status_code})")
         except requests.exceptions.RequestException as e:
             print(f"✗ {path:<15} - {description} (error: {e})")
-    
+
     print("\n2. Testing with authentication (should work):")
     print("-" * 60)
-    
+
     for path, description in pages:
         try:
             response = requests.get(f"{base_url}{path}", auth=auth)
@@ -76,10 +79,10 @@ def test_admin_pages():
                 print(f"✗ {path:<15} - {description} (failed: {response.status_code})")
         except requests.exceptions.RequestException as e:
             print(f"✗ {path:<15} - {description} (error: {e})")
-    
+
     print("\n3. Testing navigation links:")
     print("-" * 60)
-    
+
     # Test that the admin dashboard loads and contains proper navigation
     try:
         response = requests.get(f"{base_url}/admin", auth=auth)
@@ -92,7 +95,7 @@ def test_admin_pages():
                 ('href="/admin/klines"', "Klines link"),
                 ('href="/admin/logs"', "Logs link"),
             ]
-            
+
             for link, description in nav_checks:
                 if link in content:
                     print(f"✓ {description} found in navigation")
@@ -103,17 +106,18 @@ def test_admin_pages():
     except requests.exceptions.RequestException as e:
         print(f"✗ Error testing navigation: {e}")
 
+
 def main():
     print("ChainerTrader Admin Pages Test")
     print("=" * 50)
-    
+
     # Start server
     process = start_server_with_admin_protection()
-    
+
     try:
         # Test admin pages
         test_admin_pages()
-        
+
         print("\n✓ Admin pages test completed")
         print("\nYou can test manually:")
         print("  # Without auth (should be protected)")
@@ -126,17 +130,16 @@ def main():
         print()
         print("  # Root redirect")
         print("  curl -L http://localhost:8000/  # Should redirect to /admin")
-        
+
         # Keep server running
         print("\nPress Ctrl+C to stop the server...")
         process.wait()
-        
+
     except KeyboardInterrupt:
         print("\nStopping server...")
         process.terminate()
         process.wait()
 
+
 if __name__ == "__main__":
     main()
-
-
