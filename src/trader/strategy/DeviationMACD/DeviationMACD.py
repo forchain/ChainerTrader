@@ -109,77 +109,99 @@ class DeviationMACDStrategy(BaseStrategy):
                 self.log_info(f"Kline:{self.cur_datetime()}, 创建 清单:{self.data.close[0]:.2f}")
                 self.order = self.close()
 
-    def positive_regular_positive_hidden_divergence(self, pr: bool) -> bool:
-        if self.bar_idx() <= 5:
-            return False
+    def _check_divergence(
+        self,
+        is_bullish: bool,
+        is_regular: bool,
+    ) -> bool:
+        """
+        通用背离检测方法
 
-        if not self.params.dontconfirm and self.macd_hist[0] <= self.macd_hist[-1] and self.data.close[0] <= self.data.close[-1]:
+        Args:
+            is_bullish: True为看涨背离(使用高点pivots), False为看跌背离(使用低点pivots)
+            is_regular: True为常规背离, False为隐藏背离
+
+        Returns:
+            是否检测到背离信号
+        """
+        # 最小bar数量检查
+        if self.bar_idx() <= 5:
             return False
 
         price = self.get_pivot_source()[self.startpoint]
         macdh = self.macd_hist[self.startpoint]
-        for item in self.ph_pivots:
-            leng = self.bar_idx() + self.ph.middle_idx() - item.bar_idx
+
+        # 根据是看涨还是看跌选择不同的pivot列表和指标
+        if is_bullish:
+            pivots = self.ph_pivots
+            middle_idx = self.ph.middle_idx()
+            # 确认信号：价格和MACD都在上涨
+            if not self.params.dontconfirm and self.macd_hist[0] <= self.macd_hist[-1] and self.data.close[0] <= self.data.close[-1]:
+                return False
+        else:
+            pivots = self.pl_pivots
+            middle_idx = self.pl.middle_idx()
+            # 确认信号：价格和MACD都在下跌
+            if not self.params.dontconfirm and self.macd_hist[0] >= self.macd_hist[-1] and self.data.close[0] >= self.data.close[-1]:
+                return False
+
+        # 遍历历史pivot点寻找背离
+        for item in pivots:
+            leng = self.bar_idx() + middle_idx - item.bar_idx
             if leng > self.params.maxbars:
                 break
-            need = False
-            if pr and macdh > item.macd and price < item.price:
-                need = True
-            elif (not pr) and macdh < item.macd and price > item.price:
-                need = True
-            if need:
-                slope1 = (macdh - price) / (leng - self.startpoint)
-                virtual_line1 = macdh - slope1
-                slope2 = (self.data.close[self.startpoint] - self.data.close[-leng]) / (leng - self.startpoint)
-                virtual_line2 = self.data.close[self.startpoint] - slope2
-                arrived = True
 
-                for y in range(1 + self.startpoint, leng - 1):
-                    if self.macd_hist[-y] < virtual_line1 or self.data.close[-y] < virtual_line2:
-                        arrived = False
+            # 检查是否满足背离条件
+            divergence_detected = False
+            if is_bullish:
+                if is_regular:
+                    # 看涨常规背离：价格创新低，MACD未创新低
+                    divergence_detected = macdh > item.macd and price < item.price
+                else:
+                    # 看涨隐藏背离：价格未创新低，MACD创新低
+                    divergence_detected = macdh < item.macd and price > item.price
+            else:
+                if is_regular:
+                    # 看跌常规背离：价格创新高，MACD未创新高
+                    divergence_detected = macdh < item.macd and price > item.price
+                else:
+                    # 看跌隐藏背离：价格未创新高，MACD创新高
+                    divergence_detected = macdh > item.macd and price < item.price
+
+            if not divergence_detected:
+                continue
+
+            # 计算连接当前点和历史pivot点的虚拟线
+            slope_macd = (macdh - item.macd) / (leng - self.startpoint)
+            slope_price = (price - item.price) / (leng - self.startpoint)
+            virtual_macd = macdh - slope_macd
+            virtual_price = price - slope_price
+
+            # 验证两点之间的所有bar是否都在虚拟线之上/之下
+            line_valid = True
+            for y in range(1 + self.startpoint, leng - 1):
+                if is_bullish:
+                    # 看涨背离：所有点都应该在虚拟线之上
+                    if self.macd_hist[-y] < virtual_macd or self.get_pivot_source()[-y] < virtual_price:
+                        line_valid = False
                         break
-                    virtual_line1 = virtual_line1 - slope1
-                    virtual_line2 = virtual_line2 - slope2
+                else:
+                    # 看跌背离：所有点都应该在虚拟线之下
+                    if self.macd_hist[-y] > virtual_macd or self.get_pivot_source()[-y] > virtual_price:
+                        line_valid = False
+                        break
+                virtual_macd -= slope_macd
+                virtual_price -= slope_price
 
-                if arrived:
-                    return True
+            if line_valid:
+                return True
 
         return False
+
+    def positive_regular_positive_hidden_divergence(self, pr: bool) -> bool:
+        """检测看涨背离（常规或隐藏）"""
+        return self._check_divergence(is_bullish=True, is_regular=pr)
 
     def negative_regular_negative_hidden_divergence(self, pr: bool) -> bool:
-        if self.bar_idx() <= 5:
-            return False
-
-        if not self.params.dontconfirm and self.macd_hist[0] >= self.macd_hist[-1] and self.data.close[0] >= self.data.close[-1]:
-            return False
-
-        price = self.get_pivot_source()[self.startpoint]
-        macdh = self.macd_hist[self.startpoint]
-        for item in self.pl_pivots:
-            leng = self.bar_idx() + self.pl.middle_idx() - item.bar_idx
-            if leng > self.params.maxbars:
-                break
-            need = False
-            if pr and macdh < item.macd and price > item.price:
-                need = True
-            elif (not pr) and macdh > item.macd and price < item.price:
-                need = True
-            if need:
-
-                slope1 = (macdh - price) / (leng - self.startpoint)
-                virtual_line1 = macdh - slope1
-                slope2 = (self.data.close[self.startpoint] - self.data.close[-leng]) / (leng - self.startpoint)
-                virtual_line2 = self.data.close[self.startpoint] - slope2
-                arrived = True
-
-                for y in range(1 + self.startpoint, leng - 1):
-                    if self.macd_hist[-y] > virtual_line1 or self.data.close[-y] > virtual_line2:
-                        arrived = False
-                        break
-                    virtual_line1 = virtual_line1 - slope1
-                    virtual_line2 = virtual_line2 - slope2
-
-                if arrived:
-                    return True
-
-        return False
+        """检测看跌背离（常规或隐藏）"""
+        return self._check_divergence(is_bullish=False, is_regular=pr)
