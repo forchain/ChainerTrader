@@ -156,7 +156,7 @@ class DeviationMACDStrategy(BaseStrategy):
         price = self.get_pivot_source()[self.startpoint]
         macdh = self.macd_hist[self.startpoint]
         for item in self.pl_pivots:
-            leng = self.bar_idx() + self.ph.middle_idx() - item.bar_idx
+            leng = self.bar_idx() + self.pl.middle_idx() - item.bar_idx
             if leng > self.params.maxbars:
                 break
             need = False
