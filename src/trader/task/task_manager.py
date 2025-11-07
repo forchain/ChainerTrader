@@ -59,7 +59,15 @@ class TaskManager:
         await asyncio.gather(*self.async_tasks)
 
     def add_tasks(self, taskcs: list[TaskConfig], queue: Queue):
-        self.async_tasks.append(asyncio.create_task(self.do_add_tasks(taskcs, queue)))
+
+        def on_done(t):
+            exc = t.exception()
+            if exc:
+                self.log.error(f"Exception:{exc}")
+
+        task = asyncio.create_task(self.do_add_tasks(taskcs, queue))
+        task.add_done_callback(on_done)
+        self.async_tasks.append(task)
 
     async def do_add_tasks(self, taskcs: list[TaskConfig], queue: Queue):
         if len(taskcs) <= 0:
