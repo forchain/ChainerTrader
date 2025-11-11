@@ -2,6 +2,7 @@ import asyncio
 from asyncio import Queue
 from multiprocessing import Manager, Process
 
+from trader.common.common import sleep
 from trader.common.config import Config
 from trader.common.log_tag import LogTag
 from trader.common.logger import Logger
@@ -198,6 +199,15 @@ class TaskManager:
             task.close()
             return True
         return False
+
+    def del_task(self, id: int):
+        task = self.get_task(id)
+        if task:
+            task.close()
+            while self.has_task(id):
+                sleep(self.log, 1)
+
+        return self.db_manager.task.del_task(id)
 
     def get_task_state(self, id: int) -> TaskState | None:
         task = self.get_task(id)
