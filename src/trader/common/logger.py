@@ -104,6 +104,10 @@ class Logger:
 
         self.logger.warning(msg)
 
+    def add_log_buffer(self, msg: str, tag: LogTag = LogTag.GENERAl):
+        if self.enable_log_buffer and self.log_buffer and tag != LogTag.PRIVATE and self.logger.isEnabledFor(logging.INFO):
+            self.log_buffer.add(msg)
+
 
 def get_formatter():
     return logging.Formatter(formatter_str())
