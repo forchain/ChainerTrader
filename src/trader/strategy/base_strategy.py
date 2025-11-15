@@ -45,7 +45,9 @@ class BaseStrategy(bt.Strategy):
         self.start_time = datetime.fromtimestamp(0)
         self.end_time = datetime.fromtimestamp(0)
 
-        self.total_bars = len(self.datas[0])
+        # Track total bars as we process them
+        self.total_bars = 0
+        self._bars_counted = False
 
     def start(self):
         if self.params.position:
@@ -62,9 +64,24 @@ class BaseStrategy(bt.Strategy):
             except Exception as e:
                 self.log_info(f"Failed to set initial position: {e}")
 
-        self.log_info(f"start:total_bars={self.total_bars}")
-
     def next(self):
+        # Update total bars count as we process data
+        if not self._bars_counted:
+            # Try to get total bars from data buffer
+            try:
+                self.total_bars = self.datas[0].buflen()
+                if self.total_bars > 0:
+                    self._bars_counted = True
+                    self.log_info(f"start:total_bars={self.total_bars}")
+            except:
+                # Fallback: track as we go
+                pass
+
+        # Always update to current position + 1 as minimum
+        current_bar = len(self)
+        if current_bar > self.total_bars:
+            self.total_bars = current_bar
+
         cur = self.cur_datetime()
         if cur > self.end_time:
             self.end_time = cur
@@ -105,7 +122,10 @@ class BaseStrategy(bt.Strategy):
         if self.params.log is None:
             print(msg)
             return
-        self.params.log.debug(f"{msg}, [{self.name()}][{self.bar_idx()}/{self.total_bars-1}]", LogTag.STRATEGY)
+        bars_info = ""
+        if self.total_bars > 0:
+            bars_info = f"[{self.bar_idx()}/{self.total_bars-1}]"
+        self.params.log.debug(f"{msg}, [{self.name()}]{bars_info}", LogTag.STRATEGY)
 
     def cur_datetime(self):
         return num2date(self.datas[0].datetime[0])
