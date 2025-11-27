@@ -16,16 +16,16 @@ from trader.utils.symbol_interval import SymbolInterval, get_time_duration
 
 class Node:
     def __init__(
-        self,
-        name,
-        strategy,
-        si: SymbolInterval,
-        cfg: Config = None,
-        log: Logger = None,
-        data=None,
-        position: float = 0,
-        trader: bool = False,
-        free: float = 0,
+            self,
+            name,
+            strategy,
+            si: SymbolInterval,
+            cfg: Config = None,
+            log: Logger = None,
+            data=None,
+            position: float = 0,
+            trader: bool = False,
+            free: float = 0,
     ):
         self.log = log
         self.name = name
@@ -50,11 +50,6 @@ class Node:
                 position=position,
                 trader=trader,
             )
-            if st.__name__ == "SupertrendStrategy" and not data_ha:
-                data_ha = data.clone()
-                data_ha.addfilter(bt.filters.HeikinAshi)
-                data_ha.plotinfo.plot = False
-                self.log.info(f"Build HeikinAshi data for {self.name}")
 
         cerebro.addanalyzer(bt.analyzers.DrawDown, _name="drawdown")
         cerebro.addanalyzer(bt.analyzers.SharpeRatio, _name="sharpe", riskfreerate=0.02)
