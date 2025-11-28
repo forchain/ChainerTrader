@@ -1,6 +1,6 @@
 //@version=6
 
-indicator("QQE MOD", overlay=false, max_lines_count=1)
+indicator("QQE MOD", 'My QQE MOD', overlay=false, max_lines_count=1)
 
 // === PRIMARY QQE SETTINGS ===
 group_primary = "Primary QQE Settings"
@@ -22,6 +22,9 @@ sourceSecondary = input.source(close, title="RSI Source", group=group_secondary)
 group_bollinger = "Bollinger Bands Settings"
 bollingerLength = input.int(50, minval=1, title="Length", group=group_bollinger, tooltip="The length of the Bollinger Bands calculation.")
 bollingerMultiplier = input.float(0.35, step=0.1, minval=0.001, maxval=5, title="Multiplier", group=group_bollinger, tooltip="The multiplier used to calculate Bollinger Band width.")
+
+// Debug settings
+debug_times = input.string("", title="Debug Times (comma-separated timestamps)", group="Debug")
 
 // === FUNCTIONS ===
 // Calculate QQE Bands
@@ -45,8 +48,9 @@ calculateQQE(rsiLength, smoothingFactor, qqeFactor, source) =>
     longBand := smoothedRsi[1] > longBand[1] and smoothedRsi > longBand[1] ? math.max(longBand[1], newLongBand) : newLongBand
     shortBand := smoothedRsi[1] < shortBand[1] and smoothedRsi < shortBand[1] ? math.min(shortBand[1], newShortBand) : newShortBand
     longBandCross = ta.cross(longBand[1], smoothedRsi)
-
-    if ta.cross(smoothedRsi, shortBand[1])
+    shortBandCross = ta.cross(smoothedRsi, shortBand[1])
+    
+    if shortBandCross
         trendDirection := 1
     else if longBandCross
         trendDirection := -1
@@ -55,14 +59,14 @@ calculateQQE(rsiLength, smoothingFactor, qqeFactor, source) =>
 
     // Determine the trend line
     qqeTrendLine = trendDirection == 1 ? longBand : shortBand
-    [qqeTrendLine, smoothedRsi]
+    [qqeTrendLine, smoothedRsi, longBand, shortBand, longBandCross, shortBandCross, trendDirection]
 
 // === MAIN CALCULATIONS ===
 // Calculate Primary QQE
-[primaryQQETrendLine, primaryRSI] = calculateQQE(rsiLengthPrimary, rsiSmoothingPrimary, qqeFactorPrimary, sourcePrimary)
+[primaryQQETrendLine, primaryRSI, pLongBand, pShortBand, pLongBandCross, pShortBandCross, pTrendDirection] = calculateQQE(rsiLengthPrimary, rsiSmoothingPrimary, qqeFactorPrimary, sourcePrimary)
 
 // Calculate Secondary QQE
-[secondaryQQETrendLine, secondaryRSI] = calculateQQE(rsiLengthSecondary, rsiSmoothingSecondary, qqeFactorSecondary, sourceSecondary)
+[secondaryQQETrendLine, secondaryRSI, sLongBand, sShortBand, sLongBandCross, sShortBandCross, sTrendDirection] = calculateQQE(rsiLengthSecondary, rsiSmoothingSecondary, qqeFactorSecondary, sourceSecondary)
 
 // Calculate Bollinger Bands for the Primary QQE Trend Line
 bollingerBasis = ta.sma(primaryQQETrendLine - 50, bollingerLength)
@@ -80,6 +84,9 @@ rsiColorSecondary = secondaryRSI - 50 > thresholdSecondary ? color.new(#707070, 
 // Plot Primary and Secondary QQE Lines
 plot(secondaryQQETrendLine - 50, title="Secondary QQE Trend Line", color=color.white, linewidth=2)
 plot(secondaryRSI - 50, color=rsiColorSecondary, title="Secondary RSI Histogram", style=plot.style_columns)
+plot(sLongBand - 50, title="Secondary Long Band Line", color=color.green, linewidth=2)
+plot(sShortBand - 50, title="Secondary Short Band Line", color=color.red, linewidth=2)
+
 
 // Plot Signal Highlights
 plot(secondaryRSI - 50 > thresholdSecondary and primaryRSI - 50 > bollingerUpper ? secondaryRSI - 50 : na, title="QQE Up Signal", style=plot.style_columns, color=#00c3ff)
@@ -92,3 +99,24 @@ hline(0, title="Zero Line", color=color.white, linestyle=hline.style_dotted)
 // Alerts for Zero Crosses
 alertcondition(ta.crossover(primaryRSI, 50), title="Primary RSI Cross Above Zero", message="Primary RSI crossed above zero")
 alertcondition(ta.crossunder(primaryRSI, 50), title="Primary RSI Cross Below Zero", message="Primary RSI crossed below zero")
+
+should_debug = false
+if str.length(debug_times) > 0
+    debug_times_list = str.split(debug_times, ',')
+    for i = 0 to array.size(debug_times_list) - 1
+        debug_ts = str.tonumber(str.trim(array.get(debug_times_list, i)))
+        if not na(debug_ts) and time == debug_ts * 1000
+            should_debug := true
+
+if should_debug
+    log.info('===== QQE MOD Debug [time={0}] =====', time / 1000)
+    log.info('Input: close={0}', close)
+    log.info('Primary RSI: smoothedRsi={0}', primaryRSI)
+    log.info('Primary QQE: longBand={0} shortBand={1} trend={2} trendLine={3}', pLongBand, pShortBand, pTrendDirection, primaryQQETrendLine)
+    log.info('Secondary RSI: smoothedRsi={0}', secondaryRSI)
+    log.info('Secondary QQE: longBand={0} shortBand={1} trend={2} trendLine={3}', sLongBand, sShortBand, sTrendDirection, secondaryQQETrendLine)
+    log.info('Bollinger: upper={0} lower={1}', bollingerUpper, bollingerLower)
+    log.info('Output: secTrendLine-50={0} secRSI-50={1}', secondaryQQETrendLine - 50, secondaryRSI - 50)
+    qqeUpCondition = secondaryRSI - 50 > thresholdSecondary and primaryRSI - 50 > bollingerUpper
+    qqeDownCondition = secondaryRSI - 50 < -thresholdSecondary and primaryRSI - 50 < bollingerLower
+    log.info('Signals: upCond={0} downCond={1}', qqeUpCondition, qqeDownCondition)

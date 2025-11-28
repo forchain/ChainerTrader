@@ -291,8 +291,18 @@ def test_indicator(main=False):
     # ... run backtest and generate chart/CSV
 
 if __name__ == "__main__":
+    import logging
+
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     test_indicator(True)
 ```
+
+### Manual Test Mode Logging (REQUIRED)
+
+- Always populate `DEBUG_TIMESTAMPS` with at least one realistic epoch second so manual runs print logs immediately.
+- The `if __name__ == "__main__":` block must configure logging with `logging.basicConfig(level=logging.INFO, format="%(message)s")`
+  before calling `test_indicator(True)`. This guarantees `python tests/trader/indicators/test_indicator_name.py`
+  emits the debug log lines needed to compare against TradingView exports.
 
 ## Verification Checklist
 

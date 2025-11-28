@@ -139,6 +139,13 @@ Test {IndicatorName} indicator with BTC-USDT 1h data.
 # ... (follow test_super_trend.py template)
 ```
 
+**Manual test mode requirement**: Every generated test file must support running directly via
+`python tests/trader/indicators/test_{indicator_name}.py`. Include:
+
+- A `DEBUG_TIMESTAMPS` list populated with at least one sample timestamp so logs can be produced immediately.
+- An `if __name__ == "__main__":` block that calls `logging.basicConfig(level=logging.INFO, format="%(message)s")`
+  before invoking `test_{indicator_name}(True)` to ensure debug logs print to stdout in manual mode.
+
 ### Step 5: Verify
 
 1. Run the test: `pytest tests/trader/indicators/test_{indicator_name}.py -v`
