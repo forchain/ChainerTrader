@@ -2,20 +2,42 @@
 
 ## Command Description
 
-This command converts a TradingView Pine Script indicator to a backtrader Python indicator with matching test cases.
+This command converts a TradingView Pine Script indicator to a backtrader Python indicator with matching test cases. It also ensures the source Pine Script is refactored into a reusable library format.
 
 ## Usage
 
 1. Provide the Pine Script code (paste or reference file path)
 2. Specify the indicator name (e.g., "SuperTrend", "TrendA")
 3. The command will generate:
-   - Python indicator file: `src/trader/indicators/{indicator_name}.py`
-   - Pine Script file (if not exists): `src/pine_scripts/indicators/{indicator_name}.pine`
-   - Test file: `tests/trader/indicators/test_{indicator_name}.py`
+   - **Pine Script Library**: `src/pine_scripts/libraries/{indicator_name}.pine`
+   - **Pine Script Indicator**: `src/pine_scripts/indicators/{indicator_name}.pine` (refactored to use the library)
+   - **Python indicator file**: `src/trader/indicators/{indicator_name}.py`
+   - **Test file**: `tests/trader/indicators/test_{indicator_name}.py`
 
-## Prompt
+## Pine Script Library Conversion Strategy
 
-When I provide a Pine Script indicator, please convert it to backtrader following these steps:
+To ensure reusability, all Pine Script indicators must be split into a **Library** (core logic) and an **Indicator** (UI/Plotting).
+
+### Step 1: Extract Logic to Library
+
+Create `src/pine_scripts/libraries/{indicator_name}.pine`:
+- Header: `//@version=6` and `library("{LibraryName}", overlay=true/false)`
+- Functions: Export core calculation logic using `export` keyword.
+- Return: Return a tuple of values `[...]` for multiple outputs.
+- **Crucial Rule for Stateful Functions**: calls like `ta.ema`, `ta.sma`, `ta.atr` must be executed **unconditionally** (outside `if/switch/ternary`) to maintain history consistency.
+- **Crucial Rule for `request.security`**: `request.security` cannot depend on function arguments. Fetch raw data inside the function (or pass raw data in) first, then process locally.
+
+### Step 2: Refactor Indicator to Use Library
+
+Update `src/pine_scripts/indicators/{indicator_name}.pine`:
+- Import: `import {username}/{LibraryName}/{Version} as {Alias}`
+  - *Note: For local development/testing before publishing, use placeholder or relative path if supported, but final version requires published path.*
+- Logic: Replace inline calculations with `{Alias}.{functionName}(...)`.
+- Inputs & Plots: Keep `input(...)`, `plot(...)`, `alertcondition(...)` in the indicator file.
+
+## Backtrader Conversion Strategy
+
+(Proceed with Python conversion AFTER Pine Script refactoring is verified)
 
 ### Step 0: Pine Script Debug Block
 
@@ -33,7 +55,7 @@ Before any analysis, ensure the Pine Script source already contains the standard
 
 Reference: `@.cursor/rules/pinescript-to-backtrader.mdc`
 
-**Key principle**: Maximize use of backtrader built-in indicators (including `bt.ind.HeikinAshi` for HA conversion). Only create helper `bt.Indicator` subclasses for recursive calculations that backtrader doesn't provide.
+**Key principle**: Maximize use of backtrader built-ins (including `bt.ind.HeikinAshi` for HA conversion).
 
 Structure the indicator as follows:
 
@@ -213,4 +235,3 @@ If the converted indicator doesn't match TradingView:
    - Signal at wrong price position
 
 Update `.cursor/rules/pinescript-to-backtrader.mdc` with new learnings for future conversions.
-

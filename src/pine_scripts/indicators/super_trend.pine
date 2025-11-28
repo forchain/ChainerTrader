@@ -1,5 +1,6 @@
 //@version=6
 indicator('SuperTrend', 'My SuperT.', overlay = true, format = format.price, precision = 2, timeframe = '')
+import outliertony/SuperTrend/1 as SuperTrendLib
 
 // ============================================================================
 // Input parameters
@@ -13,41 +14,13 @@ highlighting = input.bool(title = 'Highlighter On/Off ?', defval = true, group =
 
 // Debug settings (timestamps in milliseconds, comma-separated)
 // Example: '1763938800000,1764000000000'
-debug_times = ''
+debug_times = '1763938800000'
 // debug_times = '1763938800000,1764000000000'
 
 // ============================================================================
-// ATR calculation
+// ATR calculation and Logic
 // ============================================================================
-atr2 = ta.sma(ta.tr, Periods)
-atr = changeATR ? ta.atr(Periods) : atr2
-
-// ============================================================================
-// Raw up/dn calculation
-// ============================================================================
-up_raw = src - Multiplier * atr
-dn_raw = src + Multiplier * atr
-
-// ============================================================================
-// Recursive up calculation: up := close[1] > up1 ? max(up, up1) : up
-// ============================================================================
-up = up_raw
-up1 = nz(up[1], up)
-up := close[1] > up1 ? math.max(up, up1) : up
-
-// ============================================================================
-// Recursive dn calculation: dn := close[1] < dn1 ? min(dn, dn1) : dn
-// ============================================================================
-dn = dn_raw
-dn1 = nz(dn[1], dn)
-dn := close[1] < dn1 ? math.min(dn, dn1) : dn
-
-// ============================================================================
-// Trend calculation: trend := trend == -1 and close > dn1 ? 1 : trend == 1 and close < up1 ? -1 : trend
-// ============================================================================
-trend = 1
-trend := nz(trend[1], trend)
-trend := trend == -1 and close > dn1 ? 1 : trend == 1 and close < up1 ? -1 : trend
+[up, dn, trend] = SuperTrendLib.calculateSuperTrend(Periods, src, Multiplier, changeATR)
 
 // Buy/Sell signals
 buySignal = trend == 1 and trend[1] == -1
@@ -70,9 +43,9 @@ if should_debug
     trend_prev = nz(trend[1], 1)
     log.info('===== SuperTrend Debug [time={0}] =====', time)
     log.info('Input: close={0} close_prev={1}', close, close[1])
-    log.info('ATR({0}): atr={1} src={2}', Periods, atr, src)
-    log.info('Raw: up_raw={0} dn_raw={1}', up_raw, dn_raw)
-    log.info('Prev: up_prev={0} dn_prev={1} trend_prev={2}', up1, dn1, trend_prev)
+    // log.info('ATR({0}): atr={1} src={2}', Periods, atr, src) // ATR not exposed
+    // log.info('Raw: up_raw={0} dn_raw={1}', up_raw, dn_raw) // Raw not exposed
+    // log.info('Prev: up_prev={0} dn_prev={1} trend_prev={2}', up1, dn1, trend_prev) // up1/dn1 not exposed
     log.info('Calc: up={0} dn={1} trend={2}', up, dn, trend)
     log.info('Signal: buy={0} sell={1}', buySignal ? 1 : 0, sellSignal ? 1 : 0)
 

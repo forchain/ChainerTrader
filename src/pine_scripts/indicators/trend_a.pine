@@ -29,6 +29,7 @@
 //————————————————————————————————————————————————————————————————————————————————
 
 indicator(title = 'Trend Indicator A-V2.2 [Dziwne]', shorttitle = 'Trend A', timeframe = '', overlay = true)
+import outliertony/TrendA/1 as TrendALib
 
 ma_type = input.string(title = 'MA Type', defval = 'EMA', options = ['EMA', 'SMA', 'WMA'])
 ma_period = input.int(title = 'MA Period (Length)', defval = 7, minval = 1)
@@ -48,49 +49,13 @@ debug_times = input.string(title = 'Debug timestamps (ms, comma separated)', def
 // I.2. Settings, Function definition — — — — — — — — — — — — — — — — — — — — — —
 //————————————————————————————————————————————————————————————————————————————————
 
-f_ma_type(input_ma_type, input_source, input_ma_period) =>
-    result = float(na)
-
-    if input_ma_type == 'EMA'
-        result := ta.ema(input_source, input_ma_period)
-        result
-    if input_ma_type == 'SMA'
-        result := ta.sma(input_source, input_ma_period)
-        result
-    if input_ma_type == 'WMA'
-        result := ta.wma(input_source, input_ma_period)
-        result
-
-    result
+// Function f_ma_type moved to library
 
 //————————————————————————————————————————————————————————————————————————————————
-// II.1. Calculations, MA — — — — — — — — — — — — — — — — — — — — — — — — — — — —
+// II. Calculations — — — — — — — — — — — — — — — — — — — — — — — — — — — —
 //————————————————————————————————————————————————————————————————————————————————
 
-o = f_ma_type(ma_type, open, ma_period)
-c = f_ma_type(ma_type, close, ma_period)
-h = f_ma_type(ma_type, high, ma_period)
-l = f_ma_type(ma_type, low, ma_period)
-
-//————————————————————————————————————————————————————————————————————————————————
-// II.2. Calculations, Heikin Ashi — — — — — — — — — — — — — — — — — — — — — — — —
-//————————————————————————————————————————————————————————————————————————————————
-
-ha = ticker.heikinashi(syminfo.tickerid)
-
-ha_o = request.security(ha, timeframe.period, o)
-ha_c = request.security(ha, timeframe.period, c)
-ha_h = request.security(ha, timeframe.period, h)
-ha_l = request.security(ha, timeframe.period, l)
-
-//————————————————————————————————————————————————————————————————————————————————
-// II.3. Calculations, MA (Smoothing) — — — — — — — — — — — — — — — — — — — — — —
-//————————————————————————————————————————————————————————————————————————————————
-
-ha_o_smooth = f_ma_type(ma_type, ha_o, ma_period_smoothing)
-ha_c_smooth = f_ma_type(ma_type, ha_c, ma_period_smoothing)
-ha_h_smooth = f_ma_type(ma_type, ha_h, ma_period_smoothing)
-ha_l_smooth = f_ma_type(ma_type, ha_l, ma_period_smoothing)
+[ha_o_smooth, ha_c_smooth, ha_h_smooth, ha_l_smooth] = TrendALib.calculateTrendA(ma_type, ma_period, ma_period_smoothing)
 
 //————————————————————————————————————————————————————————————————————————————————
 // III.1. Display, Colors — — — — — — — — — — — — — — — — — — — — — — — — — — — —
@@ -131,5 +96,5 @@ fill(h_line, l_line, color = color_show_hl_cloud, title = 'High & Low Trendcloud
 
 if should_debug
     log.info('===== TrendA Debug [time={0}] =====', time)
-    log.info('Step1 MA({0}) on HA: O={1} C={2} H={3} L={4}', ma_period, ha_o, ha_c, ha_h, ha_l)
+    // log.info('Step1 MA({0}) on HA: O={1} C={2} H={3} L={4}', ma_period, ha_o, ha_c, ha_h, ha_l) // Internal to library
     log.info('Step2 MA({0}) on Step1: open={1} close={2} high={3} low={4}', ma_period_smoothing, ha_o_smooth, ha_c_smooth, ha_h_smooth, ha_l_smooth)

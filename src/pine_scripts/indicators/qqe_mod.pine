@@ -1,6 +1,6 @@
 //@version=6
-
 indicator("QQE MOD", 'My QQE MOD', overlay=false, max_lines_count=1)
+import outliertony/QQEMod/1 as QQEModLib
 
 // === PRIMARY QQE SETTINGS ===
 group_primary = "Primary QQE Settings"
@@ -26,47 +26,12 @@ bollingerMultiplier = input.float(0.35, step=0.1, minval=0.001, maxval=5, title=
 // Debug settings
 debug_times = input.string("", title="Debug Times (comma-separated timestamps)", group="Debug")
 
-// === FUNCTIONS ===
-// Calculate QQE Bands
-calculateQQE(rsiLength, smoothingFactor, qqeFactor, source) =>
-    wildersLength = rsiLength * 2 - 1
-    rsi = ta.rsi(source, rsiLength)
-    smoothedRsi = ta.ema(rsi, smoothingFactor)
-    atrRsi = math.abs(smoothedRsi[1] - smoothedRsi)
-    smoothedAtrRsi = ta.ema(atrRsi, wildersLength)
-    dynamicAtrRsi = smoothedAtrRsi * qqeFactor
-
-    // Initialize variables
-    longBand = 0.0
-    shortBand = 0.0
-    trendDirection = 0
-
-    // Calculate longBand, shortBand, and trendDirection
-    atrDelta = dynamicAtrRsi
-    newShortBand = smoothedRsi + atrDelta
-    newLongBand = smoothedRsi - atrDelta
-    longBand := smoothedRsi[1] > longBand[1] and smoothedRsi > longBand[1] ? math.max(longBand[1], newLongBand) : newLongBand
-    shortBand := smoothedRsi[1] < shortBand[1] and smoothedRsi < shortBand[1] ? math.min(shortBand[1], newShortBand) : newShortBand
-    longBandCross = ta.cross(longBand[1], smoothedRsi)
-    shortBandCross = ta.cross(smoothedRsi, shortBand[1])
-    
-    if shortBandCross
-        trendDirection := 1
-    else if longBandCross
-        trendDirection := -1
-    else
-        trendDirection := trendDirection[1]
-
-    // Determine the trend line
-    qqeTrendLine = trendDirection == 1 ? longBand : shortBand
-    [qqeTrendLine, smoothedRsi, longBand, shortBand, longBandCross, shortBandCross, trendDirection]
-
 // === MAIN CALCULATIONS ===
 // Calculate Primary QQE
-[primaryQQETrendLine, primaryRSI, pLongBand, pShortBand, pLongBandCross, pShortBandCross, pTrendDirection] = calculateQQE(rsiLengthPrimary, rsiSmoothingPrimary, qqeFactorPrimary, sourcePrimary)
+[primaryQQETrendLine, primaryRSI, pLongBand, pShortBand, pLongBandCross, pShortBandCross, pTrendDirection] = QQEModLib.calculateQQE(rsiLengthPrimary, rsiSmoothingPrimary, qqeFactorPrimary, sourcePrimary)
 
 // Calculate Secondary QQE
-[secondaryQQETrendLine, secondaryRSI, sLongBand, sShortBand, sLongBandCross, sShortBandCross, sTrendDirection] = calculateQQE(rsiLengthSecondary, rsiSmoothingSecondary, qqeFactorSecondary, sourceSecondary)
+[secondaryQQETrendLine, secondaryRSI, sLongBand, sShortBand, sLongBandCross, sShortBandCross, sTrendDirection] = QQEModLib.calculateQQE(rsiLengthSecondary, rsiSmoothingSecondary, qqeFactorSecondary, sourceSecondary)
 
 // Calculate Bollinger Bands for the Primary QQE Trend Line
 bollingerBasis = ta.sma(primaryQQETrendLine - 50, bollingerLength)

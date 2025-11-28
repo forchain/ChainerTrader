@@ -10,8 +10,25 @@ This rule provides guidelines for converting TradingView Pine Script indicators 
 - Indicator example: `src/trader/indicators/super_trend.py`, `src/trader/indicators/trend_a.py`
 - Test example: `tests/trader/indicators/test_super_trend.py`, `tests/trader/indicators/test_trend_a.py`
 - Pine Script example: `src/pine_scripts/indicators/super_trend.pine`
+- Pine Script Library example: `src/pine_scripts/libraries/super_trend.pine`
 
 ## Architecture Best Practices
+
+### Pine Script Reusability (Libraries)
+
+Before converting to Python, refactor the Pine Script into a **Library** (logic) and **Indicator** (UI).
+
+1.  **Extract Logic to `src/pine_scripts/libraries/`**:
+    *   Use `library(...)` declaration.
+    *   Export functions using `export`.
+    *   **Stateful Function Rule**: `ta.ema`, `ta.atr` etc. must be called **unconditionally** (outside if/ternary) to maintain history.
+    *   **Security Rule**: `request.security` cannot depend on function arguments. Fetch raw data inside the function first.
+    *   **Publishing**: Libraries must be published (Private allowed) to be imported.
+
+2.  **Refactor Indicator in `src/pine_scripts/indicators/`**:
+    *   Import the library: `import username/Lib/Version as Lib`.
+    *   Use `Lib.calc(...)` for calculations.
+    *   Keep Inputs, Plots, and Alerts in the indicator file.
 
 ### Maximize Use of Built-in Indicators
 
@@ -76,7 +93,29 @@ def next(self):
 
 ## Common Conversion Pitfalls
 
-### 1. Heikin Ashi with request.security (CRITICAL)
+### 1. Pine Script Library Warnings (CRITICAL)
+
+When extracting logic to libraries, you will encounter specific Pine Script constraints:
+
+*   **"Function ... should be called on each calculation for consistency"**:
+    *   *Cause*: Calling `ta.ema` or `ta.atr` inside an `if` or ternary operator.
+    *   *Fix*: Move the `ta.*` call **outside** the conditional block so it executes on every bar. Store the result in a variable, then use the variable inside the condition.
+    *   *Example*:
+        ```pine
+        // WRONG
+        val = use_ema ? ta.ema(src, len) : ta.sma(src, len)
+        
+        // RIGHT
+        ema_val = ta.ema(src, len)
+        sma_val = ta.sma(src, len)
+        val = use_ema ? ema_val : sma_val
+        ```
+
+*   **"The 'request.*()' call's 'expression' cannot depend on the arguments"**:
+    *   *Cause*: Passing a variable calculated from function arguments into `request.security`.
+    *   *Fix*: Fetch the **raw** data series (open, high, low, close) via `request.security` first, then perform calculations on that fetched data locally.
+
+### 2. Heikin Ashi with request.security (CRITICAL)
 
 Pine Script's `request.security(ha, tf, expr)` pattern executes an expression in the HA data context:
 
@@ -93,7 +132,7 @@ ha_o = request.security(ha, timeframe.period, o)
 
 **Key insight**: `o` is an expression definition. When passed to `request.security(ha, ...)`, the `open` in the expression refers to HA's open, not raw data's open.
 
-**Correct flow**: Raw OHLC → HA conversion → MA(ma_period) → MA(ma_period_smoothing)
+**Correct conversion**: Raw OHLC → HA conversion → MA(ma_period) → MA(ma_period_smoothing)
 
 ```python
 # Python - CORRECT: Use bt.ind.HeikinAshi first, then apply MA
@@ -112,7 +151,7 @@ class TrendA(bt.Indicator):
 
 **Common Error**: Applying MA to raw data first, then converting to HA. This reverses the calculation order.
 
-### 2. Bar Index Reference (CRITICAL)
+### 3. Bar Index Reference (CRITICAL)
 
 Pine Script uses `[1]` for previous bar, but meaning differs by context:
 
@@ -130,7 +169,7 @@ if close_prev > up_prev:
 
 **Common Error**: Using current bar's close instead of previous bar's close.
 
-### 2. Recursive Variable Initialization
+### 4. Recursive Variable Initialization
 
 ```pine
 // Pine Script
@@ -142,7 +181,7 @@ up1 = nz(up[1], up)  // If previous is NaN, use current value
 up_prev = self._up_prev if self._up_prev is not None else up_raw
 ```
 
-### 3. Trend/State Logic
+### 5. Trend/State Logic
 
 ```pine
 // Pine Script - ternary chain
@@ -159,7 +198,7 @@ else:
     trend = trend_prev
 ```
 
-### 4. Conditional Line Display (NaN for invisible)
+### 6. Conditional Line Display (NaN for invisible)
 
 ```pine
 // Pine Script - show line only when condition is true
@@ -173,7 +212,7 @@ self.l.up[0] = up if trend == 1 else math.nan
 self.l.dn[0] = dn if trend == -1 else math.nan
 ```
 
-### 5. Signal Markers (backtrader limitation)
+### 7. Signal Markers (backtrader limitation)
 
 backtrader does NOT support text labels like Pine Script's `plotshape`. Use markers instead:
 

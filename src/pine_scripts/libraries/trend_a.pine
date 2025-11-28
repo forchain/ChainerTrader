@@ -1,0 +1,39 @@
+//@version=6
+library("TrendA", overlay=true)
+
+export f_ma_type(string input_ma_type, float input_source, int input_ma_period) =>
+    ema_val = ta.ema(input_source, input_ma_period)
+    sma_val = ta.sma(input_source, input_ma_period)
+    wma_val = ta.wma(input_source, input_ma_period)
+    
+    result = float(na)
+
+    if input_ma_type == 'EMA'
+        result := ema_val
+    else if input_ma_type == 'SMA'
+        result := sma_val
+    else if input_ma_type == 'WMA'
+        result := wma_val
+    
+    result
+
+export calculateTrendA(string ma_type, int ma_period, int ma_period_smoothing) =>
+    // Step 1: Get Heikin Ashi raw data
+    // We fetch raw OHLC from the Heikin Ashi ticker to avoid passing expression depending on arguments to security
+    ha = ticker.heikinashi(syminfo.tickerid)
+    [h_o, h_h, h_l, h_c] = request.security(ha, timeframe.period, [open, high, low, close])
+
+    // Step 2: MA on HA data (replaces the security call on calculated MA)
+    ma_h_o = f_ma_type(ma_type, h_o, ma_period)
+    ma_h_c = f_ma_type(ma_type, h_c, ma_period)
+    ma_h_h = f_ma_type(ma_type, h_h, ma_period)
+    ma_h_l = f_ma_type(ma_type, h_l, ma_period)
+
+    // Step 3: MA Smoothing
+    ha_o_smooth = f_ma_type(ma_type, ma_h_o, ma_period_smoothing)
+    ha_c_smooth = f_ma_type(ma_type, ma_h_c, ma_period_smoothing)
+    ha_h_smooth = f_ma_type(ma_type, ma_h_h, ma_period_smoothing)
+    ha_l_smooth = f_ma_type(ma_type, ma_h_l, ma_period_smoothing)
+    
+    [ha_o_smooth, ha_c_smooth, ha_h_smooth, ha_l_smooth]
+

@@ -1,0 +1,31 @@
+//@version=6
+library("SuperTrend", overlay=true)
+
+export calculateSuperTrend(int Periods, float src, float Multiplier, bool changeATR) =>
+    // ATR calculation
+    atr2 = ta.sma(ta.tr, Periods)
+    atr_val = ta.atr(Periods)
+    atr = changeATR ? atr_val : atr2
+
+    // Raw up/dn calculation
+    up_raw = src - Multiplier * atr
+    dn_raw = src + Multiplier * atr
+
+    // Recursive up calculation
+    // Mimic original script logic
+    up = up_raw
+    up1 = nz(up[1], up)
+    up := close[1] > up1 ? math.max(up, up1) : up
+
+    // Recursive dn calculation
+    dn = dn_raw
+    dn1 = nz(dn[1], dn)
+    dn := close[1] < dn1 ? math.min(dn, dn1) : dn
+
+    // Trend calculation
+    trend = 1
+    trend := nz(trend[1], trend)
+    trend := trend == -1 and close > dn1 ? 1 : trend == 1 and close < up1 ? -1 : trend
+
+    [up, dn, trend]
+
