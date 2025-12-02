@@ -1,0 +1,299 @@
+//@version=6
+strategy("SuperTrend + QQE MOD + Trend A Strategy", overlay=true, default_qty_type=strategy.percent_of_equity, default_qty_value=100, commission_type=strategy.commission.percent, commission_value=0.1)
+
+// =============================================================================
+// IMPORTS
+// =============================================================================
+import outliertony/SuperTrend/1 as st
+import outliertony/TrendA/1 as ta
+import outliertony/QQEMod/1 as qqe
+
+// =============================================================================
+// INPUTS
+// =============================================================================
+
+// Super Trend Parameters
+st_periods = input.int(10, title="SuperTrend Periods", group="Super Trend")
+st_multiplier = input.float(3.3, title="SuperTrend Multiplier", group="Super Trend")
+st_change_atr = input.bool(true, title="Use ATR", group="Super Trend")
+
+// Trend A Parameters
+ta_ma_type = input.string("EMA", title="MA Type", options=["EMA", "SMA", "WMA"], group="Trend A")
+ta_ma_period = input.int(77, title="MA Period", group="Trend A")
+ta_ma_period_smoothing = input.int(21, title="MA Smoothing Period", group="Trend A")
+
+// QQE MOD Parameters
+qqe_rsi_length = input.int(10, title="RSI Length (Secondary)", group="QQE MOD")
+qqe_smoothing = input.int(5, title="RSI Smoothing", group="QQE MOD")
+qqe_factor = input.float(1.61, title="QQE Factor", group="QQE MOD")
+qqe_threshold = input.float(3.0, title="Threshold", group="QQE MOD")
+
+// Primary QQE for Bollinger Band calculation
+qqe_rsi_length_primary = input.int(6, title="Primary RSI Length", group="QQE MOD Primary")
+qqe_smoothing_primary = input.int(5, title="Primary RSI Smoothing", group="QQE MOD Primary")
+qqe_factor_primary = input.float(3.0, title="Primary QQE Factor", group="QQE MOD Primary")
+bb_length = input.int(50, title="Bollinger Length", group="QQE MOD Primary")
+bb_mult = input.float(0.35, title="Bollinger Multiplier", group="QQE MOD Primary")
+
+// Risk Management
+risk_reward_ratio = input.float(2.0, title="Risk/Reward Ratio", group="Risk Management")
+
+// Debug settings (timestamps in seconds, comma-separated)
+// Example: '1763938800,1764000000'
+// To get timestamp: hover over candle in TradingView, or use online converter
+debug_times = input.string('', title="Debug Times (seconds, comma-separated)", group="Debug")
+
+// =============================================================================
+// INDICATOR CALCULATIONS
+// =============================================================================
+
+// Super Trend Calculation
+src = (high + low) / 2
+[st_up, st_dn, st_trend] = st.calculateSuperTrend(st_periods, src, st_multiplier, st_change_atr)
+
+// Trend A Calculation
+[ta_open, ta_close, ta_high, ta_low] = ta.calculateTrendA(ta_ma_type, ta_ma_period, ta_ma_period_smoothing)
+ta_diff = ta_high - ta_low
+ta_trend = ta_diff != 0 ? 100 * (ta_close - ta_open) / ta_diff : 0
+
+// QQE MOD Calculation - Secondary (for signals)
+[qqe_trend_line_sec, smoothed_rsi_sec, long_band_sec, short_band_sec, long_cross_sec, short_cross_sec, trend_dir_sec] = qqe.calculateQQE(qqe_rsi_length, qqe_smoothing, qqe_factor, close)
+
+// QQE MOD Calculation - Primary (for Bollinger Bands)
+[qqe_trend_line_pri, smoothed_rsi_pri, long_band_pri, short_band_pri, long_cross_pri, short_cross_pri, trend_dir_pri] = qqe.calculateQQE(qqe_rsi_length_primary, qqe_smoothing_primary, qqe_factor_primary, close)
+
+// Bollinger Bands on Primary QQE Trend Line - 50
+bb_source = qqe_trend_line_pri - 50
+bb_basis = ta.sma(bb_source, bb_length)
+bb_dev = bb_mult * ta.stdev(bb_source, bb_length)
+bb_upper = bb_basis + bb_dev
+bb_lower = bb_basis - bb_dev
+
+// QQE Signals (offset by -50)
+sec_rsi = smoothed_rsi_sec - 50
+pri_rsi = smoothed_rsi_pri - 50
+
+qqe_up_condition = sec_rsi > qqe_threshold and pri_rsi > bb_upper
+qqe_down_condition = sec_rsi < -qqe_threshold and pri_rsi < bb_lower
+
+// =============================================================================
+// ENTRY CONDITIONS
+// =============================================================================
+
+// Track Trend A direction for Rule 3: one trade per Trend A direction
+var int last_ta_direction = 0
+var bool traded_in_long_trend = false
+var bool traded_in_short_trend = false
+
+current_ta_direction = ta_trend > 0 ? 1 : (ta_trend < 0 ? -1 : 0)
+
+// Reset trade flag when Trend A direction changes
+if current_ta_direction != last_ta_direction
+    if current_ta_direction == 1
+        traded_in_long_trend := false
+    else if current_ta_direction == -1
+        traded_in_short_trend := false
+    last_ta_direction := current_ta_direction
+
+// Entry condition components
+st_long_cond = st_trend == 1
+ta_long_cond = ta_trend > 0
+qqe_long_cond = qqe_up_condition
+not_traded_long = not traded_in_long_trend
+
+st_short_cond = st_trend == -1
+ta_short_cond = ta_trend < 0
+qqe_short_cond = qqe_down_condition
+not_traded_short = not traded_in_short_trend
+
+// Long Entry: SuperTrend Up + TrendA Green + QQE Up Signal + not traded in this green phase
+is_long_entry = st_long_cond and ta_long_cond and qqe_long_cond and not_traded_long
+
+// Short Entry: SuperTrend Down + TrendA Red + QQE Down Signal + not traded in this red phase
+is_short_entry = st_short_cond and ta_short_cond and qqe_short_cond and not_traded_short
+
+// =============================================================================
+// DEBUG LOGGING (based on specified timestamps)
+// =============================================================================
+
+should_debug = false
+if str.length(debug_times) > 0
+    debug_times_list = str.split(debug_times, ',')
+    for i = 0 to array.size(debug_times_list) - 1
+        debug_ts_seconds = str.tonumber(str.trim(array.get(debug_times_list, i)))
+        debug_ts_ms = debug_ts_seconds * 1000  // Convert seconds to milliseconds
+        if not na(debug_ts_seconds) and time == debug_ts_ms
+            should_debug := true
+            break
+
+if should_debug
+    log.info('================================================================================')
+    log.info('===== DEBUG at time={0} =====', time)
+    log.info('================================================================================')
+    
+    // K线数据
+    log.info('[K线] time={0}', time)
+    log.info('[K线] open={0}', open)
+    log.info('[K线] high={0}', high)
+    log.info('[K线] low={0}', low)
+    log.info('[K线] close={0}', close)
+    log.info('[K线] hl2={0}', src)
+    
+    log.info('--------------------------------------------------------------------------------')
+    
+    // SuperTrend
+    log.info('[SuperTrend] periods={0}, multiplier={1}', st_periods, st_multiplier)
+    log.info('[SuperTrend] trend={0} (1=UP, -1=DOWN)', st_trend)
+    log.info('[SuperTrend] trend[1]={0}', nz(st_trend[1], 0))
+    log.info('[SuperTrend] up={0}', st_up)
+    log.info('[SuperTrend] up[1]={0}', nz(st_up[1], 0))
+    log.info('[SuperTrend] dn={0}', st_dn)
+    log.info('[SuperTrend] dn[1]={0}', nz(st_dn[1], 0))
+    
+    log.info('--------------------------------------------------------------------------------')
+    
+    // Trend A
+    log.info('[TrendA] ma_type={0}, ma_period={1}, ma_period_smoothing={2}', ta_ma_type, ta_ma_period, ta_ma_period_smoothing)
+    log.info('[TrendA] open={0}', ta_open)
+    log.info('[TrendA] close={0}', ta_close)
+    log.info('[TrendA] high={0}', ta_high)
+    log.info('[TrendA] low={0}', ta_low)
+    log.info('[TrendA] diff={0}', ta_diff)
+    log.info('[TrendA] trend={0} (>0=GREEN, <0=RED)', ta_trend)
+    log.info('[TrendA] trend[1]={0}', nz(ta_trend[1], 0))
+    log.info('[TrendA] current_direction={0} (1=GREEN, -1=RED, 0=NEUTRAL)', current_ta_direction)
+    log.info('[TrendA] last_direction={0}', last_ta_direction)
+    
+    log.info('--------------------------------------------------------------------------------')
+    
+    // QQE Secondary
+    log.info('[QQE_SEC] rsi_length={0}, smoothing={1}, factor={2}', qqe_rsi_length, qqe_smoothing, qqe_factor)
+    log.info('[QQE_SEC] trend_line={0}', qqe_trend_line_sec)
+    log.info('[QQE_SEC] smoothed_rsi={0}', smoothed_rsi_sec)
+    log.info('[QQE_SEC] long_band={0}', long_band_sec)
+    log.info('[QQE_SEC] short_band={0}', short_band_sec)
+    log.info('[QQE_SEC] long_cross={0}', long_cross_sec)
+    log.info('[QQE_SEC] short_cross={0}', short_cross_sec)
+    log.info('[QQE_SEC] trend_dir={0}', trend_dir_sec)
+    log.info('[QQE_SEC] sec_rsi (offset -50)={0}', sec_rsi)
+    
+    log.info('--------------------------------------------------------------------------------')
+    
+    // QQE Primary
+    log.info('[QQE_PRI] rsi_length={0}, smoothing={1}, factor={2}', qqe_rsi_length_primary, qqe_smoothing_primary, qqe_factor_primary)
+    log.info('[QQE_PRI] trend_line={0}', qqe_trend_line_pri)
+    log.info('[QQE_PRI] smoothed_rsi={0}', smoothed_rsi_pri)
+    log.info('[QQE_PRI] long_band={0}', long_band_pri)
+    log.info('[QQE_PRI] short_band={0}', short_band_pri)
+    log.info('[QQE_PRI] long_cross={0}', long_cross_pri)
+    log.info('[QQE_PRI] short_cross={0}', short_cross_pri)
+    log.info('[QQE_PRI] trend_dir={0}', trend_dir_pri)
+    log.info('[QQE_PRI] pri_rsi (offset -50)={0}', pri_rsi)
+    
+    log.info('--------------------------------------------------------------------------------')
+    
+    // Bollinger Bands
+    log.info('[BB] length={0}, mult={1}', bb_length, bb_mult)
+    log.info('[BB] source (trend_line_pri - 50)={0}', bb_source)
+    log.info('[BB] basis={0}', bb_basis)
+    log.info('[BB] dev={0}', bb_dev)
+    log.info('[BB] upper={0}', bb_upper)
+    log.info('[BB] lower={0}', bb_lower)
+    
+    log.info('--------------------------------------------------------------------------------')
+    
+    // QQE Conditions
+    log.info('[QQE_COND] threshold={0}', qqe_threshold)
+    log.info('[QQE_COND] sec_rsi > threshold: {0} > {1} = {2}', sec_rsi, qqe_threshold, sec_rsi > qqe_threshold)
+    log.info('[QQE_COND] pri_rsi > bb_upper: {0} > {1} = {2}', pri_rsi, bb_upper, pri_rsi > bb_upper)
+    log.info('[QQE_COND] qqe_up_condition={0}', qqe_up_condition)
+    log.info('[QQE_COND] sec_rsi < -threshold: {0} < {1} = {2}', sec_rsi, -qqe_threshold, sec_rsi < -qqe_threshold)
+    log.info('[QQE_COND] pri_rsi < bb_lower: {0} < {1} = {2}', pri_rsi, bb_lower, pri_rsi < bb_lower)
+    log.info('[QQE_COND] qqe_down_condition={0}', qqe_down_condition)
+    
+    log.info('--------------------------------------------------------------------------------')
+    
+    // Entry Conditions
+    log.info('[ENTRY_COND] st_long_cond (st_trend==1): {0}', st_long_cond)
+    log.info('[ENTRY_COND] ta_long_cond (ta_trend>0): {0}', ta_long_cond)
+    log.info('[ENTRY_COND] qqe_long_cond: {0}', qqe_long_cond)
+    log.info('[ENTRY_COND] not_traded_long: {0}', not_traded_long)
+    log.info('[ENTRY_COND] is_long_entry: {0}', is_long_entry)
+    log.info('[ENTRY_COND] st_short_cond (st_trend==-1): {0}', st_short_cond)
+    log.info('[ENTRY_COND] ta_short_cond (ta_trend<0): {0}', ta_short_cond)
+    log.info('[ENTRY_COND] qqe_short_cond: {0}', qqe_short_cond)
+    log.info('[ENTRY_COND] not_traded_short: {0}', not_traded_short)
+    log.info('[ENTRY_COND] is_short_entry: {0}', is_short_entry)
+    
+    log.info('--------------------------------------------------------------------------------')
+    
+    // State Variables
+    log.info('[STATE] traded_in_long_trend={0}', traded_in_long_trend)
+    log.info('[STATE] traded_in_short_trend={0}', traded_in_short_trend)
+    log.info('[STATE] position_size={0}', strategy.position_size)
+    log.info('[STATE] position_size[1]={0}', nz(strategy.position_size[1], 0))
+    
+    log.info('================================================================================')
+
+// =============================================================================
+// STOP LOSS AND TAKE PROFIT
+// =============================================================================
+
+var float entry_price = na
+var float stop_loss_price = na
+var float take_profit_price = na
+
+// Rule 2: Only enter when no position (strategy.position_size == 0)
+// Long entry
+if is_long_entry and strategy.position_size == 0
+    entry_price := close
+    stop_loss_price := st_up
+    stop_distance = close - st_up
+    take_profit_price := close + risk_reward_ratio * stop_distance
+    strategy.entry("Long", strategy.long)
+    traded_in_long_trend := true
+
+// Short entry
+if is_short_entry and strategy.position_size == 0
+    entry_price := close
+    stop_loss_price := st_dn
+    stop_distance = st_dn - close
+    take_profit_price := close - risk_reward_ratio * stop_distance
+    strategy.entry("Short", strategy.short)
+    traded_in_short_trend := true
+
+// Exit conditions
+if strategy.position_size > 0  // Long position
+    strategy.exit("Long Exit", "Long", stop=stop_loss_price, limit=take_profit_price)
+
+if strategy.position_size < 0  // Short position
+    strategy.exit("Short Exit", "Short", stop=stop_loss_price, limit=take_profit_price)
+
+// =============================================================================
+// PLOTTING
+// =============================================================================
+
+// SuperTrend
+plot(st_trend == 1 ? st_up : na, title="SuperTrend Up", color=color.green, linewidth=2, style=plot.style_linebr)
+plot(st_trend == -1 ? st_dn : na, title="SuperTrend Down", color=color.red, linewidth=2, style=plot.style_linebr)
+
+// Trend A (as candles)
+plotcandle(ta_open, ta_high, ta_low, ta_close, title="Trend A", color=ta_close > ta_open ? color.new(color.green, 80) : color.new(color.red, 80), wickcolor=color.gray, bordercolor=color.gray)
+
+// Entry Signals
+plotshape(is_long_entry and strategy.position_size[1] == 0, title="Long Entry", location=location.belowbar, color=color.green, style=shape.triangleup, size=size.small)
+plotshape(is_short_entry and strategy.position_size[1] == 0, title="Short Entry", location=location.abovebar, color=color.red, style=shape.triangledown, size=size.small)
+
+// Stop Loss and Take Profit Lines (only when in position)
+plot(strategy.position_size != 0 ? stop_loss_price : na, title="Stop Loss", color=color.orange, linewidth=1, style=plot.style_linebr)
+plot(strategy.position_size != 0 ? take_profit_price : na, title="Take Profit", color=color.blue, linewidth=1, style=plot.style_linebr)
+
+// =============================================================================
+// ALERTS
+// =============================================================================
+
+if is_long_entry and strategy.position_size[1] == 0
+    alert("SuperTrend QQE: Long Entry Signal", alert.freq_once_per_bar)
+
+if is_short_entry and strategy.position_size[1] == 0
+    alert("SuperTrend QQE: Short Entry Signal", alert.freq_once_per_bar)
