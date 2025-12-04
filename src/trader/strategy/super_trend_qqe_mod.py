@@ -45,6 +45,7 @@ class SuperTrendQQEMODStrategy(BaseStrategy):
         ("qqe_rsi_length_secondary", 10),
         # Risk management
         ("risk_reward_ratio", 2.0),
+        ("position_percent", 100),  # Position size as percentage of available cash (30% default)
         # Debug mode
         ("debug", True),
     )
@@ -151,21 +152,21 @@ class SuperTrendQQEMODStrategy(BaseStrategy):
         is_short_entry = st_short_cond and ta_short_cond and qqe_short_cond and not_traded_short
 
         # Log indicator values on every bar when any condition is partially met
-        if st_long_cond or st_short_cond or ta_long_cond or ta_short_cond:
-            self._debug(
-                f"OHLC: O={bar_o:.2f} H={bar_h:.2f} L={bar_l:.2f} C={bar_c:.2f} | "
-                f"ST: trend={st_trend} up={st_up:.2f} dn={st_dn:.2f} | "
-                f"TA: trend={ta_trend:.4f} open={ta_open:.2f} close={ta_close:.2f} dir={current_ta_direction} | "
-                f"QQE: up={qqe_up:.4f} down={qqe_down:.4f} sec_rsi={qqe_sec_rsi:.4f}"
-            )
+        # if st_long_cond or st_short_cond or ta_long_cond or ta_short_cond:
+            # self._debug(
+            #     f"OHLC: O={bar_o:.2f} H={bar_h:.2f} L={bar_l:.2f} C={bar_c:.2f} | "
+            #     f"ST: trend={st_trend} up={st_up:.2f} dn={st_dn:.2f} | "
+            #     f"TA: trend={ta_trend:.4f} open={ta_open:.2f} close={ta_close:.2f} dir={current_ta_direction} | "
+            #     f"QQE: up={qqe_up:.4f} down={qqe_down:.4f} sec_rsi={qqe_sec_rsi:.4f}"
+            # )
 
         # Log entry condition evaluation
-        if is_long_entry or is_short_entry:
-            self._debug(
-                f"ENTRY CONDITIONS MET | "
-                f"LONG: ST={st_long_cond} TA={ta_long_cond} QQE={qqe_long_cond} NotTraded={not_traded_long} => {is_long_entry} | "
-                f"SHORT: ST={st_short_cond} TA={ta_short_cond} QQE={qqe_short_cond} NotTraded={not_traded_short} => {is_short_entry}"
-            )
+        # if is_long_entry or is_short_entry:
+        #     self._debug(
+        #         f"ENTRY CONDITIONS MET | "
+        #         f"LONG: ST={st_long_cond} TA={ta_long_cond} QQE={qqe_long_cond} NotTraded={not_traded_long} => {is_long_entry} | "
+        #         f"SHORT: ST={st_short_cond} TA={ta_short_cond} QQE={qqe_short_cond} NotTraded={not_traded_short} => {is_short_entry}"
+        #     )
 
         # Position management
         if not self.position:
@@ -265,12 +266,12 @@ class SuperTrendQQEMODStrategy(BaseStrategy):
 
         if self.position_type == 'long':
             # Log current position status
-            self._debug(
-                f"LONG POSITION CHECK | "
-                f"H={current_high:.2f} L={current_low:.2f} C={current_price:.2f} | "
-                f"SL={self.stop_loss_price:.2f} TP={self.take_profit_price:.2f} | "
-                f"SL_hit={current_low <= self.stop_loss_price} TP_hit={current_high >= self.take_profit_price}"
-            )
+            # self._debug(
+            #     f"LONG POSITION CHECK | "
+            #     f"H={current_high:.2f} L={current_low:.2f} C={current_price:.2f} | "
+            #     f"SL={self.stop_loss_price:.2f} TP={self.take_profit_price:.2f} | "
+            #     f"SL_hit={current_low <= self.stop_loss_price} TP_hit={current_high >= self.take_profit_price}"
+            # )
 
             # Long exit: stop loss hit or take profit hit
             if current_low <= self.stop_loss_price:
@@ -292,12 +293,12 @@ class SuperTrendQQEMODStrategy(BaseStrategy):
 
         elif self.position_type == 'short':
             # Log current position status
-            self._debug(
-                f"SHORT POSITION CHECK | "
-                f"H={current_high:.2f} L={current_low:.2f} C={current_price:.2f} | "
-                f"SL={self.stop_loss_price:.2f} TP={self.take_profit_price:.2f} | "
-                f"SL_hit={current_high >= self.stop_loss_price} TP_hit={current_low <= self.take_profit_price}"
-            )
+            # self._debug(
+            #     f"SHORT POSITION CHECK | "
+            #     f"H={current_high:.2f} L={current_low:.2f} C={current_price:.2f} | "
+            #     f"SL={self.stop_loss_price:.2f} TP={self.take_profit_price:.2f} | "
+            #     f"SL_hit={current_high >= self.stop_loss_price} TP_hit={current_low <= self.take_profit_price}"
+            # )
 
             # Short exit: stop loss hit or take profit hit
             if current_high >= self.stop_loss_price:

@@ -143,6 +143,7 @@ class Node:
         table.field_names = ["Name", "Value"]
         table.add_row(["策略", f"{self.name}"])
 
+        table.add_row(["交易对", self.si.symbol()])
         table.add_row(["总收益率", format(totalReturnRate, ".2f") + "%"])
         table.add_row(["持有增长率:", (f"{hold_rate:.2f}%")])
         if sharpeRatio["sharperatio"]:
