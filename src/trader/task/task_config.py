@@ -19,7 +19,7 @@ class TaskConfig:
         start_time=0,
         end_time=0,
         limit=0,
-        strategys: [str] = None,
+        strategies: [str] = None,
         auto_download=False,
         free: float = -1,
     ):
@@ -28,7 +28,7 @@ class TaskConfig:
         self.start_time = start_time
         self.end_time = end_time
         self.limit = limit
-        self.strategys = strategys
+        self.strategies = strategies
         self.symbol_interval = symbol_interval
         self.auto_download = auto_download
         self.free = free
@@ -62,16 +62,16 @@ class TaskConfig:
             "start_time": f"{s_time}",
             "end_time": f"{e_time}",
             "limit": f"{limit_str}",
-            "strategys": self.strategys,
+            "strategies": self.strategies,
             "auto_download": self.auto_download,
             "free": self.free,
         }
 
     def strategy_name(self):
-        if self.strategys is None:
+        if self.strategies is None:
             return None
         s = ""
-        for st in self.strategys:
+        for st in self.strategies:
             if len(s) > 0:
                 s += "+" + st
             else:
@@ -134,21 +134,21 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
         csv = None
         if "csv" in tcd:
             csv = tcd["csv"]
-        strategys = []
-        strategys_bunch = []
+        strategies = []
+        strategies_bunch = []
         if "strategy" in tcd:
             strategy = tcd["strategy"]
-            strategys.append(strategy)
-        elif "strategys" in tcd:
-            strategys_list = tcd["strategys"].split(",")
-            for st in strategys_list:
+            strategies.append(strategy)
+        elif "strategies" in tcd:
+            strategies_list = tcd["strategies"].split(",")
+            for st in strategies_list:
                 strategy = st
-                strategys.append(strategy)
-        elif "strategys_bunch" in tcd:
-            strategys_list = tcd["strategys_bunch"].split(",")
-            for st in strategys_list:
+                strategies.append(strategy)
+        elif "strategies_bunch" in tcd:
+            strategies_list = tcd["strategies_bunch"].split(",")
+            for st in strategies_list:
                 strategy = st
-                strategys_bunch.append(strategy)
+                strategies_bunch.append(strategy)
 
         auto_download = False
         if "auto_download" in tcd:
@@ -176,14 +176,14 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
                 ret.append(tc)
                 last_task_id = tc.id
             else:
-                for strategy in strategys:
+                for strategy in strategies:
                     tc = TaskConfig(create_task_id(last_task_id), task_type, si, csv, start_time, end_time, limit, [strategy], auto_download, free)
                     ret.append(tc)
                     last_task_id = tc.id
 
-                if len(strategys_bunch) > 0:
+                if len(strategies_bunch) > 0:
                     tc = TaskConfig(
-                        create_task_id(last_task_id), task_type, si, csv, start_time, end_time, limit, strategys_bunch, auto_download, free
+                        create_task_id(last_task_id), task_type, si, csv, start_time, end_time, limit, strategies_bunch, auto_download, free
                     )
                     ret.append(tc)
                     last_task_id = tc.id

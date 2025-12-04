@@ -10,7 +10,7 @@ from trader.exchange.binance.data import BinanceData
 from trader.exchange.binance.exchange import BinanceExchange
 from trader.statistics.stat import TraderStat
 from trader.strategy.node import Node
-from trader.strategy.strategy import parse_strategys
+from trader.strategy.strategy import parse_strategies
 from trader.strategy.trader_result import TraderResult
 from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig
@@ -33,7 +33,7 @@ class TraderTask(BaseTask):
         super().__init__(tcfg, cfg, log, db_manager, exchange)
 
     async def start(self, queue: Queue):
-        if not self.tcfg.strategys:
+        if not self.tcfg.strategies:
             self.log.error(f"No config strategy for {self.tcfg.to_dict()}")
             return
         if not self.exchange:
@@ -45,7 +45,7 @@ class TraderTask(BaseTask):
 
         super().start(queue)
 
-        strategy = parse_strategys(self.tcfg.strategys)
+        strategy = parse_strategies(self.tcfg.strategies)
         if strategy is None:
             self.log.error(f"Not support strategy:{self.tcfg.strategy_name()}")
             return

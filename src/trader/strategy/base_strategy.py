@@ -187,6 +187,11 @@ class BaseStrategy(bt.Strategy):
         if price is None:
             price = self.data.close[0]
         
+        # Validate price is positive before division
+        if price <= 0:
+            self.log_debug(f"Invalid price for position calculation: {price}. Returning 0 position size.")
+            return 0
+        
         cash = self.broker.getcash()
         commission_info = self.broker.getcommissioninfo(self.data)
         commission_rate = commission_info.p.commission

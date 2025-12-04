@@ -12,7 +12,7 @@ from trader.exchange.binance.data import BinanceData
 from trader.exchange.binance.exchange import BinanceExchange
 from trader.statistics.stat import BackTraderStat
 from trader.strategy.node import Node
-from trader.strategy.strategy import parse_strategys
+from trader.strategy.strategy import parse_strategies
 from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig
 from trader.task.update_klines_task import download
@@ -33,7 +33,7 @@ class BackTraderTask(BaseTask):
         if not self.tcfg.csv and not self.db_manager:
             self.log.error(f"No config data_file or db for {self.tcfg.to_dict()}")
             return None
-        if not self.tcfg.strategys:
+        if not self.tcfg.strategies:
             self.log.error(f"No config strategy for {self.tcfg.to_dict()}")
             return None
 
@@ -96,7 +96,7 @@ class BackTraderTask(BaseTask):
         if data is None:
             self.log.error(f"No strategy data for {self.name()}")
             return None
-        strategy = parse_strategys(self.tcfg.strategys)
+        strategy = parse_strategies(self.tcfg.strategies)
         if strategy is None:
             self.log.error(f"Not support strategy:{self.tcfg.strategy_name()}")
             return None
