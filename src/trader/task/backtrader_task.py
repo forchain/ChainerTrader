@@ -15,7 +15,7 @@ from trader.strategy.node import Node
 from trader.strategy.strategy import parse_strategies
 from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig
-from trader.task.update_klines_task import download
+from trader.task.update_klines_task import download_range
 
 
 class BackTraderTask(BaseTask):
@@ -69,7 +69,8 @@ class BackTraderTask(BaseTask):
                     if not self.exchange:
                         self.log.error(f"No exchange config for {self.name()}")
                         return None
-                    if not await download(
+                    end_time = self.tcfg.end_time if self.tcfg.end_time > 0 else int(datetime.now().timestamp())
+                    if not await download_range(
                         self.name(),
                         self.log,
                         self.db_manager,
@@ -77,6 +78,7 @@ class BackTraderTask(BaseTask):
                         self.exchange,
                         self.tcfg.symbol_interval,
                         self.tcfg.start_time,
+                        end_time,
                         self.quit,
                     ):
                         self.log.error(f"Fail download for {self.name()}")

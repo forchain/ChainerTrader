@@ -22,6 +22,7 @@ class TaskConfig:
         strategies: [str] = None,
         auto_download=False,
         free: float = -1,
+        force_update: bool = False,
     ):
         self.ttype = ttype
         self.csv = csv
@@ -32,6 +33,7 @@ class TaskConfig:
         self.symbol_interval = symbol_interval
         self.auto_download = auto_download
         self.free = free
+        self.force_update = force_update
 
         self.id = id
 
@@ -65,6 +67,7 @@ class TaskConfig:
             "strategies": self.strategies,
             "auto_download": self.auto_download,
             "free": self.free,
+            "force_update": self.force_update,
         }
 
     def strategy_name(self):
@@ -154,6 +157,10 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
         if "auto_download" in tcd:
             auto_download = tcd["auto_download"]
 
+        force_update = False
+        if "force_update" in tcd:
+            force_update = tcd["force_update"]
+
         for si in sis.symbol_intervals:
             if (
                 task_type == TaskType.IMPORT_CSV
@@ -172,18 +179,41 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
                     None,
                     auto_download,
                     free,
+                    force_update,
                 )
                 ret.append(tc)
                 last_task_id = tc.id
             else:
                 for strategy in strategies:
-                    tc = TaskConfig(create_task_id(last_task_id), task_type, si, csv, start_time, end_time, limit, [strategy], auto_download, free)
+                    tc = TaskConfig(
+                        create_task_id(last_task_id),
+                        task_type,
+                        si,
+                        csv,
+                        start_time,
+                        end_time,
+                        limit,
+                        [strategy],
+                        auto_download,
+                        free,
+                        force_update,
+                    )
                     ret.append(tc)
                     last_task_id = tc.id
 
                 if len(strategies_bunch) > 0:
                     tc = TaskConfig(
-                        create_task_id(last_task_id), task_type, si, csv, start_time, end_time, limit, strategies_bunch, auto_download, free
+                        create_task_id(last_task_id),
+                        task_type,
+                        si,
+                        csv,
+                        start_time,
+                        end_time,
+                        limit,
+                        strategies_bunch,
+                        auto_download,
+                        free,
+                        force_update,
                     )
                     ret.append(tc)
                     last_task_id = tc.id

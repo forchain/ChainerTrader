@@ -14,7 +14,7 @@ from trader.strategy.strategy import parse_strategies
 from trader.strategy.trader_result import TraderResult
 from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig
-from trader.task.update_klines_task import download
+from trader.task.update_klines_task import download_range
 from trader.utils.operate import OperateType
 from trader.utils.symbol_interval import add_time_duration
 
@@ -61,15 +61,18 @@ class TraderTask(BaseTask):
             self.log.info(f"set commission for trader task config:{self.cfg.commission}")
             self.ts.commission = commission
 
+        collection_name = self.tcfg.symbol_interval.name()
         while not self.quit.is_set():
-            ret = await download(
+            end_time = int(datetime.now().timestamp())
+            ret = await download_range(
                 self.name(),
                 self.log,
                 self.db_manager,
-                self.collection,
+                collection_name,
                 self.exchange,
                 self.tcfg.symbol_interval,
                 self.tcfg.start_time,
+                end_time,
                 self.quit,
             )
             if not ret:
