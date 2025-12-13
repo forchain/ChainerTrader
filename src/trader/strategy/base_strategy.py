@@ -151,6 +151,14 @@ class BaseStrategy(bt.Strategy):
             pdist = self.atr[0] * self.params.atrdist
         self.stopLossPoint = self.datas[0].close[0] - pdist
 
+    def need_takeprofit(self):
+        if not self.params.takeprofit:
+            return False
+
+        if self.data.close[0] > self.takeProfitPoint:
+            return True
+        return False
+
     def update_takeprofit_point(self):
         if not self.params.takeprofit:
             return

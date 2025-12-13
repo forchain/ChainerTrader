@@ -5,6 +5,9 @@ class OperateType(Enum):
     UNKNOWN = 0
     BUY = 1
     SELL = 2
+    LONG = 3
+    SHORT = 4
+    CLOSE = 5
 
 
 def parse_operate_type(name):
@@ -17,6 +20,10 @@ def parse_operate_type(name):
         return OperateType.BUY
     elif name == OperateType.SELL.name:
         return OperateType.SELL
+    elif name == OperateType.LONG.name:
+        return OperateType.LONG
+    elif name == OperateType.SHORT.name:
+        return OperateType.SHORT
 
     return OperateType.UNKNOWN
 
