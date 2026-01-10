@@ -1,0 +1,107 @@
+//@version=6
+library("ChainerTrader", overlay=false)
+
+// ============================================================================
+// ChainerTrader common library (v2)
+//
+// - Uses key bar reference by `bar_index` (keyBarIndex) so future bars can
+//   reference the key bar without using relative indexes.
+// - Contains confirmation helpers (moved from indicator).
+// - Supports LONG and SHORT (SHORT can be disabled by indicator/strategy).
+// ============================================================================
+
+export normalizeDirection(string direction) =>
+    // 数字语义优先：>0 代表做多，其他代表做空；只有明确字符串 SHORT 强制做空。
+    dirRaw = str.trim(direction)
+    dirUpper = str.upper(dirRaw)
+    num = str.tonumber(dirRaw)
+    not na(num) ? (num > 0 ? "LONG" : "SHORT") : (dirUpper == "SHORT" ? "SHORT" : "LONG")
+
+export keyLevelsByBarIndex(int keyBarIndex) =>
+    isKey = bar_index == keyBarIndex
+    keyTime = int(ta.valuewhen(isKey, time, 0))
+    keyHigh = ta.valuewhen(isKey, high, 0)
+    keyLow = ta.valuewhen(isKey, low, 0)
+    found = not na(keyHigh) and not na(keyLow)
+    [found, keyTime, keyHigh, keyLow]
+
+export stopPrice(string direction, int keyBarIndex, float stoplossAtrMult) =>
+    dir = normalizeDirection(direction)
+    [found, _, keyHigh, keyLow] = keyLevelsByBarIndex(keyBarIndex)
+    // ATR period uses TradingView 默认值（通常为 14），不再对外暴露为可配置参数
+    atrVal = ta.atr(14)
+    if not found
+        na
+    else if dir == "LONG"
+        stoplossAtrMult == 0.0 ? keyLow : (keyLow - stoplossAtrMult * atrVal)
+    else
+        stoplossAtrMult == 0.0 ? keyHigh : (keyHigh + stoplossAtrMult * atrVal)
+
+// Entry confirmation helper.
+// 返回值含义:
+//  1  -> 确认成功
+//  0  -> 仍在等待确认（既没有成功也没有失败）
+// -1  -> 确认失败（上层逻辑收到 -1 后清空当前关键 K）
+export entryConfirm(string direction, int keyBarIndex) =>
+    dir = normalizeDirection(direction)
+    [found, _, keyHigh, keyLow] = keyLevelsByBarIndex(keyBarIndex)
+    if not found
+        0
+    else
+        // LONG: 成功 close > key_high, 失败 close < key_low
+        // SHORT: 成功 close < key_low, 失败 close > key_high
+        confirm = dir == "LONG" ? close > keyHigh : close < keyLow
+        fail = dir == "LONG" ? close < keyLow : close > keyHigh
+        confirm ? 1 : fail ? -1 : 0
+
+// Exit confirmation helper (for closing an active trade).
+// 返回值约定同 entryConfirm: 1 成功, 0 待确认, -1 失败（上层清空关键 K）
+export exitConfirm(string direction, int keyBarIndex) =>
+    dir = normalizeDirection(direction)
+    [found, _, keyHigh, keyLow] = keyLevelsByBarIndex(keyBarIndex)
+    if not found
+        0
+    else
+        // LONG exit confirm: close < key_low; fail: close > key_high
+        // SHORT exit confirm: close > key_high; fail: close < key_low
+        confirm = dir == "LONG" ? close < keyLow : close > keyHigh
+        fail = dir == "LONG" ? close > keyHigh : close < keyLow
+        confirm ? 1 : fail ? -1 : 0
+
+// Breakeven price (LONG/SHORT)，带分段功能，风险回报比固定为 1。
+// 根据当前收盘价相对进场价的收益，计算保本止损价：
+//  - 定义单次风险 R = |entry - initialStop|
+//  - 若收益达到 n * R，则保本价 = entry ± (n-1) * R
+//  - n <= 0 时返回 na（尚未达到保本条件）
+export breakevenPrice(string direction, float entryPrice, float initialStop) =>
+    dir = normalizeDirection(direction)
+    if na(entryPrice) or na(initialStop) or na(close)
+        na
+    else
+        // 计算单次风险 R
+        risk = dir == "LONG" ? (entryPrice - initialStop) : (initialStop - entryPrice)
+        if risk <= 0
+            na
+        else
+            // 当前收益，以 R 为单位（RR 固定为 1）
+            profit = dir == "LONG" ? (close - entryPrice) : (entryPrice - close)
+            nFloat = profit / risk
+            n = math.floor(nFloat + 1e-10)
+            n <= 0 ? na : (dir == "LONG" ? entryPrice + (n - 1) * risk : entryPrice - (n - 1) * risk)
+
+// Risk/Reward target price (LONG/SHORT).
+// direction: >0 = LONG, 其他 = SHORT（见 normalizeDirection）
+// riskRewardRatio: 风险回报比，例如 2.0 表示 2R 目标价。
+export riskRewardPrice(string direction, float entryPrice, float stopPrice, float riskRewardRatio) =>
+    dir = normalizeDirection(direction)
+    risk = dir == "LONG" ? (entryPrice - stopPrice) : (stopPrice - entryPrice)
+    riskRewardRatio <= 0 or risk <= 0 or na(entryPrice) or na(stopPrice) ? na : (dir == "LONG" ? entryPrice + riskRewardRatio * risk : entryPrice - riskRewardRatio * risk)
+
+export stopHit(string direction, float stopPrice) =>
+    dir = normalizeDirection(direction)
+    if na(stopPrice)
+        false
+    else
+        dir == "LONG" ? close <= stopPrice : close >= stopPrice
+
+

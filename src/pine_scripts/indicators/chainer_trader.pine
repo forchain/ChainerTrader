@@ -1,0 +1,338 @@
+//@version=6
+indicator("ChainerTrader", "[I]Chainer", overlay=true, format=format.price, precision=6)
+
+// ============================================================================
+// NOTE: ChainerTrader Indicator Template
+// ============================================================================
+// This is a template indicator for the ChainerTrader framework.
+// To create a new strategy, simply replace the signal generation functions:
+//   - getEntrySignal() => bool
+//   - getExitSignal() => bool
+// All other logic (stop loss, confirmation, breakeven, etc.) is handled by
+// the framework and can be reused.
+// ============================================================================
+
+import outliertony/ChainerTrader/1 as ChainerTraderLib
+
+// ============================================================================
+// Signal Parameters (Customize for your strategy)
+// ============================================================================
+// These parameters are specific to the signal generation logic.
+// For MA Cross example:
+fastLen = input.int(title="Fast SMA Length", defval=9, minval=1, group="Signal Parameters")
+slowLen = input.int(title="Slow SMA Length", defval=21, minval=1, group="Signal Parameters")
+
+// ============================================================================
+// Chainer Framework Parameters
+// ============================================================================
+chainer_allow_short = input.bool(title="Allow short", defval=false, group="Chainer Framework")
+chainer_direction = input.string(title="Direction", defval="LONG", options=["LONG", "SHORT"], group="Chainer Framework")
+chainer_stoploss_atr_mult = input.float(title="Stop loss ATR multiple (0 = disabled)", defval=0.0, step=0.1, group="Chainer Framework")
+chainer_entry_need_confirm = input.bool(title="Require entry confirmation", defval=true, group="Chainer Framework")
+chainer_exit_need_confirm = input.bool(title="Require exit confirmation", defval=true, group="Chainer Framework")
+chainer_enable_breakeven = input.bool(title="Enable breakeven", defval=true, group="Chainer Framework")
+chainer_risk_reward_ratio = input.float(title="Risk/reward ratio (0 = disabled)", defval=0.0, step=0.1, group="Chainer Framework")
+
+// 自定义进出场信号（单个时间，单位：毫秒）。为 0 则使用信号函数作为默认信号。
+chainer_entry_time = input.time(title="Custom entry time (ms, 0 = disabled)", defval=0, group="Chainer Framework")
+chainer_exit_time = input.time(title="Custom exit time (ms, 0 = disabled)", defval=0, group="Chainer Framework")
+
+chainer_debug_start_time = input.time(title="Debug start time (ms, 0 = disabled)", defval=0, group="Chainer Framework")
+
+// ============================================================================
+// Direction Setup
+// ============================================================================
+// v3: 方向与做空支持
+// - 允许做空(chainer_allow_short=true)时，Direction 支持 LONG / SHORT。
+// - 不允许做空时，内部方向强制为 LONG，SHORT 方向不产生交易。
+dir = chainer_direction == "SHORT" and chainer_allow_short ? "SHORT" : "LONG"
+shortAllowed = chainer_allow_short
+
+// ============================================================================
+// Signal Generation Functions (TEMPLATE: Replace these for new strategies)
+// ============================================================================
+// These functions generate entry/exit signals. Replace them to implement
+// different trading strategies while keeping the Chainer framework intact.
+
+// Get entry signal (returns true when entry condition is met)
+getEntrySignal() =>
+    // MA Cross example: Golden cross (fast crosses above slow)
+    fast = ta.sma(close, fastLen)
+    slow = ta.sma(close, slowLen)
+    ta.crossover(fast, slow)
+
+// Get exit signal (returns true when exit condition is met)
+getExitSignal() =>
+    // MA Cross example: Death cross (fast crosses below slow)
+    fast = ta.sma(close, fastLen)
+    slow = ta.sma(close, slowLen)
+    ta.crossunder(fast, slow)
+
+// ============================================================================
+// Signal Processing (Direction-aware)
+// ============================================================================
+// Convert raw signals to direction-aware trading signals
+longEntryRaw = getEntrySignal()          // 金叉
+longExitRaw = getExitSignal()            // 死叉
+
+// 如果用户配置了 input.time，则使用这些时间作为进出场信号；否则回退到信号函数。
+useCustomEntry = chainer_entry_time > 0
+useCustomExit = chainer_exit_time > 0
+
+// Pine 的 time 为毫秒，input.time 也是毫秒级时间戳，可直接比较。
+customEntrySignal = useCustomEntry and time == chainer_entry_time
+customExitSignal = useCustomExit and time == chainer_exit_time
+
+// 方向感知的交易信号：
+// - LONG 方向：金叉进场，死叉出场
+// - SHORT 方向（且允许做空）：死叉进场，金叉出场
+// - 不允许做空但方向为 SHORT 时：不产生信号
+dirIsLong = dir == "LONG"
+canUseShortDir = chainer_allow_short and not dirIsLong
+tradeEntrySignal = dirIsLong ? longEntryRaw : canUseShortDir ? longExitRaw : false
+tradeExitSignal = dirIsLong ? longExitRaw : canUseShortDir ? longEntryRaw : false
+
+// 若配置了自定义时间，则覆盖方向感知信号
+effectiveEntrySignal = useCustomEntry ? customEntrySignal : tradeEntrySignal
+effectiveExitSignal = useCustomExit ? customExitSignal : tradeExitSignal
+
+// ============================================================================
+// Single active trade state
+// ============================================================================
+var int tradeId = 0
+var bool hasTrade = false
+var bool pendingEntry = false
+var bool pendingExit = false
+
+var int entryKeyBarIndex = na
+var int exitKeyBarIndex = na
+
+var float initialStop = na
+var float stopPrice = na
+var float entryPrice = na
+var int breakevenStep = 0
+var bool entryFailSignal = false
+var bool entryConfirmSignal = false
+var bool exitFailSignal = false
+var bool exitConfirmSignal = false
+var float keyStopLevel = na
+var label keyStopLabel = na
+var float takeProfitPrice = na
+
+// ============================================================================
+// Entry trigger: store keyBarIndex, compute stop, optionally enter immediately
+// ============================================================================
+// Calculate stop price on every bar for consistency
+currentBarStopPrice = ChainerTraderLib.stopPrice(dir, bar_index, chainer_stoploss_atr_mult)
+safeEntryKeyBarIndexForStop = na(entryKeyBarIndex) ? 0 : entryKeyBarIndex
+existingEntryStopPrice = ChainerTraderLib.stopPrice(dir, safeEntryKeyBarIndexForStop, chainer_stoploss_atr_mult)
+
+// 每根 K 线默认没有进/出场确认/失败标记
+entryFailSignal := false
+entryConfirmSignal := false
+exitFailSignal := false
+exitConfirmSignal := false
+
+// 进场信号：总是画止损标记（独立于交易状态）
+if effectiveEntrySignal
+    // 使用通用库计算止损价（支持 ATR 倍数等逻辑）
+    stopLevel = currentBarStopPrice
+    if not na(stopLevel)
+        // 在止损价附近画一个 SL 标签（不画线）
+        labelPriceOffset = stopLevel - syminfo.mintick * 5
+        newLabel = label.new(bar_index, labelPriceOffset, "SL " + str.tostring(stopLevel, format.mintick), style=label.style_label_up, textcolor=color.white, color=color.new(color.red, 0))
+        
+        // 如果可以开始新交易，则更新交易状态并保存当前止损
+        if not pendingEntry and not hasTrade
+            tradeId += 1
+            entryKeyBarIndex := bar_index
+            keyStopLevel := stopLevel
+            keyStopLabel := newLabel
+            initialStop := keyStopLevel
+            stopPrice := initialStop
+            entryPrice := na
+            breakevenStep := 0
+            pendingEntry := chainer_entry_need_confirm
+            hasTrade := not chainer_entry_need_confirm
+            if hasTrade
+                entryPrice := close
+
+// ============================================================================
+// Entry Confirmation (bar_close时检查，使用close价格)
+// ============================================================================
+// 确认是事后的策略，要等到K线完全出现，根据收盘价来判断
+if barstate.isconfirmed and pendingEntry
+    safeEntryKeyBarIndex = not na(entryKeyBarIndex) ? entryKeyBarIndex : bar_index
+    entryConfirmStatus = ChainerTraderLib.entryConfirm(dir, safeEntryKeyBarIndex)
+    
+    if entryConfirmStatus == 1
+        // 进场确认成功：记录信号，稍后在全局绘图
+        entryConfirmSignal := true
+        pendingEntry := false
+        hasTrade := true
+        entryPrice := close
+        breakevenStep := 0
+        // 根据风险回报比参数，使用库函数计算目标价（与保本逻辑独立）
+        if chainer_risk_reward_ratio > 0
+            tp = ChainerTraderLib.riskRewardPrice(dir, entryPrice, initialStop, chainer_risk_reward_ratio)
+            if not na(tp)
+                takeProfitPrice := tp
+                tpLabelY = tp + syminfo.mintick * 5
+                label.new(bar_index,
+                          tpLabelY,
+                          "TP " + str.tostring(chainer_risk_reward_ratio) + "R",
+                          style=label.style_label_down,
+                          textcolor=color.white,
+                          color=color.new(color.teal, 0))
+    else if entryConfirmStatus == -1
+        // 进场确认失败：记录信号，稍后在全局绘图
+        entryFailSignal := true
+        pendingEntry := false
+        hasTrade := false
+        entryKeyBarIndex := na
+        exitKeyBarIndex := na
+        entryPrice := na
+        initialStop := na
+        stopPrice := na
+        breakevenStep := 0
+
+// ============================================================================
+// Exit trigger: store keyBarIndex, optionally exit immediately
+// ============================================================================
+// 出场信号：只处理交易状态和调试，不额外画出场止损线
+if effectiveExitSignal
+    // 出场关键 K 的止损点
+    stopLevel = dir == "LONG" ? low : high
+    
+    // 如果有活跃交易，处理交易状态
+    if hasTrade and not pendingExit
+        exitKeyBarIndex := bar_index
+        // 更新交易状态
+        pendingExit := chainer_exit_need_confirm
+        if not chainer_exit_need_confirm
+            hasTrade := false
+            pendingEntry := false
+            pendingExit := false
+            entryKeyBarIndex := na
+            exitKeyBarIndex := na
+            entryPrice := na
+            initialStop := na
+            stopPrice := na
+            breakevenStep := 0
+
+// ============================================================================
+// Exit Confirmation (bar_close时检查，使用close价格)
+// ============================================================================
+// 确认是事后的策略，要等到K线完全出现，根据收盘价来判断
+if barstate.isconfirmed and pendingExit
+    safeExitKeyBarIndex = not na(exitKeyBarIndex) ? exitKeyBarIndex : bar_index
+    exitConfirmStatus = ChainerTraderLib.exitConfirm(dir, safeExitKeyBarIndex)
+    
+    if exitConfirmStatus == 1
+        // 出场确认成功：记录信号，稍后在全局绘图
+        exitConfirmSignal := true
+        pendingExit := false
+        hasTrade := false
+        pendingEntry := false
+        entryKeyBarIndex := na
+        exitKeyBarIndex := na
+        entryPrice := na
+        initialStop := na
+        stopPrice := na
+        breakevenStep := 0
+        takeProfitPrice := na
+    else if exitConfirmStatus == -1
+        // 出场确认失败：记录信号，稍后在全局绘图
+        exitFailSignal := true
+        pendingExit := false
+        exitKeyBarIndex := na
+
+// ============================================================================
+// Breakeven Management (bar_close时检查，使用close价格)
+// ============================================================================
+// 保本逻辑在K线完成时检查，使用收盘价判断是否达到保本条件
+if barstate.isconfirmed and hasTrade and chainer_enable_breakeven and not na(entryPrice) and not na(initialStop)
+    // riskRewardRatio 固定为 1，库函数内部根据当前 close 自动计算分段保本价。
+    newStop = ChainerTraderLib.breakevenPrice(dir, entryPrice, initialStop)
+    if not na(newStop)
+        longDir = dir == "LONG"
+        // 仅在有利方向上移动止损
+        if (longDir and (na(stopPrice) or newStop > stopPrice)) or (not longDir and (na(stopPrice) or newStop < stopPrice))
+            // 使用库函数给出的保本价更新止损
+            stopPrice := newStop
+            // 记录保本步数并在图上标记（BE 1、BE 2、...）
+            breakevenStep += 1
+            beLabelPrice = newStop - syminfo.mintick * 5
+            label.new(bar_index,
+                      beLabelPrice,
+                      "BE " + str.tostring(breakevenStep),
+                      style=label.style_label_up,
+                      textcolor=color.white,
+                      color=color.new(color.orange, 0))
+
+// ============================================================================
+// Stop Loss Check (实时检查，使用low/high价格)
+// ============================================================================
+// 止损是事前设置的保护价格，条件达到立即触发
+// 实时检查low/high是否触及止损价（不使用close，因为止损应该实时触发）
+stopHit = hasTrade and not na(stopPrice) and (dir == "LONG" ? low <= stopPrice : high >= stopPrice)
+if stopHit
+    hasTrade := false
+    pendingEntry := false
+    pendingExit := false
+    entryKeyBarIndex := na
+    exitKeyBarIndex := na
+    entryPrice := na
+    initialStop := na
+    stopPrice := na
+    breakevenStep := 0
+    takeProfitPrice := na
+
+// ============================================================================
+// Debug logging
+// ============================================================================
+// Calculate key levels on every bar for consistency
+safeEntryKeyBarIndexForLevels = na(entryKeyBarIndex) ? 0 : entryKeyBarIndex
+[entryFound, entryTime, entryHigh, entryLow] = ChainerTraderLib.keyLevelsByBarIndex(safeEntryKeyBarIndexForLevels)
+
+safeExitKeyBarIndexForLevels = na(exitKeyBarIndex) ? 0 : exitKeyBarIndex
+[exitFound, exitTime, exitHigh, exitLow] = ChainerTraderLib.keyLevelsByBarIndex(safeExitKeyBarIndexForLevels)
+
+shouldDebug = chainer_debug_start_time > 0 and time >= chainer_debug_start_time
+if shouldDebug
+    log.info("===== ChainerTrader Debug [time={0}] =====", time)
+    log.info("MA: fastLen={0} slowLen={1} fast={2} slow={3} entrySig={4} exitSig={5}", fastLen, slowLen, fast, slow, entrySignal ? 1 : 0, exitSignal ? 1 : 0)
+    log.info("Dir: dir={0}", dir)
+    log.info("Trade: tradeId={0} hasTrade={1} pendingEntry={2} pendingExit={3} step={4}", tradeId, hasTrade ? 1 : 0, pendingEntry ? 1 : 0, pendingExit ? 1 : 0, breakevenStep)
+    log.info("EntryKey: barIndex={0} found={1} time={2} high={3} low={4}", entryKeyBarIndex, entryFound ? 1 : 0, entryTime, entryHigh, entryLow)
+    log.info("ExitKey: barIndex={0} found={1} time={2} high={3} low={4}", exitKeyBarIndex, exitFound ? 1 : 0, exitTime, exitHigh, exitLow)
+    log.info("Risk: entryPrice={0} initialStop={1} stopPrice={2} slAtrMult={3} rr={4} breakeven={5}", entryPrice, initialStop, stopPrice, chainer_stoploss_atr_mult, chainer_risk_reward_ratio, chainer_enable_breakeven ? 1 : 0)
+    log.info("StopHit: {0}", stopHit ? 1 : 0)
+
+// ============================================================================
+// Plots (Customize for your strategy)
+// ============================================================================
+// Plot signal indicators (MA Cross example)
+fast = ta.sma(close, fastLen)
+slow = ta.sma(close, slowLen)
+plot(fast, title="Fast SMA", color=color.new(color.teal, 0))
+plot(slow, title="Slow SMA", color=color.new(color.orange, 0))
+
+// 方向感知的进出场标记（含自定义时间逻辑）
+plotshape(effectiveEntrySignal, title="Entry Signal", text="E", style=shape.labelup, location=location.belowbar, color=color.new(color.green, 0), textcolor=color.white, size=size.tiny)
+plotshape(effectiveExitSignal, title="Exit Signal", text="X", style=shape.labeldown, location=location.abovebar, color=color.new(color.red, 0), textcolor=color.white, size=size.tiny)
+
+// 进场确认成功标记（例如 K 线突破关键 K 区间）
+plotshape(entryConfirmSignal, title="Entry Confirm", text="", style=shape.flag, location=location.abovebar, color=color.new(color.green, 0), textcolor=color.white, size=size.tiny)
+
+// 进场确认失败标记（例如 K 线跌破关键 K 区间）
+// 颜色保持为绿色，用形状区分成功/失败（flag vs xcross）
+plotshape(entryFailSignal, title="Entry Fail", text="", style=shape.xcross, location=location.belowbar, color=color.new(color.green, 0), textcolor=color.white, size=size.tiny)
+
+// 出场确认成功/失败标记（例如价格确认离开或重新回到关键 K 区间）
+plotshape(exitConfirmSignal, title="Exit Confirm", text="", style=shape.flag, location=location.abovebar, color=color.new(color.red, 0), textcolor=color.white, size=size.tiny)
+plotshape(exitFailSignal, title="Exit Fail", text="", style=shape.xcross, location=location.abovebar, color=color.new(color.red, 0), size=size.tiny)
+
+plotshape(stopHit, title="Stop Hit", text="SL", style=shape.circle, location=location.belowbar, color=color.new(color.red, 0), size=size.tiny)
+
+

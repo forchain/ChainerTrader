@@ -1,0 +1,157 @@
+---
+alwaysApply: false
+---
+# Testing Guidelines
+
+## Test File Naming
+
+All test files in the `tests/` directory MUST follow the naming convention:
+- **File names MUST have `test_` prefix**: `test_*.py`
+- Examples:
+  - ✅ `tests/trader/indicators/test_chainer_trader.py`
+  - ✅ `tests/trader/indicators/test_super_trend.py`
+  - ❌ `tests/trader/indicators/chainer_trader.py` (missing prefix)
+
+## Test Visualization Requirements
+
+All indicator/strategy tests in `tests/trader/indicators/` MUST include backtrader visualization:
+
+### Required Plot Code Pattern
+
+Every test MUST execute backtrader's plotting functionality with the following pattern:
+
+```python
+if main:
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    output_file = os.path.join(OUTPUT_DIR, "test_name.png")
+    csv_file = os.path.join(OUTPUT_DIR, "test_name.csv")
+
+    # ... extract and save data to CSV ...
+
+    # Use backtrader's interactive plot
+    figs = cerebro.plot(
+        style="candle",
+        barup="green",
+        bardown="red",
+        volume=False,
+        figsize=(24, 12),
+        returnfig=True,
+    )
+
+    if figs and len(figs) > 0 and len(figs[0]) > 0:
+        fig = figs[0][0]
+
+        # Format Y-axis to show full numbers instead of scientific notation
+        for ax in fig.axes:
+            formatter = ScalarFormatter(useOffset=False)
+            formatter.set_scientific(False)
+            ax.yaxis.set_major_formatter(formatter)
+
+        # Show interactive plot first
+        plt.show()
+
+        # After closing the window, save to file
+        fig.savefig(output_file, dpi=150, bbox_inches="tight")
+        print(f"\nChart saved to: {output_file}")
+```
+
+### Key Requirements
+
+1. **MUST call `cerebro.plot()`** to generate visualization
+2. **MUST call `plt.show()`** to display interactive plot
+3. **MUST save plot to file** using `fig.savefig()`
+4. **MUST format Y-axis** to avoid scientific notation
+5. **Output directory**: Save plots to `tests/output/` directory
+
+### Purpose
+
+Tests in `tests/trader/indicators/` are for **visualization and validation** of indicators/strategies:
+- Verify Python implementation matches Pine Script behavior
+- Provide rich visual output for debugging and comparison
+- Do NOT execute actual trading (for testing purposes)
+
+## Test Structure
+
+### Standard Test Function Pattern
+
+```python
+def test_indicator_name(main=False):
+    """
+    Test [Indicator Name] with BTC-USDT 1h data.
+    
+    Data preparation (run before test):
+        python -m trader --exchange '{"ty":"BINANCE",...}' \
+          --db mongodb://localhost:27017/ \
+          --tasks '[{"task_type":"UPDATE_KLINES",...}]'
+    """
+    # 1. Load data from MongoDB
+    klines = get_klines_from_db()
+    
+    # 2. Setup Cerebro and strategy
+    cerebro = bt.Cerebro()
+    cerebro.addstrategy(TestStrategy, ...)
+    
+    # 3. Add data and run
+    data = BinanceData(klines)
+    cerebro.adddata(data, name="BTCUSDT")
+    results = cerebro.run()
+    
+    # 4. Extract and save data
+    # CRITICAL: All file generation (CSV, PNG) MUST be inside if main: block
+    if main:
+        os.makedirs(OUTPUT_DIR, exist_ok=True)
+        output_file = os.path.join(OUTPUT_DIR, "test_name.png")
+        csv_file = os.path.join(OUTPUT_DIR, "test_name.csv")
+        
+        # ... CSV export ...
+        # ... Plot visualization ...
+        plt.show()
+        fig.savefig(output_file, ...)
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    test_indicator_name(True)
+```
+
+### Critical Requirements
+
+1. **`main` parameter**: All test functions MUST have `main=False` parameter
+2. **File generation guard**: ALL file generation (CSV export, PNG export, plot display) MUST be inside `if main:` block
+   - ✅ Correct: `if main: os.makedirs(...); save_csv(...); plt.show()`
+   - ❌ Wrong: File operations outside `if main:` block
+3. **Logging setup**: MUST call `logging.basicConfig()` in `if __name__ == "__main__":` block before calling test function
+4. **Main execution**: MUST call test function with `main=True` in `if __name__ == "__main__":` block
+
+## Data Source
+
+- **Default**: MongoDB database (BTC-USDT 1h data)
+- **Collection**: Use `KlineCol` from `trader.database.kline`
+- **Symbol**: `BTCUSDT-1h` (standardized for all tests)
+- **Time Range**: Last 30 days by default
+
+## Output Files
+
+All test outputs MUST be saved to `tests/output/`:
+- **PNG files**: `test_name_btcusdt.png` (visualization charts)
+- **CSV files**: `test_name_btcusdt.csv` (signal/indicator data)
+
+## Import Requirements
+
+Standard imports for indicator tests:
+
+```python
+import csv
+import logging
+import math
+import os
+from datetime import datetime
+
+import backtrader as bt
+import matplotlib.pyplot as plt
+from dotenv import load_dotenv
+from matplotlib.ticker import ScalarFormatter
+from pymongo import MongoClient
+
+from trader.database.kline import KlineCol
+from trader.exchange.binance.data import BinanceData
+```
