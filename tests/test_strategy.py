@@ -25,5 +25,5 @@ def test_parse_strategy():
 
 
 def test_parse_strategies():
-    sy = parse_strategies(["ShihunMACD", "ShihunMACD2"])
+    sy = parse_strategies(["ShihunMACD", "ShihunMACD2","chainer_macdrsi"])
     print(sy)
