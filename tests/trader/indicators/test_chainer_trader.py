@@ -40,7 +40,7 @@ logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
 
 SYMBOL_INTERVAL = "BTCUSDT-1h"
-START_TIME = int(datetime.now().timestamp()) - 3600 * 24 * 9  # 30 days ago
+START_TIME = int(datetime.now().timestamp()) - 3600 * 24 * 30  # 30 days ago
 END_TIME = int(datetime.now().timestamp())
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "output")
 
@@ -559,8 +559,14 @@ def plot_chainer_trader(records: List[SignalRecord], output_file: str):
     offset = price_range * 0.015
     
     # Draw signal markers (mimicking Pine Script plotshape)
+    # NOTE: breakeven_step 会在每笔“新交易/新段止损线”开始时从 0 重新计数；
+    # 如果不重置 last_be_step，会导致每笔交易的 BE 1 被上一笔的 last_be_step=1 挡掉。
     last_be_step = 0
     for i, r in enumerate(records):
+        # Reset BE label tracker when breakeven_step resets (new trade/segment)
+        if r.breakeven_step < last_be_step:
+            last_be_step = r.breakeven_step
+
         # Entry Signal (E) - green label below bar
         if r.entry_signal:
             ax.annotate('E', xy=(i, r.low - offset), 
@@ -621,13 +627,14 @@ def plot_chainer_trader(records: List[SignalRecord], output_file: str):
 
         # Breakeven labels: BE 1, BE 2, ...
         # 仅在 breakeven_step 递增的那根 K线上画一次
+        # 为避免被坐标轴下边界裁剪，标签画在保本线之上
         if r.breakeven_step > last_be_step and r.stop_price:
             ax.annotate(
                 f'BE {r.breakeven_step}',
-                xy=(i, r.stop_price - offset * 0.8),
+                xy=(i, r.stop_price + offset * 0.4),
                 fontsize=8,
                 ha='center',
-                va='top',
+                va='bottom',
                 color='white',
                 bbox=dict(
                     boxstyle='round,pad=0.2',
