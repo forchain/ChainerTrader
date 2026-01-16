@@ -220,18 +220,28 @@ class BaseStrategy(bt.Strategy):
 
     def log_info(self, msg):
         if self.params.log is None:
-            print(msg)
+            cur_time = self.cur_datetime()
+            print(f"[{cur_time}] {msg}")
             return
-        self.params.log.info(f"{msg}, [{self.name()}][{self.bar_idx()}/{self.total_bars-1}]", LogTag.STRATEGY)
+        cur_time = self.cur_datetime()
+        self.params.log.info(
+            f"[{cur_time}] {msg}, [{self.name()}][{self.bar_idx()}/{self.total_bars-1}]",
+            LogTag.STRATEGY,
+        )
 
     def log_debug(self, msg):
         if self.params.log is None:
-            print(msg)
+            cur_time = self.cur_datetime()
+            print(f"[{cur_time}] {msg}")
             return
         bars_info = ""
         if self.total_bars > 0:
             bars_info = f"[{self.bar_idx()}/{self.total_bars-1}]"
-        self.params.log.debug(f"{msg}, [{self.name()}]{bars_info}", LogTag.STRATEGY)
+        cur_time = self.cur_datetime()
+        self.params.log.debug(
+            f"[{cur_time}] {msg}, [{self.name()}]{bars_info}",
+            LogTag.STRATEGY,
+        )
 
     def cur_datetime(self):
         return num2date(self.datas[0].datetime[0])
@@ -434,11 +444,11 @@ class BaseStrategy(bt.Strategy):
         )
 
         if not exit_need_confirm:
-            close_size = int(abs(getattr(self.position, "size", 0)))
-            if close_size <= 0:
+            close_size = float(abs(getattr(self.position, "size", 0.0)))
+            if close_size <= 0.0:
                 self.log_info(f"创建卖出订单失败(无持仓): trade_id={ctx.trade_id} key={ctx.key}")
                 return ctx
-            pos_size = int(getattr(self.position, "size", 0))
+            pos_size = float(getattr(self.position, "size", 0.0))
             order = self.sell(size=close_size, tradeid=ctx.trade_id) if pos_size > 0 else self.buy(size=close_size, tradeid=ctx.trade_id)
             if order is None:
                 self.log_info(f"创建平仓订单失败: trade_id={ctx.trade_id} key={ctx.key}")
@@ -574,11 +584,11 @@ class BaseStrategy(bt.Strategy):
             confirm_ok = close < key_low if ctx.direction == "LONG" else close > key_high
             confirm_fail = close > key_high if ctx.direction == "LONG" else close < key_low
             if confirm_ok:
-                close_size = int(abs(getattr(self.position, "size", 0)))
-                if close_size <= 0:
+                close_size = float(abs(getattr(self.position, "size", 0.0)))
+                if close_size <= 0.0:
                     self.log_info(f"创建卖出订单失败(无持仓): trade_id={ctx.trade_id} key={ctx.key}")
                     return
-                pos_size = int(getattr(self.position, "size", 0))
+                pos_size = float(getattr(self.position, "size", 0.0))
                 order = self.sell(size=close_size, tradeid=ctx.trade_id) if pos_size > 0 else self.buy(size=close_size, tradeid=ctx.trade_id)
                 if order is None:
                     self.log_info(f"创建平仓订单失败: trade_id={ctx.trade_id} key={ctx.key}")
@@ -641,11 +651,11 @@ class BaseStrategy(bt.Strategy):
         close = float(self.data.close[0])
         stop_hit = close <= float(ctx.stop_price) if ctx.direction == "LONG" else close >= float(ctx.stop_price)
         if stop_hit and self.order is None:
-            close_size = int(abs(getattr(self.position, "size", 0)))
-            if close_size <= 0:
+            close_size = float(abs(getattr(self.position, "size", 0.0)))
+            if close_size <= 0.0:
                 self.log_info(f"触发止损但无持仓: trade_id={ctx.trade_id} key={ctx.key} close={close:.6f}")
                 return
-            pos_size = int(getattr(self.position, "size", 0))
+            pos_size = float(getattr(self.position, "size", 0.0))
             order = self.sell(size=close_size, tradeid=ctx.trade_id) if pos_size > 0 else self.buy(size=close_size, tradeid=ctx.trade_id)
             if order is None:
                 self.log_info(f"触发止损但创建卖出订单失败: trade_id={ctx.trade_id} key={ctx.key} close={close:.6f}")
@@ -714,7 +724,8 @@ class BaseStrategy(bt.Strategy):
             price: Price to use for calculation. If None, uses current close price.
             
         Returns:
-            int: Calculated position size (number of units)
+            float: Calculated position size (number of units). Use float to support
+            fractional sizing (e.g. crypto spot).
         """
         if price is None:
             price = self.data.close[0]
@@ -735,7 +746,7 @@ class BaseStrategy(bt.Strategy):
         # Formula: size = available_cash / (price * (1 + commission_rate))
         size = available_cash / (price * (1 + commission_rate))
         
-        return int(size) if size > 0 else 0
+        return float(size) if size > 0 else 0.0
 
     def buy(
         self,
