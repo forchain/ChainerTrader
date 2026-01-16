@@ -11,7 +11,10 @@ from backtrader import num2date
 
 from trader.common.config import DEFAULT_PERIOD
 from trader.common.log_tag import LogTag
+from trader.libraries.chainer_trader import ChainerTraderLib
 from trader.utils.trend import TrendType
+
+_BREAKEVEN_EPS = 1e-10
 
 
 # chainer basic framework strategy
@@ -618,34 +621,41 @@ class BaseStrategy(bt.Strategy):
         if ctx.entry_price is None or ctx.stop_price is None or ctx.initial_stop_price is None:
             return
 
-        # Breakeven ladder
-        if ctx.enable_breakeven and ctx.risk_reward_ratio > 0.0:
+        # Breakeven management (R ladder):
+        # - Define base risk R = LONG: entry - initial_stop; SHORT: initial_stop - entry
+        # - When profit reaches n*R (n>=1), move stop to (n-1)*R from entry
+        #   LONG: stop = entry + (n-1)*R
+        #   SHORT: stop = entry - (n-1)*R
+        # - breakeven_step is set to the reached R level n (not "number of updates"),
+        #   so it remains correct even if price jumps multiple R levels in a single bar.
+        if ctx.enable_breakeven:
             entry_price = float(ctx.entry_price)
             initial_stop = float(ctx.initial_stop_price)
-            risk = entry_price - initial_stop if ctx.direction == "LONG" else initial_stop - entry_price
-            if risk > 0:
+            is_long = ctx.direction == "LONG"
+
+            risk = (entry_price - initial_stop) if is_long else (initial_stop - entry_price)
+            if risk > 0.0:
                 close = float(self.data.close[0])
-                rr = float(ctx.risk_reward_ratio)
-                if ctx.direction == "LONG":
-                    while close >= float(ctx.entry_price) + ((ctx.breakeven_step + 1) * rr * risk):
-                        ctx.breakeven_step += 1
-                        new_stop = float(ctx.entry_price) + ((ctx.breakeven_step - 1) * rr * risk)
-                        if new_stop > float(ctx.stop_price):
-                            ctx.stop_price = new_stop
-                            self.log_info(
-                                f"保本移动止损: trade_id={ctx.trade_id} key={ctx.key} direction=LONG step={ctx.breakeven_step} "
-                                f"stop={ctx.stop_price:.6f}"
-                            )
-                else:
-                    while close <= float(ctx.entry_price) - ((ctx.breakeven_step + 1) * rr * risk):
-                        ctx.breakeven_step += 1
-                        new_stop = float(ctx.entry_price) - ((ctx.breakeven_step - 1) * rr * risk)
-                        if new_stop < float(ctx.stop_price):
-                            ctx.stop_price = new_stop
-                            self.log_info(
-                                f"保本移动止损: trade_id={ctx.trade_id} key={ctx.key} direction=SHORT step={ctx.breakeven_step} "
-                                f"stop={ctx.stop_price:.6f}"
-                            )
+                new_stop = ChainerTraderLib.breakeven_price(
+                    ctx.direction,
+                    entry_price,
+                    initial_stop,
+                    close,
+                )
+                if new_stop is not None:
+                    should_update = (new_stop > float(ctx.stop_price)) if is_long else (new_stop < float(ctx.stop_price))
+                    if should_update:
+                        # Derive reached R-level n from the returned stop:
+                        # LONG: (stop-entry)/risk = n-1; SHORT: (entry-stop)/risk = n-1
+                        level = ((new_stop - entry_price) / risk) if is_long else ((entry_price - new_stop) / risk)
+                        n = int(math.floor(level + _BREAKEVEN_EPS)) + 1
+
+                        ctx.stop_price = float(new_stop)
+                        ctx.breakeven_step = max(int(ctx.breakeven_step), int(n))
+                        self.log_info(
+                            f"保本移动止损: trade_id={ctx.trade_id} key={ctx.key} direction={ctx.direction} "
+                            f"step={ctx.breakeven_step} stop={ctx.stop_price:.6f}"
+                        )
 
         # Bar-by-bar stop check (market exit)
         close = float(self.data.close[0])

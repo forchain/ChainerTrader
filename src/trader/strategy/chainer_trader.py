@@ -39,7 +39,7 @@ class ChainerTraderStrategy(BaseStrategy):
         ("chainer_allow_short", True),
         ("chainer_direction", "LONG"),  # LONG or SHORT
         ("chainer_auto_signal", True),  # Enable auto signal processing via get_entry_signal/get_exit_signal
-        ("chainer_stoploss_atr_mult", 0.0),  # Stop loss ATR multiple (0 = disabled)
+        ("chainer_stoploss_atr_mult", 1.0),  # Stop loss ATR multiple (0 = disabled)
         ("chainer_entry_need_confirm", True),  # Require entry confirmation
         ("chainer_exit_need_confirm", True),  # Require exit confirmation
         ("chainer_enable_breakeven", True),  # Enable breakeven
