@@ -15,6 +15,11 @@ from trader.libraries.chainer_trader import ChainerTraderLib
 from trader.utils.trend import TrendType
 
 _BREAKEVEN_EPS = 1e-10
+_ORDER_ROLE_KEY = "chainer_role"
+_ORDER_ROLE_ENTRY = "entry"
+_ORDER_ROLE_EXIT = "exit"
+_ORDER_ROLE_STOP = "stop"
+_DEFAULT_POSITION_PRICE_BUFFER = 0.002  # 0.2% safety buffer for next-open fills
 
 
 # chainer basic framework strategy
@@ -32,6 +37,7 @@ class BaseStrategy(bt.Strategy):
         ("position", 0),
         ("trader", False),
         ("position_percent", 100),  # Position size as percentage of available cash (100 = full position)
+        ("position_price_buffer", _DEFAULT_POSITION_PRICE_BUFFER),  # Safety buffer for sizing (next-open gap)
         ("chainer_allow_short", True),
         ("chainer_direction", "LONG"),  # LONG or SHORT
         ("chainer_auto_signal", False),  # Enable auto signal processing via get_entry_signal/get_exit_signal
@@ -45,6 +51,7 @@ class BaseStrategy(bt.Strategy):
 
     class TradeStatus(str, Enum):
         PENDING_ENTRY_CONFIRM = "pending_entry_confirm"
+        OPENING = "opening"
         ACTIVE = "active"
         PENDING_EXIT_CONFIRM = "pending_exit_confirm"
         CLOSING = "closing"
@@ -76,6 +83,7 @@ class BaseStrategy(bt.Strategy):
 
         entry_price: Optional[float] = None
         exit_price: Optional[float] = None
+        exit_value: Optional[float] = None  # Exit order value for profit calculation
 
         initial_stop_price: Optional[float] = None
         stop_price: Optional[float] = None
@@ -87,6 +95,7 @@ class BaseStrategy(bt.Strategy):
         exit_key_kline_ref: Optional["BaseStrategy.KlineRef"] = None
 
         cancel_reason: Optional[str] = None
+        stop_order: Optional[bt.Order] = None
 
     def __init__(self):
         super().__init__()
@@ -100,8 +109,10 @@ class BaseStrategy(bt.Strategy):
         if self.params.takeprofit:
             self.takeProfitPoint = 0
 
-        # To set the stop price
-        if self.params.atr:
+        # ATR must be initialized early if any logic depends on historical ATR values.
+        # Backtrader indicators created later won't backfill history, which would make
+        # stoploss_atr_mult ineffective for the first atrperiod bars after creation.
+        if bool(self.params.atr) or float(self.params.chainer_stoploss_atr_mult) != 0.0:
             self.atr = bt.indicators.ATR(self.datas[0], period=self.params.atrperiod)
 
         # Entry/Exit engine state (lazy-activated when enter_trade/exit_trade is used)
@@ -171,21 +182,34 @@ class BaseStrategy(bt.Strategy):
         if order.status in [order.Submitted, order.Accepted]:
             return
 
+        tradeid = getattr(order, "tradeid", None)
+        role = getattr(order, "info", {}).get(_ORDER_ROLE_KEY)
+
         if order.status in [order.Completed]:
             if order.isbuy():
-                self.log_info(f"买入, 价格: {order.executed.price:.2f}, 花费: {order.executed.value:.2f}, 手续费: {order.executed.comm:.2f}")
-
+                self.log_info(
+                    f"买入, 价格: {order.executed.price:.2f}, 花费: {order.executed.value:.2f}, "
+                    f"手续费: {order.executed.comm:.2f}"
+                )
             else:  # Sell
-                self.log_info(f"卖出, 价格: {order.executed.price:.2f}, 花费: {order.executed.value:.2f}, 手续费: {order.executed.comm:.2f}")
-
+                self.log_info(
+                    f"卖出, 价格: {order.executed.price:.2f}, 花费: {order.executed.value:.2f}, "
+                    f"手续费: {order.executed.comm:.2f}"
+                )
         elif order.status in [order.Canceled, order.Margin, order.Rejected]:
-            self.log_info("Order Canceled/Margin/Rejected")
+            status_name = (
+                "Canceled"
+                if order.status == order.Canceled
+                else "Margin"
+                if order.status == order.Margin
+                else "Rejected"
+            )
+            self.log_info(f"订单失败: status={status_name} role={role} trade_id={tradeid}")
 
         self.order = None
 
         # Sync entry/exit engine state with order completion (by tradeid)
         try:
-            tradeid = getattr(order, "tradeid", None)
             if tradeid is None:
                 return
             ctx = self._trades_by_id.get(int(tradeid))
@@ -193,8 +217,12 @@ class BaseStrategy(bt.Strategy):
                 return
 
             if order.status in [order.Completed]:
+                # Backward compatible fallback (when role is missing)
                 is_entry = order.isbuy() if ctx.direction == "LONG" else order.issell()
-                if is_entry:
+                if role is None:
+                    role = _ORDER_ROLE_ENTRY if is_entry else _ORDER_ROLE_EXIT
+
+                if role == _ORDER_ROLE_ENTRY:
                     ctx.entry_price = float(order.executed.price)
                     ctx.status = BaseStrategy.TradeStatus.ACTIVE
                     if ctx.initial_stop_price is None:
@@ -206,12 +234,86 @@ class BaseStrategy(bt.Strategy):
                         f"交易入场成交: trade_id={ctx.trade_id} key={ctx.key} direction={ctx.direction} entry_price={ctx.entry_price:.6f} "
                         f"stop_price={ctx.stop_price:.6f}"
                     )
+                    self._place_or_replace_stop_order(ctx)
                 else:
                     ctx.exit_price = float(order.executed.price)
+                    ctx.exit_value = float(order.executed.value)  # Store exit value for profit calculation
                     ctx.status = BaseStrategy.TradeStatus.CLOSED
-                    self.log_info(f"交易出场成交: trade_id={ctx.trade_id} key={ctx.key} direction={ctx.direction} exit_price={ctx.exit_price:.6f}")
+                    if role == _ORDER_ROLE_STOP:
+                        low = float(self.data.low[0])
+                        high = float(self.data.high[0])
+                        stop_val = float(ctx.stop_price)
+                        self.log_info(
+                            f"止损成交出场: trade_id={ctx.trade_id} key={ctx.key} direction={ctx.direction} "
+                            f"low={low:.6f} high={high:.6f} stop={stop_val:.6f} "
+                            f"exit_price={ctx.exit_price:.6f}"
+                        )
+                    else:
+                        self.log_info(
+                            f"交易出场成交: trade_id={ctx.trade_id} key={ctx.key} "
+                            f"direction={ctx.direction} exit_price={ctx.exit_price:.6f}"
+                        )
+
+                    self._cancel_stop_order(ctx)
                     if self._active_trade is not None and self._active_trade.trade_id == ctx.trade_id:
                         self._active_trade = None
+            elif order.status in [order.Canceled, order.Margin, order.Rejected]:
+                status_name = (
+                    "Canceled"
+                    if order.status == order.Canceled
+                    else "Margin"
+                    if order.status == order.Margin
+                    else "Rejected"
+                )
+
+                # Stop order cancellations are normal during stop replacement
+                if role == _ORDER_ROLE_STOP:
+                    if order.status == order.Canceled:
+                        self.log_info(
+                            f"止损单取消(更新): trade_id={ctx.trade_id} key={ctx.key} stop={float(ctx.stop_price):.6f}"
+                        )
+                    else:
+                        self.log_info(
+                            f"止损单失败: status={status_name} trade_id={ctx.trade_id} key={ctx.key} "
+                            f"stop={float(ctx.stop_price):.6f}"
+                        )
+                    if ctx.stop_order is not None and getattr(ctx.stop_order, "ref", None) == getattr(order, "ref", None):
+                        ctx.stop_order = None
+                    return
+
+                if role == _ORDER_ROLE_ENTRY:
+                    # Entry order did not fill -> cancel the trade context
+                    ctx.status = BaseStrategy.TradeStatus.CANCELLED
+                    ctx.cancel_reason = f"entry_order_{status_name.lower()}"
+                    ctx.order = None
+                    try:
+                        cash = float(self.broker.getcash())
+                        o_size = float(getattr(getattr(order, "created", None), "size", 0.0) or 0.0)
+                        o_price = getattr(getattr(order, "created", None), "price", None)
+                        o_price_f = float(o_price) if o_price is not None else 0.0
+                        open_px = float(getattr(self.data, "open", [0.0])[0])
+                        close_px = float(getattr(self.data, "close", [0.0])[0])
+                        self.log_info(
+                            f"进场订单失败详情: cash={cash:.2f} size={o_size:.8f} created_price={o_price_f:.6f} "
+                            f"bar_open={open_px:.6f} bar_close={close_px:.6f}"
+                        )
+                    except Exception:
+                        pass
+                    self.log_info(
+                        f"进场订单失败: status={status_name} trade_id={ctx.trade_id} key={ctx.key} -> 取消交易"
+                    )
+                    if self._active_trade is not None and self._active_trade.trade_id == ctx.trade_id:
+                        self._active_trade = None
+                    return
+
+                if role == _ORDER_ROLE_EXIT:
+                    # Exit order failed -> keep trade active
+                    ctx.status = BaseStrategy.TradeStatus.ACTIVE
+                    ctx.order = None
+                    self.log_info(
+                        f"出场订单失败: status={status_name} trade_id={ctx.trade_id} key={ctx.key}"
+                    )
+                    return
         except Exception as e:
             self.log_debug(f"notify_order: trade sync failed: {e}")
 
@@ -219,7 +321,45 @@ class BaseStrategy(bt.Strategy):
         if not trade.isclosed:
             return
 
-        self.log_info(f"营业利润, 毛利润: {trade.pnl:.2f}, 净利润: {trade.pnlcomm:.2f}")
+        # Calculate profit percentage: (net_profit / entry_cost) * 100
+        # Try to find the corresponding TradeContext to get accurate entry_price and exit_value
+        ctx = None
+        
+        # Find the most recently closed trade context
+        for trade_id, trade_ctx in self._trades_by_id.items():
+            if trade_ctx.status == BaseStrategy.TradeStatus.CLOSED and trade_ctx.entry_price is not None:
+                if ctx is None or trade_id > ctx.trade_id:
+                    ctx = trade_ctx
+        
+        if ctx is not None and ctx.entry_price is not None and ctx.exit_price is not None:
+            entry_price = float(ctx.entry_price)
+            exit_price = float(ctx.exit_price)
+            
+            # Calculate position size from exit_value if available, otherwise from gross profit
+            if ctx.exit_value is not None and ctx.exit_value > 0:
+                size = ctx.exit_value / exit_price
+            else:
+                # Fallback: estimate size from gross profit
+                price_diff = exit_price - entry_price if ctx.direction == "LONG" else entry_price - exit_price
+                if price_diff != 0 and trade.pnl != 0:
+                    size = abs(trade.pnl / price_diff)
+                else:
+                    size = 0
+            
+            if size > 0:
+                # Entry cost = entry_price * size (commission is already deducted in pnlcomm)
+                entry_cost = entry_price * size
+                profit_pct = (trade.pnlcomm / entry_cost * 100) if entry_cost > 0 else 0.0
+            else:
+                profit_pct = 0.0
+        else:
+            # Fallback: cannot calculate accurately without trade context
+            profit_pct = 0.0
+
+        self.log_info(
+            f"营业利润, 毛利润: {trade.pnl:.2f}, 净利润: {trade.pnlcomm:.2f}, "
+            f"盈利百分比: {profit_pct:.2f}%"
+        )
 
     def log_info(self, msg):
         if self.params.log is None:
@@ -280,6 +420,52 @@ class BaseStrategy(bt.Strategy):
         self._trades_by_id[ctx.trade_id] = ctx
         self._trades_by_key[ctx.key] = ctx
 
+    def _cancel_stop_order(self, ctx: "BaseStrategy.TradeContext") -> None:
+        so = getattr(ctx, "stop_order", None)
+        if so is None:
+            return
+        try:
+            if so.alive():
+                self.cancel(so)
+        except Exception:
+            pass
+        ctx.stop_order = None
+
+    def _place_or_replace_stop_order(self, ctx: "BaseStrategy.TradeContext") -> None:
+        """
+        Maintain a standing Stop order so stop-loss triggers on intrabar low/high.
+
+        LONG  -> sell Stop at stop_price
+        SHORT -> buy  Stop at stop_price
+        """
+        if ctx.stop_price is None:
+            return
+
+        close_size = float(abs(getattr(self.position, "size", 0.0)))
+        if close_size <= 0.0:
+            return
+
+        self._cancel_stop_order(ctx)
+
+        stop_price = float(ctx.stop_price)
+        if ctx.direction == "LONG":
+            so = super().sell(
+                size=close_size,
+                exectype=bt.Order.Stop,
+                price=stop_price,
+                tradeid=ctx.trade_id,
+                **{_ORDER_ROLE_KEY: _ORDER_ROLE_STOP},
+            )
+        else:
+            so = super().buy(
+                size=close_size,
+                exectype=bt.Order.Stop,
+                price=stop_price,
+                tradeid=ctx.trade_id,
+                **{_ORDER_ROLE_KEY: _ORDER_ROLE_STOP},
+            )
+        ctx.stop_order = so
+
     def enter_trade(
         self,
         trade_key: Any = None,
@@ -338,7 +524,7 @@ class BaseStrategy(bt.Strategy):
             entry_key_bar_index=int(key_bar_index),
             key_kline_ref=key_ref,
             stoploss_atr_mult=sl_atr_mult,
-            status=BaseStrategy.TradeStatus.PENDING_ENTRY_CONFIRM if entry_need_confirm else BaseStrategy.TradeStatus.ACTIVE,
+            status=BaseStrategy.TradeStatus.PENDING_ENTRY_CONFIRM if entry_need_confirm else BaseStrategy.TradeStatus.OPENING,
             entry_need_confirm=entry_need_confirm,
             exit_need_confirm=exit_need_confirm,
             enable_breakeven=breakeven_on,
@@ -391,13 +577,19 @@ class BaseStrategy(bt.Strategy):
         )
 
         if not ctx.entry_need_confirm:
-            order = self.buy(tradeid=ctx.trade_id) if ctx.direction == "LONG" else self.sell(tradeid=ctx.trade_id)
+            order = (
+                self.buy(tradeid=ctx.trade_id, **{_ORDER_ROLE_KEY: _ORDER_ROLE_ENTRY})
+                if ctx.direction == "LONG"
+                else self.sell(tradeid=ctx.trade_id, **{_ORDER_ROLE_KEY: _ORDER_ROLE_ENTRY})
+            )
             ctx.order = order
             self.order = order
             if ctx.direction == "LONG":
                 self.log_info(f"创建买入订单: trade_id={ctx.trade_id} key={ctx.key}")
+                self.log_info("下单时机: 本K线收盘确认后提交市价单，默认在下一根K线开盘成交")
             else:
                 self.log_info(f"创建卖出订单(开空): trade_id={ctx.trade_id} key={ctx.key}")
+                self.log_info("下单时机: 本K线收盘确认后提交市价单，默认在下一根K线开盘成交")
 
         return ctx
 
@@ -447,12 +639,17 @@ class BaseStrategy(bt.Strategy):
         )
 
         if not exit_need_confirm:
+            self._cancel_stop_order(ctx)
             close_size = float(abs(getattr(self.position, "size", 0.0)))
             if close_size <= 0.0:
                 self.log_info(f"创建卖出订单失败(无持仓): trade_id={ctx.trade_id} key={ctx.key}")
                 return ctx
             pos_size = float(getattr(self.position, "size", 0.0))
-            order = self.sell(size=close_size, tradeid=ctx.trade_id) if pos_size > 0 else self.buy(size=close_size, tradeid=ctx.trade_id)
+            order = (
+                self.sell(size=close_size, tradeid=ctx.trade_id, **{_ORDER_ROLE_KEY: _ORDER_ROLE_EXIT})
+                if pos_size > 0
+                else self.buy(size=close_size, tradeid=ctx.trade_id, **{_ORDER_ROLE_KEY: _ORDER_ROLE_EXIT})
+            )
             if order is None:
                 self.log_info(f"创建平仓订单失败: trade_id={ctx.trade_id} key={ctx.key}")
                 return ctx
@@ -535,11 +732,11 @@ class BaseStrategy(bt.Strategy):
 
         # Process exit signal
         if effective_exit_signal:
-            # Check if there's an active trade that can be exited
-            if self._active_trade is not None and self._active_trade.status in (
-                BaseStrategy.TradeStatus.ACTIVE,
-                BaseStrategy.TradeStatus.PENDING_ENTRY_CONFIRM,
-            ):
+            # Only allow exit when a position exists and trade is ACTIVE.
+            # This avoids spamming exit attempts when entry order was rejected/cancelled
+            # or is still OPENING (submitted but not filled yet).
+            pos_size = float(abs(getattr(self.position, "size", 0.0)))
+            if self._active_trade is not None and self._active_trade.status == BaseStrategy.TradeStatus.ACTIVE and pos_size > 0.0:
                 try:
                     self.exit_trade(key_bar_index=self.bar_idx())
                 except (ValueError, RuntimeError) as e:
@@ -557,17 +754,59 @@ class BaseStrategy(bt.Strategy):
             key_low = float(ctx.key_kline_ref.low)
             confirm_ok = close > key_high if ctx.direction == "LONG" else close < key_low
             confirm_fail = close < key_low if ctx.direction == "LONG" else close > key_high
-            if confirm_ok:
-                order = self.buy(tradeid=ctx.trade_id) if ctx.direction == "LONG" else self.sell(tradeid=ctx.trade_id)
+
+            # If the confirmation bar also generates an exit signal (according to
+            # current chainer_direction mapping), treat this as a failed confirmation.
+            # This mirrors your TradingView logic where simultaneous entry/exit means
+            # the setup is invalid.
+            entry_signal_raw = self.get_entry_signal()
+            exit_signal_raw = self.get_exit_signal()
+            direction_cfg = str(self.params.chainer_direction).upper()
+            if direction_cfg not in ("LONG", "SHORT"):
+                direction_cfg = "LONG"
+            if direction_cfg == "SHORT" and not bool(self.params.chainer_allow_short):
+                direction_cfg = "LONG"
+            dir_is_long = direction_cfg == "LONG"
+            can_use_short_dir = bool(self.params.chainer_allow_short) and not dir_is_long
+            if dir_is_long:
+                effective_exit_signal = exit_signal_raw
+            elif can_use_short_dir:
+                # SHORT 方向：出场信号与入场信号互换
+                effective_exit_signal = entry_signal_raw
+            else:
+                effective_exit_signal = False
+
+            if confirm_ok and not effective_exit_signal:
+                order = (
+                    self.buy(tradeid=ctx.trade_id, **{_ORDER_ROLE_KEY: _ORDER_ROLE_ENTRY})
+                    if ctx.direction == "LONG"
+                    else self.sell(tradeid=ctx.trade_id, **{_ORDER_ROLE_KEY: _ORDER_ROLE_ENTRY})
+                )
                 ctx.order = order
                 self.order = order
-                ctx.status = BaseStrategy.TradeStatus.ACTIVE
+                ctx.status = BaseStrategy.TradeStatus.OPENING
                 if ctx.direction == "LONG":
                     self.log_info(f"进场确认成功: trade_id={ctx.trade_id} key={ctx.key} close={close:.6f} > key_high")
                     self.log_info(f"创建买入订单: trade_id={ctx.trade_id} key={ctx.key}")
+                    self.log_info("下单时机: 本K线收盘确认后提交市价单，默认在下一根K线开盘成交")
                 else:
                     self.log_info(f"进场确认成功: trade_id={ctx.trade_id} key={ctx.key} close={close:.6f} < key_low")
                     self.log_info(f"创建卖出订单(开空): trade_id={ctx.trade_id} key={ctx.key}")
+                    self.log_info("下单时机: 本K线收盘确认后提交市价单，默认在下一根K线开盘成交")
+            elif confirm_ok and effective_exit_signal:
+                # 同一根K线上既满足进场确认，又触发出场信号 -> 视为进场失败，禁用该关键K
+                ctx.status = BaseStrategy.TradeStatus.CANCELLED
+                ctx.cancel_reason = "entry_confirm_conflict_exit_signal"
+                self._banned_entry_key_bar_index.add(int(ctx.entry_key_bar_index))
+                if ctx.direction == "LONG":
+                    self.log_info(
+                        f"进场确认失败(同K线出现出场信号): trade_id={ctx.trade_id} key={ctx.key} close={close:.6f} > key_high 且触发出场"
+                    )
+                else:
+                    self.log_info(
+                        f"进场确认失败(同K线出现出场信号): trade_id={ctx.trade_id} key={ctx.key} close={close:.6f} < key_low 且触发出场"
+                    )
+                self._active_trade = None
             elif confirm_fail:
                 ctx.status = BaseStrategy.TradeStatus.CANCELLED
                 ctx.cancel_reason = "entry_confirm_failed"
@@ -587,12 +826,17 @@ class BaseStrategy(bt.Strategy):
             confirm_ok = close < key_low if ctx.direction == "LONG" else close > key_high
             confirm_fail = close > key_high if ctx.direction == "LONG" else close < key_low
             if confirm_ok:
+                self._cancel_stop_order(ctx)
                 close_size = float(abs(getattr(self.position, "size", 0.0)))
                 if close_size <= 0.0:
                     self.log_info(f"创建卖出订单失败(无持仓): trade_id={ctx.trade_id} key={ctx.key}")
                     return
                 pos_size = float(getattr(self.position, "size", 0.0))
-                order = self.sell(size=close_size, tradeid=ctx.trade_id) if pos_size > 0 else self.buy(size=close_size, tradeid=ctx.trade_id)
+                order = (
+                    self.sell(size=close_size, tradeid=ctx.trade_id, **{_ORDER_ROLE_KEY: _ORDER_ROLE_EXIT})
+                    if pos_size > 0
+                    else self.buy(size=close_size, tradeid=ctx.trade_id, **{_ORDER_ROLE_KEY: _ORDER_ROLE_EXIT})
+                )
                 if order is None:
                     self.log_info(f"创建平仓订单失败: trade_id={ctx.trade_id} key={ctx.key}")
                     return
@@ -656,27 +900,12 @@ class BaseStrategy(bt.Strategy):
                             f"保本移动止损: trade_id={ctx.trade_id} key={ctx.key} direction={ctx.direction} "
                             f"step={ctx.breakeven_step} stop={ctx.stop_price:.6f}"
                         )
+                        self._place_or_replace_stop_order(ctx)
 
-        # Bar-by-bar stop check (market exit)
-        close = float(self.data.close[0])
-        stop_hit = close <= float(ctx.stop_price) if ctx.direction == "LONG" else close >= float(ctx.stop_price)
-        if stop_hit and self.order is None:
-            close_size = float(abs(getattr(self.position, "size", 0.0)))
-            if close_size <= 0.0:
-                self.log_info(f"触发止损但无持仓: trade_id={ctx.trade_id} key={ctx.key} close={close:.6f}")
-                return
-            pos_size = float(getattr(self.position, "size", 0.0))
-            order = self.sell(size=close_size, tradeid=ctx.trade_id) if pos_size > 0 else self.buy(size=close_size, tradeid=ctx.trade_id)
-            if order is None:
-                self.log_info(f"触发止损但创建卖出订单失败: trade_id={ctx.trade_id} key={ctx.key} close={close:.6f}")
-                return
-            ctx.order = order
-            self.order = order
-            ctx.status = BaseStrategy.TradeStatus.CLOSING
-            self.log_info(
-                f"触发止损出场: trade_id={ctx.trade_id} key={ctx.key} direction={ctx.direction} close={close:.6f} "
-                f"stop={float(ctx.stop_price):.6f} size={close_size}"
-            )
+        # Ensure a standing stop exists during ACTIVE trade (covers cases where the stop
+        # order was cancelled externally or not created due to sizing issues).
+        if ctx.stop_price is not None and (ctx.stop_order is None or not getattr(ctx.stop_order, "alive", lambda: False)()):
+            self._place_or_replace_stop_order(ctx)
 
     def need_stop_loss(self):
         if not self.params.stoploss:
@@ -781,7 +1010,12 @@ class BaseStrategy(bt.Strategy):
         If size is None, calculates it based on position_percent parameter.
         """
         if size is None:
-            size = self._calculate_position_size(price=price)
+            if price is None:
+                buffer_pct = float(getattr(self.params, "position_price_buffer", _DEFAULT_POSITION_PRICE_BUFFER))
+                est_price = float(self.data.close[0]) * (1.0 + max(0.0, buffer_pct))
+                size = self._calculate_position_size(price=est_price)
+            else:
+                size = self._calculate_position_size(price=price)
             if size <= 0:
                 self.log_debug("Calculated position size is 0 or negative, skipping buy order")
                 return None
@@ -825,7 +1059,12 @@ class BaseStrategy(bt.Strategy):
         If size is None, calculates it based on position_percent parameter.
         """
         if size is None:
-            size = self._calculate_position_size(price=price)
+            if price is None:
+                buffer_pct = float(getattr(self.params, "position_price_buffer", _DEFAULT_POSITION_PRICE_BUFFER))
+                est_price = float(self.data.close[0]) * (1.0 + max(0.0, buffer_pct))
+                size = self._calculate_position_size(price=est_price)
+            else:
+                size = self._calculate_position_size(price=price)
             if size <= 0:
                 self.log_debug("Calculated position size is 0 or negative, skipping sell order")
                 return None

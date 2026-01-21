@@ -148,7 +148,7 @@ def test_entry_confirm_success_then_breakeven_then_stop_exit():
     # There must be a breakeven move and a stop-trigger log line
     msgs = [m for _, __, m in st.events]
     assert any("保本移动止损" in m for m in msgs)
-    assert any("触发止损出场" in m for m in msgs)
+    assert any(("触发止损出场" in m) or ("止损成交出场" in m) for m in msgs)
 
 
 def test_breakeven_step_matches_r_level_when_price_jumps_multiple_r():
