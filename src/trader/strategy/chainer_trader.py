@@ -43,7 +43,7 @@ class ChainerTraderStrategy(BaseStrategy):
         ("chainer_entry_need_confirm", True),  # Require entry confirmation
         ("chainer_exit_need_confirm", True),  # Require exit confirmation
         ("chainer_enable_breakeven", True),  # Enable breakeven
-        ("chainer_risk_reward_ratio", 0.0),  # Risk/reward ratio (0 = disabled)
+        ("chainer_risk_reward_ratio", 1.0),  # Risk/reward ratio (0 = disabled)
     )
 
     def __init__(self):

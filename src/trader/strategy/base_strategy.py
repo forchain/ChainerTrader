@@ -19,6 +19,7 @@ _ORDER_ROLE_KEY = "chainer_role"
 _ORDER_ROLE_ENTRY = "entry"
 _ORDER_ROLE_EXIT = "exit"
 _ORDER_ROLE_STOP = "stop"
+_ORDER_ROLE_TP = "take_profit"
 _DEFAULT_POSITION_PRICE_BUFFER = 0.002  # 0.2% safety buffer for next-open fills
 
 
@@ -84,6 +85,7 @@ class BaseStrategy(bt.Strategy):
         entry_price: Optional[float] = None
         exit_price: Optional[float] = None
         exit_value: Optional[float] = None  # Exit order value for profit calculation
+        tp_price: Optional[float] = None
 
         initial_stop_price: Optional[float] = None
         stop_price: Optional[float] = None
@@ -96,6 +98,7 @@ class BaseStrategy(bt.Strategy):
 
         cancel_reason: Optional[str] = None
         stop_order: Optional[bt.Order] = None
+        tp_order: Optional[bt.Order] = None
 
     def __init__(self):
         super().__init__()
@@ -235,6 +238,20 @@ class BaseStrategy(bt.Strategy):
                         f"stop_price={ctx.stop_price:.6f}"
                     )
                     self._place_or_replace_stop_order(ctx)
+                    if ctx.risk_reward_ratio > 0.0:
+                        tp_price = ChainerTraderLib.risk_reward_price(
+                            ctx.direction,
+                            float(ctx.entry_price),
+                            float(ctx.initial_stop_price),
+                            float(ctx.risk_reward_ratio),
+                        )
+                        if tp_price is not None:
+                            ctx.tp_price = float(tp_price)
+                            self.log_info(
+                                f"创建止盈订单: trade_id={ctx.trade_id} key={ctx.key} direction={ctx.direction} "
+                                f"tp={ctx.tp_price:.6f} rr={ctx.risk_reward_ratio:.6f}"
+                            )
+                            self._place_or_replace_tp_order(ctx)
                 else:
                     ctx.exit_price = float(order.executed.price)
                     ctx.exit_value = float(order.executed.value)  # Store exit value for profit calculation
@@ -255,6 +272,7 @@ class BaseStrategy(bt.Strategy):
                         )
 
                     self._cancel_stop_order(ctx)
+                    self._cancel_tp_order(ctx)
                     if self._active_trade is not None and self._active_trade.trade_id == ctx.trade_id:
                         self._active_trade = None
             elif order.status in [order.Canceled, order.Margin, order.Rejected]:
@@ -279,6 +297,20 @@ class BaseStrategy(bt.Strategy):
                         )
                     if ctx.stop_order is not None and getattr(ctx.stop_order, "ref", None) == getattr(order, "ref", None):
                         ctx.stop_order = None
+                    return
+
+                if role == _ORDER_ROLE_TP:
+                    if order.status == order.Canceled:
+                        self.log_info(
+                            f"止盈单取消: trade_id={ctx.trade_id} key={ctx.key} tp={float(ctx.tp_price or 0.0):.6f}"
+                        )
+                    else:
+                        self.log_info(
+                            f"止盈单失败: status={status_name} trade_id={ctx.trade_id} key={ctx.key} "
+                            f"tp={float(ctx.tp_price or 0.0):.6f}"
+                        )
+                    if ctx.tp_order is not None and getattr(ctx.tp_order, "ref", None) == getattr(order, "ref", None):
+                        ctx.tp_order = None
                     return
 
                 if role == _ORDER_ROLE_ENTRY:
@@ -431,6 +463,17 @@ class BaseStrategy(bt.Strategy):
             pass
         ctx.stop_order = None
 
+    def _cancel_tp_order(self, ctx: "BaseStrategy.TradeContext") -> None:
+        to = getattr(ctx, "tp_order", None)
+        if to is None:
+            return
+        try:
+            if to.alive():
+                self.cancel(to)
+        except Exception:
+            pass
+        ctx.tp_order = None
+
     def _place_or_replace_stop_order(self, ctx: "BaseStrategy.TradeContext") -> None:
         """
         Maintain a standing Stop order so stop-loss triggers on intrabar low/high.
@@ -466,6 +509,40 @@ class BaseStrategy(bt.Strategy):
             )
         ctx.stop_order = so
 
+    def _place_or_replace_tp_order(self, ctx: "BaseStrategy.TradeContext") -> None:
+        """
+        Maintain a standing Limit order for take-profit when risk_reward_ratio > 0.
+
+        LONG  -> sell Limit at tp_price
+        SHORT -> buy  Limit at tp_price
+        """
+        if ctx.tp_price is None:
+            return
+
+        close_size = float(abs(getattr(self.position, "size", 0.0)))
+        if close_size <= 0.0:
+            return
+
+        self._cancel_tp_order(ctx)
+
+        tp_price = float(ctx.tp_price)
+        if ctx.direction == "LONG":
+            to = super().sell(
+                size=close_size,
+                exectype=bt.Order.Limit,
+                price=tp_price,
+                tradeid=ctx.trade_id,
+                **{_ORDER_ROLE_KEY: _ORDER_ROLE_TP},
+            )
+        else:
+            to = super().buy(
+                size=close_size,
+                exectype=bt.Order.Limit,
+                price=tp_price,
+                tradeid=ctx.trade_id,
+                **{_ORDER_ROLE_KEY: _ORDER_ROLE_TP},
+            )
+        ctx.tp_order = to
     def enter_trade(
         self,
         trade_key: Any = None,
@@ -640,6 +717,7 @@ class BaseStrategy(bt.Strategy):
 
         if not exit_need_confirm:
             self._cancel_stop_order(ctx)
+            self._cancel_tp_order(ctx)
             close_size = float(abs(getattr(self.position, "size", 0.0)))
             if close_size <= 0.0:
                 self.log_info(f"创建卖出订单失败(无持仓): trade_id={ctx.trade_id} key={ctx.key}")
@@ -755,10 +833,8 @@ class BaseStrategy(bt.Strategy):
             confirm_ok = close > key_high if ctx.direction == "LONG" else close < key_low
             confirm_fail = close < key_low if ctx.direction == "LONG" else close > key_high
 
-            # If the confirmation bar also generates an exit signal (according to
-            # current chainer_direction mapping), treat this as a failed confirmation.
-            # This mirrors your TradingView logic where simultaneous entry/exit means
-            # the setup is invalid.
+            # If any exit signal appears before confirmation, cancel this trade.
+            # This matches TradingView behavior: confirmation is invalid once an exit signal appears.
             entry_signal_raw = self.get_entry_signal()
             exit_signal_raw = self.get_exit_signal()
             direction_cfg = str(self.params.chainer_direction).upper()
@@ -776,7 +852,22 @@ class BaseStrategy(bt.Strategy):
             else:
                 effective_exit_signal = False
 
-            if confirm_ok and not effective_exit_signal:
+            if effective_exit_signal:
+                ctx.status = BaseStrategy.TradeStatus.CANCELLED
+                ctx.cancel_reason = "entry_pending_exit_signal"
+                self._banned_entry_key_bar_index.add(int(ctx.entry_key_bar_index))
+                if ctx.direction == "LONG":
+                    self.log_info(
+                        f"进场取消(未确认前出现出场信号): trade_id={ctx.trade_id} key={ctx.key} close={close:.6f}"
+                    )
+                else:
+                    self.log_info(
+                        f"进场取消(未确认前出现出场信号): trade_id={ctx.trade_id} key={ctx.key} close={close:.6f}"
+                    )
+                self._active_trade = None
+                return
+
+            if confirm_ok:
                 order = (
                     self.buy(tradeid=ctx.trade_id, **{_ORDER_ROLE_KEY: _ORDER_ROLE_ENTRY})
                     if ctx.direction == "LONG"
@@ -793,20 +884,6 @@ class BaseStrategy(bt.Strategy):
                     self.log_info(f"进场确认成功: trade_id={ctx.trade_id} key={ctx.key} close={close:.6f} < key_low")
                     self.log_info(f"创建卖出订单(开空): trade_id={ctx.trade_id} key={ctx.key}")
                     self.log_info("下单时机: 本K线收盘确认后提交市价单，默认在下一根K线开盘成交")
-            elif confirm_ok and effective_exit_signal:
-                # 同一根K线上既满足进场确认，又触发出场信号 -> 视为进场失败，禁用该关键K
-                ctx.status = BaseStrategy.TradeStatus.CANCELLED
-                ctx.cancel_reason = "entry_confirm_conflict_exit_signal"
-                self._banned_entry_key_bar_index.add(int(ctx.entry_key_bar_index))
-                if ctx.direction == "LONG":
-                    self.log_info(
-                        f"进场确认失败(同K线出现出场信号): trade_id={ctx.trade_id} key={ctx.key} close={close:.6f} > key_high 且触发出场"
-                    )
-                else:
-                    self.log_info(
-                        f"进场确认失败(同K线出现出场信号): trade_id={ctx.trade_id} key={ctx.key} close={close:.6f} < key_low 且触发出场"
-                    )
-                self._active_trade = None
             elif confirm_fail:
                 ctx.status = BaseStrategy.TradeStatus.CANCELLED
                 ctx.cancel_reason = "entry_confirm_failed"
@@ -827,6 +904,7 @@ class BaseStrategy(bt.Strategy):
             confirm_fail = close > key_high if ctx.direction == "LONG" else close < key_low
             if confirm_ok:
                 self._cancel_stop_order(ctx)
+                self._cancel_tp_order(ctx)
                 close_size = float(abs(getattr(self.position, "size", 0.0)))
                 if close_size <= 0.0:
                     self.log_info(f"创建卖出订单失败(无持仓): trade_id={ctx.trade_id} key={ctx.key}")
@@ -906,6 +984,10 @@ class BaseStrategy(bt.Strategy):
         # order was cancelled externally or not created due to sizing issues).
         if ctx.stop_price is not None and (ctx.stop_order is None or not getattr(ctx.stop_order, "alive", lambda: False)()):
             self._place_or_replace_stop_order(ctx)
+
+        # Ensure a standing TP exists during ACTIVE trade when enabled.
+        if ctx.tp_price is not None and (ctx.tp_order is None or not getattr(ctx.tp_order, "alive", lambda: False)()):
+            self._place_or_replace_tp_order(ctx)
 
     def need_stop_loss(self):
         if not self.params.stoploss:
