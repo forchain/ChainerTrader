@@ -2,12 +2,13 @@
 library("ChainerTrader", overlay=false)
 
 // ============================================================================
-// ChainerTrader common library (v2)
+// ChainerTrader common library (v3)
 //
 // - Uses key bar reference by `bar_index` (keyBarIndex) so future bars can
 //   reference the key bar without using relative indexes.
-// - Contains confirmation helpers (moved from indicator).
-// - Supports LONG and SHORT (SHORT can be disabled by indicator/strategy).
+// - Contains confirmation helpers for long/short signals.
+// - Signal semantics are fixed: longConfirm for long signals, shortConfirm for short signals.
+// - Supports three trading modes: LONG_ONLY, SHORT_ONLY, BOTH.
 // ============================================================================
 
 export normalizeDirection(string direction) =>
@@ -37,35 +38,29 @@ export stopPrice(string direction, int keyBarIndex, float stoplossAtrMult) =>
     else
         stoplossAtrMult == 0.0 ? keyHigh : (keyHigh + stoplossAtrMult * atrVal)
 
-// Entry confirmation helper.
+// Long signal confirmation helper (做多信号确认).
 // 返回值含义:
-//  1  -> 确认成功
+//  1  -> 确认成功 (close > key_high)
 //  0  -> 仍在等待确认（既没有成功也没有失败）
-// -1  -> 确认失败（上层逻辑收到 -1 后清空当前关键 K）
-export entryConfirm(string direction, int keyBarIndex) =>
-    dir = normalizeDirection(direction)
+// -1  -> 确认失败 (close < key_low)（上层逻辑收到 -1 后清空当前关键 K）
+export longConfirm(int keyBarIndex) =>
     [found, _, keyHigh, keyLow] = keyLevelsByBarIndex(keyBarIndex)
     if not found
         0
     else
-        // LONG: 成功 close > key_high, 失败 close < key_low
-        // SHORT: 成功 close < key_low, 失败 close > key_high
-        confirm = dir == "LONG" ? close > keyHigh : close < keyLow
-        fail = dir == "LONG" ? close < keyLow : close > keyHigh
+        confirm = close > keyHigh
+        fail = close < keyLow
         confirm ? 1 : fail ? -1 : 0
 
-// Exit confirmation helper (for closing an active trade).
-// 返回值约定同 entryConfirm: 1 成功, 0 待确认, -1 失败（上层清空关键 K）
-export exitConfirm(string direction, int keyBarIndex) =>
-    dir = normalizeDirection(direction)
+// Short signal confirmation helper (做空信号确认).
+// 返回值约定同 longConfirm: 1 成功, 0 待确认, -1 失败（上层清空关键 K）
+export shortConfirm(int keyBarIndex) =>
     [found, _, keyHigh, keyLow] = keyLevelsByBarIndex(keyBarIndex)
     if not found
         0
     else
-        // LONG exit confirm: close < key_low; fail: close > key_high
-        // SHORT exit confirm: close > key_high; fail: close < key_low
-        confirm = dir == "LONG" ? close < keyLow : close > keyHigh
-        fail = dir == "LONG" ? close > keyHigh : close < keyLow
+        confirm = close < keyLow
+        fail = close > keyHigh
         confirm ? 1 : fail ? -1 : 0
 
 // Breakeven price (LONG/SHORT)，带分段功能，风险回报比固定为 1。

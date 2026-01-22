@@ -39,13 +39,16 @@ class BaseStrategy(bt.Strategy):
         ("trader", False),
         ("position_percent", 100),  # Position size as percentage of available cash (100 = full position)
         ("position_price_buffer", _DEFAULT_POSITION_PRICE_BUFFER),  # Safety buffer for sizing (next-open gap)
-        ("chainer_allow_short", True),
-        ("chainer_direction", "LONG"),  # LONG or SHORT
-        ("chainer_auto_signal", False),  # Enable auto signal processing via get_entry_signal/get_exit_signal
+        # Chainer Framework v3: mode-based signal processing
+        # - LONG_ONLY: long signal opens long, short signal closes long
+        # - SHORT_ONLY: short signal opens short, long signal closes short
+        # - BOTH: long signal opens long, short signal opens short, exit via stop/breakeven/TP
+        ("chainer_mode", "LONG_ONLY"),  # LONG_ONLY, SHORT_ONLY, BOTH
+        ("chainer_auto_signal", False),  # Enable auto signal processing via get_long_signal/get_short_signal
         # Entry/Exit engine defaults (can be overridden per call)
         ("chainer_stoploss_atr_mult", 0.0),
-        ("chainer_entry_need_confirm", True),
-        ("chainer_exit_need_confirm", True),
+        ("chainer_long_need_confirm", True),  # Require confirmation for long signal
+        ("chainer_short_need_confirm", True),  # Require confirmation for short signal
         ("chainer_enable_breakeven", True),
         ("chainer_risk_reward_ratio", 0.0),
     )
@@ -565,8 +568,10 @@ class BaseStrategy(bt.Strategy):
         direction_norm = str(direction).upper()
         if direction_norm not in ("LONG", "SHORT"):
             raise ValueError("direction must be LONG or SHORT")
-        if direction_norm == "SHORT" and not bool(self.params.chainer_allow_short):
-            raise ValueError("SHORT is disabled by chainer_allow_short")
+        mode = str(self.params.chainer_mode).upper()
+        short_allowed = mode in ("SHORT_ONLY", "BOTH")
+        if direction_norm == "SHORT" and not short_allowed:
+            raise ValueError("SHORT is disabled in LONG_ONLY mode")
 
         if self._active_trade is not None and self._active_trade.status not in (
             BaseStrategy.TradeStatus.CLOSED,
@@ -588,10 +593,17 @@ class BaseStrategy(bt.Strategy):
             key = f"{base_key}-{trade_id}"
 
         sl_atr_mult = float(self.params.chainer_stoploss_atr_mult if stoploss_atr_mult is None else stoploss_atr_mult)
-        entry_need_confirm = bool(self.params.chainer_entry_need_confirm if need_confirm is None else need_confirm)
+        # Direction-aware confirmation: use long_need_confirm for LONG, short_need_confirm for SHORT
+        if need_confirm is not None:
+            entry_need_confirm = bool(need_confirm)
+        elif direction_norm == "LONG":
+            entry_need_confirm = bool(self.params.chainer_long_need_confirm)
+        else:
+            entry_need_confirm = bool(self.params.chainer_short_need_confirm)
         breakeven_on = bool(self.params.chainer_enable_breakeven if enable_breakeven is None else enable_breakeven)
         rr = float(self.params.chainer_risk_reward_ratio if risk_reward_ratio is None else risk_reward_ratio)
-        exit_need_confirm = bool(self.params.chainer_exit_need_confirm)
+        # Exit uses the opposite signal's confirmation (LONG trade exits with short signal)
+        exit_need_confirm = bool(self.params.chainer_short_need_confirm if direction_norm == "LONG" else self.params.chainer_long_need_confirm)
 
         ctx = BaseStrategy.TradeContext(
             trade_id=trade_id,
@@ -699,7 +711,13 @@ class BaseStrategy(bt.Strategy):
         if ctx.status not in (BaseStrategy.TradeStatus.ACTIVE, BaseStrategy.TradeStatus.PENDING_EXIT_CONFIRM):
             return ctx
 
-        exit_need_confirm = bool(self.params.chainer_exit_need_confirm if need_confirm is None else need_confirm)
+        # Exit uses the opposite signal's confirmation (LONG trade exits with short signal)
+        if need_confirm is not None:
+            exit_need_confirm = bool(need_confirm)
+        elif ctx.direction == "LONG":
+            exit_need_confirm = bool(self.params.chainer_short_need_confirm)
+        else:
+            exit_need_confirm = bool(self.params.chainer_long_need_confirm)
         exit_key_ref = self._kline_ref_by_bar_index(key_bar_index)
         ctx.exit_need_confirm = exit_need_confirm
         ctx.exit_key_bar_index = int(key_bar_index)
@@ -740,85 +758,118 @@ class BaseStrategy(bt.Strategy):
 
         return ctx
 
-    def get_entry_signal(self) -> bool:
+    def get_long_signal(self) -> bool:
         """
-        Override in subclass to generate entry signal.
+        Override in subclass to generate long signal (做多信号).
+
+        Signal semantics are fixed: this always represents the condition to go long.
+        For MA Cross example: golden cross (fast crosses above slow).
 
         Returns:
-            bool: True when entry condition is met (e.g., golden cross for LONG).
+            bool: True when long condition is met.
         """
         return False
 
-    def get_exit_signal(self) -> bool:
+    def get_short_signal(self) -> bool:
         """
-        Override in subclass to generate exit signal.
+        Override in subclass to generate short signal (做空信号).
+
+        Signal semantics are fixed: this always represents the condition to go short.
+        For MA Cross example: death cross (fast crosses below slow).
 
         Returns:
-            bool: True when exit condition is met (e.g., death cross for LONG).
+            bool: True when short condition is met.
         """
         return False
 
     def _process_signals(self) -> None:
         """
-        Process entry/exit signals based on direction.
+        Process long/short signals based on trading mode.
 
-        Direction-aware signal processing (reference: Pine Script ChainerTrader):
-        - LONG direction: entry signal triggers enter_trade, exit signal triggers exit_trade
-        - SHORT direction (if allowed): exit signal triggers enter_trade, entry signal triggers exit_trade
+        Mode-based signal processing (reference: Pine Script ChainerTrader v3):
+        - LONG_ONLY: long signal opens long, short signal closes long
+        - SHORT_ONLY: short signal opens short, long signal closes short
+        - BOTH: long signal opens long, short signal opens short, exit via stop/breakeven/TP
         """
-        # Get raw signals from subclass
-        entry_signal_raw = self.get_entry_signal()
-        exit_signal_raw = self.get_exit_signal()
+        # Get signals from subclass (fixed semantics)
+        long_signal = self.get_long_signal()
+        short_signal = self.get_short_signal()
 
-        # Determine effective direction
-        direction = str(self.params.chainer_direction).upper()
-        if direction not in ("LONG", "SHORT"):
-            direction = "LONG"
-        if direction == "SHORT" and not bool(self.params.chainer_allow_short):
-            direction = "LONG"
+        # Determine trading mode
+        mode = str(self.params.chainer_mode).upper()
+        if mode not in ("LONG_ONLY", "SHORT_ONLY", "BOTH"):
+            mode = "LONG_ONLY"
 
-        # Direction-aware signal mapping
-        dir_is_long = direction == "LONG"
-        can_use_short_dir = bool(self.params.chainer_allow_short) and not dir_is_long
+        # Check current state
+        no_active_trade = self._active_trade is None or self._active_trade.status in (
+            BaseStrategy.TradeStatus.CLOSED,
+            BaseStrategy.TradeStatus.CANCELLED,
+        )
+        pos_size = float(getattr(self.position, "size", 0.0))
+        has_long_position = pos_size > 0.0
+        has_short_position = pos_size < 0.0
+        trade_is_active = (
+            self._active_trade is not None
+            and self._active_trade.status == BaseStrategy.TradeStatus.ACTIVE
+        )
 
-        if dir_is_long:
-            effective_entry_signal = entry_signal_raw
-            effective_exit_signal = exit_signal_raw
-        elif can_use_short_dir:
-            # SHORT direction: swap signals
-            effective_entry_signal = exit_signal_raw
-            effective_exit_signal = entry_signal_raw
-        else:
-            # SHORT not allowed but direction is SHORT: no signals
-            effective_entry_signal = False
-            effective_exit_signal = False
-
-        # Process entry signal
-        if effective_entry_signal:
-            # Check if no active trade or current trade is closed/cancelled
-            if self._active_trade is None or self._active_trade.status in (
-                BaseStrategy.TradeStatus.CLOSED,
-                BaseStrategy.TradeStatus.CANCELLED,
-            ):
+        if mode == "LONG_ONLY":
+            # Long signal opens long
+            if long_signal and no_active_trade:
                 try:
                     self.enter_trade(
-                        direction=direction,
+                        direction="LONG",
                         key_bar_index=self.bar_idx(),
                     )
                 except (ValueError, RuntimeError) as e:
-                    self.log_debug(f"_process_signals: enter_trade failed: {e}")
+                    self.log_debug(f"_process_signals: enter_trade LONG failed: {e}")
 
-        # Process exit signal
-        if effective_exit_signal:
-            # Only allow exit when a position exists and trade is ACTIVE.
-            # This avoids spamming exit attempts when entry order was rejected/cancelled
-            # or is still OPENING (submitted but not filled yet).
-            pos_size = float(abs(getattr(self.position, "size", 0.0)))
-            if self._active_trade is not None and self._active_trade.status == BaseStrategy.TradeStatus.ACTIVE and pos_size > 0.0:
+            # Short signal closes long
+            if short_signal and trade_is_active and has_long_position:
                 try:
                     self.exit_trade(key_bar_index=self.bar_idx())
                 except (ValueError, RuntimeError) as e:
                     self.log_debug(f"_process_signals: exit_trade failed: {e}")
+
+        elif mode == "SHORT_ONLY":
+            # Short signal opens short
+            if short_signal and no_active_trade:
+                try:
+                    self.enter_trade(
+                        direction="SHORT",
+                        key_bar_index=self.bar_idx(),
+                    )
+                except (ValueError, RuntimeError) as e:
+                    self.log_debug(f"_process_signals: enter_trade SHORT failed: {e}")
+
+            # Long signal closes short
+            if long_signal and trade_is_active and has_short_position:
+                try:
+                    self.exit_trade(key_bar_index=self.bar_idx())
+                except (ValueError, RuntimeError) as e:
+                    self.log_debug(f"_process_signals: exit_trade failed: {e}")
+
+        elif mode == "BOTH":
+            # Long signal opens long
+            if long_signal and no_active_trade:
+                try:
+                    self.enter_trade(
+                        direction="LONG",
+                        key_bar_index=self.bar_idx(),
+                    )
+                except (ValueError, RuntimeError) as e:
+                    self.log_debug(f"_process_signals: enter_trade LONG failed: {e}")
+
+            # Short signal opens short
+            if short_signal and no_active_trade:
+                try:
+                    self.enter_trade(
+                        direction="SHORT",
+                        key_bar_index=self.bar_idx(),
+                    )
+                except (ValueError, RuntimeError) as e:
+                    self.log_debug(f"_process_signals: enter_trade SHORT failed: {e}")
+            # In BOTH mode, exit is handled by stop/breakeven/take-profit mechanisms only
 
     def _process_trade_engine(self) -> None:
         ctx = self._active_trade
@@ -833,26 +884,26 @@ class BaseStrategy(bt.Strategy):
             confirm_ok = close > key_high if ctx.direction == "LONG" else close < key_low
             confirm_fail = close < key_low if ctx.direction == "LONG" else close > key_high
 
-            # If any exit signal appears before confirmation, cancel this trade.
-            # This matches TradingView behavior: confirmation is invalid once an exit signal appears.
-            entry_signal_raw = self.get_entry_signal()
-            exit_signal_raw = self.get_exit_signal()
-            direction_cfg = str(self.params.chainer_direction).upper()
-            if direction_cfg not in ("LONG", "SHORT"):
-                direction_cfg = "LONG"
-            if direction_cfg == "SHORT" and not bool(self.params.chainer_allow_short):
-                direction_cfg = "LONG"
-            dir_is_long = direction_cfg == "LONG"
-            can_use_short_dir = bool(self.params.chainer_allow_short) and not dir_is_long
-            if dir_is_long:
-                effective_exit_signal = exit_signal_raw
-            elif can_use_short_dir:
-                # SHORT 方向：出场信号与入场信号互换
-                effective_exit_signal = entry_signal_raw
-            else:
-                effective_exit_signal = False
+            # If opposing signal appears before confirmation, cancel this trade.
+            # This matches TradingView behavior: confirmation is invalid once an opposing signal appears.
+            long_signal = self.get_long_signal()
+            short_signal = self.get_short_signal()
+            mode = str(self.params.chainer_mode).upper()
+            if mode not in ("LONG_ONLY", "SHORT_ONLY", "BOTH"):
+                mode = "LONG_ONLY"
 
-            if effective_exit_signal:
+            # Determine if opposing signal appeared
+            # For LONG entry pending: short signal is the exit signal
+            # For SHORT entry pending: long signal is the exit signal
+            # In BOTH mode, no opposing signal logic (entries are independent)
+            opposing_signal = False
+            if mode == "LONG_ONLY" and ctx.direction == "LONG":
+                opposing_signal = short_signal
+            elif mode == "SHORT_ONLY" and ctx.direction == "SHORT":
+                opposing_signal = long_signal
+            # In BOTH mode, no opposing signal cancels entry
+
+            if opposing_signal:
                 ctx.status = BaseStrategy.TradeStatus.CANCELLED
                 ctx.cancel_reason = "entry_pending_exit_signal"
                 self._banned_entry_key_bar_index.add(int(ctx.entry_key_bar_index))

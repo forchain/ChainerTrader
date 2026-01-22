@@ -46,3 +46,11 @@ Always provide links to the real files, not x.md.
 
 ## No Current Implementation
 Don't show or discuss the current implementation unless specifically requested.
+
+## File Naming Convention
+All file names must use English only. This applies to:
+- Source code files (.py, .pine, .js, etc.)
+- Configuration files (.json, .yaml, .toml, etc.)
+- Documentation files (.md, .txt, etc.)
+- Test files (test_*.py)
+- Any other files created or modified in the project
