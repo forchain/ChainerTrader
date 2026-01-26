@@ -18,7 +18,7 @@ from trader.exchange.exchange_config import ExchangeConfig, MarginMode
 from trader.exchange.exchange_type import ExchangeType
 from trader.utils.kline import Kline
 from trader.utils.operate import OperateType
-from trader.utils.symbol_interval import SymbolInterval
+from trader.utils.symbol_interval import SymbolInterval, Symbol
 
 EXCHANGE_NAME = "BINANCE"
 
@@ -254,7 +254,7 @@ class BinanceExchange:
 
         return None
 
-    def new_order(self, symbol: str, op: OperateType, quantity: float = 0):
+    def new_order(self, symbol:Symbol, op: OperateType, quantity: float = 0):
         if self.has_rate_limit("ORDERS"):
             self.log.error("Rate limit")
             return None
@@ -273,7 +273,7 @@ class BinanceExchange:
                 self.log.warning("CLOSE operation in SPOT mode mapped to SELL")
 
             response = self.spot_client.rest_api.new_order(
-                symbol=symbol,
+                symbol=symbol.name(),
                 side=NewOrderSideEnum[side_name].value,
                 type=NewOrderTypeEnum["MARKET"].value,
                 quantity=quantity,
@@ -291,12 +291,47 @@ class BinanceExchange:
             self.log.error(e)
             return None
 
-    def _new_margin_order(self, symbol: str, op: OperateType, quantity: float) -> Optional[dict]:
+    def _new_margin_order(self, symbol:Symbol, op: OperateType, quantity: float) -> Optional[dict]:
         is_isolated = self.margin_mode == MarginMode.ISOLATED_MARGIN
 
         try:
-            self.log.warning(f"Unsupported operation type for margin: {op} {is_isolated}")
-            return None
+            if op == OperateType.SHORT:
+                base_asset = symbol.base
+
+                # 检查可借数量
+                borrowable_info = self.get_margin_borrowable(base_asset, symbol.name(), is_isolated)
+                if not borrowable_info or float(borrowable_info.get('amount', 0)) < quantity:
+                    self.log.error(f"Insufficient borrowable amount for {base_asset}. Available: {borrowable_info}")
+                    return None
+
+                # 借入资产
+                borrow_result = self.borrow_asset(base_asset, quantity, symbol.name(), is_isolated)
+                if not borrow_result or 'tranId' not in borrow_result:
+                    self.log.error(f"Failed to borrow {base_asset}: {borrow_result}")
+                    return None
+
+                # 卖出借入的资产
+                result = self.new_margin_order(
+                    symbol=symbol.name(),
+                    side='SELL',
+                    quantity=quantity,
+                    is_isolated=is_isolated
+                )
+                return result
+
+            elif op == OperateType.LONG:
+                # 做多：买入
+                result = self.new_margin_order(
+                    symbol=symbol.name(),
+                    side='BUY',
+                    quantity=quantity,
+                    is_isolated=is_isolated
+                )
+                return result
+
+            else:
+                self.log.warning(f"Unsupported operation type for margin: {op}")
+                return None
 
         except Exception as e:
             self.log.error(f"Margin order failed: {e}")
@@ -368,6 +403,33 @@ class BinanceExchange:
             self.log.error(f"Margin API request failed: {e}")
             raise
 
+    def borrow_asset(self, asset: str, amount: float, symbol: str = None, is_isolated: bool = False) -> dict:
+        """
+        借入资产（用于做空）
+
+        Args:
+            asset: 要借入的资产名称
+            amount: 借入数量
+            symbol: 交易对（Isolated Margin 模式下必需）
+            is_isolated: 是否为 Isolated Margin
+        """
+        if self.margin_mode == MarginMode.SPOT:
+            self.log.warning("Borrow asset called but margin_mode is SPOT")
+            return {}
+
+        params = {
+            'asset': asset,
+            'amount': amount,
+            'isIsolated': 'TRUE' if is_isolated else 'FALSE',
+        }
+
+        if is_isolated and symbol:
+            params['symbol'] = symbol
+
+        result = self._margin_api_request('POST', '/margin/loan', params)
+        self.log.info(f"Borrow asset: {amount} {asset}, symbol={symbol}, isolated={is_isolated}, result: {result}")
+        return result
+
     def get_margin_account(self, symbol: str = None) -> dict:
         """
         查询保证金账户信息
@@ -406,6 +468,48 @@ class BinanceExchange:
             params['symbol'] = symbol
 
         result = self._margin_api_request('GET', '/margin/maxBorrowable', params)
+        return result
+
+    def new_margin_order(
+            self,
+            symbol: str,
+            side: str,
+            quantity: float,
+            price: Optional[float] = None,
+            order_type: str = "MARKET",
+            is_isolated: bool = False,
+    ) -> dict:
+        """
+        创建 Margin 订单
+
+        Args:
+            symbol: 交易对
+            side: 订单方向 ('BUY' 或 'SELL')
+            quantity: 数量
+            price: 价格（限价单需要）
+            order_type: 订单类型 ('MARKET' 或 'LIMIT')
+            is_isolated: 是否为 Isolated Margin
+        """
+        if self.margin_mode == MarginMode.SPOT:
+            self.log.warning("New margin order called but margin_mode is SPOT")
+            return {}
+
+        params = {
+            'symbol': symbol,
+            'side': side,
+            'type': order_type,
+            'isIsolated': 'TRUE' if is_isolated else 'FALSE',
+        }
+
+        if order_type == 'MARKET':
+            params['quantity'] = quantity
+        elif order_type == 'LIMIT':
+            params['quantity'] = quantity
+            params['price'] = price
+            params['timeInForce'] = 'GTC'
+
+        result = self._margin_api_request('POST', '/margin/order', params)
+        self.log.info(f"New margin order: {side} {quantity} {symbol}, isolated={is_isolated}, result: {result}")
         return result
 
 
