@@ -115,16 +115,8 @@ shortFailSignal := false
 // Helper: Reset trade state
 // ============================================================================
 resetTradeState() =>
-    pendingLong := false
-    pendingShort := false
-    longKeyBarIndex := na
-    shortKeyBarIndex := na
-    initialStop := na
-    stopPrice := na
-    entryPrice := na
-    takeProfitPrice := na
-    breakevenStep := 0
-    currentDirection := na
+    // [pendingLong, pendingShort, longKey, shortKey, initStop, stopPrice, entryPrice, tp, beStep, curDir]
+    [false, false, int(na), int(na), float(na), float(na), float(na), float(na), 0, string(na)]
 
 // ============================================================================
 // Helper: Execute entry
@@ -134,16 +126,18 @@ executeEntry(string dir, float currentStopPrice) =>
         strategy.entry("Long", strategy.long)
     else
         strategy.entry("Short", strategy.short)
-    entryPrice := close
-    initialStop := currentStopPrice
-    stopPrice := currentStopPrice
-    currentDirection := dir
-    breakevenStep := 0
+    ep = close
+    initStop = currentStopPrice
+    sp = currentStopPrice
+    cd = dir
+    step = 0
+    tp = float(na)
     // 设置止盈
     if chainer_risk_reward_ratio > 0
-        tp = ChainerTraderLib.riskRewardPrice(dir, entryPrice, initialStop, chainer_risk_reward_ratio)
-        if not na(tp)
-            takeProfitPrice := tp
+        tpCalc = ChainerTraderLib.riskRewardPrice(dir, ep, initStop, chainer_risk_reward_ratio)
+        if not na(tpCalc)
+            tp := tpCalc
+    [ep, initStop, sp, cd, step, tp]
 
 // ============================================================================
 // Helper: Execute exit
@@ -168,23 +162,43 @@ noPosition = strategy.position_size == 0
 // ============================================================================
 // LONG_ONLY Mode: 做多信号开多，做空信号平多
 // ============================================================================
+// Pre-calculate stop prices for consistency
+stopPriceLong = ChainerTraderLib.stopPrice("LONG", bar_index, chainer_stoploss_atr_mult)
+stopPriceShort = ChainerTraderLib.stopPrice("SHORT", bar_index, chainer_stoploss_atr_mult)
+
 if isLongOnly
     // 做多信号触发进场
     if longSignal and noPosition and not pendingLong
-        currentStopPrice = ChainerTraderLib.stopPrice("LONG", bar_index, chainer_stoploss_atr_mult)
+        currentStopPrice = stopPriceLong
         if not na(currentStopPrice)
             tradeId += 1
             longKeyBarIndex := bar_index
             pendingLong := chainer_long_need_confirm
             if not chainer_long_need_confirm
-                executeEntry("LONG", currentStopPrice)
+                [newEp, newInitStop, newSp, newDir, newStep, newTp] = executeEntry("LONG", currentStopPrice)
+                entryPrice := newEp
+                initialStop := newInitStop
+                stopPrice := newSp
+                currentDirection := newDir
+                breakevenStep := newStep
+                takeProfitPrice := newTp
             else
                 initialStop := currentStopPrice
                 stopPrice := currentStopPrice
     
     // 做空信号触发平仓（无需确认，直接平仓）
     if shortSignal and hasLongPosition and not pendingShort
-        executeExit()
+        [newPL, newPS, newLK, newSK, newIS, newSP, newEP, newTP, newBS, newCD] = executeExit()
+        pendingLong := newPL
+        pendingShort := newPS
+        longKeyBarIndex := newLK
+        shortKeyBarIndex := newSK
+        initialStop := newIS
+        stopPrice := newSP
+        entryPrice := newEP
+        takeProfitPrice := newTP
+        breakevenStep := newBS
+        currentDirection := newCD
 
 // ============================================================================
 // SHORT_ONLY Mode: 做空信号开空，做多信号平空
@@ -192,20 +206,36 @@ if isLongOnly
 if isShortOnly
     // 做空信号触发进场
     if shortSignal and noPosition and not pendingShort
-        currentStopPrice = ChainerTraderLib.stopPrice("SHORT", bar_index, chainer_stoploss_atr_mult)
+        currentStopPrice = stopPriceShort
         if not na(currentStopPrice)
             tradeId += 1
             shortKeyBarIndex := bar_index
             pendingShort := chainer_short_need_confirm
             if not chainer_short_need_confirm
-                executeEntry("SHORT", currentStopPrice)
+                [newEp, newInitStop, newSp, newDir, newStep, newTp] = executeEntry("SHORT", currentStopPrice)
+                entryPrice := newEp
+                initialStop := newInitStop
+                stopPrice := newSp
+                currentDirection := newDir
+                breakevenStep := newStep
+                takeProfitPrice := newTp
             else
                 initialStop := currentStopPrice
                 stopPrice := currentStopPrice
     
     // 做多信号触发平仓（无需确认，直接平仓）
     if longSignal and hasShortPosition and not pendingLong
-        executeExit()
+        [newPL, newPS, newLK, newSK, newIS, newSP, newEP, newTP, newBS, newCD] = executeExit()
+        pendingLong := newPL
+        pendingShort := newPS
+        longKeyBarIndex := newLK
+        shortKeyBarIndex := newSK
+        initialStop := newIS
+        stopPrice := newSP
+        entryPrice := newEP
+        takeProfitPrice := newTP
+        breakevenStep := newBS
+        currentDirection := newCD
 
 // ============================================================================
 // BOTH Mode: 做多信号开多，做空信号开空，离场靠止损/止盈/保本
@@ -213,26 +243,38 @@ if isShortOnly
 if isBoth
     // 做多信号触发开多
     if longSignal and noPosition and not pendingLong and not pendingShort
-        currentStopPrice = ChainerTraderLib.stopPrice("LONG", bar_index, chainer_stoploss_atr_mult)
+        currentStopPrice = stopPriceLong
         if not na(currentStopPrice)
             tradeId += 1
             longKeyBarIndex := bar_index
             pendingLong := chainer_long_need_confirm
             if not chainer_long_need_confirm
-                executeEntry("LONG", currentStopPrice)
+                [newEp, newInitStop, newSp, newDir, newStep, newTp] = executeEntry("LONG", currentStopPrice)
+                entryPrice := newEp
+                initialStop := newInitStop
+                stopPrice := newSp
+                currentDirection := newDir
+                breakevenStep := newStep
+                takeProfitPrice := newTp
             else
                 initialStop := currentStopPrice
                 stopPrice := currentStopPrice
     
     // 做空信号触发开空
     if shortSignal and noPosition and not pendingLong and not pendingShort
-        currentStopPrice = ChainerTraderLib.stopPrice("SHORT", bar_index, chainer_stoploss_atr_mult)
+        currentStopPrice = stopPriceShort
         if not na(currentStopPrice)
             tradeId += 1
             shortKeyBarIndex := bar_index
             pendingShort := chainer_short_need_confirm
             if not chainer_short_need_confirm
-                executeEntry("SHORT", currentStopPrice)
+                [newEp, newInitStop, newSp, newDir, newStep, newTp] = executeEntry("SHORT", currentStopPrice)
+                entryPrice := newEp
+                initialStop := newInitStop
+                stopPrice := newSp
+                currentDirection := newDir
+                breakevenStep := newStep
+                takeProfitPrice := newTp
             else
                 initialStop := currentStopPrice
                 stopPrice := currentStopPrice
@@ -240,16 +282,25 @@ if isBoth
 // ============================================================================
 // Long Signal Confirmation (做多信号确认)
 // ============================================================================
+// Pre-calculate confirm status for consistency (call every calculation).
+safeLongKeyBarIndex = not na(longKeyBarIndex) ? longKeyBarIndex : bar_index
+safeShortKeyBarIndex = not na(shortKeyBarIndex) ? shortKeyBarIndex : bar_index
+confirmStatusLong = ChainerTraderLib.longConfirm(safeLongKeyBarIndex)
+confirmStatusShort = ChainerTraderLib.shortConfirm(safeShortKeyBarIndex)
+
 if barstate.isconfirmed and pendingLong
-    safeLongKeyBarIndex = not na(longKeyBarIndex) ? longKeyBarIndex : bar_index
-    confirmStatus = ChainerTraderLib.longConfirm(safeLongKeyBarIndex)
-    
-    if confirmStatus == 1
+    if confirmStatusLong == 1
         longConfirmSignal := true
         pendingLong := false
-        executeEntry("LONG", stopPrice)
+        [newEp, newInitStop, newSp, newDir, newStep, newTp] = executeEntry("LONG", stopPrice)
+        entryPrice := newEp
+        initialStop := newInitStop
+        stopPrice := newSp
+        currentDirection := newDir
+        breakevenStep := newStep
+        takeProfitPrice := newTp
         
-    else if confirmStatus == -1
+    else if confirmStatusLong == -1
         longFailSignal := true
         pendingLong := false
         longKeyBarIndex := na
@@ -260,15 +311,18 @@ if barstate.isconfirmed and pendingLong
 // Short Signal Confirmation (做空信号确认)
 // ============================================================================
 if barstate.isconfirmed and pendingShort
-    safeShortKeyBarIndex = not na(shortKeyBarIndex) ? shortKeyBarIndex : bar_index
-    confirmStatus = ChainerTraderLib.shortConfirm(safeShortKeyBarIndex)
-    
-    if confirmStatus == 1
+    if confirmStatusShort == 1
         shortConfirmSignal := true
         pendingShort := false
-        executeEntry("SHORT", stopPrice)
+        [newEp, newInitStop, newSp, newDir, newStep, newTp] = executeEntry("SHORT", stopPrice)
+        entryPrice := newEp
+        initialStop := newInitStop
+        stopPrice := newSp
+        currentDirection := newDir
+        breakevenStep := newStep
+        takeProfitPrice := newTp
         
-    else if confirmStatus == -1
+    else if confirmStatusShort == -1
         shortFailSignal := true
         pendingShort := false
         shortKeyBarIndex := na
