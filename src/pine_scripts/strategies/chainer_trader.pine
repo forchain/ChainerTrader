@@ -32,8 +32,8 @@ slowLen = input.int(title="Slow SMA Length", defval=21, minval=1, group="Signal 
 // ============================================================================
 chainer_mode = input.string(title="Trading Mode", defval="LONG_ONLY", options=["LONG_ONLY", "SHORT_ONLY", "BOTH"], group="Chainer Framework")
 chainer_stoploss_atr_mult = input.float(title="Stop loss ATR multiple (0 = disabled)", defval=0.0, step=0.1, group="Chainer Framework")
-chainer_long_need_confirm = input.bool(title="Require long signal confirmation", defval=true, group="Chainer Framework")
-chainer_short_need_confirm = input.bool(title="Require short signal confirmation", defval=true, group="Chainer Framework")
+chainer_enter_need_confirm = input.bool(title="Require entry confirmation", defval=true, group="Chainer Framework", tooltip="If true, waits for price to break key bar high/low before entering.")
+chainer_exit_need_confirm = input.bool(title="Require exit confirmation", defval=true, group="Chainer Framework", tooltip="If true, waits for price to break key bar high/low before exiting.")
 chainer_enable_breakeven = input.bool(title="Enable breakeven", defval=true, group="Chainer Framework")
 chainer_risk_reward_ratio = input.float(title="Risk/reward ratio (0 = disabled)", defval=0.0, step=0.1, group="Chainer Framework")
 
@@ -173,8 +173,8 @@ if isLongOnly
         if not na(currentStopPrice)
             tradeId += 1
             longKeyBarIndex := bar_index
-            pendingLong := chainer_long_need_confirm
-            if not chainer_long_need_confirm
+            pendingLong := chainer_enter_need_confirm
+            if not chainer_enter_need_confirm
                 [newEp, newInitStop, newSp, newDir, newStep, newTp] = executeEntry("LONG", currentStopPrice)
                 entryPrice := newEp
                 initialStop := newInitStop
@@ -186,19 +186,23 @@ if isLongOnly
                 initialStop := currentStopPrice
                 stopPrice := currentStopPrice
     
-    // 做空信号触发平仓（无需确认，直接平仓）
+    // 做空信号触发平仓
     if shortSignal and hasLongPosition and not pendingShort
-        [newPL, newPS, newLK, newSK, newIS, newSP, newEP, newTP, newBS, newCD] = executeExit()
-        pendingLong := newPL
-        pendingShort := newPS
-        longKeyBarIndex := newLK
-        shortKeyBarIndex := newSK
-        initialStop := newIS
-        stopPrice := newSP
-        entryPrice := newEP
-        takeProfitPrice := newTP
-        breakevenStep := newBS
-        currentDirection := newCD
+        if chainer_exit_need_confirm
+            shortKeyBarIndex := bar_index
+            pendingShort := true
+        else
+            [newPL, newPS, newLK, newSK, newIS, newSP, newEP, newTP, newBS, newCD] = executeExit()
+            pendingLong := newPL
+            pendingShort := newPS
+            longKeyBarIndex := newLK
+            shortKeyBarIndex := newSK
+            initialStop := newIS
+            stopPrice := newSP
+            entryPrice := newEP
+            takeProfitPrice := newTP
+            breakevenStep := newBS
+            currentDirection := newCD
 
 // ============================================================================
 // SHORT_ONLY Mode: 做空信号开空，做多信号平空
@@ -210,8 +214,8 @@ if isShortOnly
         if not na(currentStopPrice)
             tradeId += 1
             shortKeyBarIndex := bar_index
-            pendingShort := chainer_short_need_confirm
-            if not chainer_short_need_confirm
+            pendingShort := chainer_enter_need_confirm
+            if not chainer_enter_need_confirm
                 [newEp, newInitStop, newSp, newDir, newStep, newTp] = executeEntry("SHORT", currentStopPrice)
                 entryPrice := newEp
                 initialStop := newInitStop
@@ -223,19 +227,23 @@ if isShortOnly
                 initialStop := currentStopPrice
                 stopPrice := currentStopPrice
     
-    // 做多信号触发平仓（无需确认，直接平仓）
+    // 做多信号触发平仓
     if longSignal and hasShortPosition and not pendingLong
-        [newPL, newPS, newLK, newSK, newIS, newSP, newEP, newTP, newBS, newCD] = executeExit()
-        pendingLong := newPL
-        pendingShort := newPS
-        longKeyBarIndex := newLK
-        shortKeyBarIndex := newSK
-        initialStop := newIS
-        stopPrice := newSP
-        entryPrice := newEP
-        takeProfitPrice := newTP
-        breakevenStep := newBS
-        currentDirection := newCD
+        if chainer_exit_need_confirm
+            longKeyBarIndex := bar_index
+            pendingLong := true
+        else
+            [newPL, newPS, newLK, newSK, newIS, newSP, newEP, newTP, newBS, newCD] = executeExit()
+            pendingLong := newPL
+            pendingShort := newPS
+            longKeyBarIndex := newLK
+            shortKeyBarIndex := newSK
+            initialStop := newIS
+            stopPrice := newSP
+            entryPrice := newEP
+            takeProfitPrice := newTP
+            breakevenStep := newBS
+            currentDirection := newCD
 
 // ============================================================================
 // BOTH Mode: 做多信号开多，做空信号开空，离场靠止损/止盈/保本
@@ -247,8 +255,8 @@ if isBoth
         if not na(currentStopPrice)
             tradeId += 1
             longKeyBarIndex := bar_index
-            pendingLong := chainer_long_need_confirm
-            if not chainer_long_need_confirm
+            pendingLong := chainer_enter_need_confirm
+            if not chainer_enter_need_confirm
                 [newEp, newInitStop, newSp, newDir, newStep, newTp] = executeEntry("LONG", currentStopPrice)
                 entryPrice := newEp
                 initialStop := newInitStop
@@ -266,8 +274,8 @@ if isBoth
         if not na(currentStopPrice)
             tradeId += 1
             shortKeyBarIndex := bar_index
-            pendingShort := chainer_short_need_confirm
-            if not chainer_short_need_confirm
+            pendingShort := chainer_enter_need_confirm
+            if not chainer_enter_need_confirm
                 [newEp, newInitStop, newSp, newDir, newStep, newTp] = executeEntry("SHORT", currentStopPrice)
                 entryPrice := newEp
                 initialStop := newInitStop
@@ -292,13 +300,28 @@ if barstate.isconfirmed and pendingLong
     if confirmStatusLong == 1
         longConfirmSignal := true
         pendingLong := false
-        [newEp, newInitStop, newSp, newDir, newStep, newTp] = executeEntry("LONG", stopPrice)
-        entryPrice := newEp
-        initialStop := newInitStop
-        stopPrice := newSp
-        currentDirection := newDir
-        breakevenStep := newStep
-        takeProfitPrice := newTp
+        
+        // 如果是 SHORT_ONLY 模式且有持仓，则做多确认意味着平空
+        if isShortOnly and hasShortPosition
+            [newPL, newPS, newLK, newSK, newIS, newSP, newEP, newTP, newBS, newCD] = executeExit()
+            pendingLong := newPL
+            pendingShort := newPS
+            longKeyBarIndex := newLK
+            shortKeyBarIndex := newSK
+            initialStop := newIS
+            stopPrice := newSP
+            entryPrice := newEP
+            takeProfitPrice := newTP
+            breakevenStep := newBS
+            currentDirection := newCD
+        else
+            [newEp, newInitStop, newSp, newDir, newStep, newTp] = executeEntry("LONG", stopPrice)
+            entryPrice := newEp
+            initialStop := newInitStop
+            stopPrice := newSp
+            currentDirection := newDir
+            breakevenStep := newStep
+            takeProfitPrice := newTp
         
     else if confirmStatusLong == -1
         longFailSignal := true
@@ -314,13 +337,28 @@ if barstate.isconfirmed and pendingShort
     if confirmStatusShort == 1
         shortConfirmSignal := true
         pendingShort := false
-        [newEp, newInitStop, newSp, newDir, newStep, newTp] = executeEntry("SHORT", stopPrice)
-        entryPrice := newEp
-        initialStop := newInitStop
-        stopPrice := newSp
-        currentDirection := newDir
-        breakevenStep := newStep
-        takeProfitPrice := newTp
+        
+        // 如果是 LONG_ONLY 模式且有持仓，则做空确认意味着平多
+        if isLongOnly and hasLongPosition
+            [newPL, newPS, newLK, newSK, newIS, newSP, newEP, newTP, newBS, newCD] = executeExit()
+            pendingLong := newPL
+            pendingShort := newPS
+            longKeyBarIndex := newLK
+            shortKeyBarIndex := newSK
+            initialStop := newIS
+            stopPrice := newSP
+            entryPrice := newEP
+            takeProfitPrice := newTP
+            breakevenStep := newBS
+            currentDirection := newCD
+        else
+            [newEp, newInitStop, newSp, newDir, newStep, newTp] = executeEntry("SHORT", stopPrice)
+            entryPrice := newEp
+            initialStop := newInitStop
+            stopPrice := newSp
+            currentDirection := newDir
+            breakevenStep := newStep
+            takeProfitPrice := newTp
         
     else if confirmStatusShort == -1
         shortFailSignal := true

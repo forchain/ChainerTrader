@@ -33,8 +33,8 @@ def test_stoploss_atr_mult_applies_even_when_cfg_atr_disabled():
             ("atrperiod", 3),
             ("chainer_mode", "LONG_ONLY"),  # Support LONG entries
             ("chainer_stoploss_atr_mult", 1.0),
-            ("chainer_long_need_confirm", False),
-            ("chainer_short_need_confirm", True),
+            ("chainer_enter_need_confirm", False),
+            ("chainer_exit_need_confirm", True),
             ("chainer_enable_breakeven", True),
             ("chainer_risk_reward_ratio", 0.0),
         )

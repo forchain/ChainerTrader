@@ -47,8 +47,8 @@ class BaseStrategy(bt.Strategy):
         ("chainer_auto_signal", False),  # Enable auto signal processing via get_long_signal/get_short_signal
         # Entry/Exit engine defaults (can be overridden per call)
         ("chainer_stoploss_atr_mult", 0.0),
-        ("chainer_long_need_confirm", True),  # Require confirmation for long signal
-        ("chainer_short_need_confirm", True),  # Require confirmation for short signal
+        ("chainer_enter_need_confirm", True),  # Require confirmation for entry signal
+        ("chainer_exit_need_confirm", True),   # Require confirmation for exit signal
         ("chainer_enable_breakeven", True),
         ("chainer_risk_reward_ratio", 0.0),
     )
@@ -593,17 +593,15 @@ class BaseStrategy(bt.Strategy):
             key = f"{base_key}-{trade_id}"
 
         sl_atr_mult = float(self.params.chainer_stoploss_atr_mult if stoploss_atr_mult is None else stoploss_atr_mult)
-        # Direction-aware confirmation: use long_need_confirm for LONG, short_need_confirm for SHORT
+        # Entry confirmation (independent of direction/mode, controlled by chainer_enter_need_confirm)
         if need_confirm is not None:
             entry_need_confirm = bool(need_confirm)
-        elif direction_norm == "LONG":
-            entry_need_confirm = bool(self.params.chainer_long_need_confirm)
         else:
-            entry_need_confirm = bool(self.params.chainer_short_need_confirm)
+            entry_need_confirm = bool(self.params.chainer_enter_need_confirm)
         breakeven_on = bool(self.params.chainer_enable_breakeven if enable_breakeven is None else enable_breakeven)
         rr = float(self.params.chainer_risk_reward_ratio if risk_reward_ratio is None else risk_reward_ratio)
-        # Exit uses the opposite signal's confirmation (LONG trade exits with short signal)
-        exit_need_confirm = bool(self.params.chainer_short_need_confirm if direction_norm == "LONG" else self.params.chainer_long_need_confirm)
+        # Exit confirmation (independent of direction/mode, controlled by chainer_exit_need_confirm)
+        exit_need_confirm = bool(self.params.chainer_exit_need_confirm)
 
         ctx = BaseStrategy.TradeContext(
             trade_id=trade_id,
@@ -711,13 +709,11 @@ class BaseStrategy(bt.Strategy):
         if ctx.status not in (BaseStrategy.TradeStatus.ACTIVE, BaseStrategy.TradeStatus.PENDING_EXIT_CONFIRM):
             return ctx
 
-        # Exit uses the opposite signal's confirmation (LONG trade exits with short signal)
+        # Exit uses the unified exit confirmation parameter
         if need_confirm is not None:
             exit_need_confirm = bool(need_confirm)
-        elif ctx.direction == "LONG":
-            exit_need_confirm = bool(self.params.chainer_short_need_confirm)
         else:
-            exit_need_confirm = bool(self.params.chainer_long_need_confirm)
+            exit_need_confirm = bool(self.params.chainer_exit_need_confirm)
         exit_key_ref = self._kline_ref_by_bar_index(key_bar_index)
         ctx.exit_need_confirm = exit_need_confirm
         ctx.exit_key_bar_index = int(key_bar_index)
@@ -799,6 +795,10 @@ class BaseStrategy(bt.Strategy):
         mode = str(self.params.chainer_mode).upper()
         if mode not in ("LONG_ONLY", "SHORT_ONLY", "BOTH"):
             mode = "LONG_ONLY"
+        
+        # Debug log when signals are triggered
+        if long_signal or short_signal:
+            self.log_info(f"信号触发: mode={mode} long_signal={long_signal} short_signal={short_signal}")
 
         # Check current state
         no_active_trade = self._active_trade is None or self._active_trade.status in (
@@ -816,6 +816,7 @@ class BaseStrategy(bt.Strategy):
         if mode == "LONG_ONLY":
             # Long signal opens long
             if long_signal and no_active_trade:
+                self.log_info(f"LONG_ONLY模式: 检测到做多信号，尝试开多仓")
                 try:
                     self.enter_trade(
                         direction="LONG",
@@ -826,6 +827,7 @@ class BaseStrategy(bt.Strategy):
 
             # Short signal closes long
             if short_signal and trade_is_active and has_long_position:
+                self.log_info(f"LONG_ONLY模式: 检测到做空信号，尝试平多仓")
                 try:
                     self.exit_trade(key_bar_index=self.bar_idx())
                 except (ValueError, RuntimeError) as e:
@@ -834,6 +836,7 @@ class BaseStrategy(bt.Strategy):
         elif mode == "SHORT_ONLY":
             # Short signal opens short
             if short_signal and no_active_trade:
+                self.log_info(f"SHORT_ONLY模式: 检测到做空信号，尝试开空仓")
                 try:
                     self.enter_trade(
                         direction="SHORT",
@@ -844,6 +847,7 @@ class BaseStrategy(bt.Strategy):
 
             # Long signal closes short
             if long_signal and trade_is_active and has_short_position:
+                self.log_info(f"SHORT_ONLY模式: 检测到做多信号，尝试平空仓")
                 try:
                     self.exit_trade(key_bar_index=self.bar_idx())
                 except (ValueError, RuntimeError) as e:
