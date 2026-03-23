@@ -51,6 +51,9 @@ class BaseStrategy(bt.Strategy):
         ("chainer_exit_need_confirm", True),   # Require confirmation for exit signal
         ("chainer_enable_breakeven", True),
         ("chainer_risk_reward_ratio", 0.0),
+        # When equity falls below this percentage of initial account value, new entries are disabled.
+        # Existing positions continue to be managed (stoploss/breakeven/take-profit).
+        ("chainer_min_equity_percent", 0.0),
     )
 
     class TradeStatus(str, Enum):
@@ -106,6 +109,7 @@ class BaseStrategy(bt.Strategy):
     def __init__(self):
         super().__init__()
         self.order = None
+        self._initial_equity: Optional[float] = None
 
         # Stop loss point
         if self.params.stoploss:
@@ -150,6 +154,14 @@ class BaseStrategy(bt.Strategy):
                     self.log_info("Cannot set position without broker cash, skipping position initialization")
             except Exception as e:
                 self.log_info(f"Failed to set initial position: {e}")
+
+        # Capture initial equity for min-equity protection, if not already set
+        try:
+            if self._initial_equity is None:
+                self._initial_equity = float(self.broker.getvalue())
+        except Exception:
+            # If broker value is not available yet, it will be lazily set later
+            self._initial_equity = None
 
     def next(self):
         # Update total bars count as we process data
@@ -791,6 +803,9 @@ class BaseStrategy(bt.Strategy):
         long_signal = self.get_long_signal()
         short_signal = self.get_short_signal()
 
+        # Check whether new entries are allowed based on equity protection
+        can_open_new_position = self._can_open_new_position()
+
         # Determine trading mode
         mode = str(self.params.chainer_mode).upper()
         if mode not in ("LONG_ONLY", "SHORT_ONLY", "BOTH"):
@@ -815,7 +830,7 @@ class BaseStrategy(bt.Strategy):
 
         if mode == "LONG_ONLY":
             # Long signal opens long
-            if long_signal and no_active_trade:
+            if long_signal and no_active_trade and can_open_new_position:
                 self.log_info(f"LONG_ONLY模式: 检测到做多信号，尝试开多仓")
                 try:
                     self.enter_trade(
@@ -835,7 +850,7 @@ class BaseStrategy(bt.Strategy):
 
         elif mode == "SHORT_ONLY":
             # Short signal opens short
-            if short_signal and no_active_trade:
+            if short_signal and no_active_trade and can_open_new_position:
                 self.log_info(f"SHORT_ONLY模式: 检测到做空信号，尝试开空仓")
                 try:
                     self.enter_trade(
@@ -855,7 +870,7 @@ class BaseStrategy(bt.Strategy):
 
         elif mode == "BOTH":
             # Long signal opens long
-            if long_signal and no_active_trade:
+            if long_signal and no_active_trade and can_open_new_position:
                 try:
                     self.enter_trade(
                         direction="LONG",
@@ -865,7 +880,7 @@ class BaseStrategy(bt.Strategy):
                     self.log_debug(f"_process_signals: enter_trade LONG failed: {e}")
 
             # Short signal opens short
-            if short_signal and no_active_trade:
+            if short_signal and no_active_trade and can_open_new_position:
                 try:
                     self.enter_trade(
                         direction="SHORT",
@@ -919,6 +934,18 @@ class BaseStrategy(bt.Strategy):
                     self.log_info(
                         f"进场取消(未确认前出现出场信号): trade_id={ctx.trade_id} key={ctx.key} close={close:.6f}"
                     )
+                self._active_trade = None
+                return
+
+            # If equity protection is enabled and current equity is below threshold,
+            # cancel the pending entry as if confirmation failed.
+            if not self._can_open_new_position():
+                ctx.status = BaseStrategy.TradeStatus.CANCELLED
+                ctx.cancel_reason = "entry_equity_below_min"
+                self._banned_entry_key_bar_index.add(int(ctx.entry_key_bar_index))
+                self.log_info(
+                    f"进场取消(账户净值低于最小进场阈值): trade_id={ctx.trade_id} key={ctx.key} close={close:.6f}"
+                )
                 self._active_trade = None
                 return
 
@@ -1123,6 +1150,34 @@ class BaseStrategy(bt.Strategy):
         size = available_cash / (price * (1 + commission_rate))
         
         return float(size) if size > 0 else 0.0
+
+    def _can_open_new_position(self) -> bool:
+        """
+        Check whether new positions are allowed based on current equity and
+        chainer_min_equity_percent parameter.
+
+        When chainer_min_equity_percent <= 0, this check is disabled.
+        """
+        try:
+            min_pct = float(getattr(self.params, "chainer_min_equity_percent", 0.0) or 0.0)
+        except Exception:
+            min_pct = 0.0
+
+        if min_pct <= 0.0:
+            return True
+
+        try:
+            equity = float(self.broker.getvalue())
+        except Exception as exc:
+            self.log_debug(f"_can_open_new_position: failed to get equity: {exc}")
+            return True
+
+        if self._initial_equity is None or self._initial_equity <= 0.0:
+            self._initial_equity = equity
+            return True
+
+        threshold = self._initial_equity * (min_pct / 100.0)
+        return equity >= threshold
 
     def buy(
         self,

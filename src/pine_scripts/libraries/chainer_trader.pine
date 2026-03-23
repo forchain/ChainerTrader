@@ -2,13 +2,107 @@
 library("ChainerTrader", overlay=false)
 
 // ============================================================================
-// ChainerTrader common library (v3)
+// ChainerTrader common library (v4)
 //
-// - Uses key bar reference by `bar_index` (keyBarIndex) so future bars can
-//   reference the key bar without using relative indexes.
-// - Contains confirmation helpers for long/short signals.
-// - Signal semantics are fixed: longConfirm for long signals, shortConfirm for short signals.
-// - Supports three trading modes: LONG_ONLY, SHORT_ONLY, BOTH.
+// This library provides a complete trading framework for ChainerTrader strategies.
+// 
+// Core Features:
+// - Trading state management with User-Defined Types (UDT)
+// - Three trading modes: LONG_ONLY, SHORT_ONLY, BOTH
+// - Signal confirmation with key bar breakout
+// - Stop loss (ATR-based) and take profit (Risk/Reward ratio)
+// - Breakeven management with stepped adjustments
+// - Support for custom exit signals (e.g., MACD stop loss)
+//
+// Usage:
+// 1. Strategy script declares `var StrategyState state = initState()`
+// 2. Each bar calls `updateFramework(...)` with signals and parameters
+// 3. Strategy script executes actions based on returned `FrameworkOutput`
+// 4. Strategy script updates state: `state := output.newState`
+//
+// ============================================================================
+
+// ============================================================================
+// User-Defined Types (UDT)
+// ============================================================================
+
+// Trading state structure - holds all persistent trade information
+export type StrategyState
+    int tradeId                 // Unique trade counter
+    bool pendingLong            // Waiting for long entry confirmation
+    bool pendingShort           // Waiting for short entry confirmation
+    int longKeyBarIndex         // Key bar index for long signal
+    int shortKeyBarIndex        // Key bar index for short signal
+    float initialStop           // Initial stop loss price
+    float stopPrice             // Current stop loss price (may be adjusted by breakeven)
+    float entryPrice            // Entry price of current position
+    float takeProfitPrice       // Take profit price
+    int breakevenStep           // Current breakeven step (0 = not triggered)
+    string currentDirection     // "LONG", "SHORT", or na
+
+// Framework output - contains action flags and updated state
+export type FrameworkOutput
+    // Action flags - strategy should execute these
+    bool shouldEntryLong        // Execute strategy.entry("Long", strategy.long)
+    bool shouldEntryShort       // Execute strategy.entry("Short", strategy.short)
+    bool shouldExitLong         // Execute strategy.close("Long")
+    bool shouldExitShort        // Execute strategy.close("Short")
+    bool shouldCloseAll         // Execute strategy.close_all()
+    bool shouldSetExit          // Execute strategy.exit() with stop/limit
+    
+    // Prices for exit orders
+    float exitStopPrice         // Stop price for strategy.exit()
+    float exitLimitPrice        // Limit price for strategy.exit()
+    
+    // Signal indicators for plotting
+    bool longSignal             // Final long signal (after custom time override)
+    bool shortSignal            // Final short signal (after custom time override)
+    bool longConfirmSignal      // Long confirmation succeeded
+    bool longFailSignal         // Long confirmation failed
+    bool shortConfirmSignal     // Short confirmation succeeded
+    bool shortFailSignal        // Short confirmation failed
+    bool stopHitSignal          // Stop loss was hit
+    bool breakevenUpdated       // Breakeven was updated this bar
+    
+    // Updated state - strategy should assign back to state variable
+    StrategyState newState
+
+// ============================================================================
+// State Initialization and Reset
+// ============================================================================
+
+// Initialize a new strategy state with default values
+export initState() =>
+    StrategyState.new(
+         tradeId = 0,
+         pendingLong = false,
+         pendingShort = false,
+         longKeyBarIndex = na,
+         shortKeyBarIndex = na,
+         initialStop = na,
+         stopPrice = na,
+         entryPrice = na,
+         takeProfitPrice = na,
+         breakevenStep = 0,
+         currentDirection = na)
+
+// Reset state to initial values (called after position is closed)
+export resetState(StrategyState state) =>
+    StrategyState.new(
+         tradeId = state.tradeId,  // Keep trade counter
+         pendingLong = false,
+         pendingShort = false,
+         longKeyBarIndex = na,
+         shortKeyBarIndex = na,
+         initialStop = na,
+         stopPrice = na,
+         entryPrice = na,
+         takeProfitPrice = na,
+         breakevenStep = 0,
+         currentDirection = na)
+
+// ============================================================================
+// Basic Utility Functions (preserved from v3)
 // ============================================================================
 
 export normalizeDirection(string direction) =>
@@ -26,10 +120,9 @@ export keyLevelsByBarIndex(int keyBarIndex) =>
     found = not na(keyHigh) and not na(keyLow)
     [found, keyTime, keyHigh, keyLow]
 
-export stopPrice(string direction, int keyBarIndex, float stoplossAtrMult) =>
+export calcStopPrice(string direction, int keyBarIndex, float stoplossAtrMult) =>
     dir = normalizeDirection(direction)
     [found, _, keyHigh, keyLow] = keyLevelsByBarIndex(keyBarIndex)
-    // ATR period uses TradingView 默认值（通常为 14），不再对外暴露为可配置参数
     atrVal = ta.atr(14)
     if not found
         na
@@ -37,6 +130,10 @@ export stopPrice(string direction, int keyBarIndex, float stoplossAtrMult) =>
         stoplossAtrMult == 0.0 ? keyLow : (keyLow - stoplossAtrMult * atrVal)
     else
         stoplossAtrMult == 0.0 ? keyHigh : (keyHigh + stoplossAtrMult * atrVal)
+
+// Backward compatible alias
+export stopPrice(string direction, int keyBarIndex, float stoplossAtrMult) =>
+    calcStopPrice(direction, keyBarIndex, stoplossAtrMult)
 
 // Long signal confirmation helper (做多信号确认).
 // 返回值含义:
@@ -73,30 +170,387 @@ export breakevenPrice(string direction, float entryPrice, float initialStop) =>
     if na(entryPrice) or na(initialStop) or na(close)
         na
     else
-        // 计算单次风险 R
         risk = dir == "LONG" ? (entryPrice - initialStop) : (initialStop - entryPrice)
         if risk <= 0
             na
         else
-            // 当前收益，以 R 为单位（RR 固定为 1）
             profit = dir == "LONG" ? (close - entryPrice) : (entryPrice - close)
             nFloat = profit / risk
             n = math.floor(nFloat + 1e-10)
             n <= 0 ? na : (dir == "LONG" ? entryPrice + (n - 1) * risk : entryPrice - (n - 1) * risk)
 
 // Risk/Reward target price (LONG/SHORT).
-// direction: >0 = LONG, 其他 = SHORT（见 normalizeDirection）
-// riskRewardRatio: 风险回报比，例如 2.0 表示 2R 目标价。
-export riskRewardPrice(string direction, float entryPrice, float stopPrice, float riskRewardRatio) =>
+export riskRewardPrice(string direction, float entryPrice, float stopPriceVal, float riskRewardRatio) =>
     dir = normalizeDirection(direction)
-    risk = dir == "LONG" ? (entryPrice - stopPrice) : (stopPrice - entryPrice)
-    riskRewardRatio <= 0 or risk <= 0 or na(entryPrice) or na(stopPrice) ? na : (dir == "LONG" ? entryPrice + riskRewardRatio * risk : entryPrice - riskRewardRatio * risk)
+    risk = dir == "LONG" ? (entryPrice - stopPriceVal) : (stopPriceVal - entryPrice)
+    riskRewardRatio <= 0 or risk <= 0 or na(entryPrice) or na(stopPriceVal) ? na : (dir == "LONG" ? entryPrice + riskRewardRatio * risk : entryPrice - riskRewardRatio * risk)
 
-export stopHit(string direction, float stopPrice) =>
+export stopHit(string direction, float stopPriceVal) =>
     dir = normalizeDirection(direction)
-    if na(stopPrice)
+    if na(stopPriceVal)
         false
     else
-        dir == "LONG" ? close <= stopPrice : close >= stopPrice
+        dir == "LONG" ? low <= stopPriceVal : high >= stopPriceVal
+
+// ============================================================================
+// Framework Core Logic
+// ============================================================================
+
+// Process final signals with custom time override
+export processSignals(bool longSignalRaw, bool shortSignalRaw, int customLongTime, int customShortTime) =>
+    useCustomLong = customLongTime > 0
+    useCustomShort = customShortTime > 0
+    customLongSignal = useCustomLong and time == customLongTime
+    customShortSignal = useCustomShort and time == customShortTime
+    finalLong = useCustomLong ? customLongSignal : longSignalRaw
+    finalShort = useCustomShort ? customShortSignal : shortSignalRaw
+    [finalLong, finalShort]
+
+// Calculate entry parameters
+calcEntryParams(string dir, float currentStopPrice, float rrRatio) =>
+    ep = close
+    initStop = currentStopPrice
+    sp = currentStopPrice
+    tp = float(na)
+    if rrRatio > 0
+        tpCalc = riskRewardPrice(dir, ep, initStop, rrRatio)
+        if not na(tpCalc)
+            tp := tpCalc
+    [ep, initStop, sp, tp]
+
+// ============================================================================
+// Main Framework Update Function
+// ============================================================================
+// 
+// This function processes one bar of trading logic and returns action flags.
+// The strategy script must:
+// 1. Execute the actions indicated by shouldEntry*/shouldExit*/shouldCloseAll
+// 2. Update its state variable with output.newState
+//
+// Parameters:
+// - state: Current strategy state
+// - positionSize: Current position size (strategy.position_size)
+// - isBarConfirmed: Whether bar is confirmed (barstate.isconfirmed)
+// - mode: Trading mode ("LONG_ONLY", "SHORT_ONLY", "BOTH")
+// - stoplossAtrMult: ATR multiplier for stop loss (0 = use key bar high/low)
+// - enterNeedConfirm: Whether entry requires confirmation breakout
+// - exitNeedConfirm: Whether exit requires confirmation breakout
+// - enableBreakeven: Whether to enable breakeven management
+// - riskRewardRatio: Risk/reward ratio for take profit (0 = disabled)
+// - customLongTime: Custom long signal time in ms (0 = use raw signal)
+// - customShortTime: Custom short signal time in ms (0 = use raw signal)
+// - longSignalRaw: Raw long signal from strategy
+// - shortSignalRaw: Raw short signal from strategy
+// - extraStopSignal: Additional stop signal (e.g., MACD stop)
+// - extraExitLongSignal: Additional exit long signal
+// - extraExitShortSignal: Additional exit short signal
+//
+export updateFramework(
+     StrategyState state,
+     float positionSize,
+     bool isBarConfirmed,
+     string mode,
+     float stoplossAtrMult,
+     bool enterNeedConfirm,
+     bool exitNeedConfirm,
+     bool enableBreakeven,
+     float riskRewardRatio,
+     int customLongTime,
+     int customShortTime,
+     bool longSignalRaw,
+     bool shortSignalRaw,
+     bool extraStopSignal,
+     bool extraExitLongSignal,
+     bool extraExitShortSignal,
+     float equity,
+     float initialCapital,
+     float minEquityPercent) =>
+    
+    // Initialize output with default values
+    output = FrameworkOutput.new(
+         shouldEntryLong = false,
+         shouldEntryShort = false,
+         shouldExitLong = false,
+         shouldExitShort = false,
+         shouldCloseAll = false,
+         shouldSetExit = false,
+         exitStopPrice = na,
+         exitLimitPrice = na,
+         longSignal = false,
+         shortSignal = false,
+         longConfirmSignal = false,
+         longFailSignal = false,
+         shortConfirmSignal = false,
+         shortFailSignal = false,
+         stopHitSignal = false,
+         breakevenUpdated = false,
+         newState = state.copy())
+    
+    // Copy state for modification
+    newState = state.copy()
+    
+    // Process signals
+    [finalLong, finalShort] = processSignals(longSignalRaw, shortSignalRaw, customLongTime, customShortTime)
+    output.longSignal := finalLong
+    output.shortSignal := finalShort
+    
+    // Whether new positions are allowed based on equity threshold
+    canOpenNewPosition = minEquityPercent <= 0.0 or initialCapital <= 0.0 or equity >= initialCapital * minEquityPercent / 100.0
+    
+    // Mode flags
+    isLongOnly = mode == "LONG_ONLY"
+    isShortOnly = mode == "SHORT_ONLY"
+    isBoth = mode == "BOTH"
+    
+    // Position flags
+    hasPosition = positionSize != 0
+    hasLongPosition = positionSize > 0
+    hasShortPosition = positionSize < 0
+    noPosition = positionSize == 0
+    
+    // Pre-calculate stop prices
+    stopPriceLong = calcStopPrice("LONG", bar_index, stoplossAtrMult)
+    stopPriceShort = calcStopPrice("SHORT", bar_index, stoplossAtrMult)
+    
+    // ========================================================================
+    // Handle Extra Stop Signal (e.g., MACD stop)
+    // ========================================================================
+    if extraStopSignal and hasPosition
+        output.shouldCloseAll := true
+        newState := resetState(newState)
+    
+    // ========================================================================
+    // Handle Extra Exit Signals
+    // ========================================================================
+    if extraExitLongSignal and hasLongPosition
+        output.shouldExitLong := true
+        newState := resetState(newState)
+    
+    if extraExitShortSignal and hasShortPosition
+        output.shouldExitShort := true
+        newState := resetState(newState)
+    
+    // ========================================================================
+    // LONG_ONLY Mode: Long signal opens, short signal closes
+    // ========================================================================
+    if isLongOnly and not output.shouldCloseAll and not output.shouldExitLong
+        // Long signal triggers entry
+        if canOpenNewPosition and finalLong and noPosition and not newState.pendingLong
+            currentStopPrice = stopPriceLong
+            if not na(currentStopPrice)
+                newState.tradeId += 1
+                newState.longKeyBarIndex := bar_index
+                if not enterNeedConfirm
+                    output.shouldEntryLong := true
+                    [ep, initStop, sp, tp] = calcEntryParams("LONG", currentStopPrice, riskRewardRatio)
+                    newState.entryPrice := ep
+                    newState.initialStop := initStop
+                    newState.stopPrice := sp
+                    newState.takeProfitPrice := tp
+                    newState.currentDirection := "LONG"
+                    newState.breakevenStep := 0
+                else
+                    newState.pendingLong := true
+                    newState.initialStop := currentStopPrice
+                    newState.stopPrice := currentStopPrice
+        
+        // Short signal triggers exit
+        if finalShort and hasLongPosition and not newState.pendingShort
+            if exitNeedConfirm
+                newState.shortKeyBarIndex := bar_index
+                newState.pendingShort := true
+            else
+                output.shouldExitLong := true
+                newState := resetState(newState)
+    
+    // ========================================================================
+    // SHORT_ONLY Mode: Short signal opens, long signal closes
+    // ========================================================================
+    if isShortOnly and not output.shouldCloseAll and not output.shouldExitShort
+        // Short signal triggers entry
+        if canOpenNewPosition and finalShort and noPosition and not newState.pendingShort
+            currentStopPrice = stopPriceShort
+            if not na(currentStopPrice)
+                newState.tradeId += 1
+                newState.shortKeyBarIndex := bar_index
+                if not enterNeedConfirm
+                    output.shouldEntryShort := true
+                    [ep, initStop, sp, tp] = calcEntryParams("SHORT", currentStopPrice, riskRewardRatio)
+                    newState.entryPrice := ep
+                    newState.initialStop := initStop
+                    newState.stopPrice := sp
+                    newState.takeProfitPrice := tp
+                    newState.currentDirection := "SHORT"
+                    newState.breakevenStep := 0
+                else
+                    newState.pendingShort := true
+                    newState.initialStop := currentStopPrice
+                    newState.stopPrice := currentStopPrice
+        
+        // Long signal triggers exit
+        if finalLong and hasShortPosition and not newState.pendingLong
+            if exitNeedConfirm
+                newState.longKeyBarIndex := bar_index
+                newState.pendingLong := true
+            else
+                output.shouldExitShort := true
+                newState := resetState(newState)
+    
+    // ========================================================================
+    // BOTH Mode: Long signal opens long, short signal opens short
+    // ========================================================================
+    if isBoth and not output.shouldCloseAll
+        // Long signal triggers long entry
+        if canOpenNewPosition and finalLong and noPosition and not newState.pendingLong and not newState.pendingShort
+            currentStopPrice = stopPriceLong
+            if not na(currentStopPrice)
+                newState.tradeId += 1
+                newState.longKeyBarIndex := bar_index
+                if not enterNeedConfirm
+                    output.shouldEntryLong := true
+                    [ep, initStop, sp, tp] = calcEntryParams("LONG", currentStopPrice, riskRewardRatio)
+                    newState.entryPrice := ep
+                    newState.initialStop := initStop
+                    newState.stopPrice := sp
+                    newState.takeProfitPrice := tp
+                    newState.currentDirection := "LONG"
+                    newState.breakevenStep := 0
+                else
+                    newState.pendingLong := true
+                    newState.initialStop := currentStopPrice
+                    newState.stopPrice := currentStopPrice
+        
+        // Short signal triggers short entry
+        if canOpenNewPosition and finalShort and noPosition and not newState.pendingLong and not newState.pendingShort
+            currentStopPrice = stopPriceShort
+            if not na(currentStopPrice)
+                newState.tradeId += 1
+                newState.shortKeyBarIndex := bar_index
+                if not enterNeedConfirm
+                    output.shouldEntryShort := true
+                    [ep, initStop, sp, tp] = calcEntryParams("SHORT", currentStopPrice, riskRewardRatio)
+                    newState.entryPrice := ep
+                    newState.initialStop := initStop
+                    newState.stopPrice := sp
+                    newState.takeProfitPrice := tp
+                    newState.currentDirection := "SHORT"
+                    newState.breakevenStep := 0
+                else
+                    newState.pendingShort := true
+                    newState.initialStop := currentStopPrice
+                    newState.stopPrice := currentStopPrice
+    
+    // ========================================================================
+    // Long Signal Confirmation
+    // ========================================================================
+    safeLongKeyBarIndex = not na(newState.longKeyBarIndex) ? newState.longKeyBarIndex : bar_index
+    confirmStatusLong = longConfirm(safeLongKeyBarIndex)
+    
+    if isBarConfirmed and newState.pendingLong
+        if confirmStatusLong == 1
+            output.longConfirmSignal := true
+            newState.pendingLong := false
+            
+            // In SHORT_ONLY mode with position, this means exit short
+            if isShortOnly and hasShortPosition
+                output.shouldExitShort := true
+                newState := resetState(newState)
+            else
+                if canOpenNewPosition
+                    output.shouldEntryLong := true
+                    [ep, initStop, sp, tp] = calcEntryParams("LONG", newState.stopPrice, riskRewardRatio)
+                    newState.entryPrice := ep
+                    newState.initialStop := initStop
+                    newState.stopPrice := sp
+                    newState.takeProfitPrice := tp
+                    newState.currentDirection := "LONG"
+                    newState.breakevenStep := 0
+                else
+                    output.longFailSignal := true
+                    newState.pendingLong := false
+                    newState.longKeyBarIndex := na
+                    newState.initialStop := na
+                    newState.stopPrice := na
+        else if confirmStatusLong == -1
+            output.longFailSignal := true
+            newState.pendingLong := false
+            newState.longKeyBarIndex := na
+            newState.initialStop := na
+            newState.stopPrice := na
+    
+    // ========================================================================
+    // Short Signal Confirmation
+    // ========================================================================
+    safeShortKeyBarIndex = not na(newState.shortKeyBarIndex) ? newState.shortKeyBarIndex : bar_index
+    confirmStatusShort = shortConfirm(safeShortKeyBarIndex)
+    
+    if isBarConfirmed and newState.pendingShort
+        if confirmStatusShort == 1
+            output.shortConfirmSignal := true
+            newState.pendingShort := false
+            
+            // In LONG_ONLY mode with position, this means exit long
+            if isLongOnly and hasLongPosition
+                output.shouldExitLong := true
+                newState := resetState(newState)
+            else
+                if canOpenNewPosition
+                    output.shouldEntryShort := true
+                    [ep, initStop, sp, tp] = calcEntryParams("SHORT", newState.stopPrice, riskRewardRatio)
+                    newState.entryPrice := ep
+                    newState.initialStop := initStop
+                    newState.stopPrice := sp
+                    newState.takeProfitPrice := tp
+                    newState.currentDirection := "SHORT"
+                    newState.breakevenStep := 0
+                else
+                    output.shortFailSignal := true
+                    newState.pendingShort := false
+                    newState.shortKeyBarIndex := na
+                    newState.initialStop := na
+                    newState.stopPrice := na
+        else if confirmStatusShort == -1
+            output.shortFailSignal := true
+            newState.pendingShort := false
+            newState.shortKeyBarIndex := na
+            newState.initialStop := na
+            newState.stopPrice := na
+    
+    // ========================================================================
+    // Stop Loss Check (price-based)
+    // ========================================================================
+    if hasPosition and not na(newState.stopPrice) and not output.shouldCloseAll and not output.shouldExitLong and not output.shouldExitShort
+        currentDir = hasLongPosition ? "LONG" : "SHORT"
+        if stopHit(currentDir, newState.stopPrice)
+            output.stopHitSignal := true
+            output.shouldCloseAll := true
+            newState := resetState(newState)
+    
+    // ========================================================================
+    // Stop Loss and Take Profit Management (via strategy.exit)
+    // ========================================================================
+    if hasPosition and not na(newState.stopPrice) and not na(newState.entryPrice) and not output.shouldCloseAll and not output.shouldExitLong and not output.shouldExitShort
+        output.shouldSetExit := true
+        output.exitStopPrice := newState.stopPrice
+        output.exitLimitPrice := newState.takeProfitPrice
+    
+    // ========================================================================
+    // Breakeven Management
+    // ========================================================================
+    if isBarConfirmed and hasPosition and enableBreakeven and not na(newState.entryPrice) and not na(newState.initialStop) and not output.shouldCloseAll
+        currentDir = hasLongPosition ? "LONG" : "SHORT"
+        newStop = breakevenPrice(currentDir, newState.entryPrice, newState.initialStop)
+        if not na(newStop)
+            isLong = hasLongPosition
+            shouldUpdate = (isLong and (na(newState.stopPrice) or newStop > newState.stopPrice)) or (not isLong and (na(newState.stopPrice) or newStop < newState.stopPrice))
+            if shouldUpdate
+                newState.stopPrice := newStop
+                newState.breakevenStep += 1
+                output.breakevenUpdated := true
+    
+    // Update output state
+    output.newState := newState
+    
+    output
 
 
