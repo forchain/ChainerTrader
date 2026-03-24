@@ -1,0 +1,9 @@
+[
+  {
+    "task_type": "BACK_TRADER",
+    "symbol": "ETH-USDT",
+    "interval": "1h",
+    "strategy": "macd_triple_divergence",
+    "csv": "data/ETHUSDT-1h-202301-202401.csv"
+  }
+]
