@@ -95,18 +95,21 @@ The application is built around an asynchronous task-based architecture managed 
 - `notice.json` - Notification configuration
 
 #### Strategy Framework (`src/trader/strategy/`)
-All strategies inherit from `base_strategy.py` which provides:
+All strategies inherit from `base_strategy.py`. There is also an intermediate base `TrilogyStrategy` (in `trilogy_strategy.py`) for strategies using inflection-point trend detection.
+
+`BaseStrategy` provides:
 - Order management with commission tracking
 - Risk management (stop-loss, take-profit with ATR calculations)
 - Trend analysis modes (NORMAL, UP, DOWN)
-- Structured logging and time tracking
+- **Chainer Framework v3** engine: `enter_trade()`/`exit_trade()` methods with `chainer_mode` param (`LONG_ONLY`, `SHORT_ONLY`, `BOTH`), auto-signal processing via `get_long_signal()`/`get_short_signal()`, breakeven management, and configurable confirmation bars
 
 **Strategy Categories**:
 - **Shi Hun Strategies**: `ShihunMACD`, `ShihunMACD2`, `ShihunRSI`, `ShihunRSI2`, `ShihunMACDRISBB`
-- **Technical Strategies**: `MACDRSI`, `TURTLE`, `KDJ`, `RSRS`, `DeviationMACD`
-- **Utility Strategies**: `DUALMA`, `DUALTHRUST`, `GRID`, `BOLLMEANREG`, `Aberration`, `Supertrend`
+- **Technical Strategies**: `MACDRSI`, `ChainerMACDRSI`, `TURTLE`, `KDJ`, `RSRS`, `DeviationMACD`, `MACDTripleDivergence`
+- **Utility Strategies**: `DUALMA`, `DUALTHRUST`, `GRID`, `BOLLMEANREG`, `Aberration`, `SuperTrendQqeMod`
+- **AI-variant Strategies**: `DeviationMACDClaude4`, `DeviationMACDGemini`, `DeviationMACDO3`, `DeviationMACDOptimized`
 
-Many strategies include `.pine` files for TradingView compatibility.
+**Pine Script counterparts** live in `src/pine_scripts/` (indicators, libraries, and strategies directories) for TradingView compatibility.
 
 #### Exchange Integration (`src/trader/exchange/`)
 Modular exchange system currently supporting Binance:
@@ -131,25 +134,27 @@ FastAPI-based REST API with automatic routing (`fastapi-auto-router`):
 
 ### Supporting Systems
 
+**ChainerTrader Library** (`libraries/chainer_trader.py`): Pine Script–compatible helper class (`ChainerTraderLib`) used inside strategies. Provides `stop_price()`, `entry_confirm()`, `exit_confirm()`, and static `breakeven_price()` methods. Mirrors `src/pine_scripts/libraries/chainer_trader.pine`.
+
 **Configuration**: `common/config.py` - Centralized configuration with environment variable support
 
 **Statistics**: `statistics/statistics.py` - Performance metrics and reporting
 
 **Notifications**: `notify/notify_manager.py` - Email and notification system
 
-**Indicators**: `indicators/` - Custom technical indicators (KDJ, RSRS, QQE, SuperTrend, ChainerRSI)
+**Indicators**: `indicators/` - Custom technical indicators (KDJ, RSRS, QQE, SuperTrend, ChainerRSI, PivotHigh, PivotLow)
 
 **Utilities**: `utils/` - Technical analysis helpers (MA, trend detection, kline utils, win rate, profit/loss ratio)
 
 ## Development Guidelines
 
 ### Creating New Strategies
-1. Inherit from `BaseStrategy` in `src/trader/strategy/base_strategy.py`
+1. Inherit from `BaseStrategy` (or `TrilogyStrategy` for inflection-point strategies)
 2. Define strategy parameters using backtrader's `params` tuple
 3. Initialize indicators in `__init__()`
-4. Implement trading logic in `next()` method
-5. Use base class methods: `buy()`, `sell()`, `log()`, `notify_order()`
-6. Register strategy in `strategy/strategy.py` factory
+4. Implement trading logic in `next()` method; use `enter_trade()`/`exit_trade()` for Chainer Framework v3 or `buy()`/`sell()` for direct orders
+5. **No registration needed** — the factory (`strategy/strategy.py`) uses dynamic loading. Name your file using snake_case and the class using the corresponding PascalCase + `Strategy` suffix (e.g., `my_signal.py` → `MySignalStrategy`). Place the file directly in `strategy/` or in a subfolder `strategy/MySignal/MySignal.py` with the same class name.
+6. Reference via task config JSON using the file/folder name (e.g., `"strategy": "my_signal"` or `"strategy": "MySignal"`).
 
 ### Code Style
 - **Line Length**: 150 characters (configured in `pyproject.toml`)
