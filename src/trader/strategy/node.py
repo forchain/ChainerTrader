@@ -6,6 +6,7 @@ import backtrader as bt
 from backtrader import num2date
 from prettytable import PrettyTable
 
+from trader.analyzers.backtest_report import BacktestReportAnalyzer
 from trader.common.config import Config
 from trader.common.log_tag import LogTag
 from trader.common.logger import Logger
@@ -56,8 +57,16 @@ class Node:
         cerebro.addanalyzer(bt.analyzers.VWR, _name="volatility")
         cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name="trade_analyzer")
 
+        cerebro.addanalyzer(bt.analyzers.SQN, _name="sqn")
         cerebro.addanalyzer(OptStatAnalyzer, _name="optstat", si=self.si)
         cerebro.addanalyzer(MaxDrawdownAnalyzer, _name="maxdd_ex")
+        cerebro.addanalyzer(
+            BacktestReportAnalyzer,
+            _name="backtest_report",
+            strategy_name=name,
+            symbol=si.symbol(),
+            interval=si.interval.value,
+        )
 
         self.cerebro = cerebro
 

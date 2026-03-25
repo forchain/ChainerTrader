@@ -316,7 +316,7 @@ class MacdTripleDivergenceStrategy(BaseStrategy):
             if sep2_max > self.params.opp_ratio * h_ref:
                 return False
 
-            self.log_info(
+            self.log_debug(
                 f"三段底背离检测: R1({r1.start_idx}-{r1.end_idx}, M={r1.extreme_val:.6f}, P={p1:.2f}) "
                 f"R2({r2.start_idx}-{r2.end_idx}, M={r2.extreme_val:.6f}, P={p2:.2f}) "
                 f"R3({r3.start_idx}-{r3.end_idx}, M={r3.extreme_val:.6f}, P={p3:.2f})"
@@ -431,7 +431,7 @@ class MacdTripleDivergenceStrategy(BaseStrategy):
             if sep2_max > self.params.opp_ratio * h_ref:
                 return False
 
-            self.log_info(
+            self.log_debug(
                 f"三段顶背离检测: G1({g1.start_idx}-{g1.end_idx}, M={m1:.6f}, H={h1:.2f}) "
                 f"G2({g2.start_idx}-{g2.end_idx}, M={m2:.6f}, H={h2:.2f}) "
                 f"G3({g3.start_idx}-{g3.end_idx}, M={m3:.6f}, H={h3:.2f})"

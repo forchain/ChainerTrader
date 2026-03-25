@@ -813,7 +813,7 @@ class BaseStrategy(bt.Strategy):
         
         # Debug log when signals are triggered
         if long_signal or short_signal:
-            self.log_info(f"信号触发: mode={mode} long_signal={long_signal} short_signal={short_signal}")
+            self.log_debug(f"信号触发: mode={mode} long_signal={long_signal} short_signal={short_signal}")
 
         # Check current state
         no_active_trade = self._active_trade is None or self._active_trade.status in (

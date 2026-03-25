@@ -165,7 +165,7 @@ class Config:
         return logging.getLevelName(self.log_level)
 
     def is_server(self) -> bool:
-        return self.api is not None
+        return bool(self.api)
 
     def is_auth_enabled(self) -> bool:
         return self.auth_username is not None and self.auth_password is not None
