@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(head -10 /Users/tonyoutlier/github.com/ChainerLabs/ChainerTrader/.claude/worktrees/jolly-taussig/data/*.csv)",
+      "Bash(grep -E \"\\\\.py$|^d\")",
+      "Bash(uv run:*)",
+      "Bash(openspec new:*)",
+      "Bash(openspec status:*)",
+      "Bash(openspec instructions:*)",
+      "Bash(TRADER_API=\"\" uv run python -m trader --tasks scripts/macd_triple_divergence.json)",
+      "Bash(env -u TRADER_API uv run python -m trader --tasks scripts/macd_triple_divergence.json)",
+      "Bash(chmod +x /Users/tonyoutlier/github.com/ChainerLabs/ChainerTrader/.claude/worktrees/jolly-taussig/scripts/backtest_cli.sh)",
+      "Bash(bash scripts/backtest_cli.sh scripts/backtest_train.json)",
+      "Bash(TRADER_API=\"\" uv run python -c \":*)",
+      "Bash(bash scripts/backtest_cli.sh scripts/macd_triple_divergence.json)",
+      "Bash(bash scripts/backtest_cli.sh scripts/backtest_val.json)",
+      "Bash(make lint:*)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(''''Fields:'''', list\\(d[''''summary''''].keys\\(\\)\\)\\); print\\(''''Trades:'''', len\\(d[''''trades'''']\\)\\); print\\(''''Size:'''', len\\(json.dumps\\(d\\)\\),''''bytes''''\\)\")",
+      "Bash(python3 -c \":*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(gh pr:*)",
+      "Bash(gh auth:*)",
+      "Bash(git checkout:*)",
+      "Bash(timeout 180 bash scripts/backtest_cli.sh scripts/download_eth_history.json)",
+      "Bash(__NEW_LINE_dc97a71a1b39a087__ python3:*)",
+      "Bash(__NEW_LINE_04dbed447624615e__ uv:*)",
+      "Bash(__NEW_LINE_a4cb156000aa625f__ echo:*)",
+      "Bash(ls -t reports/*.json)",
+      "Bash(xargs cat:*)",
+      "Bash(__NEW_LINE_c3c5edff99883090__ cd:*)",
+      "Bash(bash scripts/backtest_cli.sh scripts/backtest_full_4years.json)"
+    ]
+  }
+}

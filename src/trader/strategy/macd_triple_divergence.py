@@ -80,7 +80,7 @@ class MacdTripleDivergenceStrategy(BaseStrategy):
         # Chainer Framework parameters
         ("chainer_mode", "LONG_ONLY"),  # LONG_ONLY, SHORT_ONLY, BOTH
         ("chainer_auto_signal", True),  # Enable auto signal processing
-        ("chainer_stoploss_atr_mult", 1.0),
+        ("chainer_stoploss_atr_mult", 1.5),
         ("chainer_enter_need_confirm", True),
         ("chainer_exit_need_confirm", True),
         ("chainer_enable_breakeven", True),
