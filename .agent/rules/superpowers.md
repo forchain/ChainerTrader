@@ -42,6 +42,20 @@ Before final response, do a review pass and list issues by severity:
 - Add timeouts, retries, and idempotency for API automations
 - Fail safe (no silent data loss)
 
+## 6) Worktree environment recovery
+If you are working inside a git worktree and the local Python environment is missing, restore it before running other repository commands that depend on Python or `.env` values.
+
+Use this trigger:
+- `[ -f .git ] && [ ! -d .venv ]`
+
+When it matches, run:
+- `bash scripts/setup_worktree.sh`
+
+Rules:
+- Do this before other repository operations that expect `uv`, Python, or `.env` variables to work
+- The script is idempotent and safe to re-run
+- If the script fails, stop and surface the error before continuing with Python-dependent work
+
 ## Artifact persistence (mandatory)
 Any brainstorm, plan, review, or finish output must be written to disk under:
 `artifacts/superpowers/`

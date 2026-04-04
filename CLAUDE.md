@@ -12,17 +12,21 @@ ChainerTrader is a Python-based algorithmic trading system implementing TradingV
 
 ### Worktree Development
 
-**If you are operating inside a git worktree** (detected when `.git` is a file, not a directory), the Python environment and env vars are not available by default. Before running any other command, check and restore the environment:
+Shared agent rule: if you are operating inside a git worktree and the local Python environment is missing, restore it before running other repository commands that depend on Python or `.env` values.
+
+Use this trigger:
 
 ```bash
-# Detect worktree + missing env:
-# [ -f .git ] && [ ! -d .venv ]
+[ -f .git ] && [ ! -d .venv ]
+```
 
-# Restore environment (idempotent, safe to re-run):
+When it matches, run:
+
+```bash
 bash scripts/setup_worktree.sh
 ```
 
-This creates symlinks `.venv → <main_repo>/.venv` and `.env → <main_repo>/.env` so that `uv run` and `python-dotenv` work transparently. Run this once per worktree session before any other operations.
+The script is idempotent and safe to re-run. It creates symlinks `.venv → <main_repo>/.venv` and `.env → <main_repo>/.env` so that `uv run` and `python-dotenv` work transparently. If recovery fails, stop and surface the error before continuing with Python-dependent work.
 
 ### Development Setup
 ```bash
