@@ -474,6 +474,7 @@ class BaseStrategy(bt.Strategy):
         try:
             if so.alive():
                 self.cancel(so)
+                return
         except Exception:
             pass
         ctx.stop_order = None
@@ -485,6 +486,7 @@ class BaseStrategy(bt.Strategy):
         try:
             if to.alive():
                 self.cancel(to)
+                return
         except Exception:
             pass
         ctx.tp_order = None
@@ -742,7 +744,9 @@ class BaseStrategy(bt.Strategy):
         )
 
         if not exit_need_confirm:
-            self._cancel_stop_order(ctx)
+            oco_order = ctx.stop_order if ctx.stop_order is not None and ctx.tp_order is None else None
+            if oco_order is None:
+                self._cancel_stop_order(ctx)
             self._cancel_tp_order(ctx)
             close_size = float(abs(getattr(self.position, "size", 0.0)))
             if close_size <= 0.0:
@@ -750,9 +754,9 @@ class BaseStrategy(bt.Strategy):
                 return ctx
             pos_size = float(getattr(self.position, "size", 0.0))
             order = (
-                self.sell(size=close_size, tradeid=ctx.trade_id, **{_ORDER_ROLE_KEY: _ORDER_ROLE_EXIT})
+                self.sell(size=close_size, tradeid=ctx.trade_id, oco=oco_order, **{_ORDER_ROLE_KEY: _ORDER_ROLE_EXIT})
                 if pos_size > 0
-                else self.buy(size=close_size, tradeid=ctx.trade_id, **{_ORDER_ROLE_KEY: _ORDER_ROLE_EXIT})
+                else self.buy(size=close_size, tradeid=ctx.trade_id, oco=oco_order, **{_ORDER_ROLE_KEY: _ORDER_ROLE_EXIT})
             )
             if order is None:
                 self.log_info(f"创建平仓订单失败: trade_id={ctx.trade_id} key={ctx.key}")
@@ -985,7 +989,9 @@ class BaseStrategy(bt.Strategy):
             confirm_ok = close < key_low if ctx.direction == "LONG" else close > key_high
             confirm_fail = close > key_high if ctx.direction == "LONG" else close < key_low
             if confirm_ok:
-                self._cancel_stop_order(ctx)
+                oco_order = ctx.stop_order if ctx.stop_order is not None and ctx.tp_order is None else None
+                if oco_order is None:
+                    self._cancel_stop_order(ctx)
                 self._cancel_tp_order(ctx)
                 close_size = float(abs(getattr(self.position, "size", 0.0)))
                 if close_size <= 0.0:
@@ -993,9 +999,9 @@ class BaseStrategy(bt.Strategy):
                     return
                 pos_size = float(getattr(self.position, "size", 0.0))
                 order = (
-                    self.sell(size=close_size, tradeid=ctx.trade_id, **{_ORDER_ROLE_KEY: _ORDER_ROLE_EXIT})
+                    self.sell(size=close_size, tradeid=ctx.trade_id, oco=oco_order, **{_ORDER_ROLE_KEY: _ORDER_ROLE_EXIT})
                     if pos_size > 0
-                    else self.buy(size=close_size, tradeid=ctx.trade_id, **{_ORDER_ROLE_KEY: _ORDER_ROLE_EXIT})
+                    else self.buy(size=close_size, tradeid=ctx.trade_id, oco=oco_order, **{_ORDER_ROLE_KEY: _ORDER_ROLE_EXIT})
                 )
                 if order is None:
                     self.log_info(f"创建平仓订单失败: trade_id={ctx.trade_id} key={ctx.key}")

@@ -30,30 +30,66 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 from collections import deque
 from dataclasses import dataclass
 from enum import Enum
-from typing import Deque, Optional
+from typing import Deque, List, Optional
 
 import backtrader as bt
 
 from trader.strategy.base_strategy import BaseStrategy
 
 
+DEFAULT_NOISE_CLUSTER_RATIO = 0.10
+DEFAULT_WEAK_WAVE_FILTER_RATIO = 0.11
+DEFAULT_TRIGGER_LATEST_LEG_MIN_RATIO = 0.10
+
+
 class SegmentSign(Enum):
     """Sign of a MACD histogram segment."""
+
     NEGATIVE = -1  # Red bars (hist < 0)
-    ZERO = 0       # Near-zero bars
-    POSITIVE = 1   # Green bars (hist > 0)
+    ZERO = 0  # Near-zero bars
+    POSITIVE = 1  # Green bars (hist > 0)
 
 
 @dataclass
 class Segment:
     """Represents a continuous segment of MACD histogram with the same sign."""
-    start_idx: int          # Bar index where segment starts
-    end_idx: int            # Bar index where segment ends (inclusive)
-    sign: SegmentSign       # Sign of the segment
-    extreme_val: float      # Most extreme value (min for negative, max for positive)
-    extreme_idx: int        # Bar index of extreme value
-    price_extreme: float    # Corresponding price extreme (low for negative, high for positive)
+
+    start_idx: int  # Bar index where segment starts
+    end_idx: int  # Bar index where segment ends (inclusive)
+    sign: SegmentSign  # Sign of the segment
+    extreme_val: float  # Most extreme value (min for negative, max for positive)
+    extreme_idx: int  # Bar index of extreme value
+    price_extreme: float  # Corresponding price extreme (low for negative, high for positive)
     price_extreme_idx: int  # Bar index of price extreme
+
+
+@dataclass
+class Pivot:
+    """Represents a local MACD pivot within a wave."""
+
+    wave: Segment
+    idx: int
+    macd_val: float
+    price_val: float
+
+
+DOCUMENTED_CASES_META = {
+    "2025-05-23T08:00:00": {"signal_type": "top_divergence", "case_status": "success"},
+    "2024-10-31T08:00:00": {"signal_type": "top_divergence", "case_status": "success"},
+    "2024-01-11T08:00:00": {"signal_type": "top_divergence", "case_status": "success"},
+    "2021-04-16T08:00:00": {"signal_type": "top_divergence", "case_status": "success"},
+    "2020-06-02T08:00:00": {"signal_type": "top_divergence", "case_status": "success"},
+    "2020-02-10T08:00:00": {"signal_type": "top_divergence", "case_status": "failed"},
+    "2020-02-13T08:00:00": {"signal_type": "top_divergence", "case_status": "success"},
+    "2025-04-09T08:00:00": {"signal_type": "bottom_divergence", "case_status": "success"},
+    "2024-05-03T08:00:00": {"signal_type": "bottom_divergence", "case_status": "success"},
+    "2023-06-06T08:00:00": {"signal_type": "bottom_divergence", "case_status": "failed"},
+    "2023-06-15T08:00:00": {"signal_type": "bottom_divergence", "case_status": "success"},
+    "2019-12-18T08:00:00": {"signal_type": "bottom_divergence", "case_status": "success"},
+    "2018-06-25T08:00:00": {"signal_type": "bottom_divergence", "case_status": "failed"},
+    "2018-02-03T08:00:00": {"signal_type": "bottom_divergence", "case_status": "failed"},
+    "2018-02-06T08:00:00": {"signal_type": "bottom_divergence", "case_status": "success"},
+}
 
 
 class MacdTripleDivergenceStrategy(BaseStrategy):
@@ -71,23 +107,28 @@ class MacdTripleDivergenceStrategy(BaseStrategy):
         ("macd_slow", 26),
         ("macd_signal", 9),
         # Divergence detection parameters
-        ("opp_ratio", 0.35),           # Max ratio of separator segment to reference segment
-        ("zero_eps", 0.0001),          # Absolute value below this is considered near-zero
-        ("price_eps", 0.0),            # Price comparison tolerance (0 = strict)
-        ("macd_eps", 0.0),             # MACD comparison tolerance (0 = strict)
-        ("max_lookback_segments", 10), # Max segments to keep in history
-        ("max_lookback_bars", 200),    # Max bars to look back for divergence
+        ("noise_cluster_ratio", DEFAULT_NOISE_CLUSTER_RATIO),  # Zero-axis noise threshold for wave split and separator near-zero checks
+        ("weak_wave_filter_ratio", DEFAULT_WEAK_WAVE_FILTER_RATIO),  # Minimum same-sign wave strength ratio to keep a wave
+        ("trigger_latest_leg_min_ratio", DEFAULT_TRIGGER_LATEST_LEG_MIN_RATIO),  # Minimum latest-leg strength ratio required to actually trigger a signal
+        ("second_leg_min_ratio", 0.20),  # Minimum M2/M1 ratio for a valid three-leg structure
+        ("zero_eps", 0.0001),  # Absolute value below this is considered near-zero
+        ("price_eps", 0.0),  # Price comparison tolerance (0 = strict)
+        ("macd_eps", 0.0),  # MACD comparison tolerance (0 = strict)
+        ("max_lookback_segments", 10),  # Max segments to keep in history
+        ("max_lookback_bars", 200),  # Hard safety cap for recent bars scanned
+        ("max_same_sign_waves", 5),  # Max same-sign waves to consider from the latest wave backward
+        ("doc_trade_logic", True),  # Use trading rules described in the source document
         # Chainer Framework parameters
-        ("chainer_mode", "LONG_ONLY"),  # LONG_ONLY, SHORT_ONLY, BOTH
+        ("chainer_mode", "BOTH"),  # LONG_ONLY, SHORT_ONLY, BOTH
         ("chainer_auto_signal", True),  # Enable auto signal processing
-        ("chainer_stoploss_atr_mult", 1.5),
-        ("chainer_enter_need_confirm", True),
-        ("chainer_exit_need_confirm", True),
-        ("chainer_enable_breakeven", True),
-        ("chainer_risk_reward_ratio", 2.0),
+        ("chainer_stoploss_atr_mult", 0.0),
+        ("chainer_enter_need_confirm", False),
+        ("chainer_exit_need_confirm", False),
+        ("chainer_enable_breakeven", False),
+        ("chainer_risk_reward_ratio", 0.0),
         # Special MACD-based stop loss
-        ("macd_stop_enabled", True),   # Enable MACD-based stop loss
-        ("macd_stop_eps", 0.0001),     # Tolerance for MACD stop comparison
+        ("macd_stop_enabled", True),  # Enable MACD-based stop loss
+        ("macd_stop_eps", 0.0001),  # Tolerance for MACD stop comparison
         # Disable new entries when equity falls below this percentage of initial account value (0 = disabled)
         ("chainer_min_equity_percent", 0.0),
     )
@@ -113,14 +154,35 @@ class MacdTripleDivergenceStrategy(BaseStrategy):
         # Special stop loss tracking
         self._entry_hist_val: Optional[float] = None
         self._entry_direction: Optional[str] = None
+        self._entry_signal_bar_idx: Optional[int] = None
+        self._pending_entry_signal_bar_idx: Optional[int] = None
+        self._pending_entry_hist_val: Optional[float] = None
+        self._last_long_signal_bar_idx: Optional[int] = None
+        self._last_short_signal_bar_idx: Optional[int] = None
+        self._last_long_structure_key: Optional[tuple] = None
+        self._last_long_price_extreme: Optional[float] = None
+        self._last_short_structure_key: Optional[tuple] = None
+        self._last_short_price_extreme: Optional[float] = None
+        self._long_signal_meta: Optional[dict] = None
+        self._short_signal_meta: Optional[dict] = None
+        self._signal_seq: int = 0
+        self._signal_events: List[dict] = []
+        self._documented_case_events: List[dict] = []
 
         # Order tracking
         self.order = None
 
         self.log_info(
             f"MACDTripleDivergence 初始化: macd=({self.params.macd_fast},{self.params.macd_slow},{self.params.macd_signal}) "
-            f"opp_ratio={self.params.opp_ratio} chainer_mode={self.params.chainer_mode}"
+            f"noise_cluster_ratio={self.params.noise_cluster_ratio} weak_wave_filter_ratio={self.params.weak_wave_filter_ratio} "
+            f"trigger_latest_leg_min_ratio={self.params.trigger_latest_leg_min_ratio} "
+            f"chainer_mode={self.params.chainer_mode}"
         )
+
+    def start(self):
+        super().start()
+        if self.params.doc_trade_logic:
+            self.broker.set_coc(True)
 
     def _get_sign(self, hist_val: float) -> SegmentSign:
         """Determine the sign of a histogram value."""
@@ -205,240 +267,1013 @@ class MacdTripleDivergenceStrategy(BaseStrategy):
 
         self._prev_hist_sign = current_sign
 
-    def _detect_bottom_triple_divergence(self) -> bool:
+    def _build_recent_waves(self) -> List[Segment]:
         """
-        Detect triple bottom divergence (bullish signal).
+        Build MACD waves from history up to the previous bar.
 
-        Conditions:
-        1. Three red (negative) segments R1, R2, R3 with separator segments between them
-        2. Price makes lower lows: P1 > P2 > P3
-        3. MACD histogram absolute values decrease: |M1| > |M2| > |M3|
-        4. Separator segments are relatively small (controlled by opp_ratio)
+        A new wave starts when:
+        1. Histogram flips color, or
+        2. Histogram retraces near zero and then expands again in the same direction.
 
-        Returns:
-            bool: True if triple bottom divergence detected
+        This models the document's "相反颜色出现，或者非常接近出现".
         """
-        # Need at least 5 segments: R1, Sep1, R2, Sep2, R3
-        # Plus current segment might be the signal (turning positive after R3)
-        segments = list(self._segments)
+        if len(self) < 3:
+            return []
 
-        # Signal on transition from negative to positive/zero
-        if self._current_segment is None:
+        lookback = min(self.params.max_lookback_bars, len(self) - 1)
+        bars = []
+        current_idx = self.bar_idx()
+        for ago in range(lookback, 0, -1):
+            bars.append(
+                {
+                    "idx": current_idx - ago,
+                    "hist": float(self.macd_hist[-ago]),
+                    "high": float(self.data.high[-ago]),
+                    "low": float(self.data.low[-ago]),
+                }
+            )
+
+        waves: List[Segment] = []
+        current_wave: Optional[Segment] = None
+        ready_split = False
+
+        for pos, bar in enumerate(bars):
+            sign = self._get_sign(bar["hist"])
+
+            if sign == SegmentSign.ZERO:
+                if current_wave is not None:
+                    current_wave.end_idx = bar["idx"]
+                    if current_wave.extreme_idx < bar["idx"] and abs(bar["hist"]) <= abs(current_wave.extreme_val) * self.params.noise_cluster_ratio:
+                        ready_split = True
+                continue
+
+            if current_wave is None:
+                price_val = bar["low"] if sign == SegmentSign.NEGATIVE else bar["high"]
+                current_wave = Segment(
+                    start_idx=bar["idx"],
+                    end_idx=bar["idx"],
+                    sign=sign,
+                    extreme_val=bar["hist"],
+                    extreme_idx=bar["idx"],
+                    price_extreme=price_val,
+                    price_extreme_idx=bar["idx"],
+                )
+                ready_split = False
+                continue
+
+            if sign != current_wave.sign:
+                waves.append(current_wave)
+                price_val = bar["low"] if sign == SegmentSign.NEGATIVE else bar["high"]
+                current_wave = Segment(
+                    start_idx=bar["idx"],
+                    end_idx=bar["idx"],
+                    sign=sign,
+                    extreme_val=bar["hist"],
+                    extreme_idx=bar["idx"],
+                    price_extreme=price_val,
+                    price_extreme_idx=bar["idx"],
+                )
+                ready_split = False
+                continue
+
+            if ready_split and current_wave.extreme_idx < bar["idx"] and pos > 0:
+                prev_hist = bars[pos - 1]["hist"]
+                if abs(bar["hist"]) > abs(prev_hist) + self.params.macd_eps:
+                    waves.append(current_wave)
+                    price_val = bar["low"] if sign == SegmentSign.NEGATIVE else bar["high"]
+                    current_wave = Segment(
+                        start_idx=bar["idx"],
+                        end_idx=bar["idx"],
+                        sign=sign,
+                        extreme_val=bar["hist"],
+                        extreme_idx=bar["idx"],
+                        price_extreme=price_val,
+                        price_extreme_idx=bar["idx"],
+                    )
+                    ready_split = False
+                    continue
+
+            current_wave.end_idx = bar["idx"]
+
+            if current_wave.sign == SegmentSign.NEGATIVE:
+                if bar["hist"] < current_wave.extreme_val:
+                    current_wave.extreme_val = bar["hist"]
+                    current_wave.extreme_idx = bar["idx"]
+                    ready_split = False
+                if bar["low"] < current_wave.price_extreme:
+                    current_wave.price_extreme = bar["low"]
+                    current_wave.price_extreme_idx = bar["idx"]
+            else:
+                if bar["hist"] > current_wave.extreme_val:
+                    current_wave.extreme_val = bar["hist"]
+                    current_wave.extreme_idx = bar["idx"]
+                    ready_split = False
+                if bar["high"] > current_wave.price_extreme:
+                    current_wave.price_extreme = bar["high"]
+                    current_wave.price_extreme_idx = bar["idx"]
+
+            if current_wave.extreme_idx < bar["idx"] and abs(bar["hist"]) <= abs(current_wave.extreme_val) * self.params.noise_cluster_ratio:
+                ready_split = True
+
+        if current_wave is not None:
+            waves.append(current_wave)
+
+        return waves
+
+    def _is_first_shortening_bar(self, sign: SegmentSign) -> bool:
+        """Return True only on the first bar after a local histogram extreme starts shrinking."""
+        if len(self) < 3:
             return False
 
-        # We need the R3 segment to be complete (current segment is different sign)
-        if self._current_segment.sign != SegmentSign.NEGATIVE:
-            # Current segment is not negative, check if we just completed R3
-            if len(segments) < 5:
-                return False
+        prev_prev_hist = float(self.macd_hist[-2])
+        prev_hist = float(self.macd_hist[-1])
+        current_hist = float(self.macd_hist[0])
 
-            # Find the pattern: R1, Sep1, R2, Sep2, R3 in recent history
-            # Look backwards from the end of segments
-            r3 = None
-            sep2 = None
-            r2 = None
-            sep1 = None
-            r1 = None
-
-            idx = len(segments) - 1
-            # Find R3 (most recent negative segment)
-            while idx >= 0:
-                if segments[idx].sign == SegmentSign.NEGATIVE:
-                    r3 = segments[idx]
-                    break
-                idx -= 1
-
-            if r3 is None or idx < 4:
-                return False
-
-            # Find Sep2 (segment before R3)
-            idx -= 1
-            sep2 = segments[idx]
-
-            # Find R2
-            idx -= 1
-            while idx >= 0:
-                if segments[idx].sign == SegmentSign.NEGATIVE:
-                    r2 = segments[idx]
-                    break
-                idx -= 1
-
-            if r2 is None or idx < 2:
-                return False
-
-            # Find Sep1 (segment before R2)
-            idx -= 1
-            sep1 = segments[idx]
-
-            # Find R1
-            idx -= 1
-            while idx >= 0:
-                if segments[idx].sign == SegmentSign.NEGATIVE:
-                    r1 = segments[idx]
-                    break
-                idx -= 1
-
-            if r1 is None:
-                return False
-
-            # Check lookback limit
-            if self.bar_idx() - r1.start_idx > self.params.max_lookback_bars:
-                return False
-
-            # Get extreme values (most negative histogram values in each red segment)
-            m1 = abs(r1.extreme_val)
-            m2 = abs(r2.extreme_val)
-            m3 = abs(r3.extreme_val)
-
-            # Get price lows
-            p1 = r1.price_extreme
-            p2 = r2.price_extreme
-            p3 = r3.price_extreme
-
-            # Check MACD condition: |M1| > |M2| > |M3| (red bars getting shorter)
-            if not (m1 > m2 + self.params.macd_eps and m2 > m3 + self.params.macd_eps):
-                return False
-
-            # Check price condition: P1 > P2 > P3 (price making lower lows)
-            if not (p1 > p2 + self.params.price_eps and p2 > p3 + self.params.price_eps):
-                return False
-
-            # Check separator segments (should be relatively small)
-            h_ref = max(m1, m2, m3)
-
-            # Sep1 check
-            sep1_max = abs(sep1.extreme_val) if sep1.sign == SegmentSign.POSITIVE else 0
-            if sep1_max > self.params.opp_ratio * h_ref:
-                return False
-
-            # Sep2 check
-            sep2_max = abs(sep2.extreme_val) if sep2.sign == SegmentSign.POSITIVE else 0
-            if sep2_max > self.params.opp_ratio * h_ref:
-                return False
-
-            self.log_debug(
-                f"三段底背离检测: R1({r1.start_idx}-{r1.end_idx}, M={r1.extreme_val:.6f}, P={p1:.2f}) "
-                f"R2({r2.start_idx}-{r2.end_idx}, M={r2.extreme_val:.6f}, P={p2:.2f}) "
-                f"R3({r3.start_idx}-{r3.end_idx}, M={r3.extreme_val:.6f}, P={p3:.2f})"
+        if sign == SegmentSign.POSITIVE:
+            return (
+                prev_hist > self.params.zero_eps
+                and prev_hist > prev_prev_hist + self.params.macd_eps
+                and current_hist < prev_hist - self.params.macd_eps
             )
-            return True
+
+        if sign == SegmentSign.NEGATIVE:
+            return (
+                prev_hist < -self.params.zero_eps
+                and prev_hist < prev_prev_hist - self.params.macd_eps
+                and current_hist > prev_hist + self.params.macd_eps
+            )
 
         return False
+
+    def _shift_from_bar_index(self, bar_idx: int) -> int:
+        return int(bar_idx) - self.bar_idx()
+
+    def _bar_snapshot(self, bar_idx: int) -> dict:
+        shift = self._shift_from_bar_index(bar_idx)
+        dt = bt.num2date(self.data.datetime[shift]).isoformat()
+        return {
+            "time": dt,
+            "open": float(self.data.open[shift]),
+            "high": float(self.data.high[shift]),
+            "low": float(self.data.low[shift]),
+            "close": float(self.data.close[shift]),
+            "macd_hist": float(self.macd_hist[shift]),
+        }
+
+    def _price_on_bar(self, bar_idx: int, sign: SegmentSign) -> float:
+        shift = self._shift_from_bar_index(bar_idx)
+        if sign == SegmentSign.NEGATIVE:
+            return float(self.data.low[shift])
+        return float(self.data.high[shift])
+
+    def _price_on_macd_extreme_bar(self, wave: Segment) -> float:
+        return self._price_on_bar(wave.extreme_idx, wave.sign)
+
+    def _wave_price_extreme_before_macd_extreme(self, wave: Segment) -> tuple[float, int]:
+        start_idx = int(wave.start_idx)
+        end_idx = int(wave.extreme_idx)
+
+        if wave.sign == SegmentSign.NEGATIVE:
+            best_idx = min(range(start_idx, end_idx + 1), key=lambda idx: float(self.data.low[self._shift_from_bar_index(idx)]))
+            best_price = float(self.data.low[self._shift_from_bar_index(best_idx)])
+        else:
+            best_idx = max(range(start_idx, end_idx + 1), key=lambda idx: float(self.data.high[self._shift_from_bar_index(idx)]))
+            best_price = float(self.data.high[self._shift_from_bar_index(best_idx)])
+
+        return best_price, best_idx
+
+    def _wave_structure_price(self, wave: Segment) -> float:
+        price, _ = self._wave_price_extreme_before_macd_extreme(wave)
+        return price
+
+    def _wave_structure_price_idx(self, wave: Segment) -> int:
+        _, idx = self._wave_price_extreme_before_macd_extreme(wave)
+        return idx
+
+    def _wave_candidate_price(self, wave: Segment) -> float:
+        return float(self._price_on_macd_extreme_bar(wave))
+
+    def _wave_directional_price_extreme(self, wave: Segment, direction: str) -> float:
+        start_idx = int(wave.start_idx)
+        end_idx = int(wave.end_idx)
+
+        if direction == "LONG":
+            return min(float(self.data.low[self._shift_from_bar_index(idx)]) for idx in range(start_idx, end_idx + 1))
+
+        return max(float(self.data.high[self._shift_from_bar_index(idx)]) for idx in range(start_idx, end_idx + 1))
+
+    def _wave_advances_directional_price(self, previous: Segment, current: Segment, sign: SegmentSign) -> bool:
+        direction = "SHORT" if sign == SegmentSign.POSITIVE else "LONG"
+        previous_price = self._wave_directional_price_extreme(previous, direction)
+        current_price = self._wave_directional_price_extreme(current, direction)
+        return (
+            current_price > previous_price + self.params.price_eps
+            if sign == SegmentSign.POSITIVE
+            else current_price < previous_price - self.params.price_eps
+        )
+
+    def _wave_beats_separator_price(self, separator: Segment, current: Segment, sign: SegmentSign) -> bool:
+        direction = "SHORT" if sign == SegmentSign.POSITIVE else "LONG"
+        separator_price = self._wave_directional_price_extreme(separator, direction)
+        current_price = self._wave_directional_price_extreme(current, direction)
+        return (
+            current_price > separator_price + self.params.price_eps
+            if sign == SegmentSign.POSITIVE
+            else current_price < separator_price - self.params.price_eps
+        )
+
+    def _wave_extends_macd_extreme(self, previous: Segment, current: Segment, sign: SegmentSign) -> bool:
+        return (
+            float(current.extreme_val) > float(previous.extreme_val) + self.params.macd_eps
+            if sign == SegmentSign.POSITIVE
+            else float(current.extreme_val) < float(previous.extreme_val) - self.params.macd_eps
+        )
+
+    def _is_tiny_opposite_separator(self, separator: Segment, left: Segment, right: Segment) -> bool:
+        if separator.sign in (SegmentSign.ZERO, left.sign):
+            return False
+        threshold = min(abs(float(left.extreme_val)), abs(float(right.extreme_val))) * float(self.params.noise_cluster_ratio)
+        return abs(float(separator.extreme_val)) <= threshold + self.params.macd_eps
+
+    def _merge_same_sign_waves(self, left: Segment, right: Segment) -> Segment:
+        if left.sign != right.sign:
+            raise ValueError("cannot merge waves with different signs")
+
+        if left.sign == SegmentSign.NEGATIVE:
+            extreme_val, extreme_idx = (
+                (left.extreme_val, left.extreme_idx)
+                if float(left.extreme_val) <= float(right.extreme_val)
+                else (right.extreme_val, right.extreme_idx)
+            )
+            price_extreme, price_extreme_idx = (
+                (left.price_extreme, left.price_extreme_idx)
+                if float(left.price_extreme) <= float(right.price_extreme)
+                else (right.price_extreme, right.price_extreme_idx)
+            )
+        else:
+            extreme_val, extreme_idx = (
+                (left.extreme_val, left.extreme_idx)
+                if float(left.extreme_val) >= float(right.extreme_val)
+                else (right.extreme_val, right.extreme_idx)
+            )
+            price_extreme, price_extreme_idx = (
+                (left.price_extreme, left.price_extreme_idx)
+                if float(left.price_extreme) >= float(right.price_extreme)
+                else (right.price_extreme, right.price_extreme_idx)
+            )
+
+        return Segment(
+            start_idx=int(left.start_idx),
+            end_idx=int(right.end_idx),
+            sign=left.sign,
+            extreme_val=float(extreme_val),
+            extreme_idx=int(extreme_idx),
+            price_extreme=float(price_extreme),
+            price_extreme_idx=int(price_extreme_idx),
+        )
+
+    def _wave_owns_adjacent_price_progression(self, waves: List[Segment], wave: Segment, direction: str) -> bool:
+        wave_start_idx, _ = self._wave_span_indices(waves, wave)
+        if wave_start_idx <= 0:
+            return True
+
+        previous_wave = waves[wave_start_idx - 1]
+        previous_extreme = self._wave_directional_price_extreme(previous_wave, direction)
+        wave_extreme = self._wave_directional_price_extreme(wave, direction)
+
+        if direction == "LONG":
+            return wave_extreme < previous_extreme - self.params.price_eps
+
+        return wave_extreme > previous_extreme + self.params.price_eps
+
+    def _extract_wave_pivots(self, wave: Segment) -> List[Pivot]:
+        pivots: List[Pivot] = []
+        if int(wave.end_idx) - int(wave.start_idx) < 2:
+            pivots.append(
+                Pivot(
+                    wave=wave,
+                    idx=int(wave.extreme_idx),
+                    macd_val=float(wave.extreme_val),
+                    price_val=self._price_on_macd_extreme_bar(wave),
+                )
+            )
+            return pivots
+
+        for idx in range(int(wave.start_idx) + 1, int(wave.end_idx)):
+            prev_hist = float(self.macd_hist[self._shift_from_bar_index(idx - 1)])
+            curr_hist = float(self.macd_hist[self._shift_from_bar_index(idx)])
+            next_hist = float(self.macd_hist[self._shift_from_bar_index(idx + 1)])
+
+            if wave.sign == SegmentSign.POSITIVE:
+                if curr_hist >= prev_hist - self.params.macd_eps and curr_hist >= next_hist - self.params.macd_eps:
+                    pivots.append(
+                        Pivot(
+                            wave=wave,
+                            idx=idx,
+                            macd_val=curr_hist,
+                            price_val=self._price_on_bar(idx, wave.sign),
+                        )
+                    )
+            elif wave.sign == SegmentSign.NEGATIVE:
+                if curr_hist <= prev_hist + self.params.macd_eps and curr_hist <= next_hist + self.params.macd_eps:
+                    pivots.append(
+                        Pivot(
+                            wave=wave,
+                            idx=idx,
+                            macd_val=curr_hist,
+                            price_val=self._price_on_bar(idx, wave.sign),
+                        )
+                    )
+
+        if not pivots:
+            pivots.append(
+                Pivot(
+                    wave=wave,
+                    idx=int(wave.extreme_idx),
+                    macd_val=float(wave.extreme_val),
+                    price_val=self._price_on_macd_extreme_bar(wave),
+                )
+            )
+            return pivots
+
+        extreme_idx = int(wave.extreme_idx)
+        if all(p.idx != extreme_idx for p in pivots):
+            pivots.append(
+                Pivot(
+                    wave=wave,
+                    idx=extreme_idx,
+                    macd_val=float(wave.extreme_val),
+                    price_val=self._price_on_macd_extreme_bar(wave),
+                )
+            )
+
+        pivots.sort(key=lambda p: p.idx)
+        return pivots
+
+    def _wave_pivots(self, wave: Segment) -> List[Pivot]:
+        return self._extract_wave_pivots(wave)
+
+    def _pivot_detail(self, pivot: Pivot, direction: str) -> dict:
+        snap = self._bar_snapshot(pivot.idx)
+        detail = {
+            "pivot_time": snap["time"],
+            "pivot_bar_index": int(pivot.idx),
+            "pivot_macd": round(float(pivot.macd_val), 6),
+            "pivot_price": round(float(pivot.price_val), 2),
+            "segment_start_bar_index": int(pivot.wave.start_idx),
+            "segment_end_bar_index": int(pivot.wave.end_idx),
+        }
+        if direction == "LONG":
+            detail["pivot_type"] = "trough"
+        else:
+            detail["pivot_type"] = "peak"
+        return detail
+
+    def _segment_extreme_pivot(self, wave: Segment) -> Pivot:
+        return Pivot(
+            wave=wave,
+            idx=int(wave.extreme_idx),
+            macd_val=float(wave.extreme_val),
+            price_val=self._price_on_macd_extreme_bar(wave),
+        )
+
+    def _current_trigger_pivot(self, wave: Segment, sign: SegmentSign) -> Optional[Pivot]:
+        prev_idx = self.bar_idx() - 1
+        if prev_idx < int(wave.start_idx) or prev_idx > int(wave.end_idx):
+            return None
+        prev_hist = float(self.macd_hist[-1])
+        if self._get_sign(prev_hist) != sign:
+            return None
+        return Pivot(
+            wave=wave,
+            idx=prev_idx,
+            macd_val=prev_hist,
+            price_val=self._price_on_bar(prev_idx, sign),
+        )
+
+    def _trigger_price_extreme_since_last_pivot(self, wave: Segment, trigger_pivot: Pivot) -> tuple[float, int]:
+        pivots = [pivot for pivot in self._wave_pivots(wave) if int(pivot.idx) < int(trigger_pivot.idx)]
+        start_idx = int(wave.start_idx) if not pivots else int(pivots[-1].idx) + 1
+        end_idx = int(trigger_pivot.idx)
+
+        if wave.sign == SegmentSign.NEGATIVE:
+            best_idx = min(range(start_idx, end_idx + 1), key=lambda idx: float(self.data.low[self._shift_from_bar_index(idx)]))
+            best_price = float(self.data.low[self._shift_from_bar_index(best_idx)])
+        else:
+            best_idx = max(range(start_idx, end_idx + 1), key=lambda idx: float(self.data.high[self._shift_from_bar_index(idx)]))
+            best_price = float(self.data.high[self._shift_from_bar_index(best_idx)])
+
+        return best_price, best_idx
+
+    def _wave_span_indices(self, waves: List[Segment], target: Segment) -> tuple[int, int]:
+        for idx, wave in enumerate(waves):
+            if wave is target:
+                return idx, idx
+
+        start_idx = None
+        end_idx = None
+        for idx, wave in enumerate(waves):
+            if (
+                start_idx is None
+                and wave.sign == target.sign
+                and int(wave.start_idx) == int(target.start_idx)
+            ):
+                start_idx = idx
+            if wave.sign == target.sign and int(wave.end_idx) == int(target.end_idx):
+                end_idx = idx
+
+        if start_idx is not None and end_idx is not None and start_idx <= end_idx:
+            return start_idx, end_idx
+
+        raise ValueError("target wave not found")
+
+    def _find_wave_index(self, waves: List[Segment], target: Segment) -> int:
+        start_idx, _ = self._wave_span_indices(waves, target)
+        return start_idx
+
+    def _separator_detail(self, waves: List[Segment], left: Segment, right: Segment) -> dict:
+        _, left_end_idx = self._wave_span_indices(waves, left)
+        right_start_idx, _ = self._wave_span_indices(waves, right)
+        between = waves[left_end_idx + 1 : right_start_idx]
+
+        mode = "opposite_color" if any(seg.sign not in (left.sign, SegmentSign.ZERO) for seg in between) else "near_zero"
+        separator_abs = None
+        separator_time = None
+        separator_ratio = None
+        ratio_gap = None
+        between_start = left.extreme_idx + 1
+        between_end = right.start_idx - 1
+        if between_end >= between_start:
+            best_idx = None
+            for idx in range(between_start, between_end + 1):
+                shift = self._shift_from_bar_index(idx)
+                abs_hist = abs(float(self.macd_hist[shift]))
+                if separator_abs is None or abs_hist < separator_abs:
+                    separator_abs = abs_hist
+                    best_idx = idx
+            if best_idx is not None:
+                separator_time = self._bar_snapshot(best_idx)["time"]
+
+        reference_abs = abs(float(left.extreme_val))
+        if separator_abs is not None and reference_abs > 0:
+            separator_ratio = separator_abs / reference_abs
+            ratio_gap = separator_ratio - float(self.params.noise_cluster_ratio)
+
+        return {
+            "from_time": self._bar_snapshot(left.extreme_idx)["time"],
+            "to_time": self._bar_snapshot(right.extreme_idx)["time"],
+            "mode": mode,
+            "reference_macd_abs": round(reference_abs, 6),
+            "separator_macd_abs": round(separator_abs, 6) if separator_abs is not None else None,
+            "separator_time": separator_time,
+            "separator_ratio": round(separator_ratio, 6) if separator_ratio is not None else None,
+            "noise_cluster_ratio_threshold": float(self.params.noise_cluster_ratio),
+            "near_zero_passed": separator_ratio is not None and separator_ratio <= float(self.params.noise_cluster_ratio),
+            "near_zero_gap": round(ratio_gap, 6) if ratio_gap is not None else None,
+            "between_wave_count": len(between),
+        }
+
+    @staticmethod
+    def _structure_key(w1: Segment, w2: Segment) -> tuple:
+        return (int(w1.start_idx), int(w1.extreme_idx), int(w2.start_idx), int(w2.extreme_idx))
+
+    def _is_structural_progress(self, previous_macd_abs: float, candidate_macd_abs: float) -> bool:
+        if previous_macd_abs <= 0:
+            return False
+        return (candidate_macd_abs / previous_macd_abs) >= float(self.params.second_leg_min_ratio)
+
+    def _wave_half_strength(self, wave: Segment) -> float:
+        if int(wave.extreme_idx) < int(wave.start_idx):
+            return 0.0
+        total = 0.0
+        for idx in range(int(wave.start_idx), int(wave.extreme_idx) + 1):
+            shift = self._shift_from_bar_index(idx)
+            total += abs(float(self.macd_hist[shift]))
+        return total
+
+    def _wave_rank_strength(self, wave: Segment) -> float:
+        return abs(float(wave.extreme_val))
+
+    def _latest_leg_trigger_strength_ok(self, triplet: List[Segment]) -> bool:
+        if len(triplet) < 3:
+            return False
+        previous_strength = self._wave_rank_strength(triplet[1])
+        latest_strength = self._wave_rank_strength(triplet[2])
+        if previous_strength <= 0:
+            return False
+        return (latest_strength / previous_strength) >= float(self.params.trigger_latest_leg_min_ratio)
+
+    def _recent_wave_windows(self, waves: List[Segment]) -> List[List[Segment]]:
+        windows: List[List[Segment]] = []
+        for start in range(len(waves) - 1, -1, -1):
+            windows.append(waves[start:])
+        return windows
+
+    def _bottom_triplet_structure_ok(self, triplet: List[Segment]) -> bool:
+        macd_values = [abs(float(wave.extreme_val)) for wave in triplet]
+        prices = [self._wave_candidate_price(wave) for wave in triplet]
+        return (
+            macd_values[0] > macd_values[1] + self.params.macd_eps
+            and macd_values[1] > macd_values[2] + self.params.macd_eps
+            and prices[0] > prices[1] + self.params.price_eps
+            and prices[1] > prices[2] + self.params.price_eps
+        )
+
+    def _top_triplet_structure_ok(self, triplet: List[Segment]) -> bool:
+        macd_values = [float(wave.extreme_val) for wave in triplet]
+        prices = [self._wave_candidate_price(wave) for wave in triplet]
+        return (
+            macd_values[0] > macd_values[1] + self.params.macd_eps
+            and macd_values[1] > macd_values[2] + self.params.macd_eps
+            and prices[0] + self.params.price_eps < prices[1]
+            and prices[1] + self.params.price_eps < prices[2]
+        )
+
+    def _bottom_trigger_price_ok(self, triplet: List[Segment], trigger_pivot: Pivot) -> tuple[bool, float]:
+        third_price, _ = self._trigger_price_extreme_since_last_pivot(triplet[2], trigger_pivot)
+        ok = (
+            self._wave_structure_price(triplet[0]) > self._wave_structure_price(triplet[1]) + self.params.price_eps
+            and self._wave_structure_price(triplet[1]) > third_price + self.params.price_eps
+        )
+        return ok, third_price
+
+    def _top_trigger_price_ok(self, triplet: List[Segment], trigger_pivot: Pivot) -> tuple[bool, float]:
+        third_price, _ = self._trigger_price_extreme_since_last_pivot(triplet[2], trigger_pivot)
+        ok = (
+            self._wave_structure_price(triplet[0]) + self.params.price_eps < self._wave_structure_price(triplet[1])
+            and self._wave_structure_price(triplet[1]) + self.params.price_eps < third_price
+        )
+        return ok, third_price
+
+    def _same_sign_waves(self, waves: List[Segment], sign: SegmentSign) -> List[Segment]:
+        return [wave for wave in waves if wave.sign == sign]
+
+    def _filtered_same_sign_waves(self, waves: List[Segment], sign: SegmentSign) -> List[Segment]:
+        same_sign = self._same_sign_waves(waves, sign)
+        if not same_sign:
+            return []
+
+        filtered: List[Segment] = [same_sign[0]]
+        for idx, wave in enumerate(same_sign[1:], start=1):
+            # Weak-wave filtering only removes interior noise waves; the latest leg must
+            # stay available for divergence validation even when its MACD size is small.
+            if idx == len(same_sign) - 1:
+                filtered.append(wave)
+                continue
+            previous = filtered[-1]
+            previous_extreme = self._wave_rank_strength(previous)
+            current_extreme = self._wave_rank_strength(wave)
+            if previous_extreme <= 0:
+                continue
+            if current_extreme / previous_extreme < float(self.params.weak_wave_filter_ratio):
+                continue
+            filtered.append(wave)
+
+        return filtered
+
+    def _same_sign_segment_count_in_triplet_window(self, waves: List[Segment], triplet: List[Segment]) -> int:
+        if not triplet:
+            return 0
+
+        sign = triplet[0].sign
+        first_idx, _ = self._wave_span_indices(waves, triplet[0])
+        _, latest_idx = self._wave_span_indices(waves, triplet[2])
+        count = 0
+        previous_same_sign = False
+
+        for wave in waves[first_idx : latest_idx + 1]:
+            is_same_sign = wave.sign == sign
+            if is_same_sign and not previous_same_sign:
+                count += 1
+            previous_same_sign = is_same_sign
+
+        return count
+
+    def _latest_same_sign_waves(self, waves: List[Segment], sign: SegmentSign) -> List[Segment]:
+        effective: List[tuple[Segment, int]] = []
+        same_sign_waves = self._filtered_same_sign_waves(waves, sign)
+        wave_positions = {id(wave): idx for idx, wave in enumerate(waves)}
+        for wave in same_sign_waves:
+            idx = wave_positions[id(wave)]
+
+            if not effective:
+                effective.append((wave, idx))
+                continue
+
+            previous, previous_idx = effective[-1]
+            if idx == previous_idx + 1:
+                if self._wave_advances_directional_price(previous, wave, sign):
+                    effective.append((wave, idx))
+                continue
+
+            if sign == SegmentSign.NEGATIVE and idx == previous_idx + 2:
+                separator = waves[previous_idx + 1]
+                if self._is_tiny_opposite_separator(separator, previous, wave):
+                    advances_price = self._wave_advances_directional_price(previous, wave, sign)
+                    if not advances_price:
+                        continue
+                    if self._wave_extends_macd_extreme(previous, wave, sign) and self._wave_beats_separator_price(separator, wave, sign):
+                        effective[-1] = (self._merge_same_sign_waves(previous, wave), idx)
+                        continue
+                    effective.append((wave, idx))
+                    continue
+
+            effective.append((wave, idx))
+
+        return [wave for wave, _ in effective[-int(self.params.max_same_sign_waves) :]]
+
+    def _price_divergence_candidates(self, waves: List[Segment], sign: SegmentSign) -> List[Segment]:
+        same_sign = self._latest_same_sign_waves(waves, sign)
+        if not same_sign:
+            return []
+
+        latest = same_sign[-1]
+        latest_price = self._wave_candidate_price(latest)
+
+        boundary_idx = 0
+        for idx in range(len(same_sign) - 2, -1, -1):
+            wave_price = self._wave_candidate_price(same_sign[idx])
+            if sign == SegmentSign.POSITIVE:
+                if wave_price >= latest_price - self.params.price_eps:
+                    boundary_idx = idx + 1
+                    break
+            else:
+                if wave_price <= latest_price + self.params.price_eps:
+                    boundary_idx = idx + 1
+                    break
+
+        return same_sign[boundary_idx:]
+
+    @staticmethod
+    def _latest_contiguous_triplet(candidates: List[Segment]) -> Optional[List[Segment]]:
+        if len(candidates) < 3:
+            return None
+        return candidates[-3:]
+
+    def _leg_detail(self, wave: Segment, direction: str) -> dict:
+        half_strength = round(self._wave_half_strength(wave), 6)
+        structure_price = self._wave_structure_price(wave)
+        structure_price_idx = self._wave_structure_price_idx(wave)
+        if direction == "LONG":
+            return {
+                "wave_start_time": self._bar_snapshot(wave.start_idx)["time"],
+                "wave_end_time": self._bar_snapshot(wave.end_idx)["time"],
+                "price_kline_time": self._bar_snapshot(wave.extreme_idx)["time"],
+                "price_on_macd_trough_bar": round(self._price_on_macd_extreme_bar(wave), 2),
+                "macd_trough_time": self._bar_snapshot(wave.extreme_idx)["time"],
+                "macd_trough": round(float(wave.extreme_val), 6),
+                "macd_half_strength": half_strength,
+                "structure_price_low_kline_time": self._bar_snapshot(structure_price_idx)["time"],
+                "structure_price_low": round(float(structure_price), 2),
+                "wave_price_low_kline_time": self._bar_snapshot(wave.price_extreme_idx)["time"],
+                "wave_price_low": round(float(wave.price_extreme), 2),
+            }
+
+        return {
+            "wave_start_time": self._bar_snapshot(wave.start_idx)["time"],
+            "wave_end_time": self._bar_snapshot(wave.end_idx)["time"],
+            "price_kline_time": self._bar_snapshot(wave.extreme_idx)["time"],
+            "price_on_macd_peak_bar": round(self._price_on_macd_extreme_bar(wave), 2),
+            "macd_peak_time": self._bar_snapshot(wave.extreme_idx)["time"],
+            "macd_peak": round(float(wave.extreme_val), 6),
+            "macd_half_strength": half_strength,
+            "structure_price_high_kline_time": self._bar_snapshot(structure_price_idx)["time"],
+            "structure_price_high": round(float(structure_price), 2),
+            "wave_price_high_kline_time": self._bar_snapshot(wave.price_extreme_idx)["time"],
+            "wave_price_high": round(float(wave.price_extreme), 2),
+        }
+
+    def _triplet_to_legs(self, triplet: List[Segment], direction: str, trigger_pivot: Optional[Pivot]) -> List[dict]:
+        legs = []
+        for idx, wave in enumerate(triplet):
+            leg = self._leg_detail(wave, direction)
+            if idx == 2:
+                trigger_price = float(wave.price_extreme)
+                trigger_price_idx = int(wave.price_extreme_idx)
+                if trigger_pivot is not None:
+                    trigger_price, trigger_price_idx = self._trigger_price_extreme_since_last_pivot(wave, trigger_pivot)
+                leg["trigger_price_extreme_so_far"] = round(trigger_price, 2)
+                leg["trigger_price_extreme_time_so_far"] = self._bar_snapshot(trigger_price_idx)["time"]
+                if trigger_pivot is not None:
+                    leg["trigger_pivot_time"] = self._bar_snapshot(trigger_pivot.idx)["time"]
+                    leg["trigger_pivot_macd"] = round(float(trigger_pivot.macd_val), 6)
+            legs.append(leg)
+        return legs
+
+    def _signal_payload(self, direction: str, waves: List[Segment], triplet: List[Segment], trigger_pivot: Optional[Pivot]) -> dict:
+        signal_bar = self._bar_snapshot(self.bar_idx())
+        legs = self._triplet_to_legs(triplet, direction, trigger_pivot)
+        separators = [
+            self._separator_detail(waves, triplet[0], triplet[1]),
+            self._separator_detail(waves, triplet[1], triplet[2]),
+        ]
+
+        if direction == "LONG":
+            third_price = self._wave_structure_price(triplet[2])
+            if trigger_pivot is not None:
+                third_price, _ = self._trigger_price_extreme_since_last_pivot(triplet[2], trigger_pivot)
+            price_values = [self._wave_structure_price(triplet[0]), self._wave_structure_price(triplet[1]), third_price]
+            macd_values = [abs(float(w.extreme_val)) for w in triplet]
+            conditions = {
+                "price_lower_lows": {
+                    "passed": price_values[0] > price_values[1] + self.params.price_eps and price_values[1] > price_values[2] + self.params.price_eps,
+                    "values": [round(v, 2) for v in price_values],
+                },
+                "macd_higher_troughs": {
+                    "passed": macd_values[0] > macd_values[1] + self.params.macd_eps and macd_values[1] > macd_values[2] + self.params.macd_eps,
+                    "values": [round(v, 6) for v in macd_values],
+                },
+                "separator_details": separators,
+                "first_shortening_bar": {
+                    "passed": True,
+                    "prev_hist": round(float(self.macd_hist[-1]), 6),
+                    "current_hist": round(float(self.macd_hist[0]), 6),
+                },
+                "trigger_reason": "R3 histogram started shrinking on the signal bar",
+            }
+            signal_type = "bottom_divergence"
+        else:
+            third_price = self._wave_structure_price(triplet[2])
+            if trigger_pivot is not None:
+                third_price, _ = self._trigger_price_extreme_since_last_pivot(triplet[2], trigger_pivot)
+            price_values = [self._wave_structure_price(triplet[0]), self._wave_structure_price(triplet[1]), third_price]
+            macd_values = [float(w.extreme_val) for w in triplet]
+            conditions = {
+                "price_higher_highs": {
+                    "passed": price_values[0] + self.params.price_eps < price_values[1] and price_values[1] + self.params.price_eps < price_values[2],
+                    "values": [round(v, 2) for v in price_values],
+                },
+                "macd_lower_highs": {
+                    "passed": macd_values[0] > macd_values[1] + self.params.macd_eps and macd_values[1] > macd_values[2] + self.params.macd_eps,
+                    "values": [round(v, 6) for v in macd_values],
+                },
+                "separator_details": separators,
+                "first_shortening_bar": {
+                    "passed": True,
+                    "prev_hist": round(float(self.macd_hist[-1]), 6),
+                    "current_hist": round(float(self.macd_hist[0]), 6),
+                },
+                "trigger_reason": "G3 histogram started shrinking on the signal bar",
+            }
+            signal_type = "top_divergence"
+
+        return {
+            "signal_time": signal_bar["time"],
+            "signal_bar_index": self.bar_idx(),
+            "signal_type": signal_type,
+            "signal_bar": signal_bar,
+            "legs": legs,
+            "conditions": conditions,
+            "trade_outcome": {"status": "pending"},
+        }
+
+    def _build_signal_event(self, direction: str, waves: List[Segment], triplet: List[Segment], trigger_pivot: Optional[Pivot]) -> dict:
+        payload = self._signal_payload(direction, waves, triplet, trigger_pivot)
+        documented_case_meta = DOCUMENTED_CASES_META.get(payload["signal_time"])
+        self._signal_seq += 1
+        return {
+            "signal_id": self._signal_seq,
+            "is_documented_case": documented_case_meta is not None,
+            "documented_case_status": documented_case_meta["case_status"] if documented_case_meta is not None else None,
+            **payload,
+        }
+
+    def _analysis_payload(self, direction: str, waves: List[Segment], triplet: Optional[List[Segment]], trigger_pivot: Optional[Pivot]) -> dict:
+        sign = SegmentSign.NEGATIVE if direction == "LONG" else SegmentSign.POSITIVE
+        candidates = self._price_divergence_candidates(waves, sign)
+
+        fail_reason = None
+        if triplet is None:
+            if len(candidates) < 3:
+                fail_reason = "insufficient_structural_candidates"
+            else:
+                fail_reason = "latest_contiguous_filtered_triplet_not_valid"
+        elif not self._is_first_shortening_bar(sign):
+            fail_reason = "not_first_shortening_bar"
+        elif trigger_pivot is None:
+            fail_reason = "no_trigger_pivot"
+
+        return {
+            "recent_streak_count": len(candidates),
+            "candidate_window_count": len(candidates),
+            "first_shortening_bar": self._is_first_shortening_bar(sign),
+            "recent_streak_legs": [self._leg_detail(wave, direction) for wave in candidates],
+            "price_qualified_legs": [self._leg_detail(wave, direction) for wave in candidates],
+            "selected_triplet_legs": [self._leg_detail(wave, direction) for wave in triplet] if triplet else [],
+            "trigger_pivot": self._pivot_detail(trigger_pivot, direction) if trigger_pivot else None,
+            "fail_reason": fail_reason,
+        }
+
+    def _capture_documented_case_snapshot(self) -> None:
+        case_time = self.cur_datetime().isoformat()
+        case_meta = DOCUMENTED_CASES_META.get(case_time)
+        if case_meta is None:
+            return
+        if any(event.get("case_time") == case_time for event in self._documented_case_events):
+            return
+
+        direction = "SHORT" if case_meta["signal_type"] == "top_divergence" else "LONG"
+        waves = self._build_recent_waves()
+        sign = SegmentSign.POSITIVE if direction == "SHORT" else SegmentSign.NEGATIVE
+        candidates = self._price_divergence_candidates(waves, sign)
+        latest_wave = candidates[-1] if candidates else None
+        trigger_pivot = self._current_trigger_pivot(latest_wave, sign) if latest_wave is not None else None
+        triplet = self._find_top_triplet(waves, trigger_pivot) if direction == "SHORT" else self._find_bottom_triplet(waves, trigger_pivot)
+
+        event = {
+            "case_time": case_time,
+            "signal_type": case_meta["signal_type"],
+            "case_status": case_meta["case_status"],
+            **(
+                self._signal_payload(direction, waves, triplet, trigger_pivot)
+                if triplet is not None
+                else {
+                    "signal_time": case_time,
+                    "signal_bar_index": self.bar_idx(),
+                    "signal_bar": self._bar_snapshot(self.bar_idx()),
+                    "legs": [],
+                    "conditions": {"separator_details": []},
+                    "trade_outcome": {"status": "not_triggered"},
+                }
+            ),
+            "analysis": self._analysis_payload(direction, waves, triplet, trigger_pivot),
+        }
+        self._documented_case_events.append(event)
+
+    def _store_signal_event(self, event: dict) -> int:
+        self._signal_events.append(event)
+        return int(event["signal_id"])
+
+    def _update_signal_outcome(self, signal_id: Optional[int], status: str, **extra) -> None:
+        if signal_id is None:
+            return
+        for event in reversed(self._signal_events):
+            if int(event.get("signal_id", -1)) == int(signal_id):
+                event["trade_outcome"] = {"status": status, **extra}
+                return
+
+    @staticmethod
+    def _next_day_macd_follow_through_ok(direction: str, entry_hist: float, current_hist: float) -> bool:
+        direction_norm = str(direction).upper()
+        if direction_norm == "LONG":
+            return current_hist > entry_hist
+        if direction_norm == "SHORT":
+            return current_hist < entry_hist
+        return False
+
+    def _find_bottom_triplet(self, waves: List[Segment], trigger_pivot: Optional[Pivot] = None) -> Optional[List[Segment]]:
+        for window in self._recent_wave_windows(waves):
+            candidates = self._price_divergence_candidates(window, SegmentSign.NEGATIVE)
+            triplet = self._latest_contiguous_triplet(candidates)
+            if triplet is None:
+                continue
+
+            if self._same_sign_segment_count_in_triplet_window(window, triplet) > int(self.params.max_same_sign_waves):
+                continue
+            if not self._wave_owns_adjacent_price_progression(window, triplet[1], "LONG"):
+                continue
+            if not self._wave_owns_adjacent_price_progression(window, triplet[2], "LONG"):
+                continue
+            if not self._bottom_triplet_structure_ok(triplet):
+                continue
+            if trigger_pivot is not None:
+                trigger_price_ok, _ = self._bottom_trigger_price_ok(triplet, trigger_pivot)
+                if not trigger_price_ok:
+                    continue
+
+            return triplet
+
+        return None
+
+    def _find_top_triplet(self, waves: List[Segment], trigger_pivot: Optional[Pivot] = None) -> Optional[List[Segment]]:
+        for window in self._recent_wave_windows(waves):
+            candidates = self._price_divergence_candidates(window, SegmentSign.POSITIVE)
+            triplet = self._latest_contiguous_triplet(candidates)
+            if triplet is None:
+                continue
+
+            if self._same_sign_segment_count_in_triplet_window(window, triplet) > int(self.params.max_same_sign_waves):
+                continue
+            if not self._wave_owns_adjacent_price_progression(window, triplet[1], "SHORT"):
+                continue
+            if not self._wave_owns_adjacent_price_progression(window, triplet[2], "SHORT"):
+                continue
+            if not self._top_triplet_structure_ok(triplet):
+                continue
+            if trigger_pivot is not None:
+                trigger_price_ok, _ = self._top_trigger_price_ok(triplet, trigger_pivot)
+                if not trigger_price_ok:
+                    continue
+
+            return triplet
+
+        return None
+
+    def _detect_bottom_triple_divergence(self) -> bool:
+        if not self._is_first_shortening_bar(SegmentSign.NEGATIVE):
+            return False
+
+        waves = self._build_recent_waves()
+        candidates = self._price_divergence_candidates(waves, SegmentSign.NEGATIVE)
+        if not candidates:
+            return False
+        trigger_pivot = self._current_trigger_pivot(candidates[-1], SegmentSign.NEGATIVE)
+        if trigger_pivot is None:
+            return False
+        triplet = self._find_bottom_triplet(waves, trigger_pivot)
+        if triplet is None:
+            return False
+        if not self._latest_leg_trigger_strength_ok(triplet):
+            return False
+
+        r1, r2, r3 = triplet
+        trigger_price_ok, trigger_price_extreme = self._bottom_trigger_price_ok(triplet, trigger_pivot)
+        if not trigger_price_ok:
+            return False
+        structure_key = self._structure_key(r1, r2)
+        if (
+            self._last_long_structure_key == structure_key
+            and self._last_long_price_extreme is not None
+            and float(trigger_price_extreme) >= float(self._last_long_price_extreme) - self.params.price_eps
+        ):
+            return False
+        if self._last_long_price_extreme is not None and self._last_long_structure_key != structure_key:
+            self._last_long_price_extreme = None
+            self._last_long_structure_key = None
+        current_bar = self.bar_idx()
+        if self._last_long_signal_bar_idx is not None and current_bar - self._last_long_signal_bar_idx <= 1:
+            return False
+
+        self._last_long_signal_bar_idx = current_bar
+        self._last_long_structure_key = structure_key
+        self._last_long_price_extreme = float(trigger_price_extreme)
+        event = self._build_signal_event("LONG", waves, triplet, trigger_pivot)
+        signal_id = self._store_signal_event(event)
+        self._long_signal_meta = {
+            "stop_price": float(r3.price_extreme),
+            "signal_bar_index": current_bar,
+            "signal_event_id": signal_id,
+        }
+        self.log_debug(
+            f"三段底背离检测: R1({r1.start_idx}-{r1.end_idx}, M={r1.extreme_val:.6f}, P={r1.price_extreme:.2f}) "
+            f"R2({r2.start_idx}-{r2.end_idx}, M={r2.extreme_val:.6f}, P={r2.price_extreme:.2f}) "
+            f"R3({r3.start_idx}-{r3.end_idx}, M={r3.extreme_val:.6f}, P={r3.price_extreme:.2f}) "
+            f"trigger({trigger_pivot.idx}, M={trigger_pivot.macd_val:.6f}, Pbar={trigger_pivot.price_val:.2f})"
+        )
+        return True
 
     def _detect_top_triple_divergence(self) -> bool:
-        """
-        Detect triple top divergence (bearish signal).
-
-        Conditions:
-        1. Three green (positive) segments G1, G2, G3 with separator segments between them
-        2. Price makes higher highs: H1 < H2 < H3
-        3. MACD histogram values decrease: G1_max > G2_max > G3_max
-        4. Separator segments are relatively small (controlled by opp_ratio)
-
-        Returns:
-            bool: True if triple top divergence detected
-        """
-        segments = list(self._segments)
-
-        if self._current_segment is None:
+        if not self._is_first_shortening_bar(SegmentSign.POSITIVE):
             return False
 
-        # We need the G3 segment to be complete (current segment is different sign)
-        if self._current_segment.sign != SegmentSign.POSITIVE:
-            if len(segments) < 5:
-                return False
+        waves = self._build_recent_waves()
+        candidates = self._price_divergence_candidates(waves, SegmentSign.POSITIVE)
+        if not candidates:
+            return False
+        trigger_pivot = self._current_trigger_pivot(candidates[-1], SegmentSign.POSITIVE)
+        if trigger_pivot is None:
+            return False
+        triplet = self._find_top_triplet(waves, trigger_pivot)
+        if triplet is None:
+            return False
+        if not self._latest_leg_trigger_strength_ok(triplet):
+            return False
 
-            # Find the pattern: G1, Sep1, G2, Sep2, G3 in recent history
-            g3 = None
-            sep2 = None
-            g2 = None
-            sep1 = None
-            g1 = None
+        g1, g2, g3 = triplet
+        trigger_price_ok, trigger_price_extreme = self._top_trigger_price_ok(triplet, trigger_pivot)
+        if not trigger_price_ok:
+            return False
+        structure_key = self._structure_key(g1, g2)
+        if (
+            self._last_short_structure_key == structure_key
+            and self._last_short_price_extreme is not None
+            and float(trigger_price_extreme) <= float(self._last_short_price_extreme) + self.params.price_eps
+        ):
+            return False
+        if self._last_short_price_extreme is not None and self._last_short_structure_key != structure_key:
+            self._last_short_price_extreme = None
+            self._last_short_structure_key = None
+        current_bar = self.bar_idx()
+        if self._last_short_signal_bar_idx is not None and current_bar - self._last_short_signal_bar_idx <= 1:
+            return False
 
-            idx = len(segments) - 1
-            # Find G3 (most recent positive segment)
-            while idx >= 0:
-                if segments[idx].sign == SegmentSign.POSITIVE:
-                    g3 = segments[idx]
-                    break
-                idx -= 1
-
-            if g3 is None or idx < 4:
-                return False
-
-            # Find Sep2
-            idx -= 1
-            sep2 = segments[idx]
-
-            # Find G2
-            idx -= 1
-            while idx >= 0:
-                if segments[idx].sign == SegmentSign.POSITIVE:
-                    g2 = segments[idx]
-                    break
-                idx -= 1
-
-            if g2 is None or idx < 2:
-                return False
-
-            # Find Sep1
-            idx -= 1
-            sep1 = segments[idx]
-
-            # Find G1
-            idx -= 1
-            while idx >= 0:
-                if segments[idx].sign == SegmentSign.POSITIVE:
-                    g1 = segments[idx]
-                    break
-                idx -= 1
-
-            if g1 is None:
-                return False
-
-            # Check lookback limit
-            if self.bar_idx() - g1.start_idx > self.params.max_lookback_bars:
-                return False
-
-            # Get extreme values (maximum histogram values in each green segment)
-            m1 = g1.extreme_val
-            m2 = g2.extreme_val
-            m3 = g3.extreme_val
-
-            # Get price highs
-            h1 = g1.price_extreme
-            h2 = g2.price_extreme
-            h3 = g3.price_extreme
-
-            # Check MACD condition: M1 > M2 > M3 (green bars getting shorter)
-            if not (m1 > m2 + self.params.macd_eps and m2 > m3 + self.params.macd_eps):
-                return False
-
-            # Check price condition: H1 < H2 < H3 (price making higher highs)
-            if not (h1 + self.params.price_eps < h2 and h2 + self.params.price_eps < h3):
-                return False
-
-            # Check separator segments (should be relatively small)
-            h_ref = max(m1, m2, m3)
-
-            # Sep1 check (negative segment)
-            sep1_max = abs(sep1.extreme_val) if sep1.sign == SegmentSign.NEGATIVE else 0
-            if sep1_max > self.params.opp_ratio * h_ref:
-                return False
-
-            # Sep2 check
-            sep2_max = abs(sep2.extreme_val) if sep2.sign == SegmentSign.NEGATIVE else 0
-            if sep2_max > self.params.opp_ratio * h_ref:
-                return False
-
-            self.log_debug(
-                f"三段顶背离检测: G1({g1.start_idx}-{g1.end_idx}, M={m1:.6f}, H={h1:.2f}) "
-                f"G2({g2.start_idx}-{g2.end_idx}, M={m2:.6f}, H={h2:.2f}) "
-                f"G3({g3.start_idx}-{g3.end_idx}, M={m3:.6f}, H={h3:.2f})"
-            )
-            return True
-
-        return False
+        self._last_short_signal_bar_idx = current_bar
+        self._last_short_structure_key = structure_key
+        self._last_short_price_extreme = float(trigger_price_extreme)
+        event = self._build_signal_event("SHORT", waves, triplet, trigger_pivot)
+        signal_id = self._store_signal_event(event)
+        self._short_signal_meta = {
+            "stop_price": float(g3.price_extreme),
+            "signal_bar_index": current_bar,
+            "signal_event_id": signal_id,
+        }
+        self.log_debug(
+            f"三段顶背离检测: G1({g1.start_idx}-{g1.end_idx}, M={g1.extreme_val:.6f}, H={g1.price_extreme:.2f}) "
+            f"G2({g2.start_idx}-{g2.end_idx}, M={g2.extreme_val:.6f}, H={g2.price_extreme:.2f}) "
+            f"G3({g3.start_idx}-{g3.end_idx}, M={g3.extreme_val:.6f}, H={g3.price_extreme:.2f}) "
+            f"trigger({trigger_pivot.idx}, M={trigger_pivot.macd_val:.6f}, Pbar={trigger_pivot.price_val:.2f})"
+        )
+        return True
 
     def get_long_signal(self) -> bool:
         """
@@ -487,24 +1322,25 @@ class MacdTripleDivergenceStrategy(BaseStrategy):
         if pos_size == 0.0:
             return False
 
+        if self._entry_signal_bar_idx is None or self.bar_idx() != self._entry_signal_bar_idx + 1:
+            return False
+
+        ctx = self._active_trade
+        if ctx is not None and ctx.stop_price is not None:
+            stop_price = float(ctx.stop_price)
+            if self._entry_direction == "LONG" and float(self.data.low[0]) <= stop_price:
+                return False
+            if self._entry_direction == "SHORT" and float(self.data.high[0]) >= stop_price:
+                return False
+
         hist_val = float(self.macd_hist[0])
 
-        if self._entry_direction == "LONG":
-            # For long, check if histogram became more negative
-            if hist_val < self._entry_hist_val - self.params.macd_stop_eps:
-                self.log_info(
-                    f"MACD止损触发(多): entry_hist={self._entry_hist_val:.6f} "
-                    f"current_hist={hist_val:.6f}"
-                )
-                return True
-        elif self._entry_direction == "SHORT":
-            # For short, check if histogram became more positive
-            if hist_val > self._entry_hist_val + self.params.macd_stop_eps:
-                self.log_info(
-                    f"MACD止损触发(空): entry_hist={self._entry_hist_val:.6f} "
-                    f"current_hist={hist_val:.6f}"
-                )
-                return True
+        if not self._next_day_macd_follow_through_ok(self._entry_direction, self._entry_hist_val, hist_val):
+            self.log_info(
+                f"MACD止损触发({'多' if self._entry_direction == 'LONG' else '空'}): "
+                f"entry_hist={self._entry_hist_val:.6f} current_hist={hist_val:.6f}"
+            )
+            return True
 
         return False
 
@@ -517,21 +1353,145 @@ class MacdTripleDivergenceStrategy(BaseStrategy):
             role = getattr(order, "info", {}).get("chainer_role")
             if role == "entry":
                 # Record entry histogram value for MACD stop loss
-                self._entry_hist_val = float(self.macd_hist[0])
+                if self._pending_entry_hist_val is not None:
+                    self._entry_hist_val = float(self._pending_entry_hist_val)
+                else:
+                    self._entry_hist_val = float(self.macd_hist[0])
                 self._entry_direction = "LONG" if order.isbuy() else "SHORT"
-                self.log_info(
-                    f"记录入场MACD柱: direction={self._entry_direction} "
-                    f"hist={self._entry_hist_val:.6f}"
-                )
+                self._entry_signal_bar_idx = self._pending_entry_signal_bar_idx
+                self._pending_entry_signal_bar_idx = None
+                self._pending_entry_hist_val = None
+                if self._active_trade is not None:
+                    signal_id = getattr(self._active_trade, "signal_event_id", None)
+                    self._update_signal_outcome(
+                        signal_id,
+                        "entered",
+                        trade_id=int(getattr(self._active_trade, "trade_id", 0)),
+                        entry_price=round(float(order.executed.price), 2),
+                        entry_time=self.cur_datetime().isoformat(),
+                    )
+                self.log_info(f"记录入场MACD柱: direction={self._entry_direction} hist={self._entry_hist_val:.6f}")
             elif role == "exit" or role == "stop" or role == "take_profit":
                 # Clear entry tracking on exit
                 self._entry_hist_val = None
                 self._entry_direction = None
+                self._entry_signal_bar_idx = None
+                self._pending_entry_hist_val = None
+        elif order.status in (order.Canceled, order.Margin, order.Rejected):
+            role = getattr(order, "info", {}).get("chainer_role")
+            if role == "entry":
+                tradeid = getattr(order, "tradeid", None)
+                ctx = self._trades_by_id.get(int(tradeid)) if tradeid is not None else None
+                signal_id = getattr(ctx, "signal_event_id", None) if ctx is not None else None
+                self._update_signal_outcome(
+                    signal_id,
+                    "entry_order_failed",
+                    order_status=int(order.status),
+                )
+                self._pending_entry_signal_bar_idx = None
+                self._pending_entry_hist_val = None
+
+    def _process_signals(self) -> None:
+        if not self.params.doc_trade_logic:
+            super()._process_signals()
+            return
+
+        long_signal = self.get_long_signal()
+        short_signal = self.get_short_signal()
+        can_open_new_position = self._can_open_new_position()
+
+        no_active_trade = self._active_trade is None or self._active_trade.status in (
+            BaseStrategy.TradeStatus.CLOSED,
+            BaseStrategy.TradeStatus.CANCELLED,
+        )
+
+        if long_signal and no_active_trade and can_open_new_position:
+            meta = dict(self._long_signal_meta or {})
+            ctx = self.enter_trade(
+                direction="LONG",
+                key_bar_index=self.bar_idx(),
+                stoploss_atr_mult=0.0,
+                need_confirm=False,
+                enable_breakeven=False,
+                risk_reward_ratio=self.params.chainer_risk_reward_ratio,
+            )
+            if ctx is not None and ctx.status not in (BaseStrategy.TradeStatus.CANCELLED,):
+                ctx.signal_event_id = meta.get("signal_event_id")
+                stop_price = float(meta.get("stop_price", ctx.stop_price))
+                ctx.initial_stop_price = stop_price
+                ctx.stop_price = stop_price
+                self._pending_entry_signal_bar_idx = int(meta.get("signal_bar_index", self.bar_idx()))
+                self._pending_entry_hist_val = float(self.macd_hist[0])
+                self.log_info(f"文档交易逻辑: 使用第三低点止损 stop_price={stop_price:.6f}")
+            elif ctx is not None:
+                self._update_signal_outcome(meta.get("signal_event_id"), "entry_context_cancelled", reason=ctx.cancel_reason)
+            return
+        if long_signal and not no_active_trade:
+            meta = dict(self._long_signal_meta or {})
+            active_trade = self._active_trade
+            self._update_signal_outcome(
+                meta.get("signal_event_id"),
+                "blocked_active_trade",
+                active_trade={
+                    "trade_id": int(getattr(active_trade, "trade_id", 0)),
+                    "direction": getattr(active_trade, "direction", None),
+                    "entry_time": getattr(getattr(active_trade, "key_kline_ref", None), "dt", None).isoformat()
+                    if getattr(active_trade, "key_kline_ref", None) is not None
+                    else None,
+                    "status": getattr(getattr(active_trade, "status", None), "value", str(getattr(active_trade, "status", None))),
+                },
+            )
+        elif long_signal and not can_open_new_position:
+            meta = dict(self._long_signal_meta or {})
+            self._update_signal_outcome(meta.get("signal_event_id"), "blocked_equity")
+
+        if short_signal and no_active_trade and can_open_new_position:
+            meta = dict(self._short_signal_meta or {})
+            ctx = self.enter_trade(
+                direction="SHORT",
+                key_bar_index=self.bar_idx(),
+                stoploss_atr_mult=0.0,
+                need_confirm=False,
+                enable_breakeven=False,
+                risk_reward_ratio=self.params.chainer_risk_reward_ratio,
+            )
+            if ctx is not None and ctx.status not in (BaseStrategy.TradeStatus.CANCELLED,):
+                ctx.signal_event_id = meta.get("signal_event_id")
+                stop_price = float(meta.get("stop_price", ctx.stop_price))
+                ctx.initial_stop_price = stop_price
+                ctx.stop_price = stop_price
+                self._pending_entry_signal_bar_idx = int(meta.get("signal_bar_index", self.bar_idx()))
+                self._pending_entry_hist_val = float(self.macd_hist[0])
+                self.log_info(f"文档交易逻辑: 使用第三高点止损 stop_price={stop_price:.6f}")
+            elif ctx is not None:
+                self._update_signal_outcome(meta.get("signal_event_id"), "entry_context_cancelled", reason=ctx.cancel_reason)
+            return
+        if short_signal and not no_active_trade:
+            meta = dict(self._short_signal_meta or {})
+            active_trade = self._active_trade
+            self._update_signal_outcome(
+                meta.get("signal_event_id"),
+                "blocked_active_trade",
+                active_trade={
+                    "trade_id": int(getattr(active_trade, "trade_id", 0)),
+                    "direction": getattr(active_trade, "direction", None),
+                    "entry_time": getattr(getattr(active_trade, "key_kline_ref", None), "dt", None).isoformat()
+                    if getattr(active_trade, "key_kline_ref", None) is not None
+                    else None,
+                    "status": getattr(getattr(active_trade, "status", None), "value", str(getattr(active_trade, "status", None))),
+                },
+            )
+        elif short_signal and not can_open_new_position:
+            meta = dict(self._short_signal_meta or {})
+            self._update_signal_outcome(meta.get("signal_event_id"), "blocked_equity")
 
     def next(self):
         """Main strategy logic executed on each bar."""
         # Update segment tracking
         self._update_segments()
+
+        if len(self) >= self.params.macd_slow + self.params.macd_signal:
+            self._capture_documented_case_snapshot()
 
         # Call parent next() for signal processing
         super().next()
