@@ -103,6 +103,11 @@ celerybeat.pid
 
 # Environments
 .env
+.mcp.json
+
+# Claude Code local files
+.claude/settings.local.json
+.claude/worktrees/
 .venv
 env/
 venv/
