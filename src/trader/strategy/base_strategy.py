@@ -92,6 +92,7 @@ class BaseStrategy(bt.Strategy):
         exit_price: Optional[float] = None
         exit_value: Optional[float] = None  # Exit order value for profit calculation
         tp_price: Optional[float] = None
+        signal_metadata: Optional[Dict[str, Any]] = None
 
         initial_stop_price: Optional[float] = None
         stop_price: Optional[float] = None
@@ -569,6 +570,7 @@ class BaseStrategy(bt.Strategy):
         need_confirm: Optional[bool] = None,
         enable_breakeven: Optional[bool] = None,
         risk_reward_ratio: Optional[float] = None,
+        signal_metadata: Optional[Dict[str, Any]] = None,
     ) -> "BaseStrategy.TradeContext":
         """
         Create a trade context and optionally place entry order.
@@ -630,6 +632,7 @@ class BaseStrategy(bt.Strategy):
             exit_need_confirm=exit_need_confirm,
             enable_breakeven=breakeven_on,
             risk_reward_ratio=rr,
+            signal_metadata=dict(signal_metadata or {}),
         )
 
         if int(key_bar_index) in self._banned_entry_key_bar_index:
@@ -664,6 +667,9 @@ class BaseStrategy(bt.Strategy):
                 stop_price = float(key_ref.low) - (sl_atr_mult * atr_val)
             else:
                 stop_price = float(key_ref.high) + (sl_atr_mult * atr_val)
+        suggested_stop_price = ctx.signal_metadata.get("suggested_stop_price")
+        if suggested_stop_price is not None:
+            stop_price = float(suggested_stop_price)
         ctx.initial_stop_price = stop_price
         ctx.stop_price = stop_price
 
@@ -794,6 +800,14 @@ class BaseStrategy(bt.Strategy):
         """
         return False
 
+    def get_long_signal_context(self) -> Dict[str, Any]:
+        """Override in subclass to provide structured metadata for a LONG signal."""
+        return {}
+
+    def get_short_signal_context(self) -> Dict[str, Any]:
+        """Override in subclass to provide structured metadata for a SHORT signal."""
+        return {}
+
     def _process_signals(self) -> None:
         """
         Process long/short signals based on trading mode.
@@ -840,6 +854,7 @@ class BaseStrategy(bt.Strategy):
                     self.enter_trade(
                         direction="LONG",
                         key_bar_index=self.bar_idx(),
+                        signal_metadata=self.get_long_signal_context(),
                     )
                 except (ValueError, RuntimeError) as e:
                     self.log_debug(f"_process_signals: enter_trade LONG failed: {e}")
@@ -860,6 +875,7 @@ class BaseStrategy(bt.Strategy):
                     self.enter_trade(
                         direction="SHORT",
                         key_bar_index=self.bar_idx(),
+                        signal_metadata=self.get_short_signal_context(),
                     )
                 except (ValueError, RuntimeError) as e:
                     self.log_debug(f"_process_signals: enter_trade SHORT failed: {e}")
@@ -879,6 +895,7 @@ class BaseStrategy(bt.Strategy):
                     self.enter_trade(
                         direction="LONG",
                         key_bar_index=self.bar_idx(),
+                        signal_metadata=self.get_long_signal_context(),
                     )
                 except (ValueError, RuntimeError) as e:
                     self.log_debug(f"_process_signals: enter_trade LONG failed: {e}")
@@ -889,6 +906,7 @@ class BaseStrategy(bt.Strategy):
                     self.enter_trade(
                         direction="SHORT",
                         key_bar_index=self.bar_idx(),
+                        signal_metadata=self.get_short_signal_context(),
                     )
                 except (ValueError, RuntimeError) as e:
                     self.log_debug(f"_process_signals: enter_trade SHORT failed: {e}")

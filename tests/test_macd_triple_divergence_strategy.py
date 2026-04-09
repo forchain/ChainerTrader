@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 from pathlib import Path
 
@@ -40,18 +41,18 @@ def _run_probe():
     return strategies[0]
 
 
+def _load_documented_cases():
+    fixture_path = Path(__file__).resolve().parent / "fixtures" / "macd_triple_divergence_documented_cases.json"
+    return json.loads(fixture_path.read_text(encoding="utf-8"))
+
+
 def test_signal_dates_cover_documented_bottom_cases():
     st = _run_probe()
 
     expected = {
-        "2018-02-03",
-        "2018-02-06",
-        "2018-06-25",
-        "2019-12-18",
-        "2023-06-06",
-        "2023-06-15",
-        "2024-05-03",
-        "2025-04-09",
+        datetime.fromisoformat(case["case_time"]).strftime("%Y-%m-%d")
+        for case in _load_documented_cases()
+        if case["signal_type"] == "bottom_divergence"
     }
 
     assert expected.issubset(set(st.long_dates))
@@ -61,13 +62,9 @@ def test_signal_dates_cover_documented_top_cases():
     st = _run_probe()
 
     expected = {
-        "2021-04-16",
-        "2020-02-10",
-        "2020-02-13",
-        "2020-06-02",
-        "2024-01-11",
-        "2024-10-31",
-        "2025-05-23",
+        datetime.fromisoformat(case["case_time"]).strftime("%Y-%m-%d")
+        for case in _load_documented_cases()
+        if case["signal_type"] == "top_divergence"
     }
 
     assert expected.issubset(set(st.short_dates))

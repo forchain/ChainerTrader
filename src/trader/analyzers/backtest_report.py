@@ -5,26 +5,6 @@ from datetime import datetime
 
 import backtrader as bt
 
-
-DOCUMENTED_CASES = [
-    {"case_time": "2025-05-23T08:00:00", "signal_type": "top_divergence", "case_status": "success"},
-    {"case_time": "2024-10-31T08:00:00", "signal_type": "top_divergence", "case_status": "success"},
-    {"case_time": "2024-01-11T08:00:00", "signal_type": "top_divergence", "case_status": "success"},
-    {"case_time": "2021-04-16T08:00:00", "signal_type": "top_divergence", "case_status": "success"},
-    {"case_time": "2020-06-02T08:00:00", "signal_type": "top_divergence", "case_status": "success"},
-    {"case_time": "2020-02-10T08:00:00", "signal_type": "top_divergence", "case_status": "failed"},
-    {"case_time": "2020-02-13T08:00:00", "signal_type": "top_divergence", "case_status": "success"},
-    {"case_time": "2025-04-09T08:00:00", "signal_type": "bottom_divergence", "case_status": "success"},
-    {"case_time": "2024-05-03T08:00:00", "signal_type": "bottom_divergence", "case_status": "success"},
-    {"case_time": "2023-06-06T08:00:00", "signal_type": "bottom_divergence", "case_status": "failed"},
-    {"case_time": "2023-06-15T08:00:00", "signal_type": "bottom_divergence", "case_status": "success"},
-    {"case_time": "2019-12-18T08:00:00", "signal_type": "bottom_divergence", "case_status": "success"},
-    {"case_time": "2018-06-25T08:00:00", "signal_type": "bottom_divergence", "case_status": "failed"},
-    {"case_time": "2018-02-03T08:00:00", "signal_type": "bottom_divergence", "case_status": "failed"},
-    {"case_time": "2018-02-06T08:00:00", "signal_type": "bottom_divergence", "case_status": "success"},
-]
-
-
 class BacktestReportAnalyzer(bt.Analyzer):
     """
     Generates a structured JSON report after backtest completion.
@@ -170,7 +150,6 @@ class BacktestReportAnalyzer(bt.Analyzer):
             "monthly_pnl": monthly_pnl,
             "trades": self._trades,
             "signals": signals,
-            "documented_cases": self._build_documented_cases(signals),
         }
 
     def _get_trade_analyzer(self):
@@ -228,28 +207,6 @@ class BacktestReportAnalyzer(bt.Analyzer):
     def _collect_signals(self):
         events = getattr(self.strategy, "_signal_events", [])
         return list(events)
-
-    def _build_documented_cases(self, signals):
-        index = {signal.get("signal_time"): signal for signal in signals}
-        snapshots = {
-            case.get("case_time"): case
-            for case in getattr(self.strategy, "_documented_case_events", [])
-        }
-        cases = []
-        for case in DOCUMENTED_CASES:
-            signal = index.get(case["case_time"])
-            snapshot = snapshots.get(case["case_time"], {})
-            cases.append({
-                **snapshot,
-                **case,
-                "source": "documented",
-                "matched": signal is not None,
-                "matched_signal_time": signal.get("signal_time") if signal is not None else None,
-                "matched_signal": signal,
-                "trade_outcome": signal.get("trade_outcome") if signal is not None else None,
-                "missing_reason": None if signal is not None else "signal_not_found_in_current_strategy_output",
-            })
-        return cases
 
     def _write_report(self, report):
         reports_dir = os.path.join(os.getcwd(), "reports")
