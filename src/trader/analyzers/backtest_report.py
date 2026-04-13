@@ -18,6 +18,7 @@ class BacktestReportAnalyzer(bt.Analyzer):
         ("strategy_name", "unknown"),
         ("symbol", "unknown"),
         ("interval", "unknown"),
+        ("report_context", None),
     )
 
     def __init__(self):
@@ -27,6 +28,7 @@ class BacktestReportAnalyzer(bt.Analyzer):
         self._entered_signals = 0
         self._confirm_failed = 0
         self.report = None
+        self.report_path = None
 
     def _current_dt_iso(self):
         return self.strategy.datetime.datetime().isoformat()
@@ -146,6 +148,11 @@ class BacktestReportAnalyzer(bt.Analyzer):
             "symbol": self.p.symbol,
             "interval": self.p.interval,
             "generated_at": datetime.now().isoformat(timespec="seconds"),
+            "optimization_run_id": self._context_value("optimization_run_id"),
+            "report_version": self._report_version(),
+            "param_id": self._context_value("param_id"),
+            "params": self._context_value("params"),
+            "dataset_ref": self._context_value("dataset_ref"),
             "summary": summary,
             "monthly_pnl": monthly_pnl,
             "trades": self._trades,
@@ -209,12 +216,29 @@ class BacktestReportAnalyzer(bt.Analyzer):
         return list(events)
 
     def _write_report(self, report):
-        reports_dir = os.path.join(os.getcwd(), "reports")
+        reports_dir = self._resolve_reports_dir(report)
         os.makedirs(reports_dir, exist_ok=True)
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"{self.p.strategy_name}_{self.p.symbol}_{self.p.interval}_{timestamp}.json"
+        param_suffix = f"_{report['param_id']}" if report.get("param_id") else ""
+        filename = f"{self.p.strategy_name}_{self.p.symbol}_{self.p.interval}{param_suffix}_{timestamp}.json"
         filepath = os.path.join(reports_dir, filename)
 
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(report, f, indent=2, ensure_ascii=False, default=str)
+        self.report_path = filepath
+
+    def _context_value(self, key):
+        context = self.p.report_context or {}
+        return context.get(key)
+
+    def _report_version(self):
+        if self._context_value("optimization_run_id"):
+            return "2.0"
+        return "1.0"
+
+    def _resolve_reports_dir(self, report):
+        reports_dir = os.path.join(os.getcwd(), "reports")
+        if report.get("optimization_run_id"):
+            return os.path.join(reports_dir, "optimizations", report["optimization_run_id"], "runs")
+        return reports_dir

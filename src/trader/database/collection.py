@@ -6,5 +6,9 @@ def get_name_for_tasks() -> str:
     return "tasks"
 
 
+def get_name_for_availability() -> str:
+    return "availability"
+
+
 def get_name_for_operates(id: int) -> str:
     return f"task-operates-{id}"

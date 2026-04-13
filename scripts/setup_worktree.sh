@@ -4,13 +4,34 @@
 # Creates symlinks for .venv and .env pointing to the main repo, so that
 # uv run and python-dotenv work transparently without re-installing anything.
 #
-# Usage: bash scripts/setup_worktree.sh
+# Usage: bash scripts/setup_worktree.sh [--profile <name>] [--require-env KEY ...]
 # Safe to run multiple times (idempotent).
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+PROFILE="base"
+EXTRA_REQUIRE_ENVS=()
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --profile)
+            PROFILE="${2:-}"
+            shift 2
+            ;;
+        --require-env)
+            EXTRA_REQUIRE_ENVS+=("${2:-}")
+            shift 2
+            ;;
+        *)
+            echo "✗  Unknown argument: $1"
+            echo "   Usage: bash scripts/setup_worktree.sh [--profile <name>] [--require-env KEY ...]"
+            exit 1
+            ;;
+    esac
+done
 
 # ── 1. Detect worktree ────────────────────────────────────────────────────────
 GIT_PATH="$REPO_ROOT/.git"
@@ -77,6 +98,14 @@ PYTHON_BIN="$REPO_ROOT/.venv/bin/python"
 if [ -x "$PYTHON_BIN" ]; then
     PYTHON_VER=$("$PYTHON_BIN" --version 2>&1)
     echo "✓  Python available: $PYTHON_VER"
+    echo ""
+    CHECK_CMD=("$PYTHON_BIN" "$REPO_ROOT/scripts/check_runtime_context.py" --profile "$PROFILE" --env-file "$REPO_ROOT/.env")
+    for key in "${EXTRA_REQUIRE_ENVS[@]}"; do
+        CHECK_CMD+=(--require-env "$key")
+    done
+
+    echo "Validating runtime context..."
+    "${CHECK_CMD[@]}"
     echo ""
     echo "Environment ready. You can now run: uv run python -m trader -h"
 else

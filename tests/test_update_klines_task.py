@@ -48,7 +48,7 @@ def _ensure_binance_exchange_stub():
 
 _ensure_binance_exchange_stub()
 
-from trader.task.update_klines_task import download_range  # noqa: E402
+from trader.task.update_klines_task import download_range, download_range_backward  # noqa: E402
 from trader.utils.symbol_interval import Interval, SymbolInterval, add_time_duration  # noqa: E402
 
 
@@ -218,6 +218,88 @@ def test_download_range_empty_response_retry():
 
         assert result is False
         assert exchange.get_klines.call_count == 6  # 1 initial + 5 retries
+
+    asyncio.run(_test())
+
+
+def test_download_range_backward_updates_confirmed_earliest_metadata():
+    async def _test():
+        log = DummyLog()
+        symbol_interval = SymbolInterval("BTC-USDT", Interval.INTERVAL_1h)
+        collection_name = "BTCUSDT-1h"
+        quit_event = asyncio.Event()
+        end_time = 1_700_010_800
+        batch_2 = [create_kline_mock(1_700_007_200), create_kline_mock(1_700_010_800)]
+        batch_1 = [create_kline_mock(1_700_000_000), create_kline_mock(1_700_003_600)]
+
+        availability = SimpleNamespace(update_earliest_known_open_time=MagicMock())
+        db_manager = SimpleNamespace(
+            kline=SimpleNamespace(add_klines=MagicMock(side_effect=[2, 2])),
+            availability=availability,
+        )
+        exchange = SimpleNamespace(
+            name=lambda: "BINANCE",
+            get_klines_by_end=MagicMock(side_effect=[batch_2, batch_1, []]),
+        )
+
+        result = await download_range_backward(
+            "update-task",
+            log,
+            db_manager,
+            collection_name,
+            exchange,
+            symbol_interval,
+            1_699_000_000,
+            end_time,
+            quit_event,
+        )
+
+        assert result is True
+        availability.update_earliest_known_open_time.assert_called_once_with(
+            "BINANCE",
+            symbol_interval.symbol(),
+            symbol_interval.interval.value,
+            1_700_000_000,
+            source="backward_fill",
+        )
+
+    asyncio.run(_test())
+
+
+def test_download_range_backward_does_not_confirm_earliest_when_request_start_reached():
+    async def _test():
+        log = DummyLog()
+        symbol_interval = SymbolInterval("BTC-USDT", Interval.INTERVAL_1h)
+        collection_name = "BTCUSDT-1h"
+        quit_event = asyncio.Event()
+        start_time = 1_700_000_000
+        end_time = start_time + 3600
+        batch = [create_kline_mock(start_time), create_kline_mock(end_time)]
+
+        availability = SimpleNamespace(update_earliest_known_open_time=MagicMock())
+        db_manager = SimpleNamespace(
+            kline=SimpleNamespace(add_klines=MagicMock(return_value=2)),
+            availability=availability,
+        )
+        exchange = SimpleNamespace(
+            name=lambda: "BINANCE",
+            get_klines_by_end=MagicMock(return_value=batch),
+        )
+
+        result = await download_range_backward(
+            "update-task",
+            log,
+            db_manager,
+            collection_name,
+            exchange,
+            symbol_interval,
+            start_time,
+            end_time,
+            quit_event,
+        )
+
+        assert result is True
+        availability.update_earliest_known_open_time.assert_not_called()
 
     asyncio.run(_test())
 

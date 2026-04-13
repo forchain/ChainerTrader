@@ -10,7 +10,7 @@ import requests
 import time
 import hmac
 import hashlib
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 from trader.common.logger import default
 from trader.exchange.balance import Balance
@@ -65,7 +65,10 @@ class BinanceExchange:
         dt = self.time()
         self.log.info(f"Start {self.name()} exchange: server_time={dt} server_time_offset={self.server_time_offset()}")
 
-        MarginTradingManager(self.cfg,self.log).get_summary_of_margin_account()
+        if self._has_valid_margin_base_path():
+            MarginTradingManager(self.cfg, self.log).get_summary_of_margin_account()
+        else:
+            self.log.info("Skip margin summary: margin base_path is not configured with an absolute URL")
         return True
 
     def stop(self):
@@ -82,6 +85,14 @@ class BinanceExchange:
 
     def server_time_offset(self):
         return self.server_time - datetime.now().timestamp()
+
+    def _has_valid_margin_base_path(self) -> bool:
+        base_path = getattr(self.cfg, "base_path", None)
+        if not base_path:
+            return False
+
+        parsed = urlparse(base_path)
+        return bool(parsed.scheme and parsed.netloc)
 
     def get_klines(
         self,
@@ -123,6 +134,34 @@ class BinanceExchange:
 
     def get_latest_klines(self, si: SymbolInterval, limit: int = KLINE_LIMIT_DEFAULT) -> list[Kline]:
         return self.get_klines(si, None, None, limit)
+
+    def get_klines_by_end(
+        self,
+        si: SymbolInterval,
+        end_time: int,
+        limit: int = KLINE_LIMIT_DEFAULT,
+    ) -> list[Kline]:
+        r_limit = min(limit, KLINE_LIMIT_MAX)
+        try:
+            rsp = self.spot_client.rest_api.klines(
+                si.symbol(),
+                si.interval.value,
+                end_time=end_time * 1000,
+                limit=r_limit,
+            )
+            ret = rsp.data()
+        except Exception as e:
+            self.log.error(f"{e}")
+            return None
+
+        kls = parse_klines(ret)
+        if kls and len(kls) > 0:
+            self.log.info(
+                f"get klines by end: {len(kls)}/{len(ret)} start={kls[0].open_datetime()} end={kls[len(kls)-1].close_datetime()}"
+            )
+        else:
+            self.log.info(f"get klines by end: 0/{len(ret)}")
+        return kls
 
     def get_klines_by_start(
         self,

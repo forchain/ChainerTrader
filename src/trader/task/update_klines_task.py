@@ -268,3 +268,89 @@ async def download_range(
 
     log.info(f"{name} download_range completed. total={total_records}")
     return True
+
+
+async def download_range_backward(
+    name: str,
+    log: Logger,
+    db_manager: DatabaseManager,
+    col_name: str,
+    exchange: BinanceExchange,
+    symbol_interval: SymbolInterval,
+    start_time: int,
+    end_time: int,
+    quit: Event,
+) -> bool:
+    if start_time > end_time:
+        log.warning(f"{name} invalid backward range: start={start_time} > end={end_time}")
+        return False
+
+    log.info(
+        f"{name} download_range_backward: start={datetime.fromtimestamp(start_time)}, end={datetime.fromtimestamp(end_time)}"
+    )
+
+    current_end = end_time
+    retry_count = 0
+    total_records = 0
+    earliest_seen_open_time = None
+    confirmed_boundary = False
+
+    while current_end >= start_time:
+        if quit.is_set():
+            log.info(f"exit {name}. total={total_records}")
+            return False
+
+        if hasattr(exchange, "get_klines_by_end"):
+            kls = exchange.get_klines_by_end(symbol_interval, current_end)
+        else:
+            kls = exchange.get_klines(symbol_interval, start_time, current_end)
+
+        if kls is None:
+            log.error(f"{name} get klines failed")
+            if retry_count < DOWNLOAD_RETRY_MAX:
+                await sleep(log, DOWNLOAD_SPACE_TIME, f"retry {retry_count + 1}/{DOWNLOAD_RETRY_MAX}, {name}")
+                retry_count += 1
+                continue
+            log.warning(f"exit {name}, max retries reached. total={total_records}")
+            return False
+
+        if len(kls) <= 0:
+            confirmed_boundary = earliest_seen_open_time is not None
+            break
+
+        retry_count = 0
+        ret = db_manager.kline.add_klines(col_name, kls)
+        total_records += ret
+
+        batch_first_open_time = kls[0].open_time
+        if earliest_seen_open_time is None or batch_first_open_time < earliest_seen_open_time:
+            earliest_seen_open_time = batch_first_open_time
+
+        if ret != len(kls):
+            log.warning(f"{name} add klines to DB: {ret} != {len(kls)}")
+        else:
+            log.info(f"{name} add klines to DB: {ret}/{total_records}")
+
+        prev_end = add_time_duration(batch_first_open_time, symbol_interval.interval, -1)
+        if prev_end >= current_end:
+            log.warning(f"{name} no backward progress, breaking loop")
+            break
+
+        current_end = prev_end
+        if current_end < start_time:
+            break
+        await sleep(log, 0.1)
+
+    availability = getattr(db_manager, "availability", None)
+    if confirmed_boundary and earliest_seen_open_time is not None and availability is not None:
+        exchange_name = exchange.name() if hasattr(exchange, "name") else "UNKNOWN"
+        availability.update_earliest_known_open_time(
+            exchange_name,
+            symbol_interval.symbol(),
+            symbol_interval.interval.value,
+            earliest_seen_open_time,
+            source="backward_fill",
+        )
+
+    log.info(f"{name} download_range_backward completed. total={total_records}")
+    return True

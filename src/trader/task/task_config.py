@@ -4,6 +4,7 @@ from datetime import datetime
 
 from trader.common import path
 from trader.common.common import parse_datetime
+from trader.task.optimization import expand_parameter_space, has_parameter_search, make_optimization_run_id, make_param_id
 from trader.task.task_type import TaskType, parse_task_type
 from trader.utils.symbol_interval import Interval, SymbolInterval
 from trader.utils.symbols_interval import SymbolsInterval
@@ -23,6 +24,10 @@ class TaskConfig:
         auto_download=False,
         free: float = -1,
         force_update: bool = False,
+        strategy_params: dict | None = None,
+        param_id: str | None = None,
+        optimization_run_id: str | None = None,
+        dataset_ref=None,
     ):
         self.ttype = ttype
         self.csv = csv
@@ -34,6 +39,10 @@ class TaskConfig:
         self.auto_download = auto_download
         self.free = free
         self.force_update = force_update
+        self.strategy_params = strategy_params or {}
+        self.param_id = param_id
+        self.optimization_run_id = optimization_run_id
+        self.dataset_ref = dataset_ref
 
         self.id = id
 
@@ -68,6 +77,9 @@ class TaskConfig:
             "auto_download": self.auto_download,
             "free": self.free,
             "force_update": self.force_update,
+            "strategy_params": self.strategy_params,
+            "param_id": self.param_id,
+            "optimization_run_id": self.optimization_run_id,
         }
 
     def strategy_name(self):
@@ -98,6 +110,7 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
         parsed_list = json.loads(cfg)
 
     ret = []
+    optimization_run_id = None
     for tcd in parsed_list:
         task_type = parse_task_type(tcd["task_type"])
 
@@ -161,6 +174,18 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
         if "force_update" in tcd:
             force_update = tcd["force_update"]
 
+        parameter_search_enabled = has_parameter_search(tcd)
+        if parameter_search_enabled:
+            strategy_count = len(strategies) + len(strategies_bunch)
+            if strategy_count != 1:
+                raise ValueError("parameter search requires a single strategy entry")
+            if optimization_run_id is None:
+                optimization_run_id = make_optimization_run_id()
+            auto_download = tcd.get("auto_download", True)
+            parameter_sets = expand_parameter_space(tcd)
+        else:
+            parameter_sets = [{}]
+
         for si in sis.symbol_intervals:
             if (
                 task_type == TaskType.IMPORT_CSV
@@ -180,26 +205,31 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
                     auto_download,
                     free,
                     force_update,
+                    strategy_params={},
                 )
                 ret.append(tc)
                 last_task_id = tc.id
             else:
                 for strategy in strategies:
-                    tc = TaskConfig(
-                        create_task_id(last_task_id),
-                        task_type,
-                        si,
-                        csv,
-                        start_time,
-                        end_time,
-                        limit,
-                        [strategy],
-                        auto_download,
-                        free,
-                        force_update,
-                    )
-                    ret.append(tc)
-                    last_task_id = tc.id
+                    for strategy_params in parameter_sets:
+                        tc = TaskConfig(
+                            create_task_id(last_task_id),
+                            task_type,
+                            si,
+                            csv,
+                            start_time,
+                            end_time,
+                            limit,
+                            [strategy],
+                            auto_download,
+                            free,
+                            force_update,
+                            strategy_params=strategy_params,
+                            param_id=make_param_id(strategy_params) if parameter_search_enabled else None,
+                            optimization_run_id=optimization_run_id if parameter_search_enabled else None,
+                        )
+                        ret.append(tc)
+                        last_task_id = tc.id
 
                 if len(strategies_bunch) > 0:
                     tc = TaskConfig(
@@ -214,6 +244,7 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
                         auto_download,
                         free,
                         force_update,
+                        strategy_params={},
                     )
                     ret.append(tc)
                     last_task_id = tc.id
