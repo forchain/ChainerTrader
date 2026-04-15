@@ -61,6 +61,7 @@ def build_optimization_artifacts(optimization_run_id: str, sample_reports: list[
     by_score = sorted(aggregate_items, key=lambda item: (item["score"], item["avg_excess_return_pct"]), reverse=True)
     by_excess_return = sorted(aggregate_items, key=lambda item: (item["avg_excess_return_pct"], item["beat_hold_ratio"]), reverse=True)
     datasets = sorted({sample["dataset_ref"] for sample in sample_reports if sample.get("dataset_ref")})
+    failure_counts = _classify_failure_counts(failures)
 
     return {
         "manifest": {
@@ -69,7 +70,11 @@ def build_optimization_artifacts(optimization_run_id: str, sample_reports: list[
             "score_version": SCORE_VERSION,
             "generated_at": datetime.now().isoformat(timespec="seconds"),
             "completed_samples": len(sample_reports),
-            "failed_samples": len(failures),
+            "failed_samples": failure_counts["failed_samples"],
+            "timed_out_samples": failure_counts["timed_out_samples"],
+            "skipped_samples": failure_counts["skipped_samples"],
+            "failure_records": len(failures),
+            "aborted": failure_counts["aborted"],
             "datasets": datasets,
             "run_reports": [sample.get("report_path") for sample in sample_reports if sample.get("report_path")],
         },
@@ -85,6 +90,35 @@ def build_optimization_artifacts(optimization_run_id: str, sample_reports: list[
         },
         "failures": failures,
     }
+
+
+def _classify_failure_counts(failures: list[dict]) -> dict:
+    skipped_reasons = {
+        "coverage_incomplete",
+        "dataset_failed",
+        "dataset_timeout",
+        "db_unavailable",
+        "download_budget_exceeded",
+        "download_failed",
+        "no_data",
+    }
+    counts = {
+        "failed_samples": 0,
+        "timed_out_samples": 0,
+        "skipped_samples": 0,
+        "aborted": False,
+    }
+    for failure in failures:
+        reason = failure.get("reason")
+        if reason == "run_aborted":
+            counts["aborted"] = True
+        elif reason == "sample_timeout":
+            counts["timed_out_samples"] += 1
+        elif reason in skipped_reasons:
+            counts["skipped_samples"] += 1
+        else:
+            counts["failed_samples"] += 1
+    return counts
 
 
 def write_optimization_artifacts(base_dir: str | Path, optimization_run_id: str, sample_reports: list[dict], failures: list[dict]) -> Path:

@@ -149,7 +149,9 @@ def test_optimization_artifacts_aggregate_samples_and_write_rankings(tmp_path: P
     assert artifacts["rankings"]["by_excess_return"][0]["symbol"] == "BTCUSDT"
     assert artifacts["rankings"]["by_excess_return"][0]["interval"] == "1d"
     assert artifacts["rankings"]["by_excess_return"][0]["param_id"] == "param-a"
-    assert artifacts["manifest"]["failed_samples"] == 1
+    assert artifacts["manifest"]["failed_samples"] == 0
+    assert artifacts["manifest"]["skipped_samples"] == 1
+    assert artifacts["manifest"]["failure_records"] == 1
     assert artifacts["manifest"]["datasets"] == ["dataset-a", "dataset-b"]
 
     run_dir = write_optimization_artifacts(tmp_path, "run-1", sample_reports, failures)
@@ -171,3 +173,42 @@ def test_optimization_artifacts_aggregate_samples_and_write_rankings(tmp_path: P
     assert "BTCUSDT" in html
     assert "1d" in html
     assert "param-a" in html
+
+
+def test_optimization_artifacts_preserve_structured_mixed_result_reasons():
+    sample_reports = [
+        {
+            "strategy": "macd_triple_divergence",
+            "symbol": "BTCUSDT",
+            "interval": "1d",
+            "optimization_run_id": "run-mixed",
+            "report_version": "2.0",
+            "param_id": "param-a",
+            "params": {"fast_period": 5},
+            "dataset_ref": "dataset-a",
+            "summary": {
+                "total_return_pct": 9.0,
+                "hold_return_pct": 3.0,
+                "sharpe": 1.1,
+                "profit_factor": 1.3,
+                "max_dd_pct": 8.0,
+                "total_trades": 2,
+            },
+        }
+    ]
+    failures = [
+        {"task_id": 2, "dataset_key": "dataset-b", "reason": "execution_failed", "message": "worker crashed"},
+        {"task_id": 3, "dataset_key": "dataset-c", "reason": "sample_timeout", "message": "too slow"},
+        {"task_id": 4, "dataset_key": "dataset-d", "reason": "dataset_timeout", "message": "dataset too slow"},
+        {"task_id": None, "dataset_key": None, "reason": "run_aborted", "message": "high_failure_rate"},
+    ]
+
+    artifacts = build_optimization_artifacts("run-mixed", sample_reports, failures)
+
+    assert artifacts["aggregate"]["items"]
+    assert artifacts["manifest"]["completed_samples"] == 1
+    assert artifacts["manifest"]["failed_samples"] == 1
+    assert artifacts["manifest"]["timed_out_samples"] == 1
+    assert artifacts["manifest"]["skipped_samples"] == 1
+    assert artifacts["manifest"]["aborted"] is True
+    assert artifacts["failures"] == failures

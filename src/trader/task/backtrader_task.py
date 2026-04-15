@@ -1,5 +1,8 @@
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
+import json
+import os
+from pathlib import Path
 from typing import Any
 
 from trader.common import path
@@ -49,6 +52,7 @@ class BacktestSampleResult:
     report: dict[str, Any] | None
     report_path: str | None
     error: str | None = None
+    timed_out: bool = False
 
 
 def build_backtest_sample_spec(cfg: Config, tcfg: TaskConfig) -> BacktestSampleSpec:
@@ -108,9 +112,30 @@ def _build_csv_data_for_spec(spec: BacktestSampleSpec):
     )
 
 
+def _write_worker_pid(run_id: str | None, task_id: int) -> Path | None:
+    """Write a <pid>.json mapping file so the dashboard knows which task this process is running."""
+    if not run_id:
+        return None
+    pid = os.getpid()
+    workers_dir = Path.cwd() / "tmp" / "optimization_runs" / run_id / "workers"
+    workers_dir.mkdir(parents=True, exist_ok=True)
+    pid_file = workers_dir / f"{pid}.json"
+    payload = {
+        "pid": pid,
+        "task_id": task_id,
+        "run_id": run_id,
+        "started_at": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
+    }
+    tmp = pid_file.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(pid_file)
+    return pid_file
+
+
 def run_backtest_sample(spec: BacktestSampleSpec) -> BacktestSampleResult:
     cfg = Config(**spec.cfg)
     logger = Logger(cfg, 10000, True)
+    pid_file = _write_worker_pid(spec.optimization_run_id, spec.task_id)
     try:
         strategy = parse_strategies(spec.strategy_names)
         if strategy is None:
@@ -176,6 +201,12 @@ def run_backtest_sample(spec: BacktestSampleSpec) -> BacktestSampleResult:
             report_path=None,
             error=str(exc),
         )
+    finally:
+        if pid_file and pid_file.exists():
+            try:
+                pid_file.unlink()
+            except OSError:
+                pass
 
 
 class BackTraderTask(BaseTask):

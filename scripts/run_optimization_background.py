@@ -49,6 +49,7 @@ def main() -> int:
 
     env = os.environ.copy()
     env["TRADER_API"] = ""
+    env["TRADER_OPTIMIZATION_RUN_ID"] = run_id
 
     with log_path.open("w", encoding="utf-8") as log_file:
         proc = subprocess.Popen(

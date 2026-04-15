@@ -180,7 +180,7 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
             if strategy_count != 1:
                 raise ValueError("parameter search requires a single strategy entry")
             if optimization_run_id is None:
-                optimization_run_id = make_optimization_run_id()
+                optimization_run_id = tcd.get("optimization_run_id") or os.environ.get("TRADER_OPTIMIZATION_RUN_ID") or make_optimization_run_id()
             auto_download = tcd.get("auto_download", True)
             parameter_sets = expand_parameter_space(tcd)
         else:

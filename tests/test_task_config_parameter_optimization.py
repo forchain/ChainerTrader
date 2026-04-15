@@ -100,3 +100,24 @@ def test_parse_task_config_keeps_legacy_backtest_behavior_without_parameter_sear
     assert tasks[0].strategy_params == {}
     assert tasks[0].param_id is None
     assert tasks[0].optimization_run_id is None
+
+
+def test_parameter_search_uses_launch_run_id_from_environment(monkeypatch):
+    monkeypatch.setenv("TRADER_OPTIMIZATION_RUN_ID", "run-launch-123")
+    config = json.dumps(
+        [
+            {
+                "task_type": "BACK_TRADER",
+                "symbol": "BTC-USDT",
+                "interval": "1h",
+                "strategy": "macd_triple_divergence",
+                "param_grid": {
+                    "fast_period": [5, 8],
+                },
+            }
+        ]
+    )
+
+    tasks = parse_task_config(config)
+
+    assert {task.optimization_run_id for task in tasks} == {"run-launch-123"}

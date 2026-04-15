@@ -292,3 +292,40 @@ def test_prepare_returns_structured_failure_when_gap_download_fails(tmp_path: Pa
         assert result.failure.dataset_key == "BTCUSDT-1h|1700000000|1700007200"
 
     asyncio.run(_test())
+
+
+def test_prepare_fails_fast_when_missing_ranges_exceed_download_budget(tmp_path: Path):
+    async def _test():
+        start_time = 1_700_000_000
+        end_time = start_time + 4 * 3600
+        initial_bars = [
+            make_kline(start_time, 100.0),
+            make_kline(start_time + 2 * 3600, 102.0),
+            make_kline(end_time, 104.0),
+        ]
+        kline_store = SimpleNamespace(get_klines=MagicMock(return_value=initial_bars))
+        db_manager = SimpleNamespace(kline=kline_store)
+
+        async def downloader(*args, **kwargs):
+            raise AssertionError("downloader should not run after budget is exceeded")
+
+        resolver = DatasetResolver(
+            db_manager=db_manager,
+            exchange=SimpleNamespace(),
+            log=DummyLog(),
+            cache_dir=tmp_path,
+            range_downloader=downloader,
+        )
+
+        result = await resolver.prepare(
+            SymbolInterval("BTC-USDT", Interval.INTERVAL_1h),
+            start_time,
+            end_time,
+            max_download_ranges=1,
+        )
+
+        assert result.ok is False
+        assert result.failure.reason == "download_budget_exceeded"
+        assert result.failure.dataset_key == "BTCUSDT-1h|1700000000|1700014400"
+
+    asyncio.run(_test())

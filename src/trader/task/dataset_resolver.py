@@ -56,7 +56,14 @@ class DatasetResolver:
         self.range_downloader = range_downloader or download_range_backward
         self._prepared: dict[str, DatasetPreparationResult] = {}
 
-    async def prepare(self, symbol_interval: SymbolInterval, start_time: int, end_time: int, allow_download: bool = True) -> DatasetPreparationResult:
+    async def prepare(
+        self,
+        symbol_interval: SymbolInterval,
+        start_time: int,
+        end_time: int,
+        allow_download: bool = True,
+        max_download_ranges: int | None = None,
+    ) -> DatasetPreparationResult:
         dataset_key = self._build_dataset_key(symbol_interval, start_time, end_time)
         if dataset_key in self._prepared:
             return self._prepared[dataset_key]
@@ -85,6 +92,14 @@ class DatasetResolver:
         if missing_ranges:
             if not allow_download or self.exchange is None:
                 result = self._failure(dataset_key, "coverage_incomplete", "dataset coverage is incomplete and downloading is disabled")
+                self._prepared[dataset_key] = result
+                return result
+            if max_download_ranges is not None and len(missing_ranges) > max_download_ranges:
+                result = self._failure(
+                    dataset_key,
+                    "download_budget_exceeded",
+                    f"dataset needs {len(missing_ranges)} download ranges, exceeding budget {max_download_ranges}",
+                )
                 self._prepared[dataset_key] = result
                 return result
 
