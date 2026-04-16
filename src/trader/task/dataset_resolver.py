@@ -178,20 +178,30 @@ class DatasetResolver:
         klines: list[Kline],
         first_available_open_time: int | None = None,
     ) -> list[tuple[int, int]]:
-        if not klines:
-            return [(start_time, end_time)] if start_time <= end_time else []
-
         step = get_time_duration(symbol_interval.interval)
+        reference_open_time = self._reference_open_time(klines, first_available_open_time)
+        aligned_range = self._aligned_expected_range(start_time, end_time, step, reference_open_time)
+        if aligned_range is not None and first_available_open_time is not None:
+            aligned_start, aligned_end = aligned_range
+            if aligned_start < first_available_open_time:
+                aligned_range = (first_available_open_time, aligned_end)
+
+        if not klines:
+            if aligned_range is None:
+                return [(start_time, end_time)] if start_time <= end_time else []
+            aligned_start, aligned_end = aligned_range
+            return [(aligned_start, aligned_end)] if aligned_start <= aligned_end else []
+
         existing = {kl.open_time for kl in klines}
         missing_ranges: list[tuple[int, int]] = []
         range_start = None
-        effective_start = start_time
-        if first_available_open_time is not None and first_available_open_time > effective_start:
-            effective_start = first_available_open_time
+        if aligned_range is None:
+            return []
+        effective_start, effective_end = aligned_range
 
         ts = effective_start
 
-        while ts <= end_time:
+        while ts <= effective_end:
             if ts not in existing:
                 if range_start is None:
                     range_start = ts
@@ -201,9 +211,37 @@ class DatasetResolver:
             ts += step
 
         if range_start is not None:
-            missing_ranges.append((range_start, end_time))
+            missing_ranges.append((range_start, effective_end))
 
         return missing_ranges
+
+    def _reference_open_time(self, klines: list[Kline], first_available_open_time: int | None) -> int | None:
+        if first_available_open_time is not None:
+            return first_available_open_time
+        if klines:
+            return klines[0].open_time
+        return None
+
+    def _aligned_expected_range(
+        self,
+        start_time: int,
+        end_time: int,
+        step: int,
+        reference_open_time: int | None,
+    ) -> tuple[int, int] | None:
+        if start_time > end_time:
+            return None
+        if reference_open_time is None:
+            return (start_time, end_time)
+
+        start_remainder = (start_time - reference_open_time) % step
+        aligned_start = start_time if start_remainder == 0 else start_time + (step - start_remainder)
+        aligned_end = end_time - ((end_time - reference_open_time) % step)
+
+        if aligned_start > end_time or aligned_end < aligned_start:
+            return None
+
+        return aligned_start, aligned_end
 
     def _materialize_cache(self, output_path: Path, klines: list[Kline]):
         output_path.parent.mkdir(parents=True, exist_ok=True)

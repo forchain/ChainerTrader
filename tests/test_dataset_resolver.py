@@ -262,6 +262,75 @@ def test_prepare_downloads_earlier_range_when_no_availability_metadata_exists(tm
     asyncio.run(_test())
 
 
+def test_prepare_accepts_complete_daily_coverage_with_interval_offset(tmp_path: Path):
+    async def _test():
+        requested_start = 1_744_560_000
+        aligned_start = requested_start + 8 * 3600
+        end_time = requested_start + 2 * 86400
+        bars = [
+            make_kline(aligned_start, 100.0),
+            make_kline(aligned_start + 86400, 101.0),
+        ]
+        kline_store = SimpleNamespace(get_klines=MagicMock(return_value=bars))
+
+        async def downloader(*args, **kwargs):
+            raise AssertionError("downloader should not be called for aligned daily coverage")
+
+        resolver = DatasetResolver(
+            db_manager=SimpleNamespace(kline=kline_store),
+            exchange=SimpleNamespace(),
+            log=DummyLog(),
+            cache_dir=tmp_path,
+            range_downloader=downloader,
+        )
+
+        result = await resolver.prepare(SymbolInterval("BTC-USDT", Interval.INTERVAL_1d), requested_start, end_time)
+
+        assert result.ok is True
+        assert kline_store.get_klines.call_count == 1
+
+    asyncio.run(_test())
+
+
+def test_prepare_repairs_only_missing_daily_bar_when_interval_is_offset(tmp_path: Path):
+    async def _test():
+        requested_start = 1_744_560_000
+        aligned_start = requested_start + 8 * 3600
+        missing_bar_open = aligned_start + 86400
+        end_time = requested_start + 3 * 86400
+        initial_bars = [
+            make_kline(aligned_start, 100.0),
+            make_kline(aligned_start + 2 * 86400, 102.0),
+        ]
+        full_bars = [
+            make_kline(aligned_start, 100.0),
+            make_kline(missing_bar_open, 101.0),
+            make_kline(aligned_start + 2 * 86400, 102.0),
+        ]
+        requested_ranges = []
+        kline_store = SimpleNamespace(get_klines=MagicMock(side_effect=[initial_bars, full_bars]))
+
+        async def downloader(name, log, db_manager_arg, collection_name, exchange, symbol_interval, range_start, range_end, quit_event):
+            requested_ranges.append((collection_name, range_start, range_end))
+            return True
+
+        resolver = DatasetResolver(
+            db_manager=SimpleNamespace(kline=kline_store),
+            exchange=SimpleNamespace(),
+            log=DummyLog(),
+            cache_dir=tmp_path,
+            range_downloader=downloader,
+        )
+
+        result = await resolver.prepare(SymbolInterval("BTC-USDT", Interval.INTERVAL_1d), requested_start, end_time)
+
+        assert result.ok is True
+        assert requested_ranges == [("BTCUSDT-1d", missing_bar_open, missing_bar_open)]
+        assert kline_store.get_klines.call_count == 2
+
+    asyncio.run(_test())
+
+
 def test_prepare_returns_structured_failure_when_gap_download_fails(tmp_path: Path):
     async def _test():
         start_time = 1_700_000_000
