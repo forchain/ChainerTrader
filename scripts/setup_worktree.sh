@@ -88,11 +88,36 @@ else
     else
         [ -e "$ENV_LINK" ] || [ -L "$ENV_LINK" ] && rm -f "$ENV_LINK"
         ln -sfn "$ENV_TARGET" "$ENV_LINK"
-        echo "✓  Created .env  → $ENV_TARGET"
     fi
 fi
 
-# ── 5. Verify ─────────────────────────────────────────────────────────────────
+# ── 5. Symlink Shared Directories (reports, .cache) ───────────────────────────
+SHARED_DIRS=("reports" ".cache")
+for dir in "${SHARED_DIRS[@]}"; do
+    TARGET="$MAIN_REPO/$dir"
+    LINK="$REPO_ROOT/$dir"
+
+    [ ! -d "$TARGET" ] && mkdir -p "$TARGET"
+
+    if [ -L "$LINK" ] && [ -d "$LINK" ]; then
+        if [ "$(readlink "$LINK")" = "$TARGET" ]; then
+            echo "✓  $dir symlink already set up — skipping."
+            continue
+        fi
+    fi
+
+    if [ -d "$LINK" ] && [ ! -L "$LINK" ]; then
+        echo "⚠  Worktree has its own '$dir' directory. Moving to '${dir}_backup' to create symlink."
+        mv "$LINK" "${LINK}_backup"
+    elif [ -e "$LINK" ] || [ -L "$LINK" ]; then
+        rm -rf "$LINK"
+    fi
+
+    ln -sfn "$TARGET" "$LINK"
+    echo "✓  Created $dir  → $TARGET"
+done
+
+# ── 6. Verify ─────────────────────────────────────────────────────────────────
 echo ""
 PYTHON_BIN="$REPO_ROOT/.venv/bin/python"
 if [ -x "$PYTHON_BIN" ]; then
