@@ -1313,89 +1313,36 @@ class MacdTripleDivergenceStrategy(BaseStrategy):
                 self._pending_entry_signal_bar_idx = None
                 self._pending_entry_hist_val = None
 
-    def _process_signals(self) -> None:
-        long_signal = self.get_long_signal()
-        short_signal = self.get_short_signal()
-        can_open_new_position = self._can_open_new_position()
+    def on_signal_lifecycle_event(self, event_type: str, direction: str, signal_context=None, **payload):
+        meta = dict(signal_context or {})
+        signal_id = meta.get("signal_event_id")
 
-        no_active_trade = self._active_trade is None or self._active_trade.status in (
-            BaseStrategy.TradeStatus.CLOSED,
-            BaseStrategy.TradeStatus.CANCELLED,
-        )
-
-        if long_signal and no_active_trade and can_open_new_position:
-            meta = self.get_long_signal_context()
-            ctx = self.enter_trade(
-                direction="LONG",
-                key_bar_index=self.bar_idx(),
-                stoploss_atr_mult=0.0,
-                need_confirm=False,
-                enable_breakeven=False,
-                risk_reward_ratio=self.params.chainer_risk_reward_ratio,
-                signal_metadata=meta,
-            )
-            if ctx is not None and ctx.status not in (BaseStrategy.TradeStatus.CANCELLED,):
-                self._pending_entry_signal_bar_idx = int(meta.get("signal_bar_index", self.bar_idx()))
-                self._pending_entry_hist_val = float(self.macd_hist[0])
-                self.log_info(f"策略上下文: 使用建议止损 stop_price={float(ctx.stop_price):.6f}")
-            elif ctx is not None:
-                self._update_signal_outcome(meta.get("signal_event_id"), "entry_context_cancelled", reason=ctx.cancel_reason)
+        if event_type == "entry_context_created":
+            self._pending_entry_signal_bar_idx = int(meta.get("signal_bar_index", self.bar_idx()))
+            self._pending_entry_hist_val = float(self.macd_hist[0])
+            trade_context = payload.get("trade_context")
+            if trade_context is not None and getattr(trade_context, "stop_price", None) is not None:
+                self.log_info(f"策略上下文: 使用建议止损 stop_price={float(trade_context.stop_price):.6f}")
             return
-        if long_signal and not no_active_trade:
-            meta = dict(self._long_signal_meta or {})
-            active_trade = self._active_trade
-            self._update_signal_outcome(
-                meta.get("signal_event_id"),
-                "blocked_active_trade",
-                active_trade={
-                    "trade_id": int(getattr(active_trade, "trade_id", 0)),
-                    "direction": getattr(active_trade, "direction", None),
-                    "entry_time": getattr(getattr(active_trade, "key_kline_ref", None), "dt", None).isoformat()
-                    if getattr(active_trade, "key_kline_ref", None) is not None
-                    else None,
-                    "status": getattr(getattr(active_trade, "status", None), "value", str(getattr(active_trade, "status", None))),
-                },
-            )
-        elif long_signal and not can_open_new_position:
-            meta = self.get_long_signal_context()
-            self._update_signal_outcome(meta.get("signal_event_id"), "blocked_equity")
 
-        if short_signal and no_active_trade and can_open_new_position:
-            meta = self.get_short_signal_context()
-            ctx = self.enter_trade(
-                direction="SHORT",
-                key_bar_index=self.bar_idx(),
-                stoploss_atr_mult=0.0,
-                need_confirm=False,
-                enable_breakeven=False,
-                risk_reward_ratio=self.params.chainer_risk_reward_ratio,
-                signal_metadata=meta,
-            )
-            if ctx is not None and ctx.status not in (BaseStrategy.TradeStatus.CANCELLED,):
-                self._pending_entry_signal_bar_idx = int(meta.get("signal_bar_index", self.bar_idx()))
-                self._pending_entry_hist_val = float(self.macd_hist[0])
-                self.log_info(f"策略上下文: 使用建议止损 stop_price={float(ctx.stop_price):.6f}")
-            elif ctx is not None:
-                self._update_signal_outcome(meta.get("signal_event_id"), "entry_context_cancelled", reason=ctx.cancel_reason)
+        if event_type == "entry_context_cancelled":
+            self._update_signal_outcome(signal_id, "entry_context_cancelled", reason=payload.get("reason"))
             return
-        if short_signal and not no_active_trade:
-            meta = dict(self._short_signal_meta or {})
-            active_trade = self._active_trade
-            self._update_signal_outcome(
-                meta.get("signal_event_id"),
-                "blocked_active_trade",
-                active_trade={
-                    "trade_id": int(getattr(active_trade, "trade_id", 0)),
-                    "direction": getattr(active_trade, "direction", None),
-                    "entry_time": getattr(getattr(active_trade, "key_kline_ref", None), "dt", None).isoformat()
-                    if getattr(active_trade, "key_kline_ref", None) is not None
-                    else None,
-                    "status": getattr(getattr(active_trade, "status", None), "value", str(getattr(active_trade, "status", None))),
-                },
-            )
-        elif short_signal and not can_open_new_position:
-            meta = self.get_short_signal_context()
-            self._update_signal_outcome(meta.get("signal_event_id"), "blocked_equity")
+
+        if event_type == "blocked":
+            reason = payload.get("reason")
+            if reason == "active_trade":
+                self._update_signal_outcome(signal_id, "blocked_active_trade", active_trade=payload.get("active_trade"))
+            elif reason == "equity":
+                self._update_signal_outcome(signal_id, "blocked_equity")
+            elif reason == "mode":
+                self._update_signal_outcome(signal_id, "blocked_mode")
+            else:
+                self._update_signal_outcome(signal_id, "blocked", reason=reason)
+            return
+
+        if event_type == "exit_requested":
+            self._update_signal_outcome(signal_id, "exit_requested", reason=payload.get("reason"))
 
     def next(self):
         """Main strategy logic executed on each bar."""

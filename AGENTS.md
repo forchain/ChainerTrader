@@ -56,6 +56,17 @@ When context is incomplete:
 - Ask the user to补充配置 or explicitly approve an alternative execution plan if the original workflow cannot be honored.
 - Do not proceed with partial execution that would make the reported optimization / test result misleading.
 
+## Framework-First Fix Policy
+
+When debugging or implementing behavior changes, prefer fixing the shared framework layer before patching individual strategies.
+
+Rules:
+- First ask whether the issue originates from a shared contract, lifecycle, routing rule, state machine, or execution path that applies to multiple strategies.
+- If the behavior belongs to the framework, for example signal routing, mode handling, trade lifecycle orchestration, confirmation flow, or shared metadata propagation, fix it in the framework layer.
+- Only fix the strategy layer when the behavior is truly strategy-specific or when the framework cannot reasonably express the required behavior without creating a worse abstraction.
+- Do not choose a strategy-local workaround merely because it makes the current failing case pass if the underlying defect is reusable across strategies.
+- When a strategy-layer fix is chosen, explicitly explain why a framework-layer fix is not appropriate or not feasible.
+
 ## Testing Policy
 
 Testing expectations are repository-wide rules for all implementation work, not just a per-conversation preference.

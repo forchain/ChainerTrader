@@ -226,3 +226,50 @@ def test_framework_stop_remains_active_alongside_strategy_private_exit():
     assert float(trade.initial_stop_price) == 90.0
     assert trade.exit_price is not None
     assert float(trade.exit_price) == 90.0
+
+
+def test_long_only_short_signal_does_not_raise_or_open_short_trade():
+    class _LongOnlyShortSignalProbe(MacdTripleDivergenceStrategy):
+        params = (
+            ("chainer_mode", "LONG_ONLY"),
+            ("macd_stop_enabled", False),
+            ("chainer_risk_reward_ratio", 0.0),
+        )
+
+        def __init__(self):
+            super().__init__()
+            self._short_signal_meta = {}
+
+        def log_info(self, msg):
+            pass
+
+        def log_debug(self, msg):
+            pass
+
+        def get_long_signal(self) -> bool:
+            return False
+
+        def get_short_signal(self) -> bool:
+            if self.bar_idx() != 42:
+                return False
+            self._short_signal_meta = {
+                "suggested_stop_price": 120.0,
+                "signal_bar_index": self.bar_idx(),
+            }
+            return True
+
+        def get_short_signal_context(self) -> dict:
+            return dict(self._short_signal_meta or {})
+
+    rows = [dict(open=100, high=101, low=99, close=100) for _ in range(45)]
+
+    cerebro = bt.Cerebro()
+    cerebro.addstrategy(_LongOnlyShortSignalProbe)
+    data_feed = bt.feeds.PandasData(dataname=_build_df(rows), datetime="datetime")
+    cerebro.adddata(data_feed)
+    cerebro.broker.setcash(100000.0)
+    cerebro.broker.setcommission(commission=0.0)
+    st = cerebro.run()[0]
+
+    assert st._trades_by_id == {}  # noqa: SLF001
+    assert float(getattr(st.position, "size", 0.0)) == 0.0
