@@ -59,15 +59,9 @@ class GRIDStrategy(BaseStrategy):
                     order = self.buy(size=self.params.once_size, price=current_price)
                     self.order_dict[buy_level] = order
                     self.log_debug(f"Will buy placed at {buy_level}, Cash: {cash}, Position: {positions}")
-                    self.update_stop_loss_point()
 
         for sell_level in self.sell_levels:
             if current_price >= sell_level and sell_level not in self.order_dict:
-                if self.need_stop_loss():
-                    order = self.sell(size=self.params.once_size, price=current_price)
-                    self.order_dict[sell_level] = order
-                    self.log_debug(f"Will sell placed at {sell_level}, Cash: {cash}, Position: {positions}")
-                    return
                 if positions >= self.params.once_size:
                     order = self.sell(size=self.params.once_size, price=current_price)
                     self.order_dict[sell_level] = order

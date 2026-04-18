@@ -10,6 +10,31 @@ from trader.utils.symbol_interval import Interval, SymbolInterval
 from trader.utils.symbols_interval import SymbolsInterval
 
 
+def normalize_strategy_params(params: dict) -> dict:
+    normalized = dict(params)
+
+    enter_key = "chainer_enter_need_confirm"
+    exit_key = "chainer_exit_need_confirm"
+    merged_key = "chainer_need_confirm"
+
+    has_enter = enter_key in normalized
+    has_exit = exit_key in normalized
+
+    if has_enter or has_exit:
+        enter_value = normalized.get(enter_key)
+        exit_value = normalized.get(exit_key)
+        if has_enter and has_exit and enter_value != exit_value:
+            raise ValueError("chainer_enter_need_confirm and chainer_exit_need_confirm must match")
+        merged_value = enter_value if has_enter else exit_value
+        normalized[merged_key] = merged_value
+        normalized.pop(enter_key, None)
+        normalized.pop(exit_key, None)
+
+    normalized.pop("chainer_auto_signal", None)
+    normalized.pop("chainer_signal_interfaces", None)
+    return normalized
+
+
 class TaskConfig:
     def __init__(
         self,
@@ -212,6 +237,7 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
             else:
                 for strategy in strategies:
                     for strategy_params in parameter_sets:
+                        normalized_params = normalize_strategy_params(strategy_params)
                         tc = TaskConfig(
                             create_task_id(last_task_id),
                             task_type,
@@ -224,8 +250,8 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
                             auto_download,
                             free,
                             force_update,
-                            strategy_params=strategy_params,
-                            param_id=make_param_id(strategy_params) if parameter_search_enabled else None,
+                            strategy_params=normalized_params,
+                            param_id=make_param_id(normalized_params) if parameter_search_enabled else None,
                             optimization_run_id=optimization_run_id if parameter_search_enabled else None,
                         )
                         ret.append(tc)

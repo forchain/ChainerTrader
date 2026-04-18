@@ -88,3 +88,55 @@ Practical guidance:
 - For pure logic, state machines, scheduling, parsing, reporting, and database-adapter behavior, assume automated tests are expected.
 - For external API semantics, network behavior, permissions, or unstable third-party integrations, keep the core logic under automated tests and separately label any non-deterministic verification.
 - If manual participation from the user is required, ask only for the specific missing step and explain why automation is not sufficient or not possible in the current environment.
+
+## Repository Layout Rules
+
+Repository layout is part of the maintainability contract.
+
+Directory responsibilities:
+- `src/trader/`: reusable application logic, product modules, CLI modules, internal tools
+- `configs/`: non-executable configuration assets such as task JSON and notice JSON
+- `scripts/`: operational shell scripts and thin compatibility wrappers only
+- `tests/`: automated verification, fixtures, and test-only helpers
+- `docs/architecture/`: durable repository-structure guidance
+
+Placement rules:
+- New task JSON files MUST go under `configs/tasks/...`
+- New notice JSON files MUST go under `configs/notices/...`
+- Reusable Python logic MUST live under `src/trader/...`
+- Python files under `scripts/` MUST stay thin wrappers around code in `src/trader/...` or repo operations
+- Tests SHOULD target `src/trader/...` behavior directly instead of `scripts/...`
+- Generated artifacts MUST NOT be committed under `tests/output/`
+
+Structural refactor policy:
+- Any multi-directory migration, bulk path update, or repository-layout change MUST be executed in a git worktree
+- Layout changes MUST update docs, agent guidance, and automated guardrails together
+- Do not add new files into deprecated locations just because old history still contains them
+
+## README Update Policy
+
+README is a user-facing document, not a developer-internals document.
+
+README responsibilities:
+- project overview
+- architecture diagram
+- module summaries at a user-facing level
+- database design and database structure overview
+- deployment documentation
+- manual / interface usage for externally exposed capabilities such as CLI and API
+
+README must be updated when a change affects either:
+- how the project should be introduced to users
+- how users deploy, access, or operate the project through exposed interfaces
+- database design, database schema, database storage layout, or other user-relevant database structure
+
+README usually does not need updates when a change only affects:
+- internal refactors
+- internal module implementation details
+- test-only changes
+- internal tooling that is not part of the user-facing surface
+
+OpenSpec archive rule:
+- Every time an OpenSpec change is archived, explicitly check whether README needs an update
+- Use the README responsibilities above as the decision rule
+- If the change affects project introduction, architecture presentation, deployment, CLI usage, API usage, database design, database structure, or any other user-facing interface, update README in the same change before archiving

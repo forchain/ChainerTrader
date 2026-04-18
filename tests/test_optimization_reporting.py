@@ -153,6 +153,8 @@ def test_optimization_artifacts_aggregate_samples_and_write_rankings(tmp_path: P
     assert artifacts["manifest"]["skipped_samples"] == 1
     assert artifacts["manifest"]["failure_records"] == 1
     assert artifacts["manifest"]["datasets"] == ["dataset-a", "dataset-b"]
+    assert len(aggregate_items[("BTCUSDT", "1d", "param-a")]["sample_details"]) == 2
+    assert aggregate_items[("BTCUSDT", "1d", "param-a")]["sample_details"][0]["trades"] == []
 
     run_dir = write_optimization_artifacts(tmp_path, "run-1", sample_reports, failures)
 
@@ -170,9 +172,49 @@ def test_optimization_artifacts_aggregate_samples_and_write_rankings(tmp_path: P
     assert "币种" in html
     assert "周期" in html
     assert "参数ID" in html
+    assert "fast_period" in html
+    assert "slow_period" in html
+    assert "交易列表" in html
+    assert "renderDetails(row)" in html
+    assert 'id="detail-panel"' in html
+    assert "持仓K线数" in html
     assert "BTCUSDT" in html
     assert "1d" in html
     assert "param-a" in html
+
+
+def test_optimization_artifacts_merge_legacy_confirm_flags_for_display():
+    sample_reports = [
+        {
+            "strategy": "macd_triple_divergence",
+            "symbol": "BTCUSDT",
+            "interval": "1d",
+            "optimization_run_id": "run-legacy-confirm",
+            "report_version": "2.0",
+            "param_id": "param-confirm",
+            "params": {
+                "chainer_enter_need_confirm": False,
+                "chainer_exit_need_confirm": False,
+                "chainer_mode": "LONG_ONLY",
+            },
+            "dataset_ref": "dataset-a",
+            "summary": {
+                "total_return_pct": 5.0,
+                "hold_return_pct": 1.0,
+                "sharpe": 1.0,
+                "profit_factor": 1.2,
+                "max_dd_pct": 3.0,
+                "total_trades": 1,
+            },
+        }
+    ]
+
+    artifacts = build_optimization_artifacts("run-legacy-confirm", sample_reports, [])
+
+    assert artifacts["aggregate"]["items"][0]["params"] == {
+        "chainer_mode": "LONG_ONLY",
+        "chainer_need_confirm": False,
+    }
 
 
 def test_optimization_artifacts_preserve_structured_mixed_result_reasons():

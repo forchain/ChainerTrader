@@ -33,11 +33,8 @@ class DUALMAStrategy(BaseStrategy):
                 willOpt = OperateType.BUY
 
         else:
-            if self.need_stop_loss():
+            if self.sma_short[0] < self.sma_long[0]:  # 短均线下穿长均线（卖出信号）
                 willOpt = OperateType.SELL
-            else:
-                if self.sma_short[0] < self.sma_long[0]:  # 短均线下穿长均线（卖出信号）
-                    willOpt = OperateType.SELL
 
         if willOpt == OperateType.SELL:
             self.log_info(f"Kline:{self.cur_datetime()}, 创建 卖单:{self.data.close[0]:.2f}")
@@ -46,4 +43,3 @@ class DUALMAStrategy(BaseStrategy):
         elif willOpt == OperateType.BUY:
             self.log_info(f"Kline:{self.cur_datetime()}, 创建 买单:{self.data.close[0]:.2f}")
             self.order = self.buy()
-            self.update_stop_loss_point()

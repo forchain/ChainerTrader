@@ -21,7 +21,19 @@ def expand_parameter_space(task_definition: dict) -> list[dict]:
 
     keys = list(grid.keys())
     values = [grid[key] for key in keys]
-    return [dict(zip(keys, combo)) for combo in itertools.product(*values)]
+    combinations = []
+    for combo in itertools.product(*values):
+        params: dict = {}
+        for key, value in zip(keys, combo):
+            if isinstance(value, dict):
+                overlap = params.keys() & value.keys()
+                if overlap:
+                    raise ValueError(f"param_grid fragment for '{key}' overlaps existing keys: {sorted(overlap)}")
+                params.update(value)
+            else:
+                params[key] = value
+        combinations.append(params)
+    return combinations
 
 
 def make_param_id(params: dict) -> str:

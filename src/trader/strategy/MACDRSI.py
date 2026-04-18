@@ -54,14 +54,10 @@ class MACDRSIStrategy(BaseStrategy):
         elif self.position.size > 0:
             if down_macd and self.rsi[0] > self.params.overbought:
                 willOpt = OperateType.SHORT
-            elif self.need_stop_loss():
-                willOpt = OperateType.CLOSE
 
         elif self.position.size < 0:
             if up_macd and self.rsi[0] < self.params.overbought:
                 willOpt = OperateType.LONG
-            elif self.need_takeprofit():
-                willOpt = OperateType.CLOSE
 
         if willOpt == OperateType.CLOSE:
             self.log_info(f"Kline:{self.cur_datetime()}, 平仓:{self.dataclose[0]:.2f}")
@@ -82,4 +78,3 @@ class MACDRSIStrategy(BaseStrategy):
             else:
                 self.log_info(f"Kline:{self.cur_datetime()}, 开空仓:{self.dataclose[0]:.2f}")
                 self.order = self.sell()
-

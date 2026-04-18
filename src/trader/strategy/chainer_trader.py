@@ -41,10 +41,8 @@ class ChainerTraderStrategy(BaseStrategy):
         ("slow_length", 21),
         # Chainer Framework parameters
         ("chainer_mode", "LONG_ONLY"),  # LONG_ONLY, SHORT_ONLY, BOTH
-        ("chainer_auto_signal", True),  # Enable auto signal processing via get_long_signal/get_short_signal
         ("chainer_stoploss_atr_mult", 1.0),  # Stop loss ATR multiple (0 = disabled)
-        ("chainer_enter_need_confirm", True),  # Require entry signal confirmation
-        ("chainer_exit_need_confirm", True),   # Require exit signal confirmation
+        ("chainer_need_confirm", True),  # Require confirmation for both entry and exit
         ("chainer_enable_breakeven", True),  # Enable breakeven
         ("chainer_risk_reward_ratio", 2.0),  # Risk/reward ratio (0 = disabled)
         # Disable new entries when equity falls below this percentage of initial account value (0 = disabled)
@@ -68,8 +66,7 @@ class ChainerTraderStrategy(BaseStrategy):
         self.order = None
         
         # Log trading mode for verification
-        self.log_info(f"ChainerTrader 初始化: chainer_mode={self.params.chainer_mode} "
-                      f"chainer_auto_signal={self.params.chainer_auto_signal}")
+        self.log_info(f"ChainerTrader 初始化: chainer_mode={self.params.chainer_mode}")
 
     def get_long_signal(self) -> bool:
         """
@@ -116,4 +113,3 @@ class ChainerTraderStrategy(BaseStrategy):
             return
 
         # Signal processing is handled by BaseStrategy._process_signals()
-        # when chainer_auto_signal is True

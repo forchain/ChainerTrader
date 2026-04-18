@@ -34,6 +34,36 @@ def test_parse_task_config_expands_param_grid_into_cartesian_product():
     assert len({task.param_id for task in tasks}) == 4
 
 
+def test_parse_task_config_expands_param_grid_with_linked_parameter_fragments():
+    config = json.dumps(
+        [
+            {
+                "task_type": "BACK_TRADER",
+                "symbol": "BTC-USDT",
+                "interval": "1h",
+                "strategy": "macd_triple_divergence",
+                "param_grid": {
+                    "chainer_mode": ["LONG_ONLY", "SHORT_ONLY"],
+                    "confirm_pair": [
+                        {"chainer_need_confirm": False},
+                        {"chainer_need_confirm": True},
+                    ],
+                },
+            }
+        ]
+    )
+
+    tasks = parse_task_config(config)
+
+    assert len(tasks) == 4
+    assert {tuple(sorted(task.strategy_params.items())) for task in tasks} == {
+        (("chainer_mode", "LONG_ONLY"), ("chainer_need_confirm", False)),
+        (("chainer_mode", "LONG_ONLY"), ("chainer_need_confirm", True)),
+        (("chainer_mode", "SHORT_ONLY"), ("chainer_need_confirm", False)),
+        (("chainer_mode", "SHORT_ONLY"), ("chainer_need_confirm", True)),
+    }
+
+
 def test_param_combinations_override_param_grid():
     config = json.dumps(
         [

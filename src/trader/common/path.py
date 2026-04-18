@@ -26,6 +26,12 @@ def GetScriptsDir():
     return os.path.realpath(filePath)
 
 
+def GetConfigsDir():
+    baseDir = os.path.abspath(os.path.dirname(__file__))
+    filePath = os.path.join(baseDir, "./../../../configs")
+    return os.path.realpath(filePath)
+
+
 def is_filename_only(string):
     return not ("/" in string or "\\" in string) and os.path.basename(string) == string
 

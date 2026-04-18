@@ -27,11 +27,8 @@ class RSRSStrategy(BaseStrategy):
                 willOpt = OperateType.BUY
 
         else:
-            if self.need_stop_loss():
+            if self.rsrs.zscore[0] < 0:
                 willOpt = OperateType.SELL
-            else:
-                if self.rsrs.zscore[0] < 0:
-                    willOpt = OperateType.SELL
 
         if willOpt == OperateType.SELL:
             self.log_info(f"Kline:{self.cur_datetime()}, 创建 卖单:{self.data.close[0]:.2f}")
@@ -40,4 +37,3 @@ class RSRSStrategy(BaseStrategy):
         elif willOpt == OperateType.BUY:
             self.log_info(f"Kline:{self.cur_datetime()}, 创建 买单:{self.data.close[0]:.2f}")
             self.order = self.buy()
-            self.update_stop_loss_point()

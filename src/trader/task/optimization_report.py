@@ -6,14 +6,39 @@ from datetime import datetime
 from pathlib import Path
 from statistics import median
 
-
 REPORT_VERSION = "2.0"
 SCORE_VERSION = "score_v1"
+
+
+def normalize_report_params(params: dict) -> dict:
+    normalized = dict(params or {})
+    enter_key = "chainer_enter_need_confirm"
+    exit_key = "chainer_exit_need_confirm"
+    merged_key = "chainer_need_confirm"
+
+    if enter_key in normalized or exit_key in normalized:
+        enter_value = normalized.get(enter_key)
+        exit_value = normalized.get(exit_key)
+        if enter_value == exit_value:
+            normalized[merged_key] = enter_value
+            normalized.pop(enter_key, None)
+            normalized.pop(exit_key, None)
+
+    normalized.pop("chainer_auto_signal", None)
+    normalized.pop("chainer_signal_interfaces", None)
+    return normalized
+
+
+def _display_param_name(name: str) -> str:
+    if name.startswith("chainer_"):
+        return name.removeprefix("chainer_")
+    return name
 
 
 def build_optimization_artifacts(optimization_run_id: str, sample_reports: list[dict], failures: list[dict]) -> dict:
     grouped = {}
     for sample in sample_reports:
+        sample["params"] = normalize_report_params(sample.get("params", {}))
         key = (sample["strategy"], sample["symbol"], sample["interval"], sample["param_id"])
         grouped.setdefault(key, []).append(sample)
 
@@ -39,6 +64,15 @@ def build_optimization_artifacts(optimization_run_id: str, sample_reports: list[
                 "interval": interval,
                 "param_id": param_id,
                 "params": first["params"],
+                "sample_details": [
+                    {
+                        "dataset_ref": item.get("dataset_ref"),
+                        "report_path": item.get("report_path"),
+                        "summary": item.get("summary", {}),
+                        "trades": item.get("trades", []),
+                    }
+                    for item in items
+                ],
                 "samples": samples,
                 "total_trades": total_trades,
                 "no_trade_samples": no_trade_samples,
@@ -159,24 +193,29 @@ def _write_html(path: Path, content: str):
 
 
 def _build_rankings_html(optimization_run_id: str, ranking_items: list[dict]) -> str:
+    param_keys = sorted({key for item in ranking_items for key in item["params"].keys()})
+    param_columns = [{"key": key, "label": _display_param_name(key)} for key in param_keys]
     rows = []
     for index, item in enumerate(ranking_items, start=1):
+        row = {
+            "rank": index,
+            "symbol": item["symbol"],
+            "interval": item["interval"],
+            "score": item["score"],
+            "avg_total_return_pct": item["avg_total_return_pct"],
+            "avg_excess_return_pct": item["avg_excess_return_pct"],
+            "avg_max_dd_pct": item["avg_max_dd_pct"],
+            "total_trades": item["total_trades"],
+            "param_id": item["param_id"],
+        }
+        for key in param_keys:
+            row[key] = item["params"].get(key)
         rows.append(
-            {
-                "rank": index,
-                "symbol": item["symbol"],
-                "interval": item["interval"],
-                "score": item["score"],
-                "avg_total_return_pct": item["avg_total_return_pct"],
-                "avg_excess_return_pct": item["avg_excess_return_pct"],
-                "avg_max_dd_pct": item["avg_max_dd_pct"],
-                "total_trades": item["total_trades"],
-                "param_id": item["param_id"],
-                "params": json.dumps(item["params"], ensure_ascii=False, sort_keys=True),
-            }
+            row
         )
 
     rows_json = json.dumps(rows, ensure_ascii=False)
+    param_columns_json = json.dumps(param_columns, ensure_ascii=False)
     title = html.escape(f"Optimization Rankings - {optimization_run_id}")
     run_id = html.escape(optimization_run_id)
     return f"""<!DOCTYPE html>
@@ -277,6 +316,65 @@ def _build_rankings_html(optimization_run_id: str, ranking_items: list[dict]) ->
       white-space: pre-wrap;
       word-break: break-word;
     }}
+    tbody tr {{
+      cursor: pointer;
+    }}
+    tbody tr:hover {{
+      background: #f4ecdc;
+    }}
+    .detail-panel {{
+      margin-top: 18px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: 0 18px 50px rgba(67, 55, 38, 0.08);
+      overflow: hidden;
+    }}
+    .detail-header {{
+      padding: 18px 20px 8px;
+      border-bottom: 1px solid var(--line);
+      background: #f8f2e6;
+    }}
+    .detail-title {{
+      margin: 0 0 8px;
+      font-size: 24px;
+    }}
+    .detail-sub {{
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }}
+    .detail-body {{
+      padding: 20px;
+      display: grid;
+      gap: 18px;
+    }}
+    .sample-card {{
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fcf9f1;
+      overflow: hidden;
+    }}
+    .sample-meta {{
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      background: #f7efdf;
+      display: grid;
+      gap: 4px;
+      font-size: 13px;
+      color: var(--muted);
+    }}
+    .sample-table-wrap {{
+      overflow: auto;
+    }}
+    .sample-table {{
+      min-width: 820px;
+    }}
+    .empty-note {{
+      padding: 16px;
+      color: var(--muted);
+      font-size: 14px;
+    }}
   </style>
 </head>
 <body>
@@ -297,26 +395,42 @@ def _build_rankings_html(optimization_run_id: str, ranking_items: list[dict]) ->
               <th><button data-key="avg_max_dd_pct" data-type="number">最大回撤%</button></th>
               <th><button data-key="total_trades" data-type="number">交易数</button></th>
               <th><button data-key="param_id" data-type="string">参数ID</button></th>
-              <th>参数</th>
+              <th id="param-columns-anchor"></th>
             </tr>
           </thead>
           <tbody id="rows"></tbody>
         </table>
       </div>
     </div>
+    <div class="detail-panel" id="detail-panel" hidden>
+      <div class="detail-header">
+        <h2 class="detail-title">交易列表</h2>
+        <p class="detail-sub" id="detail-sub"></p>
+      </div>
+      <div class="detail-body" id="detail-body"></div>
+    </div>
   </div>
   <script>
     const rows = {rows_json};
+    const paramColumns = {param_columns_json};
     const tbody = document.getElementById("rows");
+    const paramColumnsAnchor = document.getElementById("param-columns-anchor");
+    const detailPanel = document.getElementById("detail-panel");
+    const detailSub = document.getElementById("detail-sub");
+    const detailBody = document.getElementById("detail-body");
     let currentSort = {{ key: "score", direction: "desc", type: "number" }};
+
+    paramColumnsAnchor.outerHTML = paramColumns.map((column) => `
+      <th><button data-key="${{column.key}}" data-type="string">${{escapeHtml(column.label)}}</button></th>
+    `).join("");
 
     function formatCell(key, value) {{
       if (value === null || value === undefined) return "";
-      if (key === "params") return `<span class="mono">${{escapeHtml(String(value))}}</span>`;
       if (key === "param_id") return `<span class="mono">${{escapeHtml(String(value))}}</span>`;
       if (["score", "avg_total_return_pct", "avg_excess_return_pct", "avg_max_dd_pct"].includes(key)) {{
         return Number(value).toFixed(4).replace(/\\.0+$/, "").replace(/(\\.\\d*?)0+$/, "$1");
       }}
+      if (typeof value === "boolean") return value ? "true" : "false";
       return escapeHtml(String(value));
     }}
 
@@ -341,7 +455,7 @@ def _build_rankings_html(optimization_run_id: str, ranking_items: list[dict]) ->
         return currentSort.direction === "asc" ? cmp : -cmp;
       }});
       tbody.innerHTML = sorted.map((row) => `
-        <tr>
+        <tr data-row-rank="${{row.rank}}">
           <td>${{formatCell("rank", row.rank)}}</td>
           <td>${{formatCell("symbol", row.symbol)}}</td>
           <td>${{formatCell("interval", row.interval)}}</td>
@@ -351,9 +465,73 @@ def _build_rankings_html(optimization_run_id: str, ranking_items: list[dict]) ->
           <td>${{formatCell("avg_max_dd_pct", row.avg_max_dd_pct)}}</td>
           <td>${{formatCell("total_trades", row.total_trades)}}</td>
           <td>${{formatCell("param_id", row.param_id)}}</td>
-          <td>${{formatCell("params", row.params)}}</td>
+          ${{paramColumns.map((column) => `<td>${{formatCell(column.key, row[column.key])}}</td>`).join("")}}
         </tr>
       `).join("");
+
+      tbody.querySelectorAll("tr").forEach((tr) => {{
+        tr.addEventListener("click", () => {{
+          const rank = Number(tr.dataset.rowRank);
+          const row = sorted.find((item) => item.rank === rank);
+          if (row) {{
+            renderDetails(row);
+          }}
+        }});
+      }});
+    }}
+
+    function renderDetails(row) {{
+      detailPanel.hidden = false;
+      detailSub.textContent = `${{row.symbol}} / ${{row.interval}} / ${{row.param_id}}`;
+      const sampleDetails = row.sample_details || [];
+      detailBody.innerHTML = sampleDetails.map((sample, index) => {{
+        const trades = sample.trades || [];
+        const tradeRows = trades.length ? trades.map((trade) => `
+          <tr>
+            <td>${{formatCell("id", trade.id)}}</td>
+            <td>${{formatCell("dir", trade.dir)}}</td>
+            <td>${{formatCell("entry", trade.entry)}}</td>
+            <td>${{formatCell("entry_px", trade.entry_px)}}</td>
+            <td>${{formatCell("exit", trade.exit)}}</td>
+            <td>${{formatCell("exit_px", trade.exit_px)}}</td>
+            <td>${{formatCell("pnl_pct", trade.pnl_pct)}}</td>
+            <td>${{formatCell("pnl", trade.pnl)}}</td>
+            <td>${{formatCell("bars_held", trade.bars_held)}}</td>
+          </tr>
+        `).join("") : `<div class="empty-note">该样例没有成交记录。</div>`;
+
+        return `
+          <section class="sample-card">
+            <div class="sample-meta">
+              <div>样例 #${{index + 1}}</div>
+              <div>dataset_ref: ${{escapeHtml(String(sample.dataset_ref || ""))}}</div>
+              <div>report_path: ${{escapeHtml(String(sample.report_path || ""))}}</div>
+            </div>
+            <div class="sample-table-wrap">
+              ${{
+                trades.length
+                  ? `<table class="sample-table">
+                      <thead>
+                        <tr>
+                          <th>ID</th>
+                          <th>方向</th>
+                          <th>进场时间</th>
+                          <th>进场价</th>
+                          <th>出场时间</th>
+                          <th>出场价</th>
+                          <th>收益%</th>
+                          <th>收益</th>
+                          <th>持仓K线数</th>
+                        </tr>
+                      </thead>
+                      <tbody>${{tradeRows}}</tbody>
+                    </table>`
+                  : tradeRows
+              }}
+            </div>
+          </section>
+        `;
+      }}).join("");
     }}
 
     document.querySelectorAll("[data-sort-table] thead button").forEach((button) => {{
@@ -371,6 +549,9 @@ def _build_rankings_html(optimization_run_id: str, ranking_items: list[dict]) ->
     }});
 
     render();
+    if (rows.length) {{
+      renderDetails(rows[0]);
+    }}
   </script>
 </body>
 </html>

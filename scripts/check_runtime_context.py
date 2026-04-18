@@ -14,14 +14,9 @@ import argparse
 import sys
 from pathlib import Path
 
-from dotenv import dotenv_values
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-
-PROFILE_REQUIREMENTS = {
-    "base": [],
-    "db-backtest": ["TRADER_DB", "TRADER_EXCHANGE"],
-    "optimization": ["TRADER_DB", "TRADER_EXCHANGE"],
-}
+from trader.tools.runtime_context import PROFILE_REQUIREMENTS, validate_runtime_context
 
 
 def parse_args() -> argparse.Namespace:
@@ -49,31 +44,22 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    env_file = args.env_file
+    payload, exit_code = validate_runtime_context(args.env_file, profile=args.profile, require_env=args.require_env)
 
-    if not env_file.exists():
-        print(f"✗  Missing .env file: {env_file}")
-        return 1
+    if payload["status"] == "missing_env_file":
+        print(f"✗  Missing .env file: {args.env_file}")
+        return exit_code
 
-    values = dotenv_values(env_file)
-    required = list(PROFILE_REQUIREMENTS[args.profile])
-    for key in args.require_env:
-        if key not in required:
-            required.append(key)
+    print(f"Context profile : {payload['profile']}")
+    print(f".env file       : {payload['env_file']}")
 
-    print(f"Context profile : {args.profile}")
-    print(f".env file       : {env_file.resolve()}")
-
-    missing = []
+    required = payload["required"]
+    missing = payload["missing"]
     if required:
         print("Required env    :")
         for key in required:
-            value = values.get(key)
-            present = value is not None and str(value).strip() != ""
-            status = "present" if present else "missing"
+            status = "missing" if key in missing else "present"
             print(f"  - {key}: {status}")
-            if not present:
-                missing.append(key)
     else:
         print("Required env    : none")
 
@@ -81,11 +67,11 @@ def main() -> int:
         print("")
         print("✗  Runtime context incomplete.")
         print("   Missing required env vars: " + ", ".join(missing))
-        return 2
+        return exit_code
 
     print("")
     print("✓  Runtime context looks complete.")
-    return 0
+    return exit_code
 
 
 if __name__ == "__main__":

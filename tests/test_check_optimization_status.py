@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from scripts.check_optimization_status import build_status
+from trader.tools.optimization_status import build_status
 
 
 def test_check_optimization_status_treats_terminal_status_as_not_running(tmp_path: Path):

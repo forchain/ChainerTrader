@@ -3,12 +3,12 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
-import subprocess
 import sys
 from pathlib import Path
 
-from trader.task.task_config import parse_task_config
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+from trader.tools.optimization_background import launch_background_run
 
 
 def parse_args() -> argparse.Namespace:
@@ -22,62 +22,13 @@ def main() -> int:
     args = parse_args()
     repo_root = Path(__file__).resolve().parents[1]
     tasks_path = (repo_root / args.tasks).resolve() if not Path(args.tasks).is_absolute() else Path(args.tasks)
-    parsed = parse_task_config(str(tasks_path))
-    if not parsed:
+    payload, exit_code = launch_background_run(repo_root, tasks_path, stat=args.stat)
+    if exit_code != 0:
         print("No executable tasks found", file=sys.stderr)
-        return 1
+        return exit_code
 
-    run_id = next((task.optimization_run_id for task in parsed if task.optimization_run_id), "adhoc-run")
-    run_dir = repo_root / "tmp" / "optimization_runs" / run_id
-    run_dir.mkdir(parents=True, exist_ok=True)
-
-    log_path = run_dir / "runner.log"
-    meta_path = run_dir / "meta.json"
-    pid_path = run_dir / "runner.pid"
-
-    command = [
-        "uv",
-        "run",
-        "python",
-        "-m",
-        "trader",
-        "--tasks",
-        str(tasks_path),
-        "--stat",
-        str(args.stat),
-    ]
-
-    env = os.environ.copy()
-    env["TRADER_API"] = ""
-    env["TRADER_OPTIMIZATION_RUN_ID"] = run_id
-
-    with log_path.open("w", encoding="utf-8") as log_file:
-        proc = subprocess.Popen(
-            command,
-            cwd=repo_root,
-            stdout=log_file,
-            stderr=subprocess.STDOUT,
-            env=env,
-        )
-
-    pid_path.write_text(str(proc.pid), encoding="utf-8")
-    meta_path.write_text(
-        json.dumps(
-            {
-                "run_id": run_id,
-                "tasks_path": str(tasks_path),
-                "sample_count": len(parsed),
-                "pid": proc.pid,
-                "log_path": str(log_path),
-            },
-            indent=2,
-            ensure_ascii=False,
-        ),
-        encoding="utf-8",
-    )
-
-    print(json.dumps({"run_id": run_id, "pid": proc.pid, "log_path": str(log_path), "meta_path": str(meta_path)}, ensure_ascii=False))
-    return 0
+    print(json.dumps(payload, ensure_ascii=False))
+    return exit_code
 
 
 if __name__ == "__main__":

@@ -27,14 +27,9 @@ _DEFAULT_POSITION_PRICE_BUFFER = 0.002  # 0.2% safety buffer for next-open fills
 class BaseStrategy(bt.Strategy):
     params = (
         ("name", "Unkown"),
-        ("atr", False),
-        ("atrperiod", 14),
-        ("atrdist", 5),  # ATR distance for stop price
         ("mode", TrendType.NORMAL),
         ("period", DEFAULT_PERIOD),
         ("log", None),
-        ("stoploss", False),
-        ("takeprofit", False),
         ("position", 0),
         ("trader", False),
         ("position_percent", 100),  # Position size as percentage of available cash (100 = full position)
@@ -44,11 +39,10 @@ class BaseStrategy(bt.Strategy):
         # - SHORT_ONLY: short signal opens short, long signal closes short
         # - BOTH: long signal opens long, short signal opens short, exit via stop/breakeven/TP
         ("chainer_mode", "LONG_ONLY"),  # LONG_ONLY, SHORT_ONLY, BOTH
-        ("chainer_auto_signal", False),  # Enable auto signal processing via get_long_signal/get_short_signal
         # Entry/Exit engine defaults (can be overridden per call)
+        ("chainer_atr_period", 14),
         ("chainer_stoploss_atr_mult", 0.0),
-        ("chainer_enter_need_confirm", True),  # Require confirmation for entry signal
-        ("chainer_exit_need_confirm", True),   # Require confirmation for exit signal
+        ("chainer_need_confirm", True),  # Require confirmation for both entry and exit
         ("chainer_enable_breakeven", True),
         ("chainer_risk_reward_ratio", 0.0),
         # When equity falls below this percentage of initial account value, new entries are disabled.
@@ -120,19 +114,12 @@ class BaseStrategy(bt.Strategy):
         self.order = None
         self._initial_equity: Optional[float] = None
 
-        # Stop loss point
-        if self.params.stoploss:
-            self.stopLossPoint = 0
-
-        # take profit
-        if self.params.takeprofit:
-            self.takeProfitPoint = 0
-
         # ATR must be initialized early if any logic depends on historical ATR values.
         # Backtrader indicators created later won't backfill history, which would make
         # stoploss_atr_mult ineffective for the first atrperiod bars after creation.
-        if bool(self.params.atr) or float(self.params.chainer_stoploss_atr_mult) != 0.0:
-            self.atr = bt.indicators.ATR(self.datas[0], period=self.params.atrperiod)
+        self.atr = None
+        if float(self.params.chainer_stoploss_atr_mult) != 0.0:
+            self.atr = bt.indicators.ATR(self.datas[0], period=self.params.chainer_atr_period)
 
         # Entry/Exit engine state (lazy-activated when enter_trade/exit_trade is used)
         self._trade_seq: int = 0
@@ -199,9 +186,7 @@ class BaseStrategy(bt.Strategy):
 
         self.log_debug(f"Kline:{cur} 收盘价, {self.data.close[0]:.2f}")
 
-        # Auto signal processing (if enabled)
-        if self.params.chainer_auto_signal:
-            self._process_signals()
+        self._process_signals()
 
         # Drive entry/exit engine if a trade exists
         self._process_trade_engine()
@@ -452,7 +437,7 @@ class BaseStrategy(bt.Strategy):
     def _ensure_atr_indicator(self):
         if hasattr(self, "atr") and self.atr is not None:
             return
-        self.atr = bt.indicators.ATR(self.datas[0], period=self.params.atrperiod)
+        self.atr = bt.indicators.ATR(self.datas[0], period=self.params.chainer_atr_period)
 
     def _kline_ref_by_bar_index(self, key_bar_index: int) -> "BaseStrategy.KlineRef":
         if key_bar_index is None:
@@ -618,15 +603,15 @@ class BaseStrategy(bt.Strategy):
             key = f"{base_key}-{trade_id}"
 
         sl_atr_mult = float(self.params.chainer_stoploss_atr_mult if stoploss_atr_mult is None else stoploss_atr_mult)
-        # Entry confirmation (independent of direction/mode, controlled by chainer_enter_need_confirm)
+        # Entry confirmation (independent of direction/mode, controlled by chainer_need_confirm)
         if need_confirm is not None:
             entry_need_confirm = bool(need_confirm)
         else:
-            entry_need_confirm = bool(self.params.chainer_enter_need_confirm)
+            entry_need_confirm = bool(self.params.chainer_need_confirm)
         breakeven_on = bool(self.params.chainer_enable_breakeven if enable_breakeven is None else enable_breakeven)
         rr = float(self.params.chainer_risk_reward_ratio if risk_reward_ratio is None else risk_reward_ratio)
-        # Exit confirmation (independent of direction/mode, controlled by chainer_exit_need_confirm)
-        exit_need_confirm = bool(self.params.chainer_exit_need_confirm)
+        # Exit confirmation (independent of direction/mode, controlled by chainer_need_confirm)
+        exit_need_confirm = bool(self.params.chainer_need_confirm)
 
         ctx = BaseStrategy.TradeContext(
             trade_id=trade_id,
@@ -742,7 +727,7 @@ class BaseStrategy(bt.Strategy):
         if need_confirm is not None:
             exit_need_confirm = bool(need_confirm)
         else:
-            exit_need_confirm = bool(self.params.chainer_exit_need_confirm)
+            exit_need_confirm = bool(self.params.chainer_need_confirm)
         exit_key_ref = self._kline_ref_by_bar_index(key_bar_index)
         ctx.exit_need_confirm = exit_need_confirm
         ctx.exit_key_bar_index = int(key_bar_index)
@@ -906,7 +891,7 @@ class BaseStrategy(bt.Strategy):
         if mode == "LONG_ONLY":
             # Long signal opens long
             if long_signal and no_active_trade and can_open_new_position:
-                self.log_info(f"LONG_ONLY模式: 检测到做多信号，尝试开多仓")
+                self.log_info("LONG_ONLY模式: 检测到做多信号，尝试开多仓")
                 try:
                     ctx = self.enter_trade(
                         direction="LONG",
@@ -945,7 +930,7 @@ class BaseStrategy(bt.Strategy):
 
             # Short signal closes long
             if short_signal and trade_is_active and has_long_position:
-                self.log_info(f"LONG_ONLY模式: 检测到做空信号，尝试平多仓")
+                self.log_info("LONG_ONLY模式: 检测到做空信号，尝试平多仓")
                 try:
                     self._emit_signal_lifecycle_event("exit_requested", "SHORT", snapshot.short_context, reason="signal")
                     self.exit_trade(key_bar_index=self.bar_idx())
@@ -957,7 +942,7 @@ class BaseStrategy(bt.Strategy):
         elif mode == "SHORT_ONLY":
             # Short signal opens short
             if short_signal and no_active_trade and can_open_new_position:
-                self.log_info(f"SHORT_ONLY模式: 检测到做空信号，尝试开空仓")
+                self.log_info("SHORT_ONLY模式: 检测到做空信号，尝试开空仓")
                 try:
                     ctx = self.enter_trade(
                         direction="SHORT",
@@ -996,7 +981,7 @@ class BaseStrategy(bt.Strategy):
 
             # Long signal closes short
             if long_signal and trade_is_active and has_short_position:
-                self.log_info(f"SHORT_ONLY模式: 检测到做多信号，尝试平空仓")
+                self.log_info("SHORT_ONLY模式: 检测到做多信号，尝试平空仓")
                 try:
                     self._emit_signal_lifecycle_event("exit_requested", "LONG", snapshot.long_context, reason="signal")
                     self.exit_trade(key_bar_index=self.bar_idx())
@@ -1266,40 +1251,6 @@ class BaseStrategy(bt.Strategy):
         # Ensure a standing TP exists during ACTIVE trade when enabled.
         if ctx.tp_price is not None and (ctx.tp_order is None or not getattr(ctx.tp_order, "alive", lambda: False)()):
             self._place_or_replace_tp_order(ctx)
-
-    def need_stop_loss(self):
-        if not self.params.stoploss:
-            return False
-
-        if self.data.close[0] < self.stopLossPoint:
-            return True
-        return False
-
-    def update_stop_loss_point(self):
-        if not self.params.stoploss:
-            return
-
-        pdist = 0
-        if self.params.atr:
-            pdist = self.atr[0] * self.params.atrdist
-        self.stopLossPoint = self.datas[0].close[0] - pdist
-
-    def need_takeprofit(self):
-        if not self.params.takeprofit:
-            return False
-
-        if self.data.close[0] > self.takeProfitPoint:
-            return True
-        return False
-
-    def update_takeprofit_point(self):
-        if not self.params.takeprofit:
-            return
-
-        pdist = 0
-        if self.params.atr:
-            pdist = self.atr[0] * self.params.atrdist
-        self.takeProfitPoint = self.datas[0].close[0] + pdist
 
     def name(self):
         return self.params.name
