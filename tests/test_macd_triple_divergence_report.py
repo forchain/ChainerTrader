@@ -90,3 +90,12 @@ def test_report_omits_filtered_false_positive_examples():
 
     assert signal is None
     assert later_signal is not None
+
+
+def test_report_trade_records_include_entry_signal_time_for_confirmed_entries():
+    report = _run_report_probe()
+
+    trades_with_signal_time = [trade for trade in report["trades"] if trade.get("entry_signal_time")]
+
+    assert trades_with_signal_time
+    assert trades_with_signal_time[0]["entry_signal_time"].endswith("T08:00:00")

@@ -17,8 +17,6 @@ from trader.utils.symbol_interval import SymbolInterval, get_time_duration
 
 def build_strategy_kwargs(cfg: Config, log: Logger, position: float, trader: bool, strategy_params: dict | None = None) -> dict:
     kwargs = {
-        "stoploss": cfg.stoploss,
-        "atr": cfg.atr,
         "mode": cfg.mode,
         "period": cfg.period,
         "log": log,
@@ -201,7 +199,6 @@ class Node:
         table.add_row(["结束时间", (f"{end_time}")])
         table.add_row(["数据量", data_len])
         table.add_row(["手续费率", self.cfg.commission])
-        table.add_row(["ATR", self.cfg.atr])
         table.add_row(["初始资金", format(self.cfg.cash, ".2f")])
         table.add_row(["冻结资金", format(self.cfg.cash - self.free, ".2f")])
         table.add_row(["可用资金", format(self.free, ".2f")])

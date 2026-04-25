@@ -478,7 +478,22 @@ python scripts/run_optimization_background.py \
 python scripts/check_optimization_status.py --run-id <run-id>
 ```
 
-### 4. Start the operations API
+### 4. Audit an optimization run and open the validation workbench
+
+```bash
+python scripts/run_optimization_audit.py --run-id <run-id> --no-block
+
+python scripts/run_optimization_workbench.py --run-id <run-id>
+```
+
+The workbench serves a dynamic UI over HTTP and reads:
+
+- `reports/optimizations/<run-id>/workbench.json`
+- `reports/optimizations/<run-id>/runs/*.json`
+
+Use it to inspect candidate rankings, parameter observability, compact trade details, and direct links to the raw per-run JSON reports.
+
+### 5. Start the operations API
 
 ```bash
 python -m trader --api
