@@ -51,6 +51,7 @@ def launch_background_run(
             stdout=log_file,
             stderr=subprocess.STDOUT,
             env=env,
+            start_new_session=True,
         )
 
     pid_path.write_text(str(proc.pid), encoding="utf-8")

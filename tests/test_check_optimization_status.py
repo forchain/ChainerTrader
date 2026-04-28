@@ -27,3 +27,57 @@ def test_check_optimization_status_treats_terminal_status_as_not_running(tmp_pat
     assert payload["process_running"] is False
     assert payload["runtime_status"]["stage"] == "finished"
     assert payload["log_tail"] == ["line 2"]
+
+
+def test_check_optimization_status_reports_dead_process_without_procfs(tmp_path: Path):
+    run_id = "run-dead-process"
+    run_dir = tmp_path / "tmp" / "optimization_runs" / run_id
+    run_dir.mkdir(parents=True)
+    log_path = run_dir / "runner.log"
+    log_path.write_text("", encoding="utf-8")
+    (run_dir / "meta.json").write_text(
+        json.dumps({"run_id": run_id, "pid": 999999, "log_path": str(log_path)}),
+        encoding="utf-8",
+    )
+
+    payload, exit_code = build_status(
+        tmp_path,
+        run_id,
+        tail=1,
+        process_exists=lambda pid: False,
+    )
+
+    assert exit_code == 0
+    assert payload["status"] == "exited"
+    assert payload["process_running"] is False
+    assert payload["status_path"] is None
+
+
+def test_check_optimization_status_uses_manifest_as_finished_when_status_missing(tmp_path: Path):
+    run_id = "run-finished-report"
+    run_dir = tmp_path / "tmp" / "optimization_runs" / run_id
+    run_dir.mkdir(parents=True)
+    report_dir = tmp_path / "reports" / "optimizations" / run_id
+    report_dir.mkdir(parents=True)
+    (report_dir / "manifest.json").write_text(
+        json.dumps({"optimization_run_id": run_id, "completed_samples": 1, "aborted": False}),
+        encoding="utf-8",
+    )
+    log_path = run_dir / "runner.log"
+    log_path.write_text("", encoding="utf-8")
+    (run_dir / "meta.json").write_text(
+        json.dumps({"run_id": run_id, "pid": 999999, "log_path": str(log_path)}),
+        encoding="utf-8",
+    )
+
+    payload, exit_code = build_status(
+        tmp_path,
+        run_id,
+        tail=1,
+        process_exists=lambda pid: False,
+    )
+
+    assert exit_code == 0
+    assert payload["status"] == "finished"
+    assert payload["process_running"] is False
+    assert payload["manifest_exists"] is True

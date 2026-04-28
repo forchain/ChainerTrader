@@ -30,11 +30,12 @@ def test_launch_background_run_creates_run_artifacts(tmp_path: Path):
 
     popen_calls = {}
 
-    def fake_popen(command, cwd, stdout, stderr, env):
+    def fake_popen(command, cwd, stdout, stderr, env, **kwargs):
         popen_calls["command"] = command
         popen_calls["cwd"] = cwd
         popen_calls["stderr"] = stderr
         popen_calls["env"] = env
+        popen_calls["kwargs"] = kwargs
         stdout.write("runner booted\n")
         stdout.flush()
         return DummyProcess()
@@ -45,6 +46,7 @@ def test_launch_background_run_creates_run_artifacts(tmp_path: Path):
     assert payload["pid"] == 4242
     assert payload["run_id"] != "adhoc-run"
     assert popen_calls["command"][-2:] == ["--stat", "321"]
+    assert popen_calls["kwargs"]["start_new_session"] is True
     assert Path(payload["log_path"]).exists()
     assert Path(payload["meta_path"]).exists()
 

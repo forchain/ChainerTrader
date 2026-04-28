@@ -749,6 +749,15 @@ class BaseStrategy(bt.Strategy):
                 stop_price = float(key_ref.low) - (sl_atr_mult * atr_val)
             else:
                 stop_price = float(key_ref.high) + (sl_atr_mult * atr_val)
+
+        suggested_stop = ctx.signal_metadata.get("suggested_stop_price")
+        if suggested_stop is not None:
+            try:
+                suggested_stop_val = float(suggested_stop)
+                if not (math.isnan(suggested_stop_val) or math.isinf(suggested_stop_val)):
+                    stop_price = suggested_stop_val
+            except (TypeError, ValueError):
+                pass
         ctx.initial_stop_price = stop_price
         ctx.stop_price = stop_price
 

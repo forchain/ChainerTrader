@@ -80,7 +80,7 @@ def _run_doc_probe(rows):
     return strategies[0]
 
 
-def test_signal_context_preserves_suggested_stop_price_without_overriding_framework_stop():
+def test_signal_context_suggested_stop_price_drives_framework_stop():
     rows = [dict(open=100, high=101, low=99, close=100) for _ in range(40)] + [
         dict(open=100, high=101, low=99, close=100),
         dict(open=100, high=101, low=99, close=100),
@@ -96,14 +96,14 @@ def test_signal_context_preserves_suggested_stop_price_without_overriding_framew
     first = closed[0]
 
     assert abs(float(first.entry_price) - 105.0) < 1e-9
-    assert abs(float(first.initial_stop_price) - 98.0) < 1e-9
+    assert abs(float(first.initial_stop_price) - 90.0) < 1e-9
     assert getattr(first, "signal_metadata", None) == {
         "suggested_stop_price": 90.0,
         "signal_bar_index": 42,
     }
 
 
-def test_framework_atr_stop_can_diverge_even_when_strategy_suggests_its_own_stop():
+def test_suggested_stop_price_overrides_atr_stop_when_strategy_provides_one():
     class _AtrCoexistProbe(MacdTripleDivergenceStrategy):
         params = (
             ("chainer_stoploss_atr_mult", 1.0),
@@ -155,8 +155,7 @@ def test_framework_atr_stop_can_diverge_even_when_strategy_suggests_its_own_stop
     closed = [t for t in st._trades_by_id.values() if t.entry_price is not None]  # noqa: SLF001
     assert len(closed) == 1
     trade = closed[0]
-    assert float(trade.initial_stop_price) != 90.0
-    assert float(trade.initial_stop_price) < 98.0
+    assert float(trade.initial_stop_price) == 90.0
     assert float(trade.signal_metadata["suggested_stop_price"]) == 90.0
 
 
@@ -222,7 +221,7 @@ def test_strategy_private_exit_can_close_trade_without_framework_breakeven_or_tp
     closed = [t for t in st._trades_by_id.values() if t.entry_price is not None]  # noqa: SLF001
     assert len(closed) == 1
     trade = closed[0]
-    assert float(trade.initial_stop_price) == 98.0
+    assert float(trade.initial_stop_price) == 80.0
     assert float(trade.signal_metadata["suggested_stop_price"]) == 80.0
     assert trade.exit_price is not None
     assert float(trade.exit_price) == 110.0
@@ -283,10 +282,10 @@ def test_framework_stop_remains_active_alongside_strategy_private_exit():
     closed = [t for t in st._trades_by_id.values() if t.entry_price is not None]  # noqa: SLF001
     assert len(closed) == 1
     trade = closed[0]
-    assert float(trade.initial_stop_price) == 98.0
+    assert float(trade.initial_stop_price) == 90.0
     assert float(trade.signal_metadata["suggested_stop_price"]) == 90.0
     assert trade.exit_price is not None
-    assert abs(float(trade.exit_price) - 98.0) < 1e-9
+    assert abs(float(trade.exit_price) - 90.0) < 1e-9
     assert trade.exit_reason_code == "framework_stop"
     assert trade.exit_reason_label == "框架止损退出"
     assert float(trade.stop_multiple_r) == -1.0

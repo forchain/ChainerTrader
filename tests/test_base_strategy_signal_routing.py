@@ -254,3 +254,95 @@ def test_both_mode_opens_short_entry_from_short_signal():
     trades = list(st._trades_by_id.values())  # noqa: SLF001
     assert len(trades) == 1
     assert trades[0].direction == "SHORT"
+
+
+def test_short_only_long_signal_exits_active_short_trade():
+    class _ShortOnlyExitProbeStrategy(BaseStrategy):
+        params = (
+            ("name", "SHORT_ONLY_EXIT_PROBE"),
+            ("chainer_mode", "SHORT_ONLY"),
+            ("chainer_need_confirm", False),
+            ("chainer_enable_breakeven", False),
+            ("chainer_risk_reward_ratio", 0.0),
+        )
+
+        def log_info(self, msg):
+            pass
+
+        def log_debug(self, msg):
+            pass
+
+        def get_long_signal(self) -> bool:
+            return self.bar_idx() == 4
+
+        def get_short_signal(self) -> bool:
+            return self.bar_idx() == 2
+
+    rows = [
+        dict(open=100, high=101, low=99, close=100),
+        dict(open=100, high=101, low=99, close=100),
+        dict(open=100, high=110, low=95, close=100),  # short signal, stop=110
+        dict(open=100, high=105, low=94, close=96),  # short entry fills
+        dict(open=96, high=104, low=93, close=95),  # long signal requests exit
+        dict(open=95, high=96, low=92, close=94),  # exit fills
+    ]
+
+    cerebro = bt.Cerebro()
+    cerebro.addstrategy(_ShortOnlyExitProbeStrategy)
+    data_feed = bt.feeds.PandasData(dataname=_build_df(rows), datetime="datetime")
+    cerebro.adddata(data_feed)
+    cerebro.broker.setcash(100000.0)
+    cerebro.broker.setcommission(commission=0.0)
+    st = cerebro.run()[0]
+
+    trades = list(st._trades_by_id.values())  # noqa: SLF001
+    assert len(trades) == 1
+    assert trades[0].direction == "SHORT"
+    assert trades[0].status == BaseStrategy.TradeStatus.CLOSED
+    assert trades[0].exit_reason_code == "signal_exit"
+
+
+def test_both_mode_reverse_signal_does_not_exit_active_trade():
+    class _BothModeReverseSignalProbeStrategy(BaseStrategy):
+        params = (
+            ("name", "BOTH_MODE_REVERSE_SIGNAL_PROBE"),
+            ("chainer_mode", "BOTH"),
+            ("chainer_need_confirm", False),
+            ("chainer_enable_breakeven", False),
+            ("chainer_risk_reward_ratio", 0.0),
+        )
+
+        def log_info(self, msg):
+            pass
+
+        def log_debug(self, msg):
+            pass
+
+        def get_long_signal(self) -> bool:
+            return self.bar_idx() == 2
+
+        def get_short_signal(self) -> bool:
+            return self.bar_idx() == 4
+
+    rows = [
+        dict(open=100, high=101, low=99, close=100),
+        dict(open=100, high=101, low=99, close=100),
+        dict(open=100, high=105, low=90, close=104),  # long signal, stop=90
+        dict(open=104, high=106, low=100, close=105),  # long entry fills
+        dict(open=105, high=107, low=100, close=103),  # short signal should not close long
+        dict(open=103, high=104, low=99, close=102),
+    ]
+
+    cerebro = bt.Cerebro()
+    cerebro.addstrategy(_BothModeReverseSignalProbeStrategy)
+    data_feed = bt.feeds.PandasData(dataname=_build_df(rows), datetime="datetime")
+    cerebro.adddata(data_feed)
+    cerebro.broker.setcash(100000.0)
+    cerebro.broker.setcommission(commission=0.0)
+    st = cerebro.run()[0]
+
+    trades = list(st._trades_by_id.values())  # noqa: SLF001
+    assert len(trades) == 1
+    assert trades[0].direction == "LONG"
+    assert trades[0].status == BaseStrategy.TradeStatus.ACTIVE
+    assert trades[0].exit_reason_code is None

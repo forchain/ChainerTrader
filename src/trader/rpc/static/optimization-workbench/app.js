@@ -250,6 +250,30 @@
     `;
   }
 
+  function formatStopRange(trade) {
+    const initialStop = trade.framework_initial_stop_price;
+    const finalStop = trade.framework_final_stop_price;
+    if (initialStop == null && finalStop == null) {
+      return "SL: -";
+    }
+    if (initialStop == null) {
+      return `SL: ${escapeHtml(String(finalStop))}`;
+    }
+    if (finalStop == null) {
+      return `SL: ${escapeHtml(String(initialStop))}`;
+    }
+
+    const initialNumber = Number(initialStop);
+    const finalNumber = Number(finalStop);
+    const sameStop = Number.isFinite(initialNumber) && Number.isFinite(finalNumber)
+      ? Math.abs(initialNumber - finalNumber) < 1e-9
+      : String(initialStop) === String(finalStop);
+    if (sameStop) {
+      return `SL: ${escapeHtml(String(initialStop))}`;
+    }
+    return `SL: ${escapeHtml(String(initialStop))} → ${escapeHtml(String(finalStop))}`;
+  }
+
   function renderTradeDetails(item) {
     const samples = item.samples || [];
     const activeSampleId = state.activeSampleId || (samples[0] || {}).sample_id;
@@ -285,7 +309,7 @@
                 <td><div class="stack"><span class="primary">${escapeHtml(String(trade.dir || ""))}</span><span class="secondary">#${escapeHtml(String(trade.id || ""))}</span></div></td>
                 <td><div class="stack"><span class="primary">进: ${escapeHtml(String(trade.entry || "-"))}</span><span class="secondary">信号: ${escapeHtml(String(trade.entry_signal_time || "-"))}</span><span class="primary">出: ${escapeHtml(String(trade.exit || "-"))}</span><span class="secondary">信号: ${escapeHtml(String(trade.exit_signal_time || "-"))}</span></div></td>
                 <td><div class="stack"><span class="primary">${escapeHtml(String(trade.entry_px || "-"))} → ${escapeHtml(String(trade.exit_px || "-"))}</span><span class="secondary">数量: ${escapeHtml(String(trade.qty ?? "-"))}</span><span class="secondary">PnL: ${escapeHtml(String(trade.pnl_pct ?? "-"))}%</span></div></td>
-                <td><div class="stack"><span class="primary">SL: ${escapeHtml(String(trade.framework_initial_stop_price ?? "-"))} → ${escapeHtml(String(trade.framework_final_stop_price ?? "-"))}</span><span class="secondary">TP: ${escapeHtml(String(trade.framework_tp_price ?? "-"))}</span></div></td>
+                <td><div class="stack"><span class="primary">${formatStopRange(trade)}</span><span class="secondary">TP: ${escapeHtml(String(trade.framework_tp_price ?? "-"))}</span></div></td>
                 <td><div class="stack"><span class="primary">${escapeHtml(String(trade.exit_reason_label || trade.exit_reason_code || "-"))}</span><span class="secondary">${escapeHtml(String(trade.exit_reason_detail || ""))}</span></div></td>
               </tr>
             `).join("")}
