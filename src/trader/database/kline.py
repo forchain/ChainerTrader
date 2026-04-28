@@ -6,6 +6,12 @@ from pymongo.synchronous.collection import Collection
 from trader.database.collection import get_name_for_klines
 from trader.utils.kline import PRIMARY_KEY, Kline, parse_kline
 
+try:
+    from pymongo.errors import BulkWriteError
+except ImportError:  # pragma: no cover - supports lightweight pymongo stubs in tests.
+    class BulkWriteError(Exception):
+        pass
+
 
 class KlineCol:
     def __init__(self, db, log: Logger):
@@ -49,27 +55,37 @@ class KlineCol:
         if len(klines) <= 0:
             return 0
         col = self.get_collection(name)
+        open_times = [kl.open_time for kl in klines]
+        existing = {
+            row[PRIMARY_KEY]
+            for row in col.find(
+                {PRIMARY_KEY: {"$in": open_times}},
+                {PRIMARY_KEY: 1},
+            )
+        }
+
+        seen = set(existing)
         insert_data = []
-        duplicate = True
-        total = 0
         for kl in klines:
-            kld = kl.to_dict()
-            if duplicate:
-                try:
-                    col.insert_one(kld)
-                except Exception:
-                    duplicate = True
-                else:
-                    duplicate = False
-                    total += 1
-                finally:
-                    continue
+            if kl.open_time in seen:
+                continue
+            seen.add(kl.open_time)
+            insert_data.append(kl.to_dict())
 
-            insert_data.append(kld)
+        if not insert_data:
+            self.log.debug("add klines, total:0")
+            return 0
 
-        if len(insert_data) > 0:
-            col.insert_many(insert_data)
-            total += len(insert_data)
+        try:
+            result = col.insert_many(insert_data, ordered=False)
+            total = len(result.inserted_ids)
+        except BulkWriteError as exc:
+            write_errors = exc.details.get("writeErrors", [])
+            unexpected_errors = [err for err in write_errors if err.get("code") != 11000]
+            if unexpected_errors:
+                raise
+            total = int(exc.details.get("nInserted", 0))
+
         self.log.debug(f"add klines, total:{total}")
         return total
 

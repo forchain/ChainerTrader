@@ -91,8 +91,8 @@ else
     fi
 fi
 
-# ── 5. Symlink Shared Directories (reports, .cache) ───────────────────────────
-SHARED_DIRS=("reports" ".cache")
+# ── 5. Symlink Shared Directories (reports, .cache, tmp) ──────────────────────
+SHARED_DIRS=("reports" ".cache" "tmp")
 for dir in "${SHARED_DIRS[@]}"; do
     TARGET="$MAIN_REPO/$dir"
     LINK="$REPO_ROOT/$dir"
