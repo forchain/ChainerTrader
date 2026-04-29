@@ -22,6 +22,10 @@
   {
     "type": "MAIL_LARK",
     "sender": "your_email@lark.com",
-    "password":"your_smtp_auth_code"
+    "password":"your_smtp_auth_code",
+    "recipient": [
+      "first_recipient@example.com",
+      "second_recipient@example.com"
+    ]
   }
 ]

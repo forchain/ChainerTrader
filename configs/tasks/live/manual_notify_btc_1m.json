@@ -1,0 +1,11 @@
+[
+  {
+    "task_type": "TRADER",
+    "symbol": "BTC-USDT",
+    "interval": "1m",
+    "strategy": "macd_triple_divergence",
+    "free": 10000,
+    "manual_start_position": 0,
+    "live_execution_mode": "manual_notify"
+  }
+]

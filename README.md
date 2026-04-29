@@ -393,6 +393,69 @@ If you want runtime notices, point `TRADER_NOTICE` or CLI configuration at:
 configs/notices/notice.json
 ```
 
+Mail notices support these provider types:
+
+- `MAIL_QQ`
+- `MAIL_GMAIL`
+- `MAIL_OUTLOOK`
+- `MAIL_163`
+- `MAIL_LARK`
+
+The `sender` field should match the SMTP provider type. Recipients can be a single address, a comma- or semicolon-separated string, or a JSON array:
+
+```json
+{
+  "type": "MAIL_LARK",
+  "sender": "your_email@lark.com",
+  "password": "your_smtp_auth_code",
+  "recipient": [
+    "first_recipient@example.com",
+    "second_recipient@example.com"
+  ]
+}
+```
+
+### Manual Live Trade Notifications
+
+Live trader tasks can run in `manual_notify` mode. In this mode ChainerTrader runs the configured strategy locally, updates only its local simulated cash and position state, and sends an email when the strategy emits an entry or exit signal. It does not place exchange orders, and it does not require exchange account balances to decide whether to send a manual notification.
+
+Example task config:
+
+```json
+[
+  {
+    "task_type": "TRADER",
+    "symbol": "BTC-USDT",
+    "interval": "1m",
+    "strategy": "macd_triple_divergence",
+    "free": 10000,
+    "manual_start_position": 0,
+    "live_execution_mode": "manual_notify"
+  }
+]
+```
+
+Run it with database, exchange market-data access, and notice configuration:
+
+```bash
+python -m trader \
+  --tasks configs/tasks/live/manual_notify_btc_1m.json \
+  --db mongodb://localhost:27017/ \
+  --exchange=BINANCE \
+  --notice configs/notices/notice.json
+```
+
+Manual notification emails include the market, strategy, action, side, suggested amount or quantity, signal price and time, local simulated cash and position, and trigger reason. Risk references such as stop loss or take profit are rendered as local strategy guidance only; the email is not an exchange fill confirmation and does not mean ChainerTrader submitted a stop-loss, take-profit, OCO, or other advanced order.
+
+To run the credential-gated real email smoke test, explicitly provide a notice config through `TRADER_MANUAL_NOTIFY_E2E_NOTICE`:
+
+```bash
+export TRADER_MANUAL_NOTIFY_E2E_NOTICE='[{"type":"MAIL_LARK","sender":"your_email@lark.com","password":"your_smtp_auth_code","recipient":["first_recipient@example.com"]}]'
+uv run pytest tests/test_manual_live_trade_notifications.py::test_real_email_smoke_requires_explicit_notice_configuration -q -s
+```
+
+Without `TRADER_MANUAL_NOTIFY_E2E_NOTICE`, the smoke test is skipped so normal test runs do not accidentally send real email.
+
 ## API Manual
 
 ChainerTrader exposes a web API and admin interface.

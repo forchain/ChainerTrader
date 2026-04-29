@@ -8,6 +8,12 @@ from trader.common.message import new_stat_msg
 from trader.database.manager import DatabaseManager
 from trader.exchange.binance.data import BinanceData
 from trader.exchange.binance.exchange import BinanceExchange
+from trader.notify.trade_notification import (
+    MANUAL_NOTIFY_MODE,
+    ManualTradeAccountState,
+    ManualTradeNotificationEvent,
+    normalize_live_execution_mode,
+)
 from trader.statistics.stat import TraderStat
 from trader.strategy.node import Node
 from trader.strategy.strategy import parse_strategies
@@ -31,6 +37,16 @@ class TraderTask(BaseTask):
         exchange: BinanceExchange,
     ):
         super().__init__(tcfg, cfg, log, db_manager, exchange)
+        self._manual_cash = self._manual_starting_cash()
+        self._manual_position = float(getattr(tcfg, "manual_start_position", 0.0) or 0.0)
+
+    def is_manual_notify_mode(self) -> bool:
+        return normalize_live_execution_mode(getattr(self.tcfg, "live_execution_mode", None)) == MANUAL_NOTIFY_MODE
+
+    def _manual_starting_cash(self) -> float:
+        if getattr(self.tcfg, "free", -1) >= 0:
+            return float(self.tcfg.free)
+        return float(self.cfg.cash)
 
     async def start(self, queue: Queue):
         if not self.tcfg.strategies:
@@ -55,11 +71,12 @@ class TraderTask(BaseTask):
 
         self.collection = self.db_manager.kline.get_collection(self.tcfg.symbol_interval.name())
 
-        commission = self.exchange.get_account_commission(self.tcfg.symbol_interval.symbol())
-        if commission:
-            self.cfg.commission = commission
-            self.log.info(f"set commission for trader task config:{self.cfg.commission}")
-            self.ts.commission = commission
+        if not self.is_manual_notify_mode():
+            commission = self.exchange.get_account_commission(self.tcfg.symbol_interval.symbol())
+            if commission:
+                self.cfg.commission = commission
+                self.log.info(f"set commission for trader task config:{self.cfg.commission}")
+                self.ts.commission = commission
 
         collection_name = self.tcfg.symbol_interval.name()
         while not self.quit.is_set():
@@ -84,7 +101,12 @@ class TraderTask(BaseTask):
                 continue
             latest_kline = kls_cache[len(kls_cache) - 1]
 
-            position = self.exchange.get_account_balance(self.tcfg.symbol_interval.sy.base)
+            if self.is_manual_notify_mode():
+                position = self._manual_position
+                free_cash = self._manual_cash
+            else:
+                position = self.exchange.get_account_balance(self.tcfg.symbol_interval.sy.base)
+                free_cash = self.tcfg.free
 
             node = Node(
                 self.tcfg.strategy_name(),
@@ -95,7 +117,7 @@ class TraderTask(BaseTask):
                 BinanceData(kls_cache),
                 position,
                 True,
-                self.tcfg.free,
+                free_cash,
             )
             ret = node.start()
             if ret is None:
@@ -103,11 +125,17 @@ class TraderTask(BaseTask):
 
             self.process_result(ret)
 
-            self.operate_exchange(ret, position)
+            manual_trade_notifications = []
+            if self.is_manual_notify_mode():
+                manual_trade_notifications = self.handle_manual_trade_notifications(ret)
+            else:
+                self.operate_exchange(ret, position)
 
+            stat = TraderStat(self.tcfg.strategy_name(), self.tcfg.symbol_interval.name(), self.ts)
+            stat.manual_trade_notifications = manual_trade_notifications
             await queue.put(
                 new_stat_msg(
-                    TraderStat(self.tcfg.strategy_name(), self.tcfg.symbol_interval.name(), self.ts),
+                    stat,
                     self.tcfg.id,
                 )
             )
@@ -124,7 +152,9 @@ class TraderTask(BaseTask):
     def process_result(self, ret: TraderResult):
         last_task = self.db_manager.task.get_task(self.tcfg.id)
         if last_task and last_task.tret:
-            ret.opts.append(last_task.tret.opts)
+            current_opts = list(ret.opts or [])
+            previous_opts = list(last_task.tret.opts or [])
+            ret.opts = previous_opts + current_opts
 
         self.ts.tret = ret
         self.db_manager.task.add_tasks([self.ts])
@@ -185,3 +215,87 @@ class TraderTask(BaseTask):
             return
 
         self.log.warning(f"Skip unsupported operateType: symbol={symbol.name()} operateType={op.otype}")
+
+    def handle_manual_trade_notifications(self, ret: TraderResult) -> list[ManualTradeNotificationEvent]:
+        if not ret.opts:
+            return []
+
+        op = ret.opts[-1]
+        if not isinstance(op, object) or not hasattr(op, "otype"):
+            return []
+
+        price = float(op.price or 0.0)
+        if price <= 0:
+            self.log.warning(f"Skip manual notification due to invalid price: operateType={getattr(op, 'otype', None)} price={op.price}")
+            return []
+
+        if op.otype in (OperateType.BUY, OperateType.LONG, OperateType.SHORT):
+            return [self._manual_entry_event(op, price)]
+        if op.otype in (OperateType.SELL, OperateType.CLOSE):
+            event = self._manual_exit_event(op, price)
+            return [event] if event is not None else []
+
+        self.log.warning(f"Skip unsupported manual notify operateType: {op.otype}")
+        return []
+
+    def _risk_reference(self, op, name: str):
+        if hasattr(op, name):
+            return getattr(op, name)
+        return None
+
+    def _manual_entry_event(self, op, price: float) -> ManualTradeNotificationEvent:
+        cash_before = float(self._manual_cash)
+        position_before = float(self._manual_position)
+        amount = max(cash_before, 0.0)
+        quantity = amount / price if price > 0 else 0.0
+        if op.otype == OperateType.SHORT:
+            position_after = position_before - quantity
+        else:
+            position_after = position_before + quantity
+        cash_after = cash_before - amount
+        self._manual_cash = cash_after
+        self._manual_position = position_after
+        return ManualTradeNotificationEvent(
+            market=self.tcfg.symbol_interval.symbol(),
+            strategy=self.tcfg.strategy_name(),
+            task_id=self.tcfg.id,
+            mode=MANUAL_NOTIFY_MODE,
+            action="ENTRY",
+            side=op.otype.name,
+            signal_time=int(op.dtime),
+            signal_price=price,
+            suggested_amount=amount,
+            suggested_quantity=quantity,
+            trigger_reason="signal_entry",
+            local_state=ManualTradeAccountState(cash_before, cash_after, position_before, position_after),
+            stop_loss=self._risk_reference(op, "stop_loss"),
+            take_profit=self._risk_reference(op, "take_profit"),
+            risk_reward_ratio=self._risk_reference(op, "risk_reward_ratio"),
+        )
+
+    def _manual_exit_event(self, op, price: float) -> ManualTradeNotificationEvent | None:
+        cash_before = float(self._manual_cash)
+        position_before = float(self._manual_position)
+        if position_before == 0.0:
+            self.log.info(f"Skip manual exit notification due to empty local position: operateType={op.otype}")
+            return None
+        quantity = abs(position_before)
+        amount = quantity * price
+        cash_after = cash_before + amount
+        position_after = 0.0
+        self._manual_cash = cash_after
+        self._manual_position = position_after
+        return ManualTradeNotificationEvent(
+            market=self.tcfg.symbol_interval.symbol(),
+            strategy=self.tcfg.strategy_name(),
+            task_id=self.tcfg.id,
+            mode=MANUAL_NOTIFY_MODE,
+            action="EXIT",
+            side=op.otype.name,
+            signal_time=int(op.dtime),
+            signal_price=price,
+            suggested_amount=amount,
+            suggested_quantity=quantity,
+            trigger_reason=getattr(op, "trigger_reason", "signal_exit"),
+            local_state=ManualTradeAccountState(cash_before, cash_after, position_before, position_after),
+        )

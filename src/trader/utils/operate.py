@@ -24,6 +24,8 @@ def parse_operate_type(name):
         return OperateType.LONG
     elif name == OperateType.SHORT.name:
         return OperateType.SHORT
+    elif name == OperateType.CLOSE.name:
+        return OperateType.CLOSE
 
     return OperateType.UNKNOWN
 
