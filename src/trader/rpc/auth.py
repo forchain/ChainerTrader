@@ -25,6 +25,11 @@ class BasicAuthMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
             return response
 
+        # Local browser debugging should not repeatedly prompt for Basic Auth.
+        if self._is_local_request(request):
+            response = await call_next(request)
+            return response
+
         # Check if the request has valid basic auth credentials
         try:
             credentials = await self._get_credentials(request)
@@ -60,6 +65,13 @@ class BasicAuthMiddleware(BaseHTTPMiddleware):
     def _verify_credentials(self, credentials: HTTPBasicCredentials) -> bool:
         """Verify the provided credentials against configured values"""
         return credentials.username == self.config.auth_username and credentials.password == self.config.auth_password
+
+    def _is_local_request(self, request: Request) -> bool:
+        client = request.client
+        if client is None or client.host is None:
+            return False
+        host = client.host.lower()
+        return host == "localhost" or host == "::1" or host.startswith("127.")
 
     def _create_auth_response(self) -> Response:
         """Create a 401 response with Basic auth challenge"""

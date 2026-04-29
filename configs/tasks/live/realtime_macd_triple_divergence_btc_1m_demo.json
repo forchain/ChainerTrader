@@ -1,0 +1,20 @@
+[
+  {
+    "task_type": "TRADER",
+    "symbol": "BTC-USDT",
+    "interval": "1m",
+    "strategy": "macd_triple_divergence",
+    "free": 10000,
+    "manual_start_position": 0,
+    "live_execution_mode": "manual_notify",
+    "live_data_mode": "realtime",
+    "strategy_params": {
+      "chainer_mode": "BOTH",
+      "chainer_stoploss_atr_mult": 1,
+      "chainer_enable_breakeven": true,
+      "chainer_risk_reward_ratio": 0,
+      "chainer_need_confirm": true,
+      "macd_stop_enabled": true
+    }
+  }
+]

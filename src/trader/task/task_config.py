@@ -55,6 +55,7 @@ class TaskConfig:
         dataset_ref=None,
         live_execution_mode: str = "auto_trade",
         manual_start_position: float = 0.0,
+        live_data_mode: str = "polling",
     ):
         self.ttype = ttype
         self.csv = csv
@@ -72,6 +73,7 @@ class TaskConfig:
         self.dataset_ref = dataset_ref
         self.live_execution_mode = str(live_execution_mode or "auto_trade").strip().lower()
         self.manual_start_position = float(manual_start_position or 0.0)
+        self.live_data_mode = str(live_data_mode or "polling").strip().lower()
 
         self.id = id
 
@@ -111,6 +113,7 @@ class TaskConfig:
             "optimization_run_id": self.optimization_run_id,
             "live_execution_mode": self.live_execution_mode,
             "manual_start_position": self.manual_start_position,
+            "live_data_mode": self.live_data_mode,
         }
 
     def strategy_name(self):
@@ -180,6 +183,7 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
 
         live_execution_mode = str(tcd.get("live_execution_mode", "auto_trade")).strip().lower()
         manual_start_position = float(tcd.get("manual_start_position", 0.0) or 0.0)
+        live_data_mode = str(tcd.get("live_data_mode", "polling")).strip().lower()
 
         csv = None
         if "csv" in tcd:
@@ -218,7 +222,7 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
             auto_download = tcd.get("auto_download", True)
             parameter_sets = expand_parameter_space(tcd)
         else:
-            parameter_sets = [{}]
+            parameter_sets = [dict(tcd.get("strategy_params", {}) or {})]
 
         for si in sis.symbol_intervals:
             if (
@@ -242,6 +246,7 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
                     strategy_params={},
                     live_execution_mode=live_execution_mode,
                     manual_start_position=manual_start_position,
+                    live_data_mode=live_data_mode,
                 )
                 ret.append(tc)
                 last_task_id = tc.id
@@ -266,6 +271,7 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
                             optimization_run_id=optimization_run_id if parameter_search_enabled else None,
                             live_execution_mode=live_execution_mode,
                             manual_start_position=manual_start_position,
+                            live_data_mode=live_data_mode,
                         )
                         ret.append(tc)
                         last_task_id = tc.id
@@ -286,6 +292,7 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
                         strategy_params={},
                         live_execution_mode=live_execution_mode,
                         manual_start_position=manual_start_position,
+                        live_data_mode=live_data_mode,
                     )
                     ret.append(tc)
                     last_task_id = tc.id

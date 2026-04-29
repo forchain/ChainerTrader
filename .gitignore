@@ -139,7 +139,10 @@ dmypy.json
 .idea
 .vscode
 tests/output
-reports/
+reports
 .sw*
 .worktrees/
 tmp
+
+# Local notification credentials
+configs/notices/notice.json

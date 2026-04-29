@@ -194,3 +194,104 @@ footer {
     -webkit-text-fill-color: transparent;
     background-clip: text;
 }
+
+.live-monitor {
+    min-width: 0;
+}
+
+.live-panel {
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    background: #fff;
+    padding: 1rem;
+}
+
+.live-panel-title {
+    font-size: 0.875rem;
+    font-weight: 700;
+    margin-bottom: 0.75rem;
+    color: #495057;
+}
+
+.live-chart {
+    width: 100%;
+    min-height: 520px;
+}
+
+.live-strategy-list {
+    max-height: 520px;
+    overflow: auto;
+}
+
+.diagnostic-events {
+    max-height: 520px;
+    overflow: auto;
+}
+
+.diagnostic-event {
+    border-bottom: 1px solid #edf2f7;
+    padding: 0.625rem 0;
+}
+
+.diagnostic-event-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.diagnostic-event pre {
+    margin: 0.25rem 0 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 0.75rem;
+    line-height: 1.35;
+    color: #4b5563;
+}
+
+.strategy-parameters {
+    border-top: 1px solid #edf2f7;
+    padding-top: 0.75rem;
+}
+
+.strategy-parameter-summary {
+    font-size: 0.75rem;
+    line-height: 1.4;
+    color: #4b5563;
+    word-break: break-word;
+}
+
+.strategy-parameter-grid {
+    display: grid;
+    gap: 0.35rem;
+    margin-top: 0.5rem;
+    font-size: 0.75rem;
+}
+
+.strategy-parameter-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.5rem;
+}
+
+.strategy-parameter-key {
+    color: #6b7280;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.strategy-parameter-value {
+    color: #111827;
+    font-weight: 600;
+    text-align: right;
+    max-width: 8rem;
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 992px) {
+    .live-chart {
+        min-height: 420px;
+    }
+}

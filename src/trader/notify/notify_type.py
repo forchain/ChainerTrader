@@ -72,7 +72,8 @@ class NotifyMail:
         }
 
     def send(self, content: str, title: str = "Trader"):
-        msg = MIMEText(content, "plain", "utf-8")
+        subtype = "html" if is_html_content(content) else "plain"
+        msg = MIMEText(content, subtype, "utf-8")
         msg["Subject"] = title
         msg["From"] = self.sender
         msg["To"] = self.recipient
@@ -103,6 +104,11 @@ def normalize_recipients(value) -> list[str]:
     else:
         parts = []
     return [part.strip() for part in parts if part and part.strip()]
+
+
+def is_html_content(content: str) -> bool:
+    stripped = str(content or "").lstrip().lower()
+    return stripped.startswith("<!doctype html") or stripped.startswith("<html")
 
 
 def default_notify_mail_template():

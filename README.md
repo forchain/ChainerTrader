@@ -288,7 +288,7 @@ Representative config locations:
 - `configs/tasks/backtests/multi_backtrader.json`
 - `configs/tasks/downloads/update_klines.json`
 - `configs/tasks/optimizations/macd_triple_divergence_engine_optimization.json`
-- `configs/notices/notice.json`
+- `configs/notices/notice.sample.json`
 
 ## Deployment
 
@@ -387,11 +387,19 @@ python -m trader \
 
 ### Notice Configuration
 
-If you want runtime notices, point `TRADER_NOTICE` or CLI configuration at:
+If you want runtime notices, copy the sample file and fill in your local SMTP credentials:
+
+```bash
+cp configs/notices/notice.sample.json configs/notices/notice.json
+```
+
+Then point `TRADER_NOTICE` or CLI configuration at:
 
 ```text
 configs/notices/notice.json
 ```
+
+`configs/notices/notice.json` is ignored by Git because it contains local secrets. Commit only `configs/notices/notice.sample.json`.
 
 Mail notices support these provider types:
 
@@ -430,7 +438,8 @@ Example task config:
     "strategy": "macd_triple_divergence",
     "free": 10000,
     "manual_start_position": 0,
-    "live_execution_mode": "manual_notify"
+    "live_execution_mode": "manual_notify",
+    "live_data_mode": "realtime"
   }
 ]
 ```
@@ -439,13 +448,44 @@ Run it with database, exchange market-data access, and notice configuration:
 
 ```bash
 python -m trader \
-  --tasks configs/tasks/live/manual_notify_btc_1m.json \
+  --tasks configs/tasks/live/realtime_macd_triple_divergence_btc_1m_demo.json \
   --db mongodb://localhost:27017/ \
   --exchange=BINANCE \
   --notice configs/notices/notice.json
 ```
 
-Manual notification emails include the market, strategy, action, side, suggested amount or quantity, signal price and time, local simulated cash and position, and trigger reason. Risk references such as stop loss or take profit are rendered as local strategy guidance only; the email is not an exchange fill confirmation and does not mean ChainerTrader submitted a stop-loss, take-profit, OCO, or other advanced order.
+When `live_data_mode` is `realtime`, the live task first backfills the latest missing closed candles from Binance REST with a 500-candle startup cap, runs the strategy once, and then consumes Binance Kline WebSocket updates. Open candles are pushed to the dashboard for drawing only. Closed candles are persisted, run through the strategy, and may trigger `manual_notify` emails.
+
+Manual notification emails include the market, interval, strategy id, strategy name, action, side, suggested amount or quantity, signal price and time, local simulated cash and position, trigger reason, and dashboard correlation fields such as signal event id when available. Risk references such as stop loss, take profit, breakeven stop movement, or risk/reward are rendered as local strategy guidance only; the email is not an exchange fill confirmation and does not mean ChainerTrader submitted a stop-loss, take-profit, OCO, or other advanced order.
+
+### Realtime Live Dashboard
+
+Start ChainerTrader in Web mode with the realtime demo task:
+
+```bash
+python -m trader \
+  --api 127.0.0.1:8000 \
+  --tasks configs/tasks/live/realtime_macd_triple_divergence_btc_1m_demo.json \
+  --db mongodb://localhost:27017/ \
+  --exchange=BINANCE \
+  --notice configs/notices/notice.json
+```
+
+Open:
+
+```text
+http://127.0.0.1:8000/admin/live
+```
+
+The monitor loads each running live strategy in a switchable workspace instead of tiling every chart. The active chart loads the latest 500 closed candles, then applies realtime Kline updates through TradingView Lightweight Charts. Use the layer switches to inspect signal markers, stop-loss references, take-profit references, breakeven stop movements, and MACD divergence diagnostics.
+
+Manual validation checklist for the BTCUSDT 1m demo:
+
+- Confirm the page lists the BTCUSDT 1m `macd_triple_divergence` task in `manual_notify` mode.
+- Confirm the chart initially loads up to 500 candles and then updates the active candle before it closes.
+- Confirm only closed 1-minute candles create strategy execution events in the diagnostics panel.
+- When a signal appears, compare the dashboard signal event id, candle time, signal price, stop-loss line, take-profit line, and breakeven fields with the notification email.
+- Confirm the email states that the event is a local strategy recommendation and not an exchange order or fill confirmation.
 
 To run the credential-gated real email smoke test, explicitly provide a notice config through `TRADER_MANUAL_NOTIFY_E2E_NOTICE`:
 
@@ -455,6 +495,14 @@ uv run pytest tests/test_manual_live_trade_notifications.py::test_real_email_smo
 ```
 
 Without `TRADER_MANUAL_NOTIFY_E2E_NOTICE`, the smoke test is skipped so normal test runs do not accidentally send real email.
+
+To run the credential-gated Binance WebSocket smoke test, explicitly opt in with:
+
+```bash
+TRADER_BINANCE_WS_SMOKE=1 uv run pytest tests/test_realtime_smoke_paths.py::test_binance_kline_websocket_smoke_receives_one_message -q -s
+```
+
+Without `TRADER_BINANCE_WS_SMOKE=1`, the WebSocket smoke test is skipped so normal test runs do not depend on external network availability.
 
 ## API Manual
 

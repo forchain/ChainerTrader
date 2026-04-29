@@ -9,7 +9,7 @@ def test_check_repo_layout_accepts_configs_and_wrapper_paths():
     violations = check_paths(
         [
             Path("configs/tasks/backtests/backtest_test.json"),
-            Path("configs/notices/notice.json"),
+            Path("configs/notices/notice.sample.json"),
             Path("scripts/ops/setup_worktree.sh"),
             Path("scripts/wrappers/run_top_volume_signal_scanner.py"),
             Path("src/trader/tools/repo_layout.py"),

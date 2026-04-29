@@ -160,7 +160,9 @@ def test_process_result_preserves_current_operation_as_latest_after_history_merg
 def test_manual_notification_event_includes_risk_references_without_advanced_order_claims():
     event = ManualTradeNotificationEvent(
         market="BTCUSDT",
+        interval="1m",
         strategy="risk_strategy",
+        strategy_id="7",
         task_id=9,
         mode="manual_notify",
         action="ENTRY",
@@ -174,19 +176,31 @@ def test_manual_notification_event_includes_risk_references_without_advanced_ord
         stop_loss=92.0,
         take_profit=116.0,
         risk_reward_ratio=2.0,
+        signal_event_id="macd-triple-1",
+        breakeven_new_stop=100.0,
+        breakeven_step=1,
     )
 
     content = render_manual_trade_email(event)
 
-    assert "市场: BTCUSDT" in content
-    assert "模式: manual_notify" in content
-    assert "操作: 进场" in content
-    assert "方向: LONG" in content
-    assert "建议金额: 1000.000000" in content
-    assert "建议数量: 10.00000000" in content
-    assert "止损参考: 92.000000" in content
-    assert "止盈参考: 116.000000" in content
-    assert "风险收益比: 2.000000" in content
+    assert "<html" in content
+    assert "手动实盘操作建议" in content
+    assert "BTCUSDT" in content
+    assert "1m" in content
+    assert "manual_notify" in content
+    assert "策略ID" in content
+    assert "macd-triple-1" in content
+    assert "操作建议" in content
+    assert "进场" in content
+    assert "LONG" in content
+    assert "1000.000000" in content
+    assert "10.00000000" in content
+    assert "风险参考" in content
+    assert "92.000000" in content
+    assert "116.000000" in content
+    assert "100.000000" in content
+    assert "保本触发 step" in content
+    assert "2.000000" in content
     assert "不是交易所成交确认" in content
     assert "已经提交交易所止损" not in content
     assert "OCO" not in content
@@ -216,10 +230,79 @@ def test_notify_manager_sends_manual_trade_notification_events():
 
     assert len(notice.sent) == 1
     title, content = notice.sent[0]
-    assert title == "manual trade notification"
-    assert "市场: ETHUSDT" in content
-    assert "操作: 出场" in content
-    assert "触发原因: stop_loss" in content
+    assert title == "[手动实盘] ETHUSDT 出场 SELL @ 2000.000000"
+    assert "ETHUSDT" in content
+    assert "出场" in content
+    assert "stop_loss" in content
+
+
+def test_notify_manager_manual_notification_smoke_reports_delivery_status():
+    manager = NotifyManager(Config(), Logger(Config()))
+    notice = RecordingNotice()
+    manager.notice = [notice]
+    event = build_manual_notify_smoke_event(ManualNotifySmokeKline(open_time=1714281600, close=123.45))
+
+    sent = manager.send_manual_trade_notification(event)
+
+    assert sent == [{"notice_type": "MAIL_TEST", "recipient": None, "ok": True, "error": None}]
+    assert len(notice.sent) == 1
+
+
+def test_notify_manager_does_not_fallback_to_raw_operate_when_manual_notifications_are_empty():
+    notice = RecordingNotice()
+    manager = NotifyManager(Config(), Logger(Config()))
+    manager.notice = [notice]
+    op = Operate(OperateType.CLOSE, 1714281660, 2000.0)
+    msg = Message(
+        MessageType.STAT,
+        SimpleNamespace(
+            manual_trade_notifications=[],
+            tret=SimpleNamespace(opts=[op]),
+        ),
+    )
+
+    manager.handler(msg)
+
+    assert notice.sent == []
+
+
+def test_notify_manager_legacy_operate_notification_is_html_not_raw_dict():
+    notice = RecordingNotice()
+    manager = NotifyManager(Config(), Logger(Config()))
+    manager.notice = [notice]
+    op = Operate(OperateType.CLOSE, 1714281660, 2000.0)
+    msg = Message(MessageType.STAT, SimpleNamespace(tret=SimpleNamespace(opts=[op])))
+
+    manager.handler(msg)
+
+    assert len(notice.sent) == 1
+    title, content = notice.sent[0]
+    assert title == "[策略信号] CLOSE @ 2000.000000"
+    assert "<html" in content
+    assert "策略信号提醒" in content
+    assert "{'type': 'CLOSE'" not in content
+
+
+def test_manual_task_notification_maps_dashboard_correlation_fields_from_operation():
+    task = _manual_task(free=1000.0)
+    op = Operate(OperateType.BUY, 1714281600, 100.0)
+    op.signal_event_id = "macd-triple-1"
+    op.stop_loss = 95.0
+    op.take_profit = 110.0
+    op.breakeven_new_stop = 100.0
+    op.breakeven_step = 1
+
+    events = task.handle_manual_trade_notifications(_result_with_operation(op))
+
+    assert len(events) == 1
+    event = events[0]
+    assert event.strategy_id == str(task.tcfg.id)
+    assert event.interval == "1m"
+    assert event.signal_event_id == "macd-triple-1"
+    assert event.stop_loss == 95.0
+    assert event.take_profit == 110.0
+    assert event.breakeven_new_stop == 100.0
+    assert event.breakeven_step == 1
 
 
 def test_notice_config_accepts_multiple_recipients():
@@ -296,6 +379,40 @@ def test_notify_mail_sends_to_multiple_recipients(monkeypatch):
     assert err is None
     assert sent["sendmail"][1] == ["first@example.com", "second@example.com"]
     assert "To: first@example.com,second@example.com" in sent["sendmail"][2]
+
+
+def test_notify_mail_sends_html_content_as_html_mime(monkeypatch):
+    from trader.notify.notify_type import NotifyMail, NotifyType
+
+    sent = {}
+
+    class FakeSMTP:
+        def __init__(self, server, port):
+            pass
+
+        def login(self, sender, password):
+            pass
+
+        def sendmail(self, sender, recipients, message):
+            sent["message"] = message
+
+        def quit(self):
+            pass
+
+    monkeypatch.setattr("smtplib.SMTP_SSL", FakeSMTP)
+    notice = NotifyMail(
+        NotifyType.MAIL_LARK,
+        "smtp.larksuite.com",
+        465,
+        sender="sender@example.com",
+        password="smtp-auth-code",
+        recipients=["first@example.com"],
+    )
+
+    err = notice.send("<!doctype html><html><body>content</body></html>", "subject")
+
+    assert err is None
+    assert "Content-Type: text/html" in sent["message"]
 
 
 def test_real_email_smoke_event_is_generated_by_minimal_one_minute_strategy():

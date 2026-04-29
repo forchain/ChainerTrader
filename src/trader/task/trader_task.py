@@ -1,3 +1,4 @@
+import asyncio
 from asyncio import Queue
 from datetime import datetime
 
@@ -8,6 +9,9 @@ from trader.common.message import new_stat_msg
 from trader.database.manager import DatabaseManager
 from trader.exchange.binance.data import BinanceData
 from trader.exchange.binance.exchange import BinanceExchange
+from trader.live.monitor import GLOBAL_LIVE_EVENT_BUS
+from trader.live.runtime import RealtimeLiveStrategyRuntime
+from trader.live.stream import GLOBAL_MARKET_STREAM_HUB, MarketStreamKey
 from trader.notify.trade_notification import (
     MANUAL_NOTIFY_MODE,
     ManualTradeAccountState,
@@ -70,6 +74,10 @@ class TraderTask(BaseTask):
         #    self.exchange.spot_ws_client.klines(symbol=self.symbol_interval.symbol, interval=self.symbol_interval.interval.value, limit=1)
 
         self.collection = self.db_manager.kline.get_collection(self.tcfg.symbol_interval.name())
+
+        if getattr(self.tcfg, "live_data_mode", "polling") == "realtime":
+            await self.start_realtime(queue, strategy)
+            return
 
         if not self.is_manual_notify_mode():
             commission = self.exchange.get_account_commission(self.tcfg.symbol_interval.symbol())
@@ -148,6 +156,68 @@ class TraderTask(BaseTask):
                     dist = next_time - int(datetime.now().timestamp())
                     dist += 1
                     await sleep_loop(self.log, dist, self.quit, "next K-line...")
+
+    async def start_realtime(self, queue: Queue, strategy):
+        if not self.is_manual_notify_mode():
+            self.log.error("realtime live runtime currently supports manual_notify mode only")
+            return
+
+        async def publish_event(event):
+            await GLOBAL_LIVE_EVENT_BUS.publish(event)
+
+        def run_strategy(candles):
+            position = self._manual_position
+            free_cash = self._manual_cash
+            node = Node(
+                self.tcfg.strategy_name(),
+                strategy,
+                self.tcfg.symbol_interval,
+                self.cfg,
+                self.log,
+                BinanceData(candles),
+                position,
+                True,
+                free_cash,
+                strategy_params=getattr(self.tcfg, "strategy_params", None),
+            )
+            return node.start()
+
+        def handle_notifications(ret):
+            self.process_result(ret)
+            return self.handle_manual_trade_notifications(ret)
+
+        runtime = RealtimeLiveStrategyRuntime(
+            self.tcfg,
+            self.cfg,
+            self.db_manager,
+            self.exchange,
+            self.log,
+            strategy_runner=run_strategy,
+            notification_handler=handle_notifications,
+            event_publisher=publish_event,
+        )
+        startup_result = await runtime.startup()
+        if startup_result.strategy_result is not None:
+            stat = TraderStat(self.tcfg.strategy_name(), self.tcfg.symbol_interval.name(), self.ts)
+            stat.manual_trade_notifications = startup_result.manual_notifications
+            await queue.put(new_stat_msg(stat, self.tcfg.id))
+
+        key = MarketStreamKey(self.exchange.name(), self.tcfg.symbol_interval.symbol(), self.tcfg.symbol_interval.interval.value)
+        subscription = await GLOBAL_MARKET_STREAM_HUB.subscribe(key)
+        try:
+            while not self.quit.is_set():
+                try:
+                    update = await asyncio.wait_for(subscription.get(), timeout=1.0)
+                except asyncio.TimeoutError:
+                    continue
+                step = await runtime.handle_kline_update(update)
+                if step.strategy_result is None:
+                    continue
+                stat = TraderStat(self.tcfg.strategy_name(), self.tcfg.symbol_interval.name(), self.ts)
+                stat.manual_trade_notifications = step.manual_notifications
+                await queue.put(new_stat_msg(stat, self.tcfg.id))
+        finally:
+            await subscription.unsubscribe()
 
     def process_result(self, ret: TraderResult):
         last_task = self.db_manager.task.get_task(self.tcfg.id)
@@ -243,6 +313,16 @@ class TraderTask(BaseTask):
             return getattr(op, name)
         return None
 
+    def _manual_event_common_kwargs(self, op) -> dict:
+        return {
+            "interval": self.tcfg.symbol_interval.interval.value,
+            "strategy_id": str(self.tcfg.id),
+            "signal_event_id": self._risk_reference(op, "signal_event_id"),
+            "breakeven_new_stop": self._risk_reference(op, "breakeven_new_stop"),
+            "breakeven_step": self._risk_reference(op, "breakeven_step"),
+            "divergence_metadata": self._risk_reference(op, "divergence_metadata") or self._risk_reference(op, "signal_metadata"),
+        }
+
     def _manual_entry_event(self, op, price: float) -> ManualTradeNotificationEvent:
         cash_before = float(self._manual_cash)
         position_before = float(self._manual_position)
@@ -271,6 +351,7 @@ class TraderTask(BaseTask):
             stop_loss=self._risk_reference(op, "stop_loss"),
             take_profit=self._risk_reference(op, "take_profit"),
             risk_reward_ratio=self._risk_reference(op, "risk_reward_ratio"),
+            **self._manual_event_common_kwargs(op),
         )
 
     def _manual_exit_event(self, op, price: float) -> ManualTradeNotificationEvent | None:
@@ -298,4 +379,8 @@ class TraderTask(BaseTask):
             suggested_quantity=quantity,
             trigger_reason=getattr(op, "trigger_reason", "signal_exit"),
             local_state=ManualTradeAccountState(cash_before, cash_after, position_before, position_after),
+            stop_loss=self._risk_reference(op, "stop_loss"),
+            take_profit=self._risk_reference(op, "take_profit"),
+            risk_reward_ratio=self._risk_reference(op, "risk_reward_ratio"),
+            **self._manual_event_common_kwargs(op),
         )

@@ -10,7 +10,9 @@ from fastapi_auto_router import AutoRouter
 
 from trader.app.app import version
 from trader.common import path
+from trader.common.common import NAME
 from trader.common.config import Config
+from trader.live.monitor import GLOBAL_LIVE_EVENT_BUS
 from trader.rpc.auth import BasicAuthMiddleware
 from trader.rpc.models import get_accounts_info, get_klines_info, get_logs_info, get_taskinfo
 from trader.rpc.rpc_app import RpcApp
@@ -20,6 +22,7 @@ from trader.rpc.rpc_app import RpcApp
 async def lifespan(rpc: FastAPI):
     app = RpcApp(rpc.state.cfg)
     rpc.state.app = app
+    rpc.state.live_event_bus = GLOBAL_LIVE_EVENT_BUS
 
     app.start()
     yield
@@ -86,6 +89,12 @@ async def read_root(request: Request):
     return RedirectResponse(url="/admin")
 
 
+@rpc.get("/name")
+async def read_name(request: Request):
+    app = getattr(request.app.state, "app", None)
+    return {"name": app.name() if app is not None else NAME}
+
+
 @rpc.get("/admin", response_class=HTMLResponse)
 async def admin_dashboard(request: Request):
     return templates.TemplateResponse(
@@ -107,6 +116,11 @@ async def admin_tasks_page(request: Request):
 @rpc.get("/admin/klines", response_class=HTMLResponse)
 async def admin_klines_page(request: Request):
     return templates.TemplateResponse("klines.html", {"request": request, "klines_info": get_klines_info(request.app.state.app)})
+
+
+@rpc.get("/admin/live", response_class=HTMLResponse)
+async def admin_live_page(request: Request):
+    return templates.TemplateResponse("live.html", {"request": request})
 
 
 @rpc.get("/admin/logs", response_class=HTMLResponse)

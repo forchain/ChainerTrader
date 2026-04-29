@@ -75,8 +75,12 @@ class BaseTask:
             config_dict["free"] = self.tcfg.free
         if getattr(self.tcfg, "live_execution_mode", "auto_trade") != "auto_trade":
             config_dict["live_execution_mode"] = self.tcfg.live_execution_mode
+        if getattr(self.tcfg, "live_data_mode", "polling") != "polling":
+            config_dict["live_data_mode"] = self.tcfg.live_data_mode
         if getattr(self.tcfg, "manual_start_position", 0.0):
             config_dict["manual_start_position"] = self.tcfg.manual_start_position
+        if getattr(self.tcfg, "strategy_params", None):
+            config_dict["strategy_params"] = self.tcfg.strategy_params
 
         return json.dumps([config_dict], indent=2, ensure_ascii=False)
 
