@@ -376,13 +376,39 @@
     return `事件 #${state.eventSequence} · ${type}`;
   }
 
+  function renderStructuredValue(value, label = "payload") {
+    if (value == null || typeof value !== "object") {
+      return `<span>${escapeHtml(value)}</span>`;
+    }
+    const entries = Array.isArray(value) ? value.map((item, index) => [String(index), item]) : Object.entries(value);
+    const isLarge = JSON.stringify(value).length > 240 || entries.length > 5;
+    const rows = entries.map(([key, item]) => {
+      const rendered = item != null && typeof item === "object"
+        ? renderStructuredValue(item, key)
+        : `<span class="diagnostic-json-scalar">${escapeHtml(item)}</span>`;
+      return `<div class="diagnostic-json-row">
+        <span class="diagnostic-json-key">${escapeHtml(key)}</span>
+        <div class="diagnostic-json-value">${rendered}</div>
+      </div>`;
+    }).join("");
+    const raw = `<pre>${escapeHtml(JSON.stringify(value, null, 2))}</pre>`;
+    return `<details class="diagnostic-json-details" ${isLarge ? "" : "open"}>
+      <summary>${escapeHtml(label)}</summary>
+      <div class="diagnostic-json-tree">${rows}</div>
+      <details class="diagnostic-json-raw">
+        <summary>raw JSON</summary>
+        ${raw}
+      </details>
+    </details>`;
+  }
+
   function appendDiagnostic(type, payload) {
     const box = el("diagnostic-events");
     const row = document.createElement("div");
     row.className = "diagnostic-event";
     row.innerHTML = `<div class="diagnostic-event-title">
       <span class="fw-semibold">${escapeHtml(formatEventTitle(type))}</span>
-    </div><pre>${escapeHtml(JSON.stringify(payload, null, 2))}</pre>`;
+    </div>${renderStructuredValue(payload, type)}`;
     box.prepend(row);
     while (box.children.length > 40) box.removeChild(box.lastChild);
   }

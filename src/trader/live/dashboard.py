@@ -93,6 +93,18 @@ def notification_event(strategy_id: int, event_time: int, notifications: list[An
     )
 
 
+def runtime_status_event(strategy_id: int, event_time: int, status: dict[str, Any]) -> DashboardEvent:
+    return DashboardEvent(
+        event_type="runtime_status",
+        strategy_id=strategy_id,
+        event_time=int(event_time),
+        payload={
+            **status,
+            "event_time_text": event_time_text(event_time),
+        },
+    )
+
+
 def ensure_signal_tracking(strategy_id: int, op, signal_number: int = 1) -> tuple[str, int]:
     side = op.otype.name if getattr(op, "otype", None) else "UNKNOWN"
     existing_number = getattr(op, "signal_number", None)
@@ -195,6 +207,7 @@ def build_risk_overlay_events(strategy_id: int, op) -> list[DashboardEvent]:
                 payload={
                     "time_text": event_time_text(event_time),
                     "overlay_type": "breakeven_move",
+                    "price": float(new_stop),
                     "old_stop": float(old_stop),
                     "new_stop": float(new_stop),
                     "step": getattr(op, "breakeven_step", None),

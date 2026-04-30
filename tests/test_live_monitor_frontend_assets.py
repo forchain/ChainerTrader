@@ -85,3 +85,14 @@ def test_live_monitor_javascript_uses_local_chart_time_and_numbered_events():
     assert "normalizeCandleForChart" in script
     assert "normalizeMarkerForChart" in script
     assert "Date.parse(time)" in script
+
+
+def test_live_monitor_javascript_formats_diagnostics_with_collapsible_json():
+    script = (ROOT / "src/trader/rpc/static/js/live-monitor.js").read_text(encoding="utf-8")
+    style = (ROOT / "src/trader/rpc/static/css/style.css").read_text(encoding="utf-8")
+
+    assert "renderStructuredValue" in script
+    assert "diagnostic-json-details" in script
+    assert "JSON.stringify(value, null, 2)" in script
+    assert "<details" in script
+    assert ".diagnostic-json-details" in style

@@ -249,6 +249,49 @@ footer {
     color: #4b5563;
 }
 
+.diagnostic-json-details {
+    margin-top: 0.4rem;
+}
+
+.diagnostic-json-details summary {
+    cursor: pointer;
+    color: #344054;
+    font-weight: 700;
+}
+
+.diagnostic-json-tree {
+    border-left: 2px solid #e5e7eb;
+    margin-top: 0.35rem;
+    padding-left: 0.75rem;
+}
+
+.diagnostic-json-row {
+    display: grid;
+    grid-template-columns: minmax(8rem, 28%) minmax(0, 1fr);
+    gap: 0.75rem;
+    padding: 0.3rem 0;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.diagnostic-json-key {
+    color: #667085;
+    font-weight: 650;
+    overflow-wrap: anywhere;
+}
+
+.diagnostic-json-value {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.diagnostic-json-scalar {
+    color: #111827;
+}
+
+.diagnostic-json-raw {
+    margin-top: 0.4rem;
+}
+
 .strategy-parameters {
     border-top: 1px solid #edf2f7;
     padding-top: 0.75rem;

@@ -91,6 +91,12 @@ class Recorder:
         self.events.append(event)
 
 
+class NoSignalRecorder(Recorder):
+    def run_strategy(self, candles):
+        self.executions.append(list(candles))
+        return StrategyResult([])
+
+
 class HistoryMergingRecorder(Recorder):
     def __init__(self, historical_op):
         super().__init__()
@@ -146,6 +152,29 @@ def _payload(open_time, closed):
                 "c": "101",
                 "h": "102",
                 "l": "99",
+                "v": "1",
+                "n": 1,
+                "x": closed,
+            },
+        }
+    )
+
+
+def _payload_with_prices(open_time, *, high, low, close, closed=True):
+    return normalize_binance_kline_message(
+        {
+            "e": "kline",
+            "E": (open_time + 5) * 1000,
+            "s": "BTCUSDT",
+            "k": {
+                "t": open_time * 1000,
+                "T": (open_time + 59) * 1000 + 999,
+                "s": "BTCUSDT",
+                "i": "1m",
+                "o": str(close),
+                "c": str(close),
+                "h": str(high),
+                "l": str(low),
                 "v": "1",
                 "n": 1,
                 "x": closed,
@@ -313,3 +342,116 @@ async def test_realtime_runtime_dedupes_closed_candle_execution():
     assert duplicate.accepted is False
     assert len(recorder.executions) == 1
     assert len(kline_store.added) == 1
+
+
+@pytest.mark.anyio
+async def test_realtime_runtime_emits_manual_stop_exit_when_saved_long_stop_is_breached():
+    kline_store = FakeKlineStore(latest=_kline(BASE), latest_window=[_kline(BASE)])
+    previous_entry = Operate(OperateType.LONG, BASE, 101.0)
+    previous_entry.stop_loss = 99.5
+    previous_entry.signal_event_id = "entry-1"
+    previous_result = StrategyResult([previous_entry])
+    recorder = NoSignalRecorder()
+    runtime = RealtimeLiveStrategyRuntime(
+        _task_config(),
+        Config(window=500),
+        db_manager=FakeDb(kline_store, previous_result=previous_result),
+        exchange=FakeExchange([]),
+        strategy_runner=recorder.run_strategy,
+        notification_handler=recorder.notify,
+        event_publisher=recorder.publish,
+    )
+
+    await runtime.handle_kline_update(_payload_with_prices(BASE + 60, high=102.0, low=99.0, close=100.0))
+
+    assert len(recorder.notifications) == 1
+    assert [op.otype for op in recorder.notifications[0].opts] == [OperateType.SELL]
+    assert recorder.notifications[0].opts[0].price == 99.5
+    assert recorder.notifications[0].opts[0].trigger_reason == "framework_stop"
+    markers = [event for event in recorder.events if event.event_type == "signal_marker"]
+    assert markers[0].payload["side"] == "SELL"
+
+
+@pytest.mark.anyio
+async def test_realtime_runtime_uses_signal_metadata_stop_for_saved_long_stop_exit():
+    kline_store = FakeKlineStore(latest=_kline(BASE), latest_window=[_kline(BASE)])
+    previous_entry = Operate(OperateType.LONG, BASE, 101.0)
+    previous_entry.signal_metadata = {"signal_event_id": "entry-1", "suggested_stop_price": 99.5}
+    previous_result = StrategyResult([previous_entry])
+    recorder = NoSignalRecorder()
+    runtime = RealtimeLiveStrategyRuntime(
+        _task_config(),
+        Config(window=500),
+        db_manager=FakeDb(kline_store, previous_result=previous_result),
+        exchange=FakeExchange([]),
+        strategy_runner=recorder.run_strategy,
+        notification_handler=recorder.notify,
+        event_publisher=recorder.publish,
+    )
+
+    await runtime.handle_kline_update(_payload_with_prices(BASE + 60, high=102.0, low=99.0, close=100.0))
+
+    assert [op.otype for op in recorder.notifications[0].opts] == [OperateType.SELL]
+    assert recorder.notifications[0].opts[0].price == 99.5
+
+
+@pytest.mark.anyio
+async def test_realtime_runtime_emits_manual_stop_exit_when_saved_short_stop_is_breached():
+    kline_store = FakeKlineStore(latest=_kline(BASE), latest_window=[_kline(BASE)])
+    previous_entry = Operate(OperateType.SHORT, BASE, 101.0)
+    previous_entry.stop_loss = 103.5
+    previous_result = StrategyResult([previous_entry])
+    recorder = NoSignalRecorder()
+    runtime = RealtimeLiveStrategyRuntime(
+        _task_config(),
+        Config(window=500),
+        db_manager=FakeDb(kline_store, previous_result=previous_result),
+        exchange=FakeExchange([]),
+        strategy_runner=recorder.run_strategy,
+        notification_handler=recorder.notify,
+        event_publisher=recorder.publish,
+    )
+
+    await runtime.handle_kline_update(_payload_with_prices(BASE + 60, high=104.0, low=99.0, close=102.0))
+
+    assert [op.otype for op in recorder.notifications[0].opts] == [OperateType.CLOSE]
+    assert recorder.notifications[0].opts[0].price == 103.5
+    assert recorder.notifications[0].opts[0].trigger_reason == "framework_stop"
+
+
+@pytest.mark.anyio
+async def test_realtime_runtime_tracks_new_manual_entry_stop_for_later_closed_candles():
+    class EntryThenNoSignalRecorder(Recorder):
+        def __init__(self):
+            super().__init__()
+            self.calls = 0
+
+        def run_strategy(self, candles):
+            self.executions.append(list(candles))
+            self.calls += 1
+            if self.calls == 1:
+                op = Operate(OperateType.LONG, candles[-1].open_time, candles[-1].close)
+                op.signal_metadata = {"signal_event_id": "entry-1", "suggested_stop_price": 99.5}
+                return StrategyResult([op])
+            return StrategyResult([])
+
+    kline_store = FakeKlineStore(latest=_kline(BASE), latest_window=[_kline(BASE)])
+    recorder = EntryThenNoSignalRecorder()
+    runtime = RealtimeLiveStrategyRuntime(
+        _task_config(),
+        Config(window=500),
+        db_manager=FakeDb(kline_store),
+        exchange=FakeExchange([]),
+        strategy_runner=recorder.run_strategy,
+        notification_handler=recorder.notify,
+        event_publisher=recorder.publish,
+    )
+
+    await runtime.handle_kline_update(_payload_with_prices(BASE + 60, high=102.0, low=100.0, close=101.0))
+    await runtime.handle_kline_update(_payload_with_prices(BASE + 120, high=101.0, low=99.0, close=100.0))
+
+    assert [[op.otype for op in result.opts] for result in recorder.notifications] == [
+        [OperateType.LONG],
+        [OperateType.SELL],
+    ]
+    assert recorder.notifications[1].opts[0].price == 99.5

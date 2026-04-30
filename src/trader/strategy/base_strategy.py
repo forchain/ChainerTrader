@@ -12,6 +12,7 @@ from backtrader import num2date
 from trader.common.config import DEFAULT_PERIOD
 from trader.common.log_tag import LogTag
 from trader.libraries.chainer_trader import ChainerTraderLib
+from trader.utils.operate import Operate, OperateType
 from trader.utils.trend import TrendType
 
 _BREAKEVEN_EPS = 1e-10
@@ -45,6 +46,7 @@ class BaseStrategy(bt.Strategy):
         ("chainer_need_confirm", True),  # Require confirmation for both entry and exit
         ("chainer_enable_breakeven", True),
         ("chainer_risk_reward_ratio", 0.0),
+        ("live_operation_sink", None),
         # When equity falls below this percentage of initial account value, new entries are disabled.
         # Existing positions continue to be managed (stoploss/breakeven/take-profit).
         ("chainer_min_equity_percent", 0.0),
@@ -465,7 +467,10 @@ class BaseStrategy(bt.Strategy):
         )
 
     def cur_datetime(self):
-        return num2date(self.datas[0].datetime[0])
+        try:
+            return num2date(self.datas[0].datetime[0])
+        except (IndexError, ValueError):
+            return datetime.fromtimestamp(0)
 
     def bar_idx(self):
         return len(self) - 1
@@ -1346,12 +1351,14 @@ class BaseStrategy(bt.Strategy):
                         level = ((new_stop - entry_price) / risk) if is_long else ((entry_price - new_stop) / risk)
                         n = int(math.floor(level + _BREAKEVEN_EPS)) + 1
 
+                        old_stop = float(ctx.stop_price)
                         ctx.stop_price = float(new_stop)
                         ctx.breakeven_step = max(int(ctx.breakeven_step), int(n))
                         self.log_info(
                             f"保本移动止损: trade_id={ctx.trade_id} key={ctx.key} direction={ctx.direction} "
                             f"step={ctx.breakeven_step} stop={ctx.stop_price:.6f}"
                         )
+                        self._emit_breakeven_operation(ctx, old_stop=old_stop, new_stop=float(new_stop))
                         self._place_or_replace_stop_order(ctx)
 
         # Ensure a standing stop exists during ACTIVE trade (covers cases where the stop
@@ -1365,6 +1372,31 @@ class BaseStrategy(bt.Strategy):
 
     def name(self):
         return self.params.name
+
+    def _emit_breakeven_operation(self, ctx: "BaseStrategy.TradeContext", *, old_stop: float, new_stop: float) -> None:
+        sink = getattr(self.params, "live_operation_sink", None)
+        if sink is None:
+            return
+        op = Operate(OperateType.RISK_UPDATE, int(self.cur_datetime().timestamp()), float(new_stop))
+        op.trigger_reason = "breakeven_move"
+        op.stop_loss = float(new_stop)
+        op.breakeven_old_stop = float(old_stop)
+        op.breakeven_new_stop = float(new_stop)
+        op.breakeven_step = int(ctx.breakeven_step)
+        op.signal_metadata = dict(ctx.signal_metadata or {})
+        signal_event_id = op.signal_metadata.get("signal_event_id") or op.signal_metadata.get("event_id")
+        if signal_event_id:
+            op.signal_event_id = signal_event_id
+        op.framework_trade = {
+            "trade_id": ctx.trade_id,
+            "direction": ctx.direction,
+            "initial_stop_price": ctx.initial_stop_price,
+            "stop_price": ctx.stop_price,
+            "take_profit": ctx.tp_price,
+            "risk_reward_ratio": ctx.risk_reward_ratio,
+            "breakeven_step": ctx.breakeven_step,
+        }
+        sink(op)
 
     def set_default_period(self, period):
         if self.params.period == DEFAULT_PERIOD:

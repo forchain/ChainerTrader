@@ -24,6 +24,7 @@ from trader.live.market_data import BackfillPlan, BackfillRequestKind, KlineUpda
 from trader.strategy.node import Node
 from trader.strategy.strategy import parse_strategies
 from trader.task.task_config import TaskConfig
+from trader.utils.operate import Operate, OperateType
 
 StrategyRunner = Callable[[list], Any]
 NotificationHandler = Callable[[Any], list[Any]]
@@ -37,6 +38,16 @@ class RuntimeStepResult:
     backfill_plan: BackfillPlan | None = None
     strategy_result: Any = None
     manual_notifications: list[Any] = field(default_factory=list)
+
+
+@dataclass
+class ManualRiskState:
+    side: str
+    stop_loss: float | None = None
+    take_profit: float | None = None
+    risk_reward_ratio: float | None = None
+    signal_event_id: str | None = None
+    signal_number: int | None = None
 
 
 class RealtimeLiveStrategyRuntime:
@@ -65,7 +76,9 @@ class RealtimeLiveStrategyRuntime:
         self.diagnostics: dict[str, Any] = {}
         self._signal_counter = 0
         self._seen_operation_keys: set[tuple] = set()
-        self._seed_seen_operations()
+        self._saved_operations = self._load_saved_operations()
+        self._seed_seen_operations(self._saved_operations)
+        self._manual_risk_state = self._manual_risk_state_from_operations(self._saved_operations)
 
     @property
     def collection_name(self) -> str:
@@ -92,6 +105,7 @@ class RealtimeLiveStrategyRuntime:
         current_operations = self._filter_new_operations(strategy_result)
         self._assign_signal_tracking(current_operations)
         notifications = self._notify(strategy_result)
+        self._apply_manual_risk_operations(current_operations)
         if strategy_result is not None:
             for event in self._strategy_dashboard_events(strategy_result, int(self.now_fn()), current_operations):
                 await self._publish(event)
@@ -109,9 +123,15 @@ class RealtimeLiveStrategyRuntime:
 
         self.db_manager.kline.add_klines(self.collection_name, [update.to_kline()])
         strategy_result = self._run_strategy_on_latest_window()
+        stop_operation = self._manual_stop_operation(update)
+        if stop_operation is not None:
+            if strategy_result is None:
+                strategy_result = type("RealtimeManualRiskResult", (), {"opts": []})()
+            strategy_result.opts = list(getattr(strategy_result, "opts", []) or []) + [stop_operation]
         current_operations = self._filter_new_operations(strategy_result)
         self._assign_signal_tracking(current_operations)
         notifications = self._notify(strategy_result)
+        self._apply_manual_risk_operations(current_operations)
         if strategy_result is not None:
             for event in self._strategy_dashboard_events(strategy_result, update.event_time, current_operations):
                 await self._publish(event)
@@ -180,14 +200,17 @@ class RealtimeLiveStrategyRuntime:
             else:
                 ensure_signal_tracking(self.tcfg.id, op, getattr(op, "signal_number"))
 
-    def _seed_seen_operations(self) -> None:
+    def _load_saved_operations(self) -> list:
         try:
             last_task = self.db_manager.task.get_task(self.tcfg.id)
         except AttributeError:
-            return
+            return []
         if not last_task or not getattr(last_task, "tret", None):
-            return
-        for op in getattr(last_task.tret, "opts", []) or []:
+            return []
+        return list(getattr(last_task.tret, "opts", []) or [])
+
+    def _seed_seen_operations(self, operations: list) -> None:
+        for op in operations or []:
             self._seen_operation_keys.add(self._operation_key(op))
 
     def _operation_key(self, op) -> tuple:
@@ -210,6 +233,78 @@ class RealtimeLiveStrategyRuntime:
             new_operations.append(op)
         strategy_result.opts = new_operations
         return new_operations
+
+    def _manual_risk_state_from_operations(self, operations: list) -> ManualRiskState | None:
+        state: ManualRiskState | None = None
+        for op in operations or []:
+            state = self._next_manual_risk_state(state, op)
+        return state
+
+    def _next_manual_risk_state(self, state: ManualRiskState | None, op) -> ManualRiskState | None:
+        otype = getattr(op, "otype", None)
+        if otype in (OperateType.BUY, OperateType.LONG):
+            return self._risk_state_from_entry(op, "LONG")
+        if otype == OperateType.SHORT:
+            return self._risk_state_from_entry(op, "SHORT")
+        if otype in (OperateType.SELL, OperateType.CLOSE):
+            return None
+        return state
+
+    def _risk_state_from_entry(self, op, side: str) -> ManualRiskState:
+        framework_trade = getattr(op, "framework_trade", None)
+        metadata = getattr(op, "divergence_metadata", None) or getattr(op, "signal_metadata", None)
+        stop_loss = getattr(op, "stop_loss", None)
+        take_profit = getattr(op, "take_profit", None)
+        risk_reward_ratio = getattr(op, "risk_reward_ratio", None)
+        if isinstance(framework_trade, dict):
+            if stop_loss is None:
+                stop_loss = framework_trade.get("stop_price") or framework_trade.get("initial_stop_price")
+            if take_profit is None:
+                take_profit = framework_trade.get("take_profit")
+            if risk_reward_ratio is None:
+                risk_reward_ratio = framework_trade.get("risk_reward_ratio")
+        if stop_loss is None and isinstance(metadata, dict):
+            stop_loss = metadata.get("suggested_stop_price")
+        return ManualRiskState(
+            side=side,
+            stop_loss=float(stop_loss) if stop_loss is not None else None,
+            take_profit=float(take_profit) if take_profit is not None else None,
+            risk_reward_ratio=float(risk_reward_ratio) if risk_reward_ratio is not None else None,
+            signal_event_id=getattr(op, "signal_event_id", None)
+            or (metadata.get("signal_event_id") if isinstance(metadata, dict) else None),
+            signal_number=getattr(op, "signal_number", None),
+        )
+
+    def _manual_stop_operation(self, update: KlineUpdate) -> Operate | None:
+        state = self._manual_risk_state
+        if state is None or state.stop_loss is None:
+            return None
+        stop_loss = float(state.stop_loss)
+        if state.side == "LONG":
+            if float(update.low) > stop_loss:
+                return None
+            op = Operate(OperateType.SELL, int(update.open_time), stop_loss)
+        elif state.side == "SHORT":
+            if float(update.high) < stop_loss:
+                return None
+            op = Operate(OperateType.CLOSE, int(update.open_time), stop_loss)
+        else:
+            return None
+        op.stop_loss = stop_loss
+        if state.take_profit is not None:
+            op.take_profit = float(state.take_profit)
+        if state.risk_reward_ratio is not None:
+            op.risk_reward_ratio = float(state.risk_reward_ratio)
+        op.trigger_reason = "framework_stop"
+        if state.signal_event_id:
+            op.signal_event_id = f"{state.signal_event_id}-stop-{int(update.open_time)}"
+        if state.signal_number is not None:
+            op.signal_number = state.signal_number
+        return op
+
+    def _apply_manual_risk_operations(self, operations: list) -> None:
+        for op in operations or []:
+            self._manual_risk_state = self._next_manual_risk_state(self._manual_risk_state, op)
 
     def _strategy_dashboard_events(self, strategy_result, event_time: int, operations: list | None = None) -> list[DashboardEvent]:
         current_operations = list(operations if operations is not None else getattr(strategy_result, "opts", []) or [])

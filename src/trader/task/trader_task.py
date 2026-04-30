@@ -1,6 +1,6 @@
 import asyncio
 from asyncio import Queue
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from trader.common.common import MIN_RECORDS_NUM, sleep, sleep_loop
 from trader.common.config import Config
@@ -9,8 +9,17 @@ from trader.common.message import new_stat_msg
 from trader.database.manager import DatabaseManager
 from trader.exchange.binance.data import BinanceData
 from trader.exchange.binance.exchange import BinanceExchange
+from trader.live.backtrader_runtime import BacktraderLiveRunner
+from trader.live.dashboard import (
+    build_risk_overlay_events,
+    build_signal_marker_event,
+    kline_update_event,
+    notification_event,
+    runtime_status_event,
+    strategy_execution_event,
+)
+from trader.live.market_data import BackfillRequestKind, plan_initial_backfill
 from trader.live.monitor import GLOBAL_LIVE_EVENT_BUS
-from trader.live.runtime import RealtimeLiveStrategyRuntime
 from trader.live.stream import GLOBAL_MARKET_STREAM_HUB, MarketStreamKey
 from trader.notify.trade_notification import (
     MANUAL_NOTIFY_MODE,
@@ -19,7 +28,7 @@ from trader.notify.trade_notification import (
     normalize_live_execution_mode,
 )
 from trader.statistics.stat import TraderStat
-from trader.strategy.node import Node
+from trader.strategy.node import Node, build_strategy_kwargs
 from trader.strategy.strategy import parse_strategies
 from trader.strategy.trader_result import TraderResult
 from trader.task.base_task import BaseTask
@@ -165,59 +174,162 @@ class TraderTask(BaseTask):
         async def publish_event(event):
             await GLOBAL_LIVE_EVENT_BUS.publish(event)
 
-        def run_strategy(candles):
-            position = self._manual_position
-            free_cash = self._manual_cash
-            node = Node(
-                self.tcfg.strategy_name(),
-                strategy,
-                self.tcfg.symbol_interval,
-                self.cfg,
-                self.log,
-                BinanceData(candles),
-                position,
-                True,
-                free_cash,
-                strategy_params=getattr(self.tcfg, "strategy_params", None),
+        collection_name = self.tcfg.symbol_interval.name()
+        latest = self.db_manager.kline.get_latest_kline(collection_name)
+        plan = plan_initial_backfill(latest, now=int(datetime.now().timestamp()), interval=self.tcfg.symbol_interval.interval)
+        fetched = []
+        if plan.kind == BackfillRequestKind.LATEST:
+            fetched = self.exchange.get_latest_klines(self.tcfg.symbol_interval, plan.limit) or []
+        elif plan.kind == BackfillRequestKind.RANGE:
+            fetched = (
+                self.exchange.get_klines(
+                    self.tcfg.symbol_interval,
+                    start_time=plan.start_time,
+                    end_time=plan.end_time,
+                    limit=plan.limit,
+                )
+                or []
             )
-            return node.start()
+        if fetched:
+            self.db_manager.kline.add_klines(collection_name, fetched)
 
-        def handle_notifications(ret):
+        warmup_limit = min(int(self.cfg.window), 500)
+        warmup = self.db_manager.kline.get_latest_klines(collection_name, warmup_limit) or []
+        if len(warmup) < warmup_limit:
+            fetched_warmup = self.exchange.get_latest_klines(self.tcfg.symbol_interval, warmup_limit) or []
+            if fetched_warmup:
+                self.db_manager.kline.add_klines(collection_name, fetched_warmup)
+                warmup = self.db_manager.kline.get_latest_klines(collection_name, warmup_limit) or []
+        self.log.info(f"Realtime live warmup ready: collection={collection_name} candles={len(warmup)}/{warmup_limit}")
+        loop = asyncio.get_running_loop()
+
+        async def handle_live_operation(op):
+            ret = self._trader_result_for_live_operation(op)
             self.process_result(ret)
-            return self.handle_manual_trade_notifications(ret)
-
-        runtime = RealtimeLiveStrategyRuntime(
-            self.tcfg,
-            self.cfg,
-            self.db_manager,
-            self.exchange,
-            self.log,
-            strategy_runner=run_strategy,
-            notification_handler=handle_notifications,
-            event_publisher=publish_event,
-        )
-        startup_result = await runtime.startup()
-        if startup_result.strategy_result is not None:
+            feed_phase = str(getattr(op, "feed_phase", "") or "").lower()
+            notifications = [] if feed_phase == "warmup" else self.handle_manual_trade_notifications(ret)
+            event_time = int(getattr(op, "dtime", datetime.now().timestamp()))
+            await publish_event(strategy_execution_event(self.tcfg.id, event_time, ret, [op]))
+            if getattr(op, "otype", None) != OperateType.RISK_UPDATE:
+                await publish_event(build_signal_marker_event(self.tcfg.id, op, getattr(self.tcfg, "live_execution_mode", "manual_notify")))
+            for event in build_risk_overlay_events(self.tcfg.id, op):
+                await publish_event(event)
+            if notifications:
+                await publish_event(notification_event(self.tcfg.id, event_time, notifications))
             stat = TraderStat(self.tcfg.strategy_name(), self.tcfg.symbol_interval.name(), self.ts)
-            stat.manual_trade_notifications = startup_result.manual_notifications
+            stat.manual_trade_notifications = notifications
             await queue.put(new_stat_msg(stat, self.tcfg.id))
 
+        def handle_operation(op):
+            try:
+                running_loop = asyncio.get_running_loop()
+            except RuntimeError:
+                running_loop = None
+            if running_loop is loop:
+                asyncio.create_task(handle_live_operation(op))
+            else:
+                loop.call_soon_threadsafe(lambda: asyncio.create_task(handle_live_operation(op)))
+
+        strategy_kwargs = build_strategy_kwargs(
+            self.cfg,
+            self.log,
+            self._manual_position,
+            True,
+            getattr(self.tcfg, "strategy_params", None),
+        )
+        free_cash = self._manual_cash
+        runner = BacktraderLiveRunner(
+            strategy,
+            cash=free_cash,
+            commission=self.cfg.commission,
+            strategy_kwargs=strategy_kwargs,
+            operation_handler=handle_operation,
+            inject_operation_sink=True,
+        )
+        runner.start(warmup=warmup)
+        await asyncio.sleep(0)
+
         key = MarketStreamKey(self.exchange.name(), self.tcfg.symbol_interval.symbol(), self.tcfg.symbol_interval.interval.value)
-        subscription = await GLOBAL_MARKET_STREAM_HUB.subscribe(key)
+
+        def runtime_status() -> dict:
+            status = runner.status() if hasattr(runner, "status") else {}
+            stream_status = GLOBAL_MARKET_STREAM_HUB.status(key) if hasattr(GLOBAL_MARKET_STREAM_HUB, "status") else None
+            if stream_status is not None:
+                status.update(
+                    {
+                        "stream_state": stream_status.state.value,
+                        "stream_subscriber_count": stream_status.subscriber_count,
+                        "stream_last_error": stream_status.last_error,
+                    }
+                )
+            return status
+
+        async def publish_runtime_status(event_time: int | None = None) -> None:
+            await publish_event(runtime_status_event(self.tcfg.id, event_time or int(datetime.now().timestamp()), runtime_status()))
+
+        async def catch_up_missing_closed_klines() -> None:
+            latest = self.db_manager.kline.get_latest_kline(collection_name)
+            plan = plan_initial_backfill(latest, now=int(datetime.now().timestamp()), interval=self.tcfg.symbol_interval.interval)
+            fetched = []
+            if plan.kind == BackfillRequestKind.LATEST:
+                fetched = self.exchange.get_latest_klines(self.tcfg.symbol_interval, plan.limit) or []
+            elif plan.kind == BackfillRequestKind.RANGE:
+                fetched = (
+                    self.exchange.get_klines(
+                        self.tcfg.symbol_interval,
+                        start_time=plan.start_time,
+                        end_time=plan.end_time,
+                        limit=plan.limit,
+                    )
+                    or []
+                )
+            if not fetched:
+                await publish_runtime_status()
+                return
+            sorted_fetched = sorted(fetched, key=lambda item: int(item.open_time))
+            for kline in sorted_fetched:
+                self.db_manager.kline.add_klines(collection_name, [kline])
+                runner.put_kline(kline)
+            await publish_runtime_status(int(sorted_fetched[-1].open_time))
+
+        subscription = await GLOBAL_MARKET_STREAM_HUB.subscribe(key, reconnect_callback=catch_up_missing_closed_klines)
+        await publish_runtime_status()
         try:
             while not self.quit.is_set():
                 try:
                     update = await asyncio.wait_for(subscription.get(), timeout=1.0)
                 except asyncio.TimeoutError:
                     continue
-                step = await runtime.handle_kline_update(update)
-                if step.strategy_result is None:
+                await publish_event(kline_update_event(self.tcfg.id, update))
+                if not update.is_closed:
                     continue
+                self.db_manager.kline.add_klines(collection_name, [update.to_kline()])
+                runner.put_kline(update.to_kline())
+                await asyncio.sleep(0)
+                await publish_runtime_status(update.open_time)
                 stat = TraderStat(self.tcfg.strategy_name(), self.tcfg.symbol_interval.name(), self.ts)
-                stat.manual_trade_notifications = step.manual_notifications
+                stat.manual_trade_notifications = []
                 await queue.put(new_stat_msg(stat, self.tcfg.id))
         finally:
+            runner.stop()
             await subscription.unsubscribe()
+
+    def _trader_result_for_live_operation(self, op) -> TraderResult:
+        return TraderResult(
+            0.0,
+            0.0,
+            timedelta(0),
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1 if op.otype in (OperateType.BUY, OperateType.LONG) else 0,
+            1 if op.otype in (OperateType.SELL, OperateType.SHORT, OperateType.CLOSE) else 0,
+            [op],
+            0.0,
+            0,
+        )
 
     def process_result(self, ret: TraderResult):
         last_task = self.db_manager.task.get_task(self.tcfg.id)
@@ -304,6 +416,8 @@ class TraderTask(BaseTask):
         if op.otype in (OperateType.SELL, OperateType.CLOSE):
             event = self._manual_exit_event(op, price)
             return [event] if event is not None else []
+        if op.otype == OperateType.RISK_UPDATE:
+            return [self._manual_risk_update_event(op, price)]
 
         self.log.warning(f"Skip unsupported manual notify operateType: {op.otype}")
         return []
@@ -348,6 +462,28 @@ class TraderTask(BaseTask):
             suggested_quantity=quantity,
             trigger_reason="signal_entry",
             local_state=ManualTradeAccountState(cash_before, cash_after, position_before, position_after),
+            stop_loss=self._risk_reference(op, "stop_loss"),
+            take_profit=self._risk_reference(op, "take_profit"),
+            risk_reward_ratio=self._risk_reference(op, "risk_reward_ratio"),
+            **self._manual_event_common_kwargs(op),
+        )
+
+    def _manual_risk_update_event(self, op, price: float) -> ManualTradeNotificationEvent:
+        cash = float(self._manual_cash)
+        position = float(self._manual_position)
+        return ManualTradeNotificationEvent(
+            market=self.tcfg.symbol_interval.symbol(),
+            strategy=self.tcfg.strategy_name(),
+            task_id=self.tcfg.id,
+            mode=MANUAL_NOTIFY_MODE,
+            action="RISK_UPDATE",
+            side=op.otype.name,
+            signal_time=int(op.dtime),
+            signal_price=price,
+            suggested_amount=0.0,
+            suggested_quantity=0.0,
+            trigger_reason=getattr(op, "trigger_reason", "risk_update"),
+            local_state=ManualTradeAccountState(cash, cash, position, position),
             stop_loss=self._risk_reference(op, "stop_loss"),
             take_profit=self._risk_reference(op, "take_profit"),
             risk_reward_ratio=self._risk_reference(op, "risk_reward_ratio"),

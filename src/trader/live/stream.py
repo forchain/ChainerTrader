@@ -10,6 +10,7 @@ from trader.live.market_data import KlineUpdate, normalize_binance_kline_message
 UpdateCallback = Callable[[KlineUpdate], Awaitable[None]]
 DisconnectCallback = Callable[[], Awaitable[None]]
 CatchUpCallback = Callable[["MarketStreamKey"], Awaitable[None]]
+ReconnectCallback = Callable[[], Awaitable[None]]
 
 BINANCE_SPOT_WS_STREAM_URL = "wss://stream.binance.com:443/stream"
 
@@ -71,6 +72,7 @@ class _StreamEntry:
     subscribers: set[asyncio.Queue]
     state: MarketStreamState = MarketStreamState.STOPPED
     last_error: str | None = None
+    reconnect_callbacks: dict[asyncio.Queue, ReconnectCallback] | None = None
 
 
 class MarketStreamHub:
@@ -80,7 +82,7 @@ class MarketStreamHub:
         self._streams: dict[MarketStreamKey, _StreamEntry] = {}
         self._lock = asyncio.Lock()
 
-    async def subscribe(self, key: MarketStreamKey) -> MarketStreamSubscription:
+    async def subscribe(self, key: MarketStreamKey, reconnect_callback: ReconnectCallback | None = None) -> MarketStreamSubscription:
         queue: asyncio.Queue[KlineUpdate] = asyncio.Queue()
         should_start = False
         async with self._lock:
@@ -90,6 +92,10 @@ class MarketStreamHub:
                 self._streams[key] = entry
                 should_start = True
             entry.subscribers.add(queue)
+            if reconnect_callback is not None:
+                if entry.reconnect_callbacks is None:
+                    entry.reconnect_callbacks = {}
+                entry.reconnect_callbacks[queue] = reconnect_callback
 
         if should_start:
             await self._start_stream(key)
@@ -103,6 +109,8 @@ class MarketStreamHub:
             if entry is None:
                 return
             entry.subscribers.discard(queue)
+            if entry.reconnect_callbacks is not None:
+                entry.reconnect_callbacks.pop(queue, None)
             if not entry.subscribers:
                 entry.state = MarketStreamState.STOPPED
                 should_stop = True
@@ -122,9 +130,12 @@ class MarketStreamHub:
             if entry is None:
                 return
             entry.state = MarketStreamState.RECONNECTING
+            reconnect_callbacks = list((entry.reconnect_callbacks or {}).values())
 
         if self.catch_up:
             await self.catch_up(key)
+        for reconnect_callback in reconnect_callbacks:
+            await reconnect_callback()
 
         async with self._lock:
             entry = self._streams.get(key)

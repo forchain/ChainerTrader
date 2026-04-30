@@ -8,6 +8,7 @@ class OperateType(Enum):
     LONG = 3
     SHORT = 4
     CLOSE = 5
+    RISK_UPDATE = 6
 
 
 def parse_operate_type(name):
@@ -26,6 +27,8 @@ def parse_operate_type(name):
         return OperateType.SHORT
     elif name == OperateType.CLOSE.name:
         return OperateType.CLOSE
+    elif name == OperateType.RISK_UPDATE.name:
+        return OperateType.RISK_UPDATE
 
     return OperateType.UNKNOWN
 

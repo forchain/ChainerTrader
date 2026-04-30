@@ -206,6 +206,63 @@ def test_manual_notification_event_includes_risk_references_without_advanced_ord
     assert "OCO" not in content
 
 
+def test_manual_notification_email_formats_nested_metadata_as_collapsible_json():
+    event = ManualTradeNotificationEvent(
+        market="BTCUSDT",
+        interval="1d",
+        strategy="macd_triple_divergence",
+        strategy_id="7",
+        task_id=9,
+        mode="manual_notify",
+        action="ENTRY",
+        side="LONG",
+        signal_time=1714281600,
+        signal_price=100.0,
+        suggested_amount=1000.0,
+        suggested_quantity=10.0,
+        trigger_reason="signal_entry",
+        local_state=ManualTradeAccountState(cash_before=1000.0, cash_after=0.0, position_before=0.0, position_after=10.0),
+        divergence_metadata={
+            "conditions": {"price_lower_lows": {"passed": True, "values": [1, 2, 3]}},
+            "direction": "LONG",
+        },
+    )
+
+    content = render_manual_trade_email(event)
+
+    assert "<details" in content
+    assert "<summary>conditions</summary>" in content
+    assert "json-block" in content
+    assert "{&quot;conditions&quot;" not in content
+    assert "price_lower_lows" in content
+    assert "  &quot;passed&quot;: true" in content
+
+
+def test_manual_risk_update_operation_creates_notification_without_changing_local_position():
+    task = _manual_task(free=500.0, manual_start_position=0.25)
+    op = Operate(OperateType.RISK_UPDATE, 1714281660, 120.0)
+    op.trigger_reason = "breakeven_move"
+    op.stop_loss = 118.0
+    op.breakeven_old_stop = 100.0
+    op.breakeven_new_stop = 118.0
+    op.breakeven_step = 2
+
+    events = task.handle_manual_trade_notifications(_result_with_operation(op))
+
+    assert len(events) == 1
+    event = events[0]
+    assert event.action == "RISK_UPDATE"
+    assert event.side == "RISK_UPDATE"
+    assert event.trigger_reason == "breakeven_move"
+    assert event.stop_loss == 118.0
+    assert event.breakeven_new_stop == 118.0
+    assert event.breakeven_step == 2
+    assert event.local_state.cash_before == 500.0
+    assert event.local_state.cash_after == 500.0
+    assert event.local_state.position_before == 0.25
+    assert event.local_state.position_after == 0.25
+
+
 def test_notify_manager_sends_manual_trade_notification_events():
     notice = RecordingNotice()
     manager = NotifyManager(Config(), Logger(Config()))

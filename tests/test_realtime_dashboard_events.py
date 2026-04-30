@@ -4,6 +4,7 @@ from trader.live.dashboard import (
     build_signal_marker_event,
     kline_to_chart_candle,
     kline_update_event,
+    runtime_status_event,
     strategy_execution_event,
 )
 from trader.live.market_data import KlineUpdate
@@ -67,6 +68,28 @@ def test_strategy_execution_event_adds_text_time_to_operations():
             "price": 101.5,
         }
     ]
+
+
+def test_runtime_status_event_exposes_live_feed_diagnostics():
+    event = runtime_status_event(
+        strategy_id=7,
+        event_time=BASE + 60,
+        status={
+            "feed_phase": "live",
+            "latest_delivered_open_time": BASE,
+            "warmup_complete": True,
+            "stream_state": "running",
+            "legacy_fallback": False,
+        },
+    )
+
+    assert event.event_type == "runtime_status"
+    assert event.payload["feed_phase"] == "live"
+    assert event.payload["latest_delivered_open_time"] == BASE
+    assert event.payload["warmup_complete"] is True
+    assert event.payload["stream_state"] == "running"
+    assert event.payload["legacy_fallback"] is False
+    assert event.payload["event_time_text"] == "2024-04-28 13:21:00"
 
 
 def test_signal_marker_event_contains_chart_lookup_fields():

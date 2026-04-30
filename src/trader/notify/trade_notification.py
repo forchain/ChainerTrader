@@ -92,7 +92,14 @@ def normalize_live_execution_mode(value: str | None) -> str:
 
 
 def entry_or_exit_label(action: str) -> str:
-    return "进场" if str(action).upper() == "ENTRY" else "出场"
+    normalized = str(action).upper()
+    if normalized == "ENTRY":
+        return "进场"
+    if normalized == "EXIT":
+        return "出场"
+    if normalized == "RISK_UPDATE":
+        return "风险更新"
+    return normalized
 
 
 def _fmt_number(value, precision: int = 6) -> str:
@@ -113,9 +120,20 @@ def _cell(value) -> str:
     return html.escape(str(value))
 
 
-def _row(label: str, value, accent: bool = False) -> str:
+def _row(label: str, value, accent: bool = False, raw: bool = False) -> str:
     cls = " class=\"accent\"" if accent else ""
-    return f"<tr><th>{html.escape(label)}</th><td{cls}>{_cell(value)}</td></tr>"
+    rendered_value = str(value) if raw else _cell(value)
+    return f"<tr><th>{html.escape(label)}</th><td{cls}>{rendered_value}</td></tr>"
+
+
+def _json_details(label: str, value) -> str:
+    formatted = json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2)
+    return f"""
+      <details class="json-details">
+        <summary>{html.escape(label)}</summary>
+        <pre class="json-block">{html.escape(formatted)}</pre>
+      </details>
+    """
 
 
 def _section(title: str, rows: list[str]) -> str:
@@ -136,8 +154,9 @@ def _metadata_rows(metadata: dict | None) -> list[str]:
     for key in sorted(metadata.keys()):
         value = metadata[key]
         if isinstance(value, (dict, list)):
-            value = json.dumps(value, ensure_ascii=False, sort_keys=True)
-        rows.append(_row(str(key), value))
+            rows.append(_row(str(key), _json_details(str(key), value), raw=True))
+        else:
+            rows.append(_row(str(key), value))
     return rows
 
 
@@ -192,6 +211,11 @@ def render_manual_trade_email(event: ManualTradeNotificationEvent) -> str:
       th {{ width:38%; text-align:left; color:#667085; font-weight:600; padding:8px 6px 8px 0; border-top:1px solid #eef2f5; vertical-align:top; }}
       td {{ padding:8px 0; border-top:1px solid #eef2f5; word-break:break-word; }}
       td.accent {{ font-weight:750; color:#101820; }}
+      .json-details summary {{ cursor:pointer; color:#344054; font-weight:700; }}
+      .json-block {{
+        margin:8px 0 0; padding:10px; border-radius:6px; background:#f8fafc; color:#111827;
+        white-space:pre-wrap; word-break:break-word; font-size:12px; line-height:1.45;
+      }}
       .warning {{
         background:#fff7ed; border:1px solid #fed7aa; color:#7c2d12; border-radius:8px;
         padding:12px 14px; margin-top:14px; line-height:1.5;

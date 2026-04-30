@@ -448,24 +448,24 @@ Run it with database, exchange market-data access, and notice configuration:
 
 ```bash
 python -m trader \
-  --tasks configs/tasks/live/realtime_macd_triple_divergence_btc_1m_demo.json \
+  --tasks configs/tasks/live/realtime_macd_triple_divergence_top10_production.json \
   --db mongodb://localhost:27017/ \
   --exchange=BINANCE \
   --notice configs/notices/notice.json
 ```
 
-When `live_data_mode` is `realtime`, the live task first backfills the latest missing closed candles from Binance REST with a 500-candle startup cap, runs the strategy once, and then consumes Binance Kline WebSocket updates. Open candles are pushed to the dashboard for drawing only. Closed candles are persisted, run through the strategy, and may trigger `manual_notify` emails.
+When `live_data_mode` is `realtime`, the live task creates one persistent Backtrader `Cerebro` runtime and advances it through a live K-line data feed. Startup REST backfill is capped at the latest 500 closed candles and is delivered through the same strategy instance as warmup. During development validation, warmup strategy events use the same dashboard and `manual_notify` path as later live candles, so startup signals appear on the chart and can send email. After the feed transitions to LIVE, each unique closed WebSocket candle is persisted and delivered once to the same strategy instance; reconnect catch-up candles are fetched from REST and delivered through that same feed in chronological order. Open candles are pushed to the dashboard for drawing only and never advance Backtrader strategy execution.
 
 Manual notification emails include the market, interval, strategy id, strategy name, action, side, suggested amount or quantity, signal price and time, local simulated cash and position, trigger reason, and dashboard correlation fields such as signal event id when available. Risk references such as stop loss, take profit, breakeven stop movement, or risk/reward are rendered as local strategy guidance only; the email is not an exchange fill confirmation and does not mean ChainerTrader submitted a stop-loss, take-profit, OCO, or other advanced order.
 
 ### Realtime Live Dashboard
 
-Start ChainerTrader in Web mode with the realtime demo task:
+Start ChainerTrader in Web mode with the realtime production task:
 
 ```bash
 python -m trader \
   --api 127.0.0.1:8000 \
-  --tasks configs/tasks/live/realtime_macd_triple_divergence_btc_1m_demo.json \
+  --tasks configs/tasks/live/realtime_macd_triple_divergence_top10_production.json \
   --db mongodb://localhost:27017/ \
   --exchange=BINANCE \
   --notice configs/notices/notice.json
@@ -479,9 +479,9 @@ http://127.0.0.1:8000/admin/live
 
 The monitor loads each running live strategy in a switchable workspace instead of tiling every chart. The active chart loads the latest 500 closed candles, then applies realtime Kline updates through TradingView Lightweight Charts. Use the layer switches to inspect signal markers, stop-loss references, take-profit references, breakeven stop movements, and MACD divergence diagnostics.
 
-Manual validation checklist for the BTCUSDT 1m demo:
+Manual validation checklist for the realtime production task:
 
-- Confirm the page lists the BTCUSDT 1m `macd_triple_divergence` task in `manual_notify` mode.
+- Confirm the page lists the BTCUSDT 1m task, the BTCUSDT 1d task, and the other configured top-market 1d `macd_triple_divergence` tasks in `manual_notify` mode.
 - Confirm the chart initially loads up to 500 candles and then updates the active candle before it closes.
 - Confirm only closed 1-minute candles create strategy execution events in the diagnostics panel.
 - When a signal appears, compare the dashboard signal event id, candle time, signal price, stop-loss line, take-profit line, and breakeven fields with the notification email.
