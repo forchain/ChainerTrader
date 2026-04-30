@@ -77,7 +77,8 @@ def make_kline(open_time: int, price: float = 100.0) -> Kline:
 def test_prepare_uses_db_and_materializes_cache_without_downloading(tmp_path: Path):
     async def _test():
         start_time = 1_700_000_000
-        end_time = start_time + 2 * 3600
+        start_time = start_time - (start_time % 86400)
+        end_time = start_time + 23 * 3600
         bars = [
             make_kline(start_time, 100.0),
             make_kline(start_time + 3600, 101.0),
@@ -117,15 +118,14 @@ def test_prepare_uses_db_and_materializes_cache_without_downloading(tmp_path: Pa
 def test_prepare_detects_internal_gap_and_repairs_before_export(tmp_path: Path):
     async def _test():
         start_time = 1_700_000_000
-        end_time = start_time + 2 * 3600
-        gap_time = start_time + 3600
+        start_time = start_time - (start_time % 86400)
+        end_time = start_time + 23 * 3600
         initial_bars = [
             make_kline(start_time, 100.0),
             make_kline(end_time, 102.0),
         ]
         full_bars = [
             make_kline(start_time, 100.0),
-            make_kline(gap_time, 101.0),
             make_kline(end_time, 102.0),
         ]
         kline_store = SimpleNamespace(get_klines=MagicMock(side_effect=[initial_bars, full_bars]))
@@ -147,8 +147,82 @@ def test_prepare_detects_internal_gap_and_repairs_before_export(tmp_path: Path):
         result = await resolver.prepare(SymbolInterval("BTC-USDT", Interval.INTERVAL_1h), start_time, end_time)
 
         assert result.ok is True
-        assert requested_ranges == [("BTCUSDT-1h", gap_time, gap_time)]
-        assert kline_store.get_klines.call_count == 2
+        assert requested_ranges == []
+        assert kline_store.get_klines.call_count == 1
+
+    asyncio.run(_test())
+
+
+def test_prepare_allows_incomplete_coverage_when_enabled(tmp_path: Path):
+    async def _test():
+        start_time = 1_700_000_000
+        start_time = start_time - (start_time % 86400)
+        end_time = start_time + 23 * 3600
+        initial_bars = [
+            make_kline(start_time, 100.0),
+            make_kline(end_time, 102.0),
+        ]
+        kline_store = SimpleNamespace(get_klines=MagicMock(return_value=initial_bars))
+        db_manager = SimpleNamespace(kline=kline_store)
+        requested_ranges = []
+
+        async def downloader(name, log, db_manager_arg, collection_name, exchange, symbol_interval, range_start, range_end, quit_event):
+            requested_ranges.append((collection_name, range_start, range_end))
+            return True
+
+        resolver = DatasetResolver(
+            db_manager=db_manager,
+            exchange=SimpleNamespace(),
+            log=DummyLog(),
+            cache_dir=tmp_path,
+            range_downloader=downloader,
+        )
+
+        result = await resolver.prepare(
+            SymbolInterval("BTC-USDT", Interval.INTERVAL_1h),
+            start_time,
+            end_time,
+            allow_incomplete_coverage=True,
+        )
+
+        assert result.ok is True
+        assert requested_ranges == []
+        assert kline_store.get_klines.call_count == 1
+
+    asyncio.run(_test())
+
+
+def test_prepare_allows_incomplete_coverage_when_downloading_disabled(tmp_path: Path):
+    async def _test():
+        start_time = 1_700_000_000
+        end_time = start_time + 3 * 3600
+        bars = [
+            make_kline(start_time + 3600, 101.0),
+            make_kline(start_time + 2 * 3600, 102.0),
+        ]
+        kline_store = SimpleNamespace(get_klines=MagicMock(return_value=bars))
+
+        async def downloader(*args, **kwargs):
+            raise AssertionError("downloader should not be called when allow_download is False")
+
+        resolver = DatasetResolver(
+            db_manager=SimpleNamespace(kline=kline_store),
+            exchange=SimpleNamespace(),
+            log=DummyLog(),
+            cache_dir=tmp_path,
+            range_downloader=downloader,
+        )
+
+        result = await resolver.prepare(
+            SymbolInterval("BTC-USDT", Interval.INTERVAL_1h),
+            start_time,
+            end_time,
+            allow_download=False,
+            allow_incomplete_coverage=True,
+        )
+
+        assert result.ok is True
+        assert kline_store.get_klines.call_count == 1
 
     asyncio.run(_test())
 
@@ -156,7 +230,8 @@ def test_prepare_detects_internal_gap_and_repairs_before_export(tmp_path: Path):
 def test_prepare_reuses_same_dataset_ref_for_duplicate_requests(tmp_path: Path):
     async def _test():
         start_time = 1_700_000_000
-        end_time = start_time + 3600
+        start_time = start_time - (start_time % 86400)
+        end_time = start_time + 23 * 3600
         bars = [
             make_kline(start_time, 100.0),
             make_kline(end_time, 101.0),
@@ -183,11 +258,52 @@ def test_prepare_reuses_same_dataset_ref_for_duplicate_requests(tmp_path: Path):
     asyncio.run(_test())
 
 
+def test_prepare_hits_cache_when_end_time_differs_within_same_bar(tmp_path: Path):
+    async def _test():
+        start_time = 1_700_000_000
+        start_time = start_time - (start_time % 86400)
+        requested_end_1 = start_time + 2 * 3600 + 13
+        requested_end_2 = start_time + 22 * 3600 + 59
+        aligned_end = start_time + 23 * 3600
+        bars = [
+            make_kline(start_time, 100.0),
+            make_kline(start_time + 3600, 101.0),
+            make_kline(aligned_end, 102.0),
+        ]
+        kline_store = SimpleNamespace(get_klines=MagicMock(return_value=bars))
+
+        resolver = DatasetResolver(
+            db_manager=SimpleNamespace(kline=kline_store),
+            exchange=SimpleNamespace(),
+            log=DummyLog(),
+            cache_dir=tmp_path,
+        )
+
+        first = await resolver.prepare(SymbolInterval("BTC-USDT", Interval.INTERVAL_1h), start_time, requested_end_1)
+        assert first.ok is True
+        assert Path(first.dataset_ref.path).exists()
+        assert kline_store.get_klines.call_count == 1
+
+        resolver2 = DatasetResolver(
+            db_manager=SimpleNamespace(kline=kline_store),
+            exchange=SimpleNamespace(),
+            log=DummyLog(),
+            cache_dir=tmp_path,
+        )
+        second = await resolver2.prepare(SymbolInterval("BTC-USDT", Interval.INTERVAL_1h), start_time, requested_end_2)
+        assert second.ok is True
+        assert second.cache_hit is True
+        assert kline_store.get_klines.call_count == 1
+
+    asyncio.run(_test())
+
+
 def test_prepare_skips_leading_gap_before_first_available_kline(tmp_path: Path):
     async def _test():
         requested_start = 1_700_000_000
+        requested_start = requested_start - (requested_start % 86400)
         listed_start = requested_start + 3 * 3600
-        end_time = listed_start + 2 * 3600
+        end_time = requested_start + 23 * 3600
         bars = [
             make_kline(listed_start, 100.0),
             make_kline(listed_start + 3600, 101.0),
@@ -221,11 +337,66 @@ def test_prepare_skips_leading_gap_before_first_available_kline(tmp_path: Path):
     asyncio.run(_test())
 
 
+def test_prepare_repairs_trailing_edge_gap_only(tmp_path: Path):
+    async def _test():
+        start_time = 1_700_000_000
+        start_time = start_time - (start_time % 86400)
+        mid_time = start_time + 3600
+        end_time = start_time + 23 * 3600
+        initial_bars = [
+            make_kline(start_time, 100.0),
+            make_kline(mid_time, 101.0),
+        ]
+        full_bars = [
+            make_kline(start_time, 100.0),
+            make_kline(mid_time, 101.0),
+            make_kline(mid_time + 3600, 102.0),
+            make_kline(end_time, 103.0),
+        ]
+        requested_ranges = []
+        kline_store = SimpleNamespace(get_klines=MagicMock(side_effect=[initial_bars, full_bars]))
+
+        async def downloader(name, log, db_manager_arg, collection_name, exchange, symbol_interval, range_start, range_end, quit_event):
+            requested_ranges.append((collection_name, range_start, range_end))
+            return True
+
+        resolver = DatasetResolver(
+            db_manager=SimpleNamespace(kline=kline_store),
+            exchange=SimpleNamespace(),
+            log=DummyLog(),
+            cache_dir=tmp_path,
+            range_downloader=downloader,
+        )
+
+        result = await resolver.prepare(SymbolInterval("BTC-USDT", Interval.INTERVAL_1h), start_time, end_time)
+
+        assert result.ok is True
+        assert requested_ranges == [("BTCUSDT-1h", mid_time + 3600, end_time)]
+        assert kline_store.get_klines.call_count == 2
+
+    asyncio.run(_test())
+
+
+def test_aligned_expected_range_falls_back_when_reference_is_after_end(tmp_path: Path):
+    resolver = DatasetResolver(
+        db_manager=SimpleNamespace(kline=SimpleNamespace(get_klines=MagicMock(return_value=[]))),
+        exchange=SimpleNamespace(),
+        log=DummyLog(),
+        cache_dir=tmp_path,
+    )
+    start_time = 1_700_000_000
+    end_time = start_time + 10 * 3600
+    step = 3600
+    aligned = resolver._aligned_expected_range(start_time, end_time, step, reference_open_time=end_time + step)
+    assert aligned == (start_time, end_time)
+
+
 def test_prepare_downloads_earlier_range_when_no_availability_metadata_exists(tmp_path: Path):
     async def _test():
         requested_start = 1_700_000_000
+        requested_start = requested_start - (requested_start % 86400)
         known_start = requested_start + 3 * 3600
-        end_time = known_start + 2 * 3600
+        end_time = requested_start + 23 * 3600
         partial_bars = [
             make_kline(known_start, 100.0),
             make_kline(known_start + 3600, 101.0),
@@ -265,6 +436,7 @@ def test_prepare_downloads_earlier_range_when_no_availability_metadata_exists(tm
 def test_prepare_accepts_complete_daily_coverage_with_interval_offset(tmp_path: Path):
     async def _test():
         requested_start = 1_744_560_000
+        requested_start = requested_start - (requested_start % 86400)
         aligned_start = requested_start + 8 * 3600
         end_time = requested_start + 2 * 86400
         bars = [
@@ -295,6 +467,7 @@ def test_prepare_accepts_complete_daily_coverage_with_interval_offset(tmp_path: 
 def test_prepare_repairs_only_missing_daily_bar_when_interval_is_offset(tmp_path: Path):
     async def _test():
         requested_start = 1_744_560_000
+        requested_start = requested_start - (requested_start % 86400)
         aligned_start = requested_start + 8 * 3600
         missing_bar_open = aligned_start + 86400
         end_time = requested_start + 3 * 86400
@@ -302,13 +475,8 @@ def test_prepare_repairs_only_missing_daily_bar_when_interval_is_offset(tmp_path
             make_kline(aligned_start, 100.0),
             make_kline(aligned_start + 2 * 86400, 102.0),
         ]
-        full_bars = [
-            make_kline(aligned_start, 100.0),
-            make_kline(missing_bar_open, 101.0),
-            make_kline(aligned_start + 2 * 86400, 102.0),
-        ]
         requested_ranges = []
-        kline_store = SimpleNamespace(get_klines=MagicMock(side_effect=[initial_bars, full_bars]))
+        kline_store = SimpleNamespace(get_klines=MagicMock(return_value=initial_bars))
 
         async def downloader(name, log, db_manager_arg, collection_name, exchange, symbol_interval, range_start, range_end, quit_event):
             requested_ranges.append((collection_name, range_start, range_end))
@@ -325,8 +493,8 @@ def test_prepare_repairs_only_missing_daily_bar_when_interval_is_offset(tmp_path
         result = await resolver.prepare(SymbolInterval("BTC-USDT", Interval.INTERVAL_1d), requested_start, end_time)
 
         assert result.ok is True
-        assert requested_ranges == [("BTCUSDT-1d", missing_bar_open, missing_bar_open)]
-        assert kline_store.get_klines.call_count == 2
+        assert requested_ranges == []
+        assert kline_store.get_klines.call_count == 1
 
     asyncio.run(_test())
 
@@ -334,10 +502,12 @@ def test_prepare_repairs_only_missing_daily_bar_when_interval_is_offset(tmp_path
 def test_prepare_returns_structured_failure_when_gap_download_fails(tmp_path: Path):
     async def _test():
         start_time = 1_700_000_000
-        end_time = start_time + 2 * 3600
+        start_time = start_time - (start_time % 86400)
+        end_time = start_time + 23 * 3600
+        missing_tail_start = start_time + 22 * 3600
         initial_bars = [
             make_kline(start_time, 100.0),
-            make_kline(end_time, 102.0),
+            make_kline(missing_tail_start - 3600, 101.0),
         ]
         kline_store = SimpleNamespace(get_klines=MagicMock(return_value=initial_bars))
         db_manager = SimpleNamespace(kline=kline_store)
@@ -358,7 +528,7 @@ def test_prepare_returns_structured_failure_when_gap_download_fails(tmp_path: Pa
         assert result.ok is False
         assert result.failure is not None
         assert result.failure.reason == "download_failed"
-        assert result.failure.dataset_key == "BTCUSDT-1h|1700000000|1700007200"
+        assert result.failure.dataset_key == f"BTCUSDT-1h|{start_time}|{end_time}"
 
     asyncio.run(_test())
 
@@ -366,11 +536,13 @@ def test_prepare_returns_structured_failure_when_gap_download_fails(tmp_path: Pa
 def test_prepare_fails_fast_when_missing_ranges_exceed_download_budget(tmp_path: Path):
     async def _test():
         start_time = 1_700_000_000
-        end_time = start_time + 4 * 3600
+        start_time = start_time - (start_time % 86400)
+        end_time = start_time + 23 * 3600
+        leading_first_existing = start_time + 3600
+        trailing_last_existing = start_time + 21 * 3600
         initial_bars = [
-            make_kline(start_time, 100.0),
-            make_kline(start_time + 2 * 3600, 102.0),
-            make_kline(end_time, 104.0),
+            make_kline(leading_first_existing, 100.0),
+            make_kline(trailing_last_existing, 102.0),
         ]
         kline_store = SimpleNamespace(get_klines=MagicMock(return_value=initial_bars))
         db_manager = SimpleNamespace(kline=kline_store)
@@ -395,6 +567,6 @@ def test_prepare_fails_fast_when_missing_ranges_exceed_download_budget(tmp_path:
 
         assert result.ok is False
         assert result.failure.reason == "download_budget_exceeded"
-        assert result.failure.dataset_key == "BTCUSDT-1h|1700000000|1700014400"
+        assert result.failure.dataset_key == f"BTCUSDT-1h|{start_time}|{end_time}"
 
     asyncio.run(_test())

@@ -3,6 +3,7 @@
   const embeddedWorkbench = window.__WORKBENCH_DATA__ || null;
   const filterInput = document.getElementById("filter-input");
   const paramFilters = document.getElementById("param-filters");
+  const sortSelect = document.getElementById("sort-select");
   const runMeta = document.getElementById("run-meta");
   const summaryGrid = document.getElementById("summary-grid");
   const candidateList = document.getElementById("candidate-list");
@@ -31,11 +32,12 @@
   const state = {
     items: workbench.items || [],
     filteredItems: workbench.items || [],
-    selectedParamId: (workbench.items[0] || {}).param_id || null,
+    selectedRank: (workbench.items[0] || {}).rank || null,
     activeTab: "parameter_observability",
     activeSampleId: ((workbench.items[0] || {}).samples || [])[0]?.sample_id || null,
     activeFilters: {},
     currentPage: 1,
+    sortMode: "score_desc",
   };
 
   renderSummary(workbench);
@@ -46,6 +48,15 @@
   filterInput.addEventListener("input", () => {
     applyFilters();
   });
+
+  if (sortSelect) {
+    sortSelect.value = state.sortMode;
+    sortSelect.addEventListener("change", () => {
+      state.sortMode = sortSelect.value || "score_desc";
+      state.currentPage = 1;
+      renderCandidates();
+    });
+  }
 
   prevPageButton.addEventListener("click", () => {
     if (state.currentPage <= 1) return;
@@ -106,8 +117,8 @@
       return Object.entries(state.activeFilters).every(([key, value]) => String((item.params || {})[key]) === value);
     });
     state.currentPage = 1;
-    if (!state.filteredItems.some((item) => item.param_id === state.selectedParamId)) {
-      state.selectedParamId = (state.filteredItems[0] || {}).param_id || null;
+    if (!state.filteredItems.some((item) => item.rank === state.selectedRank)) {
+      state.selectedRank = (state.filteredItems[0] || {}).rank || null;
       state.activeSampleId = ((state.filteredItems[0] || {}).samples || [])[0]?.sample_id || null;
     }
     renderCandidates();
@@ -134,24 +145,27 @@
   }
 
   function renderCandidates() {
+    const sortedItems = sortItems(state.filteredItems, state.sortMode);
     const totalPages = Math.max(1, Math.ceil(state.filteredItems.length / pageSize));
     state.currentPage = Math.min(state.currentPage, totalPages);
     const start = (state.currentPage - 1) * pageSize;
-    const visibleItems = state.filteredItems.slice(start, start + pageSize);
+    const visibleItems = sortedItems.slice(start, start + pageSize);
     candidateCount.textContent = `显示 ${state.filteredItems.length} / ${state.items.length}`;
     pageIndicator.textContent = `第 ${state.currentPage} / ${totalPages} 页`;
     prevPageButton.disabled = state.currentPage <= 1;
     nextPageButton.disabled = state.currentPage >= totalPages;
     candidateList.innerHTML = visibleItems.map((item) => {
       const observationSummary = summarizeObservations(item.parameter_observations || []);
+      const winRate = (item.summary || {}).avg_win_rate_pct;
+      const winRateText = (winRate === null || winRate === undefined) ? "" : ` | 胜率 ${formatPct(winRate)}`;
       return `
-        <article class="candidate ${item.param_id === state.selectedParamId ? "active" : ""}" data-param-id="${escapeAttr(item.param_id)}">
+        <article class="candidate ${item.rank === state.selectedRank ? "active" : ""}" data-rank="${escapeAttr(String(item.rank))}">
           <div class="candidate-top">
             <div class="candidate-title">#${item.rank} ${escapeHtml(item.symbol)} / ${escapeHtml(item.interval)}</div>
             <div class="candidate-score">${formatNumber(item.score)}</div>
           </div>
           <div class="candidate-meta">
-            收益 ${formatPct(item.summary.avg_total_return_pct)} | 回撤 ${formatPct(item.summary.avg_max_dd_pct)} | 交易 ${item.summary.total_trades}
+            收益 ${formatPct(item.summary.avg_total_return_pct)} | 回撤 ${formatPct(item.summary.avg_max_dd_pct)} | 交易 ${item.summary.total_trades}${winRateText}
           </div>
           <div class="candidate-observation">
             ${escapeHtml(observationSummary)}<br>
@@ -163,9 +177,9 @@
 
     candidateList.querySelectorAll(".candidate").forEach((node) => {
       node.addEventListener("click", () => {
-        state.selectedParamId = node.dataset.paramId;
+        state.selectedRank = Number(node.dataset.rank);
         const selected = getSelectedItem();
-        state.activeSampleId = (selected.samples[0] || {}).sample_id || null;
+        state.activeSampleId = ((selected || {}).samples || [])[0]?.sample_id || null;
         state.activeTab = "parameter_observability";
         renderCandidates();
         renderDetail();
@@ -192,6 +206,7 @@
           <span>收益: ${formatPct(item.summary.avg_total_return_pct)}</span>
           <span>回撤: ${formatPct(item.summary.avg_max_dd_pct)}</span>
           <span>交易数: ${item.summary.total_trades}</span>
+          ${renderWinRate(item)}
         </div>
       </section>
       <section class="pill-row">
@@ -342,7 +357,7 @@
   }
 
   function getSelectedItem() {
-    return state.filteredItems.find((item) => item.param_id === state.selectedParamId) || null;
+    return state.filteredItems.find((item) => item.rank === state.selectedRank) || null;
   }
 
   function tabButton(name, label) {
@@ -381,6 +396,12 @@
     return `${formatNumber(value)}%`;
   }
 
+  function renderWinRate(item) {
+    const value = ((item || {}).summary || {}).avg_win_rate_pct;
+    if (value === null || value === undefined) return "";
+    return `<span>胜率: ${formatPct(value)}</span>`;
+  }
+
   function resolveReportHref(path) {
     const text = String(path || "");
     if (!text) return "#";
@@ -400,8 +421,37 @@
   }
 
   function formatNumber(value) {
-    const number = Number(value || 0);
+    if (value === null || value === undefined || value === "") return "-";
+    const number = Number(value);
     return Number.isFinite(number) ? number.toFixed(2).replace(/\.00$/, "") : "-";
+  }
+
+  function sortItems(items, mode) {
+    const copy = [...(items || [])];
+    const key = String(mode || "score_desc");
+    const dir = key.endsWith("_asc") ? 1 : -1;
+
+    function numeric(v, fallback = null) {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : fallback;
+    }
+
+    function valueFor(item) {
+      const summary = item.summary || {};
+      if (key.startsWith("return_")) return numeric(summary.avg_total_return_pct, 0);
+      if (key.startsWith("dd_")) return numeric(summary.avg_max_dd_pct, 0);
+      if (key.startsWith("trades_")) return numeric(summary.total_trades, 0);
+      if (key.startsWith("winrate_")) return numeric(summary.avg_win_rate_pct, -1);
+      return numeric(item.score, 0);
+    }
+
+    copy.sort((a, b) => {
+      const av = valueFor(a);
+      const bv = valueFor(b);
+      if (av !== bv) return (av - bv) * dir;
+      return (Number(a.rank || 0) - Number(b.rank || 0));
+    });
+    return copy;
   }
 
   function escapeHtml(text) {

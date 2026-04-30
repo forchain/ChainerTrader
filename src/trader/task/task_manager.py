@@ -292,7 +292,7 @@ class TaskManager:
         return max(1, os.cpu_count() or 1)
 
     def _optimization_dataset_prepare_timeout_seconds(self) -> float:
-        return float(getattr(self.cfg, "optimization_dataset_prepare_timeout_seconds", 15.0))
+        return float(getattr(self.cfg, "optimization_dataset_prepare_timeout_seconds", 600.0))
 
     def _optimization_dataset_download_request_budget(self) -> int:
         return int(getattr(self.cfg, "optimization_dataset_download_request_budget", 2))
@@ -308,6 +308,7 @@ class TaskManager:
         end_time: int,
         allow_download: bool,
         max_download_ranges: int | None = None,
+        allow_incomplete_coverage: bool = False,
     ):
         return asyncio.run(
             resolver.prepare(
@@ -316,6 +317,7 @@ class TaskManager:
                 end_time,
                 allow_download=allow_download,
                 max_download_ranges=max_download_ranges,
+                allow_incomplete_coverage=allow_incomplete_coverage,
             )
         )
 
@@ -327,6 +329,7 @@ class TaskManager:
         end_time: int,
         allow_download: bool,
         max_download_ranges: int | None = None,
+        allow_incomplete_coverage: bool = False,
     ):
         return await asyncio.to_thread(
             self._prepare_dataset_job_sync,
@@ -336,6 +339,7 @@ class TaskManager:
             end_time,
             allow_download,
             max_download_ranges,
+            allow_incomplete_coverage,
         )
 
     async def _prepare_backtest_datasets(
@@ -360,18 +364,27 @@ class TaskManager:
                     cfg.symbol_interval,
                     cfg.start_time,
                     cfg.end_time,
-                    cfg.auto_download or cfg.optimization_run_id is not None,
+                    bool(cfg.auto_download),
+                    cfg.optimization_run_id is not None,
                 )
             if cfg.optimization_run_id:
                 dataset_run_ids.setdefault(dataset_key, set()).add(cfg.optimization_run_id)
 
         semaphore = asyncio.Semaphore(self._dataset_prepare_max_workers())
+        dataset_timeout_seconds = self._optimization_dataset_prepare_timeout_seconds()
+        if dataset_jobs:
+            self.log.info(
+                f"Optimization dataset preparation: datasets={len(dataset_jobs)} max_workers={self._dataset_prepare_max_workers()} timeout={dataset_timeout_seconds:.1f}s"
+            )
 
         async def run_job(dataset_key, job):
             async with semaphore:
                 resolver = DatasetResolver(self.db_manager, self.exchange, self.log)
-                symbol_interval, start_time, end_time, allow_download = job
+                symbol_interval, start_time, end_time, allow_download, allow_incomplete_coverage = job
                 status_dataset_key = f"{symbol_interval.name()}|{start_time}|{end_time}"
+                self.log.info(
+                    f"Dataset preparation started: {status_dataset_key} allow_download={bool(allow_download)} allow_incomplete_coverage={bool(allow_incomplete_coverage)}"
+                )
                 for run_id in dataset_run_ids.get(dataset_key, set()):
                     runtime = (runtimes or {}).get(run_id)
                     if runtime:
@@ -385,8 +398,9 @@ class TaskManager:
                             end_time,
                             allow_download,
                             self._optimization_dataset_download_request_budget() if allow_download else None,
+                            allow_incomplete_coverage=bool(allow_incomplete_coverage),
                         ),
-                        timeout=self._optimization_dataset_prepare_timeout_seconds() if allow_download else None,
+                        timeout=dataset_timeout_seconds if allow_download else None,
                     )
                 except TimeoutError:
                     prepared_results[dataset_key] = DatasetPreparationResult(
@@ -398,6 +412,11 @@ class TaskManager:
                         ),
                     )
                 result = prepared_results[dataset_key]
+                if result.ok:
+                    self.log.info(f"Dataset preparation finished: {status_dataset_key} status=ok")
+                else:
+                    reason = result.failure.reason if result.failure else "dataset_failed"
+                    self.log.warning(f"Dataset preparation finished: {status_dataset_key} status=failed reason={reason}")
                 for run_id in dataset_run_ids.get(dataset_key, set()):
                     runtime = (runtimes or {}).get(run_id)
                     if not runtime:
@@ -413,7 +432,22 @@ class TaskManager:
                             message=result.failure.message if result.failure else None,
                         )
 
-        await asyncio.gather(*(run_job(dataset_key, job) for dataset_key, job in dataset_jobs.items()))
+        tasks = {asyncio.create_task(run_job(dataset_key, job)): dataset_key for dataset_key, job in dataset_jobs.items()}
+        heartbeat_seconds = 15.0
+        while tasks:
+            done, pending = await asyncio.wait(tasks.keys(), timeout=heartbeat_seconds, return_when=asyncio.FIRST_COMPLETED)
+            for finished in done:
+                tasks.pop(finished, None)
+                finished.result()
+            if pending:
+                prepared = len(prepared_results)
+                total = len(dataset_jobs)
+                running = len(pending)
+                sample = sorted(
+                    (f"{key[0]}|{key[1]}|{key[2]}" for key in list(tasks.values())[:5]),
+                )
+                suffix = f" examples={sample}" if sample else ""
+                self.log.info(f"Dataset preparation progress: prepared={prepared}/{total} running={running}{suffix}")
 
         for cfg in cfgs:
             if cfg.ttype != TaskType.BACK_TRADER or cfg.csv:

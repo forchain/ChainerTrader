@@ -14,6 +14,11 @@ def test_config():
     print(cfg.to_dict())
 
 
+def test_config_defaults_use_10_minute_dataset_prepare_timeout():
+    cfg = Config()
+    assert cfg.optimization_dataset_prepare_timeout_seconds == 600.0
+
+
 def test_symbols():
     cfgs = [
         TaskConfig(0, TaskType.TRADER, SymbolInterval("BTC-USDT", Interval.INTERVAL_1d)),

@@ -126,9 +126,11 @@ class BinanceExchange:
         kls = parse_klines(ret)
 
         if kls and len(kls) > 0:
-            self.log.info(f"get klines: {len(kls)}/{len(ret)}  start={kls[0].open_datetime()} end={kls[len(kls)-1].close_datetime()}")
+            self.log.info(
+                f"get klines: {si.symbol()} {si.interval.value} {len(kls)}/{len(ret)} start={kls[0].open_datetime()} end={kls[len(kls)-1].close_datetime()}"
+            )
         else:
-            self.log.info(f"get klines: 0/{len(ret)}")
+            self.log.info(f"get klines: {si.symbol()} {si.interval.value} 0/{len(ret)}")
 
         return kls
 
@@ -157,10 +159,10 @@ class BinanceExchange:
         kls = parse_klines(ret)
         if kls and len(kls) > 0:
             self.log.info(
-                f"get klines by end: {len(kls)}/{len(ret)} start={kls[0].open_datetime()} end={kls[len(kls)-1].close_datetime()}"
+                f"get klines by end: {si.symbol()} {si.interval.value} {len(kls)}/{len(ret)} start={kls[0].open_datetime()} end={kls[len(kls)-1].close_datetime()}"
             )
         else:
-            self.log.info(f"get klines by end: 0/{len(ret)}")
+            self.log.info(f"get klines by end: {si.symbol()} {si.interval.value} 0/{len(ret)}")
         return kls
 
     def get_klines_by_start(

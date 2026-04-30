@@ -8,10 +8,21 @@ from trader.database.manager import DatabaseManager
 from trader.exchange.binance.exchange import BinanceExchange, get_oldest_time
 from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig
-from trader.utils.symbol_interval import SymbolInterval, add_time_duration
+from trader.utils.symbol_interval import SymbolInterval, add_time_duration, get_time_duration
 
 DOWNLOAD_SPACE_TIME = 5
 DOWNLOAD_RETRY_MAX = 5
+KLINE_REQUEST_LIMIT_MAX = 500
+
+
+def _compute_limit_for_range(symbol_interval: SymbolInterval, start_time: int, end_time: int) -> int:
+    if start_time > end_time:
+        return 0
+    step = int(get_time_duration(symbol_interval.interval))
+    if step <= 0:
+        return KLINE_REQUEST_LIMIT_MAX
+    needed = int((end_time - start_time) // step) + 1
+    return max(1, min(KLINE_REQUEST_LIMIT_MAX, needed))
 
 
 class UpdateKlinesTask(BaseTask):
@@ -234,7 +245,9 @@ async def download_range(
             log.info(f"exit {name}. total={total_records}")
             return False
 
-        kls = exchange.get_klines(symbol_interval, current_start, end_time)
+        batch_limit = _compute_limit_for_range(symbol_interval, current_start, end_time)
+        batch_end = min(end_time, add_time_duration(current_start, symbol_interval.interval, batch_limit - 1))
+        kls = exchange.get_klines(symbol_interval, current_start, batch_end, limit=batch_limit)
 
         if kls is None or len(kls) <= 0:
             log.error(f"{name} get klines is empty")
@@ -252,9 +265,9 @@ async def download_range(
         total_records += ret
 
         if ret != len(kls):
-            log.warning(f"{name} add klines to DB: {ret} != {len(kls)}")
+            log.warning(f"{name} add klines to DB: {col_name} ({symbol_interval.name()}) {ret} != {len(kls)}")
         else:
-            log.info(f"{name} add klines to DB: {ret}/{total_records}")
+            log.info(f"{name} add klines to DB: {col_name} ({symbol_interval.name()}) {ret}/{total_records}")
 
         last_kline = kls[-1]
         next_start = add_time_duration(last_kline.open_time, symbol_interval.interval, 1)
@@ -300,10 +313,11 @@ async def download_range_backward(
             log.info(f"exit {name}. total={total_records}")
             return False
 
+        batch_limit = _compute_limit_for_range(symbol_interval, start_time, current_end)
         if hasattr(exchange, "get_klines_by_end"):
-            kls = exchange.get_klines_by_end(symbol_interval, current_end)
+            kls = exchange.get_klines_by_end(symbol_interval, current_end, limit=batch_limit)
         else:
-            kls = exchange.get_klines(symbol_interval, start_time, current_end)
+            kls = exchange.get_klines(symbol_interval, start_time, current_end, limit=batch_limit)
 
         if kls is None:
             log.error(f"{name} get klines failed")
@@ -315,7 +329,13 @@ async def download_range_backward(
             return False
 
         if len(kls) <= 0:
-            confirmed_boundary = earliest_seen_open_time is not None
+            if earliest_seen_open_time is None:
+                # We have proven that there are no klines at or before current_end. Record a conservative boundary
+                # so downstream dataset coverage checks won't treat pre-listing time as "missing".
+                earliest_seen_open_time = add_time_duration(current_end, symbol_interval.interval, 1)
+                confirmed_boundary = True
+            else:
+                confirmed_boundary = True
             break
 
         retry_count = 0
@@ -327,9 +347,9 @@ async def download_range_backward(
             earliest_seen_open_time = batch_first_open_time
 
         if ret != len(kls):
-            log.warning(f"{name} add klines to DB: {ret} != {len(kls)}")
+            log.warning(f"{name} add klines to DB: {col_name} ({symbol_interval.name()}) {ret} != {len(kls)}")
         else:
-            log.info(f"{name} add klines to DB: {ret}/{total_records}")
+            log.info(f"{name} add klines to DB: {col_name} ({symbol_interval.name()}) {ret}/{total_records}")
 
         prev_end = add_time_duration(batch_first_open_time, symbol_interval.interval, -1)
         if prev_end >= current_end:

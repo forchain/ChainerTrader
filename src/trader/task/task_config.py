@@ -166,16 +166,17 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
         if len(sis) <= 0:
             continue
 
-        start_time = 0
-
         if "start_time" in tcd:
             stime = parse_datetime(tcd["start_time"])
             start_time = int(stime.timestamp())
+        else:
+            start_time = int(parse_datetime("2000-01-01 00:00:00").timestamp())
 
-        end_time = 0
         if "end_time" in tcd:
             etime = parse_datetime(tcd["end_time"])
             end_time = int(etime.timestamp())
+        else:
+            end_time = int(datetime.now().timestamp())
 
         free = -1
         if "free" in tcd:

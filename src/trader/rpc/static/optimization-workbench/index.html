@@ -25,6 +25,17 @@
         <div class="pane-head">
           <h2>候选列表</h2>
           <p id="candidate-count" class="muted"></p>
+          <div class="param-filters">
+            <label>
+              <select id="sort-select">
+                <option value="score_desc">排序: 评分（高→低）</option>
+                <option value="return_desc">收益（高→低）</option>
+                <option value="dd_asc">回撤（低→高）</option>
+                <option value="trades_desc">交易数（多→少）</option>
+                <option value="winrate_desc">胜率（高→低）</option>
+              </select>
+            </label>
+          </div>
           <div id="param-filters" class="param-filters"></div>
           <div class="pager">
             <button id="prev-page" type="button">上一页</button>
