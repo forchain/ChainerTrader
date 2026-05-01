@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # setup_worktree.sh — Restore development environment in a git worktree.
 #
-# Creates symlinks for .venv and .env pointing to the main repo, so that
-# uv run and python-dotenv work transparently without re-installing anything.
+# Creates symlinks for .env pointing to the main repo, so that python-dotenv
+# works transparently without re-installing anything.
 #
 # Usage: bash scripts/setup_worktree.sh [--profile <name>] [--require-env KEY ...]
 # Safe to run multiple times (idempotent).
@@ -56,26 +56,7 @@ echo "Worktree : $REPO_ROOT"
 echo "Main repo: $MAIN_REPO"
 echo ""
 
-# ── 3. Symlink .venv ──────────────────────────────────────────────────────────
-VENV_TARGET="$MAIN_REPO/.venv"
-VENV_LINK="$REPO_ROOT/.venv"
-
-if [ ! -d "$VENV_TARGET" ]; then
-    echo "✗  Main repo has no .venv at '$VENV_TARGET'."
-    echo "   Run 'make install' in the main repo first, then re-run this script."
-    exit 1
-fi
-
-if [ -L "$VENV_LINK" ] && [ -d "$VENV_LINK" ]; then
-    echo "✓  .venv symlink already set up — skipping."
-else
-    # Remove broken symlink or stale file if present
-    [ -e "$VENV_LINK" ] || [ -L "$VENV_LINK" ] && rm -rf "$VENV_LINK"
-    ln -sfn "$VENV_TARGET" "$VENV_LINK"
-    echo "✓  Created .venv → $VENV_TARGET"
-fi
-
-# ── 4. Symlink .env ───────────────────────────────────────────────────────────
+# ── 3. Symlink .env ───────────────────────────────────────────────────────────
 ENV_TARGET="$MAIN_REPO/.env"
 ENV_LINK="$REPO_ROOT/.env"
 
@@ -91,7 +72,7 @@ else
     fi
 fi
 
-# ── 5. Symlink Shared Directories (reports, .cache, tmp) ──────────────────────
+# ── 4. Symlink Shared Directories (reports, .cache, tmp) ──────────────────────
 SHARED_DIRS=("reports" ".cache" "tmp")
 for dir in "${SHARED_DIRS[@]}"; do
     TARGET="$MAIN_REPO/$dir"
@@ -117,8 +98,29 @@ for dir in "${SHARED_DIRS[@]}"; do
     echo "✓  Created $dir  → $TARGET"
 done
 
-# ── 6. Verify ─────────────────────────────────────────────────────────────────
+# ── 5. Verify ─────────────────────────────────────────────────────────────────
 echo ""
+
+ensure_local_venv() {
+    local venv_dir="$REPO_ROOT/.venv"
+
+    if [ -L "$venv_dir" ]; then
+        echo "⚠  Found shared .venv symlink in worktree. Removing it to avoid conflicts."
+        rm -rf "$venv_dir"
+    fi
+
+    if [ ! -d "$venv_dir" ]; then
+        echo "ℹ  Creating worktree-local virtual environment via 'make install'..."
+        if ! command -v make >/dev/null 2>&1; then
+            echo "✗  'make' not found. Cannot run 'make install' to create .venv."
+            exit 1
+        fi
+        make install
+    fi
+}
+
+ensure_local_venv
+
 PYTHON_BIN="$REPO_ROOT/.venv/bin/python"
 if [ -x "$PYTHON_BIN" ]; then
     PYTHON_VER=$("$PYTHON_BIN" --version 2>&1)
@@ -134,7 +136,7 @@ if [ -x "$PYTHON_BIN" ]; then
     echo ""
     echo "Environment ready. You can now run: uv run python -m trader -h"
 else
-    echo "✗  .venv/bin/python not executable via symlink."
-    echo "   The symlink was created but the venv may be corrupted."
+    echo "✗  '$PYTHON_BIN' is not executable."
+    echo "   Your worktree .venv exists but looks incomplete or corrupted."
     exit 1
 fi
