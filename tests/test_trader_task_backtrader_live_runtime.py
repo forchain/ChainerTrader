@@ -403,3 +403,59 @@ async def test_trader_task_realtime_publishes_warmup_operations_for_dashboard_wi
     assert "notification" not in event_types
     stat_msg = await queue.get()
     assert stat_msg.data.manual_trade_notifications == []
+
+
+@pytest.mark.anyio
+async def test_trader_task_realtime_marks_idle_stream_disconnected(monkeypatch):
+    import trader.task.trader_task as trader_task_module
+
+    class IdleSubscription:
+        async def get(self):
+            await asyncio.sleep(0.01)
+            raise asyncio.TimeoutError
+
+        async def unsubscribe(self):
+            return None
+
+    class IdleHub:
+        def __init__(self, quit_event):
+            self.quit_event = quit_event
+            self.disconnects = []
+
+        async def subscribe(self, key, reconnect_callback=None):
+            self.key = key
+            self.reconnect_callback = reconnect_callback
+            return IdleSubscription()
+
+        def status(self, key):
+            return SimpleNamespace(state=SimpleNamespace(value="running"), subscriber_count=1, last_error=None)
+
+        async def handle_disconnect(self, key):
+            self.disconnects.append(key)
+            if self.reconnect_callback is not None:
+                await self.reconnect_callback()
+            self.quit_event.set()
+
+    FakeRunner.instances = []
+    fetched = [_kline(BASE + i * 60, close=100 + i) for i in range(3)]
+    cfg = Config(window=500)
+    tcfg = TaskConfig(
+        82,
+        TaskType.TRADER,
+        SymbolInterval("BTC-USDT", Interval.INTERVAL_1m),
+        strategies=["macd_triple_divergence"],
+        free=1000,
+        live_execution_mode="manual_notify",
+        live_data_mode="realtime",
+    )
+    task = TraderTask(tcfg, cfg, Logger(cfg), FakeDb(), FakeExchange(fetched))
+    hub = IdleHub(task.quit)
+
+    monkeypatch.setattr("trader.task.trader_task.BacktraderLiveRunner", FakeRunner)
+    monkeypatch.setattr("trader.task.trader_task.GLOBAL_MARKET_STREAM_HUB", hub)
+    monkeypatch.setattr(trader_task_module, "REALTIME_STREAM_QUEUE_TIMEOUT_SECONDS", 0.01, raising=False)
+    monkeypatch.setattr(trader_task_module, "REALTIME_STREAM_STALE_SECONDS", 0.01, raising=False)
+
+    await asyncio.wait_for(task.start_realtime(asyncio.Queue(), [NoopStrategy]), timeout=0.5)
+
+    assert hub.disconnects == [hub.key]

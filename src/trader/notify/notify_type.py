@@ -132,6 +132,8 @@ def parse_notice_config(cfg):
             return []
         except FileNotFoundError:
             return []
+    elif path.is_like_file(cfg):
+        raise FileNotFoundError(f"notice config file not found: {file_path}")
     else:
         parsed_list = json.loads(cfg)
 

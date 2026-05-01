@@ -92,7 +92,7 @@ docs:             ## Build the documentation.
 .PHONY: serve
 serve: .env            ## Run the API server.
 	@if [ "$(USING_UV)" ]; then \
-		uv run trader; \
+		PYTHONWARNINGS="ignore:invalid escape sequence" uv run trader; \
 	else \
-		$(ENV_PREFIX)python -m trader; \
+		PYTHONWARNINGS="ignore:invalid escape sequence" $(ENV_PREFIX)python -m trader; \
 	fi

@@ -115,6 +115,20 @@ async def test_market_stream_hub_runs_reconnect_catchup_before_returning_to_runn
 
 
 @pytest.mark.anyio
+async def test_market_stream_hub_restarts_connector_on_disconnect():
+    connector = RecordingConnector()
+    hub = MarketStreamHub(connector)
+    key = MarketStreamKey("BINANCE", "BTCUSDT", "1m")
+    await hub.subscribe(key)
+
+    await hub.handle_disconnect(key)
+
+    assert connector.stopped == [key]
+    assert connector.started == [key, key]
+    assert hub.status(key).state == MarketStreamState.RUNNING
+
+
+@pytest.mark.anyio
 async def test_binance_kline_adapter_opens_connection_before_subscribing(monkeypatch):
     import binance_sdk_spot
 

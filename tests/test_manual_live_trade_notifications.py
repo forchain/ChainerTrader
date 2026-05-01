@@ -402,6 +402,15 @@ def test_notice_config_ignores_unknown_notice_type():
     assert notices == []
 
 
+def test_notice_config_missing_file_path_reports_exact_missing_file(tmp_path):
+    from trader.notify.notify_type import parse_notice_config
+
+    missing_path = tmp_path / "notice.json"
+
+    with pytest.raises(FileNotFoundError, match="notice config file not found"):
+        parse_notice_config(str(missing_path))
+
+
 def test_notify_mail_sends_to_multiple_recipients(monkeypatch):
     from trader.notify.notify_type import NotifyMail, NotifyType
 

@@ -132,10 +132,18 @@ class MarketStreamHub:
             entry.state = MarketStreamState.RECONNECTING
             reconnect_callbacks = list((entry.reconnect_callbacks or {}).values())
 
+        await self.connector.stop(key)
         if self.catch_up:
             await self.catch_up(key)
         for reconnect_callback in reconnect_callbacks:
             await reconnect_callback()
+
+        async with self._lock:
+            entry = self._streams.get(key)
+            should_restart = entry is not None and bool(entry.subscribers)
+
+        if should_restart:
+            await self._start_stream(key)
 
         async with self._lock:
             entry = self._streams.get(key)

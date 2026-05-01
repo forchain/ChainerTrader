@@ -1,6 +1,7 @@
 import asyncio
 from asyncio import Queue
 from datetime import datetime, timedelta
+import time
 
 from trader.common.common import MIN_RECORDS_NUM, sleep, sleep_loop
 from trader.common.config import Config
@@ -38,6 +39,8 @@ from trader.utils.operate import OperateType
 from trader.utils.symbol_interval import add_time_duration
 
 DOWLOAD_SPACE_TIME = 5
+REALTIME_STREAM_QUEUE_TIMEOUT_SECONDS = 1.0
+REALTIME_STREAM_STALE_SECONDS = 90.0
 
 
 class TraderTask(BaseTask):
@@ -294,12 +297,19 @@ class TraderTask(BaseTask):
 
         subscription = await GLOBAL_MARKET_STREAM_HUB.subscribe(key, reconnect_callback=catch_up_missing_closed_klines)
         await publish_runtime_status()
+        last_stream_update_at = time.monotonic()
         try:
             while not self.quit.is_set():
                 try:
-                    update = await asyncio.wait_for(subscription.get(), timeout=1.0)
+                    update = await asyncio.wait_for(subscription.get(), timeout=REALTIME_STREAM_QUEUE_TIMEOUT_SECONDS)
                 except asyncio.TimeoutError:
+                    if time.monotonic() - last_stream_update_at >= REALTIME_STREAM_STALE_SECONDS:
+                        self.log.warning(f"Realtime stream stale: key={key.stream_name()} idle_seconds={REALTIME_STREAM_STALE_SECONDS}")
+                        await GLOBAL_MARKET_STREAM_HUB.handle_disconnect(key)
+                        last_stream_update_at = time.monotonic()
+                        await publish_runtime_status()
                     continue
+                last_stream_update_at = time.monotonic()
                 await publish_event(kline_update_event(self.tcfg.id, update))
                 if not update.is_closed:
                     continue
