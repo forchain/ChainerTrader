@@ -1,3 +1,4 @@
+import argparse
 import os
 
 from trader.common.config import Config, new_and_env
@@ -62,6 +63,28 @@ def test_config_from_env():
     cfg.export_env()
     ncfg = new_and_env()
     print(ncfg.to_dict())
+
+
+def test_new_and_env_cli_overrides_env(monkeypatch):
+    monkeypatch.setenv("TRADER_COMMISSION", "0.002")
+    monkeypatch.setenv("TRADER_TASKS", "env_tasks.json")
+    ns = argparse.Namespace(commission=0.005, tasks="cli_tasks.json")
+    cfg = new_and_env(ns)
+    assert cfg.commission == 0.005
+    assert cfg.tasks == "cli_tasks.json"
+
+
+def test_new_and_env_env_when_cli_absent(monkeypatch):
+    monkeypatch.setenv("TRADER_COMMISSION", "0.003")
+    cfg = new_and_env()
+    assert cfg.commission == 0.003
+
+
+def test_new_and_env_protected_paths_cli_overrides_env(monkeypatch):
+    monkeypatch.setenv("TRADER_PROTECTED_PATHS", "/from-env")
+    ns = argparse.Namespace(protected_paths="/from-cli,/other")
+    cfg = new_and_env(ns)
+    assert cfg.protected_paths == ["/from-cli", "/other"]
 
 
 def test_ex_config():

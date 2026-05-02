@@ -1,6 +1,7 @@
 import asyncio
 from asyncio import Queue
 from concurrent.futures import ProcessPoolExecutor, TimeoutError as FutureTimeoutError
+import inspect
 import os
 from pathlib import Path
 
@@ -60,10 +61,13 @@ class TaskManager:
         pass
 
     async def close(self):
-        for ts in self.tasks.values():
-            ts.close()
+        closing_states = []
+        for task in self.tasks.values():
+            task.close()
+            closing_states.append(task.ts)
 
         await asyncio.gather(*self.async_tasks)
+        await self._persist_task_states(closing_states)
 
     def add_tasks(self, taskcs: list[TaskConfig], queue: Queue):
 
@@ -105,15 +109,25 @@ class TaskManager:
         self.log.info(f"All tasks are created to running:{len(async_tasks)}")
         await asyncio.gather(*async_tasks)
 
+        completed_states = []
         for tc in taskcs:
             task = self.get_task(tc.id)
             if task:
                 task.stop()
+                completed_states.append(task.ts)
                 self.tasks.pop(tc.id)
+
+        await self._persist_task_states(completed_states)
 
         if not self.cfg.is_server():
             self.log.info("Try to actively exit")
             await queue.put(new_exit_msg())
+
+    async def _persist_task_states(self, states: list[TaskState]) -> None:
+        if not self.db_manager or not getattr(self.db_manager, "task", None):
+            return
+        if states:
+            await self.db_manager.task.add_tasks(states)
 
     async def add_task(self, cfg, queue: Queue):
         task = None
@@ -271,9 +285,7 @@ class TaskManager:
         for run_id in sorted({cfg.optimization_run_id for cfg in cfgs if cfg.optimization_run_id}):
             run_cfgs = [cfg for cfg in cfgs if cfg.optimization_run_id == run_id]
             dataset_keys = {
-                (cfg.symbol_interval.name(), cfg.start_time, cfg.end_time)
-                for cfg in run_cfgs
-                if cfg.ttype == TaskType.BACK_TRADER and not cfg.csv
+                (cfg.symbol_interval.name(), cfg.start_time, cfg.end_time) for cfg in run_cfgs if cfg.ttype == TaskType.BACK_TRADER and not cfg.csv
             }
             runtimes[run_id] = OptimizationRuntimeStatus(
                 Path.cwd() / "tmp" / "optimization_runs" / run_id,
@@ -300,27 +312,6 @@ class TaskManager:
     def _optimization_sample_timeout_seconds(self) -> float:
         return float(getattr(self.cfg, "optimization_sample_timeout_seconds", 60.0))
 
-    def _prepare_dataset_job_sync(
-        self,
-        resolver: DatasetResolver,
-        symbol_interval,
-        start_time: int,
-        end_time: int,
-        allow_download: bool,
-        max_download_ranges: int | None = None,
-        allow_incomplete_coverage: bool = False,
-    ):
-        return asyncio.run(
-            resolver.prepare(
-                symbol_interval,
-                start_time,
-                end_time,
-                allow_download=allow_download,
-                max_download_ranges=max_download_ranges,
-                allow_incomplete_coverage=allow_incomplete_coverage,
-            )
-        )
-
     async def _prepare_dataset_job(
         self,
         resolver: DatasetResolver,
@@ -331,15 +322,17 @@ class TaskManager:
         max_download_ranges: int | None = None,
         allow_incomplete_coverage: bool = False,
     ):
-        return await asyncio.to_thread(
-            self._prepare_dataset_job_sync,
-            resolver,
+        prepare_kwargs = {
+            "allow_download": allow_download,
+            "max_download_ranges": max_download_ranges,
+        }
+        if "allow_incomplete_coverage" in inspect.signature(resolver.prepare).parameters:
+            prepare_kwargs["allow_incomplete_coverage"] = allow_incomplete_coverage
+        return await resolver.prepare(
             symbol_interval,
             start_time,
             end_time,
-            allow_download,
-            max_download_ranges,
-            allow_incomplete_coverage,
+            **prepare_kwargs,
         )
 
     async def _prepare_backtest_datasets(
@@ -390,6 +383,9 @@ class TaskManager:
                     if runtime:
                         runtime.dataset_started(status_dataset_key)
                 try:
+                    prepare_kwargs = {}
+                    if "allow_incomplete_coverage" in inspect.signature(self._prepare_dataset_job).parameters:
+                        prepare_kwargs["allow_incomplete_coverage"] = bool(allow_incomplete_coverage)
                     prepared_results[dataset_key] = await asyncio.wait_for(
                         self._prepare_dataset_job(
                             resolver,
@@ -398,7 +394,7 @@ class TaskManager:
                             end_time,
                             allow_download,
                             self._optimization_dataset_download_request_budget() if allow_download else None,
-                            allow_incomplete_coverage=bool(allow_incomplete_coverage),
+                            **prepare_kwargs,
                         ),
                         timeout=dataset_timeout_seconds if allow_download else None,
                     )

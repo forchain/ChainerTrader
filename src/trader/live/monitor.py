@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import inspect
 import json
 from dataclasses import asdict
 from typing import Any
@@ -17,6 +18,12 @@ from trader.live.dashboard import (
 from trader.task.task_type import TaskType
 
 DEFAULT_OVERLAYS = ["signals", "risk", "strategy_events"]
+
+
+async def _maybe_await(value):
+    if inspect.isawaitable(value):
+        return await value
+    return value
 
 
 def _strategy_params(tcfg) -> dict[str, Any]:
@@ -76,12 +83,12 @@ def list_live_strategy_summaries(task_manager) -> list[dict]:
     return sorted(summaries, key=lambda item: item["strategy_id"])
 
 
-def build_initial_snapshot(task, db_manager, runtime_status: dict | None = None, limit: int = 500) -> dict:
+async def build_initial_snapshot(task, db_manager, runtime_status: dict | None = None, limit: int = 500) -> dict:
     tcfg = task.tcfg
     state = getattr(getattr(task, "ts", None), "state", None)
     candles = []
     if db_manager is not None and getattr(db_manager, "kline", None) is not None:
-        candles = db_manager.kline.get_latest_klines(tcfg.symbol_interval.name(), limit) or []
+        candles = await _maybe_await(db_manager.kline.get_latest_klines(tcfg.symbol_interval.name(), limit)) or []
 
     overlays = build_snapshot_overlays(task, db_manager, candles)
     return {

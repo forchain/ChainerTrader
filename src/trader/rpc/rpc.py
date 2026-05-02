@@ -115,7 +115,7 @@ async def admin_tasks_page(request: Request):
 
 @rpc.get("/admin/klines", response_class=HTMLResponse)
 async def admin_klines_page(request: Request):
-    return templates.TemplateResponse("klines.html", {"request": request, "klines_info": get_klines_info(request.app.state.app)})
+    return templates.TemplateResponse("klines.html", {"request": request, "klines_info": await get_klines_info(request.app.state.app)})
 
 
 @rpc.get("/admin/live", response_class=HTMLResponse)

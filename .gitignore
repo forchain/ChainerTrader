@@ -143,6 +143,7 @@ reports
 .sw*
 .worktrees/
 tmp
+data
 
 # Local notification credentials
 configs/notices/notice.json

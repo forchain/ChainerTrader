@@ -1,5 +1,7 @@
 import logging
 import os
+from argparse import Namespace
+from typing import Any
 
 from trader.common.common import NAME
 from trader.utils.trend import parseTrendType
@@ -65,6 +67,7 @@ class Config:
         self.log_level = log_level
         self.exchange = exchange
         self.db = db
+        # Legacy MongoDB option retained for config compatibility; SQL database selection uses self.db.
         self.db_name = db_name
         self.window = window
         self.tasks = tasks
@@ -196,26 +199,27 @@ def default() -> Config:
     return Config()
 
 
-def new_and_env(
-    commission=0.001,
-    period=DEFAULT_PERIOD,
-    log_file=False,
-    plot=False,
-    mode=None,
-    log_level="INFO",
-    exchange=None,
-    db=None,
-    db_name=NAME,
-    window=1000,
-    tasks=None,
-    cash=100000,
-    stat=50,
-    notice=None,
-    api=None,
-    auth_username=None,
-    auth_password=None,
-    protected_paths=None,
-) -> Config:
+def new_and_env(cli: Namespace | None = None) -> Config:
+    """Build Config: built-in defaults, then environment variables, then explicit CLI flags (highest)."""
+
+    commission = 0.001
+    period = DEFAULT_PERIOD
+    log_file = False
+    plot = False
+    mode = None
+    log_level = "INFO"
+    exchange = None
+    db = None
+    db_name = NAME
+    window = 1000
+    tasks = None
+    cash = 100000.0
+    stat = 50
+    notice = None
+    api = None
+    auth_username = None
+    auth_password = None
+    protected_paths: list[str] = []
 
     commission = float(os.environ.get(TRADER_COMMISSION, commission))
     period = int(os.environ.get(TRADER_PERIOD, period))
@@ -235,12 +239,49 @@ def new_and_env(
     auth_username = os.environ.get(TRADER_AUTH_USERNAME, auth_username)
     auth_password = os.environ.get(TRADER_AUTH_PASSWORD, auth_password)
 
-    # Parse protected paths from environment variable (comma-separated)
     protected_paths_env = os.environ.get(TRADER_PROTECTED_PATHS, "")
     if protected_paths_env:
         protected_paths = [path.strip() for path in protected_paths_env.split(",") if path.strip()]
-    else:
-        protected_paths = protected_paths or []
+
+    if cli is not None:
+        a: dict[str, Any] = vars(cli)
+        if "commission" in a:
+            commission = float(a["commission"])
+        if "period" in a:
+            period = int(a["period"])
+        if "log_file" in a:
+            log_file = bool(a["log_file"])
+        if "plot" in a:
+            plot = bool(a["plot"])
+        if "mode" in a:
+            mode = a["mode"]
+        if "log_level" in a:
+            log_level = a["log_level"]
+        if "exchange" in a:
+            exchange = a["exchange"]
+        if "db" in a:
+            db = a["db"]
+        if "db_name" in a:
+            db_name = a["db_name"]
+        if "window" in a:
+            window = int(a["window"])
+        if "tasks" in a:
+            tasks = a["tasks"]
+        if "cash" in a:
+            cash = float(a["cash"])
+        if "stat" in a:
+            stat = int(a["stat"])
+        if "notice" in a:
+            notice = a["notice"]
+        if "api" in a:
+            api = a["api"]
+        if "auth_username" in a:
+            auth_username = a["auth_username"]
+        if "auth_password" in a:
+            auth_password = a["auth_password"]
+        if "protected_paths" in a:
+            raw_pp = a["protected_paths"]
+            protected_paths = [p.strip() for p in raw_pp.split(",") if p.strip()] if raw_pp else []
 
     return Config(
         commission=commission,

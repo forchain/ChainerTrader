@@ -93,8 +93,6 @@ class BaseTask:
         if not self.ts.is_running():
             return
         self.ts.state = TaskStateType.DONE
-        if self.db_manager and self.db_manager.task:
-            self.db_manager.task.add_tasks([self.ts])
         self.close()
         elapsed = datetime.now() - self.start_time
         self.log.info(f"Stop {self.name()}, elapsed time:{elapsed}")

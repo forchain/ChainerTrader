@@ -214,14 +214,14 @@ async def ensure_symbol_window(
     await task.start(asyncio.Queue())
 
 
-def load_window_klines(
+async def load_window_klines(
     db_manager: DatabaseManager,
     symbol: str,
     interval: Interval,
     start_time: int,
     end_time: int,
 ) -> list[Kline]:
-    return db_manager.kline.get_klines(SymbolInterval(normalize_symbol(symbol), interval).name(), start_time, end_time) or []
+    return await db_manager.kline.get_klines(SymbolInterval(normalize_symbol(symbol), interval).name(), start_time, end_time) or []
 
 
 def extract_entry_signals(
@@ -336,7 +336,7 @@ async def scan_market(
                 warmup_bars=strategy_warmup_bars,
             )
             await ensure_symbol_window(cfg, log, db_manager, exchange, symbol, interval, load_start_time, load_end_time)
-            klines = load_window_klines(db_manager, symbol, interval, load_start_time, load_end_time)
+            klines = await load_window_klines(db_manager, symbol, interval, load_start_time, load_end_time)
             if not klines:
                 continue
             results.extend(

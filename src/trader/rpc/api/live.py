@@ -26,11 +26,11 @@ def list_live_strategies(request: Request):
 
 
 @router.get("/strategies/{strategy_id}/snapshot")
-def live_strategy_snapshot(strategy_id: int, request: Request):
+async def live_strategy_snapshot(strategy_id: int, request: Request):
     task = request.app.state.app.task_manager.get_task(strategy_id)
     if task is None:
         raise HTTPException(status_code=404, detail="live strategy not found")
-    return build_initial_snapshot(task, request.app.state.app.db_manager)
+    return await build_initial_snapshot(task, request.app.state.app.db_manager)
 
 
 @router.get("/strategies/{strategy_id}/events")
@@ -112,7 +112,7 @@ async def dispatch_debug_manual_signal(request: Request, strategy_id: int, side:
 
     op = _debug_operation(task, _latest_kline_for_task(app, task), side)
     result = _empty_result(op)
-    task.process_result(result)
+    await task.process_result(result)
     notifications = task.handle_manual_trade_notifications(result)
     sent = []
     for event in notifications:

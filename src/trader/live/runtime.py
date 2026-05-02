@@ -31,6 +31,21 @@ NotificationHandler = Callable[[Any], list[Any]]
 EventPublisher = Callable[[DashboardEvent], Any]
 
 
+async def _maybe_await(value):
+    if inspect.isawaitable(value):
+        return await value
+    return value
+
+
+async def _add_klines(kline_store, collection_name: str, klines: list):
+    try:
+        return await _maybe_await(kline_store.add_klines(collection_name, klines, source="exchange"))
+    except TypeError as exc:
+        if "source" not in str(exc):
+            raise
+        return await _maybe_await(kline_store.add_klines(collection_name, klines))
+
+
 @dataclass
 class RuntimeStepResult:
     accepted: bool = True
@@ -85,12 +100,12 @@ class RealtimeLiveStrategyRuntime:
         return self.tcfg.symbol_interval.name()
 
     async def startup(self) -> RuntimeStepResult:
-        latest = self.db_manager.kline.get_latest_kline(self.collection_name)
+        latest = await _maybe_await(self.db_manager.kline.get_latest_kline(self.collection_name))
         plan = plan_initial_backfill(latest, now=int(self.now_fn()), interval=self.tcfg.symbol_interval.interval)
         fetched = self._fetch_backfill(plan)
         inserted = 0
         if fetched:
-            inserted = self.db_manager.kline.add_klines(self.collection_name, fetched)
+            inserted = await _add_klines(self.db_manager.kline, self.collection_name, fetched)
 
         self.diagnostics.update(
             {
@@ -101,7 +116,7 @@ class RealtimeLiveStrategyRuntime:
                 "startup_backfill_diagnostic": plan.diagnostic,
             }
         )
-        strategy_result = self._run_strategy_on_latest_window()
+        strategy_result = await self._run_strategy_on_latest_window()
         current_operations = self._filter_new_operations(strategy_result)
         self._assign_signal_tracking(current_operations)
         notifications = self._notify(strategy_result)
@@ -121,8 +136,8 @@ class RealtimeLiveStrategyRuntime:
         if not update.is_closed:
             return RuntimeStepResult(kline_update=update)
 
-        self.db_manager.kline.add_klines(self.collection_name, [update.to_kline()])
-        strategy_result = self._run_strategy_on_latest_window()
+        await _add_klines(self.db_manager.kline, self.collection_name, [update.to_kline()])
+        strategy_result = await self._run_strategy_on_latest_window()
         stop_operation = self._manual_stop_operation(update)
         if stop_operation is not None:
             if strategy_result is None:
@@ -154,8 +169,8 @@ class RealtimeLiveStrategyRuntime:
             or []
         )
 
-    def _run_strategy_on_latest_window(self):
-        candles = self.db_manager.kline.get_latest_klines(self.collection_name, min(int(self.cfg.window), 500)) or []
+    async def _run_strategy_on_latest_window(self):
+        candles = await _maybe_await(self.db_manager.kline.get_latest_klines(self.collection_name, min(int(self.cfg.window), 500))) or []
         if self.strategy_runner is not None:
             return self.strategy_runner(candles)
 
@@ -270,8 +285,7 @@ class RealtimeLiveStrategyRuntime:
             stop_loss=float(stop_loss) if stop_loss is not None else None,
             take_profit=float(take_profit) if take_profit is not None else None,
             risk_reward_ratio=float(risk_reward_ratio) if risk_reward_ratio is not None else None,
-            signal_event_id=getattr(op, "signal_event_id", None)
-            or (metadata.get("signal_event_id") if isinstance(metadata, dict) else None),
+            signal_event_id=getattr(op, "signal_event_id", None) or (metadata.get("signal_event_id") if isinstance(metadata, dict) else None),
             signal_number=getattr(op, "signal_number", None),
         )
 

@@ -1,14 +1,12 @@
 from __future__ import annotations
 
 import asyncio
-import csv
 import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Awaitable, Callable
 
-from trader.common import path
 from trader.task.update_klines_task import download_range_backward
 from trader.utils.kline import Kline
 from trader.utils.symbol_interval import SymbolInterval, get_time_duration
@@ -24,7 +22,8 @@ class DatasetRef:
     interval: str
     start_time: int
     end_time: int
-    path: str
+    source_type: str = "db"
+    path: str | None = None
 
 
 @dataclass(frozen=True)
@@ -54,7 +53,7 @@ class DatasetResolver:
         self.db_manager = db_manager
         self.exchange = exchange
         self.log = log
-        self.cache_dir = Path(cache_dir or Path(path.GetProjectDir()) / ".cache" / "backtest_datasets")
+        self.cache_dir = Path(cache_dir) if cache_dir is not None else None
         self.range_downloader = range_downloader or download_range_backward
         self._prepared: dict[str, DatasetPreparationResult] = {}
 
@@ -75,7 +74,11 @@ class DatasetResolver:
         status = "ok" if result.ok else "failed"
         reason = result.failure.reason if result.failure else None
         cache_hit = bool(getattr(result, "cache_hit", False))
-        dataset_key = result.dataset_ref.dataset_key if result.dataset_ref else (result.failure.dataset_key if result.failure else self._build_dataset_key(symbol_interval, start_time, end_time))
+        dataset_key = (
+            result.dataset_ref.dataset_key
+            if result.dataset_ref
+            else (result.failure.dataset_key if result.failure else self._build_dataset_key(symbol_interval, start_time, end_time))
+        )
         self.log.info(
             f"dataset preparation finished: dataset={dataset_key} symbol_interval={symbol_interval.name()} range={start_dt}..{end_dt} status={status} reason={reason} cache_hit={cache_hit} elapsed={elapsed_seconds:.3f}s"
         )
@@ -97,21 +100,14 @@ class DatasetResolver:
             self._log_prepare_result(symbol_interval, start_time, end_time, result, time.perf_counter() - started_at)
             return result
 
-        dataset_ref = self._build_dataset_ref(symbol_interval, cache_start, cache_end)
-        if Path(dataset_ref.path).exists():
-            result = DatasetPreparationResult(ok=True, dataset_ref=dataset_ref, cache_hit=True)
-            self._prepared[dataset_key] = result
-            self._log_prepare_result(symbol_interval, start_time, end_time, result, time.perf_counter() - started_at)
-            return result
-
         if self.db_manager is None or getattr(self.db_manager, "kline", None) is None:
             result = self._failure(dataset_key, "db_unavailable", "database manager is required for dataset preparation")
             self._prepared[dataset_key] = result
             self._log_prepare_result(symbol_interval, start_time, end_time, result, time.perf_counter() - started_at)
             return result
 
-        klines = list(self.db_manager.kline.get_klines(symbol_interval.name(), cache_start, cache_end) or [])
-        first_available_open_time = self._get_first_available_open_time(symbol_interval)
+        klines = list(await self.db_manager.kline.get_klines(symbol_interval.name(), cache_start, cache_end) or [])
+        first_available_open_time = await self._get_first_available_open_time(symbol_interval)
         missing_ranges = self._detect_missing_ranges(
             symbol_interval,
             cache_start,
@@ -162,8 +158,8 @@ class DatasetResolver:
                     return result
 
             if did_download:
-                klines = list(self.db_manager.kline.get_klines(symbol_interval.name(), cache_start, cache_end) or [])
-                first_available_open_time = self._get_first_available_open_time(symbol_interval)
+                klines = list(await self.db_manager.kline.get_klines(symbol_interval.name(), cache_start, cache_end) or [])
+                first_available_open_time = await self._get_first_available_open_time(symbol_interval)
                 missing_ranges = self._detect_missing_ranges(
                     symbol_interval,
                     cache_start,
@@ -187,7 +183,7 @@ class DatasetResolver:
             self._log_prepare_result(symbol_interval, start_time, end_time, result, time.perf_counter() - started_at)
             return result
 
-        self._materialize_cache(Path(dataset_ref.path), klines)
+        dataset_ref = self._build_dataset_ref(symbol_interval, cache_start, cache_end)
         result = DatasetPreparationResult(ok=True, dataset_ref=dataset_ref, cache_hit=False)
         self._prepared[dataset_key] = result
         self._log_prepare_result(symbol_interval, start_time, end_time, result, time.perf_counter() - started_at)
@@ -198,14 +194,13 @@ class DatasetResolver:
 
     def _build_dataset_ref(self, symbol_interval: SymbolInterval, start_time: int, end_time: int) -> DatasetRef:
         dataset_key = self._build_dataset_key(symbol_interval, start_time, end_time)
-        filename = f"{symbol_interval.symbol()}-{symbol_interval.interval.value}-{start_time}-{end_time}.csv"
         return DatasetRef(
             dataset_key=dataset_key,
             symbol=symbol_interval.symbol(),
             interval=symbol_interval.interval.value,
             start_time=start_time,
             end_time=end_time,
-            path=str(self.cache_dir / filename),
+            source_type="db",
         )
 
     def _cache_range(self, symbol_interval: SymbolInterval, start_time: int, end_time: int) -> tuple[int, int]:
@@ -213,22 +208,17 @@ class DatasetResolver:
         if step <= 0 or start_time > end_time:
             return start_time, end_time
 
-        # Cache buckets are day-granular so repeated runs within the same day reuse the same dataset export.
-        # We still align to the interval step to avoid asking for impossible open_time values.
-        day_seconds = 86400
-        day_start = start_time - (start_time % day_seconds)
-        day_end = ((end_time // day_seconds) + 1) * day_seconds - 1
-        aligned = self._aligned_expected_range(day_start, day_end, step, reference_open_time=0)
-        if aligned is None:
-            return day_start, day_end
-        return aligned
+        # Normalize to the strategy interval so second-level end time changes inside the same candle
+        # do not produce a different dataset identity or extra database work.
+        aligned_end = end_time - ((end_time - start_time) % step)
+        return start_time, max(start_time, aligned_end)
 
-    def _get_first_available_open_time(self, symbol_interval: SymbolInterval) -> int | None:
+    async def _get_first_available_open_time(self, symbol_interval: SymbolInterval) -> int | None:
         availability_store = getattr(self.db_manager, "availability", None)
         if availability_store is None or not hasattr(availability_store, "get_earliest_known_open_time"):
             return None
         exchange_name = self.exchange.name() if self.exchange is not None and hasattr(self.exchange, "name") else "UNKNOWN"
-        return availability_store.get_earliest_known_open_time(
+        return await availability_store.get_earliest_known_open_time(
             exchange_name,
             symbol_interval.symbol(),
             symbol_interval.interval.value,
@@ -312,28 +302,6 @@ class DatasetResolver:
             return None
 
         return aligned_start, aligned_end
-
-    def _materialize_cache(self, output_path: Path, klines: list[Kline]):
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        with output_path.open("w", encoding="utf-8", newline="") as handle:
-            writer = csv.writer(handle)
-            for kl in klines:
-                writer.writerow(
-                    [
-                        kl.open_time * 1000,
-                        kl.open,
-                        kl.high,
-                        kl.low,
-                        kl.close,
-                        kl.volume,
-                        kl.close_time * 1000,
-                        kl.vol_quote,
-                        kl.trades,
-                        kl.vol_taker_base,
-                        kl.vol_taker_quote,
-                        kl.ignore,
-                    ]
-                )
 
     def _failure(self, dataset_key: str, reason: str, message: str) -> DatasetPreparationResult:
         return DatasetPreparationResult(

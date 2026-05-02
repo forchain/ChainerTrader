@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # setup_worktree.sh — Restore development environment in a git worktree.
 #
-# Creates symlinks for .env pointing to the main repo, so that python-dotenv
-# works transparently without re-installing anything.
+# Creates symlinks into the main repo: .env, configs/notices/notice.json (if present
+# there), data/trader.db, plus shared dirs reports / .cache / tmp — so worktrees share
+# credentials, notices, the SQLite DB, and artifacts without re-installing anything.
 #
 # Usage: bash scripts/setup_worktree.sh [--profile <name>] [--require-env KEY ...]
 # Safe to run multiple times (idempotent).
@@ -72,7 +73,44 @@ else
     fi
 fi
 
-# ── 4. Symlink Shared Directories (reports, .cache, tmp) ──────────────────────
+# ── 4. Symlink shared notice config and SQLite DB (main repo) ───────────────
+NOTICE_TARGET="$MAIN_REPO/configs/notices/notice.json"
+NOTICE_LINK="$REPO_ROOT/configs/notices/notice.json"
+mkdir -p "$MAIN_REPO/configs/notices"
+mkdir -p "$(dirname "$NOTICE_LINK")"
+
+if [ ! -f "$NOTICE_TARGET" ]; then
+    echo "⚠  Main repo has no configs/notices/notice.json — skipping notice symlink."
+    echo "   Copy configs/notices/notice.sample.json to $NOTICE_TARGET if needed."
+else
+    if [ -L "$NOTICE_LINK" ] && [ -f "$NOTICE_LINK" ] && [ "$(readlink "$NOTICE_LINK")" = "$NOTICE_TARGET" ]; then
+        echo "✓  notice.json symlink already set up — skipping."
+    else
+        { [ -e "$NOTICE_LINK" ] || [ -L "$NOTICE_LINK" ]; } && rm -f "$NOTICE_LINK"
+        ln -sfn "$NOTICE_TARGET" "$NOTICE_LINK"
+        echo "✓  Created configs/notices/notice.json → $NOTICE_TARGET"
+    fi
+fi
+
+DB_TARGET="$MAIN_REPO/data/trader.db"
+DB_LINK="$REPO_ROOT/data/trader.db"
+mkdir -p "$MAIN_REPO/data"
+mkdir -p "$REPO_ROOT/data"
+
+if [ -L "$DB_LINK" ] && [ "$(readlink "$DB_LINK")" = "$DB_TARGET" ]; then
+    echo "✓  data/trader.db symlink already set up — skipping."
+else
+    if [ -f "$DB_LINK" ] && [ ! -L "$DB_LINK" ]; then
+        echo "⚠  Worktree has its own data/trader.db file. Moving to data/trader.db.worktree-backup."
+        mv "$DB_LINK" "${DB_LINK}.worktree-backup"
+    elif [ -e "$DB_LINK" ] || [ -L "$DB_LINK" ]; then
+        rm -rf "$DB_LINK"
+    fi
+    ln -sfn "$DB_TARGET" "$DB_LINK"
+    echo "✓  Created data/trader.db → $DB_TARGET"
+fi
+
+# ── 5. Symlink Shared Directories (reports, .cache, tmp) ──────────────────────
 SHARED_DIRS=("reports" ".cache" "tmp")
 for dir in "${SHARED_DIRS[@]}"; do
     TARGET="$MAIN_REPO/$dir"
@@ -98,7 +136,7 @@ for dir in "${SHARED_DIRS[@]}"; do
     echo "✓  Created $dir  → $TARGET"
 done
 
-# ── 5. Verify ─────────────────────────────────────────────────────────────────
+# ── 6. Verify ─────────────────────────────────────────────────────────────────
 echo ""
 
 ensure_local_venv() {

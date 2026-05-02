@@ -43,6 +43,24 @@ REALTIME_STREAM_QUEUE_TIMEOUT_SECONDS = 1.0
 REALTIME_STREAM_STALE_SECONDS = 90.0
 
 
+async def _maybe_await(value):
+    if asyncio.iscoroutine(value):
+        return await value
+    return value
+
+
+async def _add_repository_klines(kline_store, collection_name: str, klines: list):
+    try:
+        return await _maybe_await(kline_store.add_klines(collection_name, klines, source="exchange"))
+    except TypeError as exc:
+        if "source" not in str(exc):
+            raise
+        ret = kline_store.add_klines(collection_name, klines)
+        if asyncio.iscoroutine(ret):
+            return await ret
+        return ret
+
+
 class TraderTask(BaseTask):
     def __init__(
         self,
@@ -85,8 +103,6 @@ class TraderTask(BaseTask):
         # if self.exchange.spot_ws_client:
         #    self.exchange.spot_ws_client.klines(symbol=self.symbol_interval.symbol, interval=self.symbol_interval.interval.value, limit=1)
 
-        self.collection = self.db_manager.kline.get_collection(self.tcfg.symbol_interval.name())
-
         if getattr(self.tcfg, "live_data_mode", "polling") == "realtime":
             await self.start_realtime(queue, strategy)
             return
@@ -115,7 +131,7 @@ class TraderTask(BaseTask):
             if not ret:
                 break
 
-            kls_cache = self.db_manager.kline.get_latest_klines(self.tcfg.symbol_interval.name(), self.cfg.window)
+            kls_cache = await _maybe_await(self.db_manager.kline.get_latest_klines(self.tcfg.symbol_interval.name(), self.cfg.window))
             if len(kls_cache) <= MIN_RECORDS_NUM:
                 await sleep(self.log, 2, "Try again...")
                 continue
@@ -143,7 +159,7 @@ class TraderTask(BaseTask):
             if ret is None:
                 continue
 
-            self.process_result(ret)
+            await self.process_result(ret)
 
             manual_trade_notifications = []
             if self.is_manual_notify_mode():
@@ -178,7 +194,7 @@ class TraderTask(BaseTask):
             await GLOBAL_LIVE_EVENT_BUS.publish(event)
 
         collection_name = self.tcfg.symbol_interval.name()
-        latest = self.db_manager.kline.get_latest_kline(collection_name)
+        latest = await _maybe_await(self.db_manager.kline.get_latest_kline(collection_name))
         plan = plan_initial_backfill(latest, now=int(datetime.now().timestamp()), interval=self.tcfg.symbol_interval.interval)
         fetched = []
         if plan.kind == BackfillRequestKind.LATEST:
@@ -194,21 +210,21 @@ class TraderTask(BaseTask):
                 or []
             )
         if fetched:
-            self.db_manager.kline.add_klines(collection_name, fetched)
+            await _add_repository_klines(self.db_manager.kline, collection_name, fetched)
 
         warmup_limit = min(int(self.cfg.window), 500)
-        warmup = self.db_manager.kline.get_latest_klines(collection_name, warmup_limit) or []
+        warmup = await _maybe_await(self.db_manager.kline.get_latest_klines(collection_name, warmup_limit)) or []
         if len(warmup) < warmup_limit:
             fetched_warmup = self.exchange.get_latest_klines(self.tcfg.symbol_interval, warmup_limit) or []
             if fetched_warmup:
-                self.db_manager.kline.add_klines(collection_name, fetched_warmup)
-                warmup = self.db_manager.kline.get_latest_klines(collection_name, warmup_limit) or []
+                await _add_repository_klines(self.db_manager.kline, collection_name, fetched_warmup)
+                warmup = await _maybe_await(self.db_manager.kline.get_latest_klines(collection_name, warmup_limit)) or []
         self.log.info(f"Realtime live warmup ready: collection={collection_name} candles={len(warmup)}/{warmup_limit}")
         loop = asyncio.get_running_loop()
 
         async def handle_live_operation(op):
             ret = self._trader_result_for_live_operation(op)
-            self.process_result(ret)
+            await self.process_result(ret)
             feed_phase = str(getattr(op, "feed_phase", "") or "").lower()
             notifications = [] if feed_phase == "warmup" else self.handle_manual_trade_notifications(ret)
             event_time = int(getattr(op, "dtime", datetime.now().timestamp()))
@@ -271,7 +287,7 @@ class TraderTask(BaseTask):
             await publish_event(runtime_status_event(self.tcfg.id, event_time or int(datetime.now().timestamp()), runtime_status()))
 
         async def catch_up_missing_closed_klines() -> None:
-            latest = self.db_manager.kline.get_latest_kline(collection_name)
+            latest = await _maybe_await(self.db_manager.kline.get_latest_kline(collection_name))
             plan = plan_initial_backfill(latest, now=int(datetime.now().timestamp()), interval=self.tcfg.symbol_interval.interval)
             fetched = []
             if plan.kind == BackfillRequestKind.LATEST:
@@ -291,7 +307,7 @@ class TraderTask(BaseTask):
                 return
             sorted_fetched = sorted(fetched, key=lambda item: int(item.open_time))
             for kline in sorted_fetched:
-                self.db_manager.kline.add_klines(collection_name, [kline])
+                await _add_repository_klines(self.db_manager.kline, collection_name, [kline])
                 runner.put_kline(kline)
             await publish_runtime_status(int(sorted_fetched[-1].open_time))
 
@@ -313,7 +329,7 @@ class TraderTask(BaseTask):
                 await publish_event(kline_update_event(self.tcfg.id, update))
                 if not update.is_closed:
                     continue
-                self.db_manager.kline.add_klines(collection_name, [update.to_kline()])
+                await _add_repository_klines(self.db_manager.kline, collection_name, [update.to_kline()])
                 runner.put_kline(update.to_kline())
                 await asyncio.sleep(0)
                 await publish_runtime_status(update.open_time)
@@ -341,15 +357,15 @@ class TraderTask(BaseTask):
             0,
         )
 
-    def process_result(self, ret: TraderResult):
-        last_task = self.db_manager.task.get_task(self.tcfg.id)
+    async def process_result(self, ret: TraderResult):
+        last_task = await _maybe_await(self.db_manager.task.get_task(self.tcfg.id))
         if last_task and last_task.tret:
             current_opts = list(ret.opts or [])
             previous_opts = list(last_task.tret.opts or [])
             ret.opts = previous_opts + current_opts
 
         self.ts.tret = ret
-        self.db_manager.task.add_tasks([self.ts])
+        await _maybe_await(self.db_manager.task.add_tasks([self.ts]))
 
     def operate_exchange(self, ret: TraderResult, position: float):
         if not ret.opts:

@@ -1,19 +1,19 @@
 import asyncio
 from concurrent.futures import TimeoutError as FutureTimeoutError
 import json
-import threading
-import time
 from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
 from trader.common.config import Config
+from trader.exchange.binance.data import BinanceData
 from trader.strategy.trader_result import TraderResult
 from trader.task.backtrader_task import BacktestSampleSpec, run_backtest_sample
 from trader.task.optimization_runtime import OptimizationRuntimeStatus
 from trader.task.task_config import TaskConfig
 from trader.task.task_manager import TaskManager
 from trader.task.task_type import TaskType
+from trader.utils.kline import Kline
 from trader.utils.symbol_interval import Interval, SymbolInterval
 
 
@@ -38,6 +38,22 @@ def _write_dataset_csv(csv_path: Path):
     csv_path.write_text(
         "1700000000000,100,101,99,100.5,10,1700003599000,20,3,4,5,0\n",
         encoding="utf-8",
+    )
+
+
+def _kline(open_time: int) -> Kline:
+    return Kline(
+        open_time=open_time,
+        open=100,
+        high=101,
+        low=99,
+        close=100.5,
+        close_time=open_time + 3599,
+        volume=10,
+        vol_quote=20,
+        trades=3,
+        vol_taker_base=4,
+        vol_taker_quote=5,
     )
 
 
@@ -90,20 +106,16 @@ def test_prepare_backtest_datasets_runs_unique_jobs_with_bounded_parallelism(mon
         active = 0
         max_active = 0
         call_keys = []
-        lock = threading.Lock()
-
         monkeypatch.setattr(TaskManager, "_dataset_prepare_max_workers", lambda self: 2)
 
-        def fake_prepare_sync(self, resolver, symbol_interval, start_time, end_time, allow_download, max_download_ranges=None):
+        async def fake_prepare_job(self, resolver, symbol_interval, start_time, end_time, allow_download, max_download_ranges=None):
             nonlocal active, max_active
             dataset_key = (symbol_interval.name(), start_time, end_time)
-            with lock:
-                active += 1
-                max_active = max(max_active, active)
-                call_keys.append(dataset_key)
-            time.sleep(0.05)
-            with lock:
-                active -= 1
+            active += 1
+            max_active = max(max_active, active)
+            call_keys.append(dataset_key)
+            await asyncio.sleep(0.05)
+            active -= 1
             return SimpleNamespace(
                 ok=True,
                 dataset_ref=SimpleNamespace(
@@ -112,7 +124,7 @@ def test_prepare_backtest_datasets_runs_unique_jobs_with_bounded_parallelism(mon
                 ),
             )
 
-        monkeypatch.setattr(TaskManager, "_prepare_dataset_job_sync", fake_prepare_sync)
+        monkeypatch.setattr(TaskManager, "_prepare_dataset_job", fake_prepare_job)
 
         failures = await task_manager._prepare_backtest_datasets(tasks)
 
@@ -179,10 +191,7 @@ def test_prepare_backtest_datasets_emits_runtime_dataset_events(monkeypatch, tmp
 
         failures = await task_manager._prepare_backtest_datasets([task], {"run-1": runtime})
 
-        events = [
-            json.loads(line)
-            for line in (tmp_path / "run" / "events.jsonl").read_text(encoding="utf-8").splitlines()
-        ]
+        events = [json.loads(line) for line in (tmp_path / "run" / "events.jsonl").read_text(encoding="utf-8").splitlines()]
 
         assert failures == []
         assert [event["event"] for event in events] == [
@@ -362,6 +371,72 @@ def test_run_backtest_sample_builds_runtime_objects_from_sample_spec(monkeypatch
     assert node_calls[0]["strategy_params"] == {"fast_period": 5}
     assert result.ok is True
     assert result.report["param_id"] == "param-a"
+
+
+def test_run_backtest_sample_reads_db_source_without_csv_materialization(monkeypatch, tmp_path: Path):
+    start_time = 1_700_000_000
+    spec = BacktestSampleSpec(
+        **{
+            **_make_sample_spec(tmp_path / "unused.csv").__dict__,
+            "source_type": "db",
+            "data_path": None,
+            "db_url": "sqlite://:memory:",
+            "start_time": start_time,
+            "end_time": start_time + 3600,
+        }
+    )
+    db_calls = []
+    node_calls = []
+
+    class FakeKlineRepo:
+        async def get_klines(self, name, start, end):
+            db_calls.append((name, start, end))
+            return [_kline(start)]
+
+    class FakeDatabaseManager:
+        def __init__(self, cfg, logger):
+            self.cfg = cfg
+            self.kline = FakeKlineRepo()
+            self.started = False
+
+        async def start(self):
+            self.started = True
+
+        async def stop(self):
+            self.started = False
+
+    class FakeNode:
+        def __init__(self, *args, **kwargs):
+            node_calls.append((args, kwargs))
+            self.backtest_report = {"dataset_ref": kwargs["report_context"]["dataset_ref"]}
+            self.backtest_report_path = None
+
+        def start(self):
+            return TraderResult(
+                total_return_rate=10.0,
+                max_drawdown=5.0,
+                max_drawdown_duration=timedelta(hours=1),
+                volatility=1.0,
+                win_rate=50.0,
+                plr=1.2,
+                avg_profit=5.0,
+                avg_loss=-4.0,
+                buys=2,
+                sells=2,
+                opts=[],
+                hold_rate=3.0,
+                data_len=1,
+            )
+
+    monkeypatch.setattr("trader.task.backtrader_task.DatabaseManager", FakeDatabaseManager)
+    monkeypatch.setattr("trader.task.backtrader_task.parse_strategies", lambda strategies: ["fake-strategy"])
+    monkeypatch.setattr("trader.task.backtrader_task.Node", FakeNode)
+
+    result = run_backtest_sample(spec)
+
+    assert result.ok is True
+    assert db_calls == [("BTCUSDT-1h", start_time, start_time + 3600)]
+    assert isinstance(node_calls[0][0][5], BinanceData)
 
 
 def test_add_backtrader_task_builds_sample_specs_from_shared_dataset_refs(monkeypatch, tmp_path: Path):
@@ -597,10 +672,7 @@ def test_add_backtrader_task_writes_runtime_status_with_final_report_run_id(monk
 
         status = json.loads(Path("tmp/optimization_runs/run-status-1/status.json").read_text(encoding="utf-8"))
         manifest = json.loads(Path("reports/optimizations/run-status-1/manifest.json").read_text(encoding="utf-8"))
-        events = [
-            json.loads(line)
-            for line in Path("tmp/optimization_runs/run-status-1/events.jsonl").read_text(encoding="utf-8").splitlines()
-        ]
+        events = [json.loads(line) for line in Path("tmp/optimization_runs/run-status-1/events.jsonl").read_text(encoding="utf-8").splitlines()]
 
         assert status["run_id"] == manifest["optimization_run_id"] == "run-status-1"
         assert status["stage"] == "finished"
@@ -645,10 +717,7 @@ def test_add_backtrader_task_records_dataset_failures_as_skipped_samples(monkeyp
 
         status = json.loads(Path("tmp/optimization_runs/run-skip-1/status.json").read_text(encoding="utf-8"))
         failures = json.loads(Path("reports/optimizations/run-skip-1/failures.json").read_text(encoding="utf-8"))
-        events = [
-            json.loads(line)
-            for line in Path("tmp/optimization_runs/run-skip-1/events.jsonl").read_text(encoding="utf-8").splitlines()
-        ]
+        events = [json.loads(line) for line in Path("tmp/optimization_runs/run-skip-1/events.jsonl").read_text(encoding="utf-8").splitlines()]
 
         assert [spec.task_id for spec in captured_specs] == [runnable.id]
         assert status["samples_skipped"] == 1
@@ -693,10 +762,7 @@ def test_add_backtrader_task_records_sample_timeouts_distinctly(monkeypatch, tmp
 
         status = json.loads(Path("tmp/optimization_runs/run-timeout-1/status.json").read_text(encoding="utf-8"))
         failures = json.loads(Path("reports/optimizations/run-timeout-1/failures.json").read_text(encoding="utf-8"))
-        events = [
-            json.loads(line)
-            for line in Path("tmp/optimization_runs/run-timeout-1/events.jsonl").read_text(encoding="utf-8").splitlines()
-        ]
+        events = [json.loads(line) for line in Path("tmp/optimization_runs/run-timeout-1/events.jsonl").read_text(encoding="utf-8").splitlines()]
 
         assert status["samples_timed_out"] == 1
         assert status["samples_failed"] == 0
@@ -711,10 +777,7 @@ def test_add_backtrader_task_aborts_when_runnable_ratio_too_low(monkeypatch, tmp
         cfg = Config(optimization_min_runnable_ratio=0.5)
         task_manager = TaskManager(cfg, DummyLog(), db_manager=None, exchange=None)
         queue = asyncio.Queue()
-        tasks = [
-            _make_backtest_task(index, f"BTC{index}-USDT", Interval.INTERVAL_1h, 1_700_000_000, 1_700_000_000 + 3600)
-            for index in range(1, 11)
-        ]
+        tasks = [_make_backtest_task(index, f"BTC{index}-USDT", Interval.INTERVAL_1h, 1_700_000_000, 1_700_000_000 + 3600) for index in range(1, 11)]
         for task in tasks:
             task.optimization_run_id = "run-abort-low-runnable"
 

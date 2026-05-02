@@ -1,3 +1,4 @@
+import asyncio
 import json
 from datetime import timedelta
 from types import SimpleNamespace
@@ -140,21 +141,28 @@ def test_manual_sell_operation_creates_exit_notification_from_local_position_wit
 
 
 def test_process_result_preserves_current_operation_as_latest_after_history_merge():
-    task = _manual_task(free=500.0, manual_start_position=0.25)
-    previous = _result_with_operation(Operate(OperateType.BUY, 1714281600, 100.0))
-    current = _result_with_operation(Operate(OperateType.SELL, 1714281660, 120.0))
-    saved = []
-    task.db_manager = SimpleNamespace(
-        task=SimpleNamespace(
-            get_task=lambda task_id: SimpleNamespace(tret=previous),
-            add_tasks=lambda tasks: saved.extend(tasks),
+    async def _test():
+        task = _manual_task(free=500.0, manual_start_position=0.25)
+        previous = _result_with_operation(Operate(OperateType.BUY, 1714281600, 100.0))
+        current = _result_with_operation(Operate(OperateType.SELL, 1714281660, 120.0))
+        saved = []
+
+        async def add_tasks(tasks):
+            saved.extend(tasks)
+
+        task.db_manager = SimpleNamespace(
+            task=SimpleNamespace(
+                get_task=lambda task_id: SimpleNamespace(tret=previous),
+                add_tasks=add_tasks,
+            )
         )
-    )
 
-    task.process_result(current)
+        await task.process_result(current)
 
-    assert [op.otype for op in current.opts] == [OperateType.BUY, OperateType.SELL]
-    assert saved == [task.ts]
+        assert [op.otype for op in current.opts] == [OperateType.BUY, OperateType.SELL]
+        assert saved == [task.ts]
+
+    asyncio.run(_test())
 
 
 def test_manual_notification_event_includes_risk_references_without_advanced_order_claims():

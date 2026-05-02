@@ -1,15 +1,17 @@
 import asyncio
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock
 
 from trader.common.config import Config
 from trader.exchange.binance.csvdata import BinanceCSVData
+from trader.exchange.binance.data import BinanceData
 from trader.strategy.node import build_strategy_kwargs
 from trader.task.backtrader_task import BackTraderTask
 from trader.task.task_config import TaskConfig
 from trader.task.task_manager import TaskManager
 from trader.task.task_type import TaskType
+from trader.utils.kline import Kline
 from trader.utils.symbol_interval import Interval, SymbolInterval
 
 
@@ -37,6 +39,23 @@ def _write_dataset_csv(csv_path: Path):
     )
 
 
+def _kline(open_time: int) -> Kline:
+    return Kline(
+        open_time=open_time,
+        open=100.0,
+        high=101.0,
+        low=99.0,
+        close=100.5,
+        close_time=open_time + 3599,
+        volume=10.0,
+        vol_quote=20.0,
+        trades=3,
+        vol_taker_base=4.0,
+        vol_taker_quote=5.0,
+        ignore=0.0,
+    )
+
+
 def test_build_strategy_kwargs_allows_parameter_overrides():
     kwargs = build_strategy_kwargs(
         Config(period=14),
@@ -52,21 +71,35 @@ def test_build_strategy_kwargs_allows_parameter_overrides():
     assert "stoploss" not in kwargs
 
 
-def test_backtrader_task_start_uses_dataset_resolver_for_db_backtests(monkeypatch, tmp_path: Path):
+def test_backtrader_task_start_uses_dataset_resolver_for_db_backtests(monkeypatch):
     async def _test():
-        dataset_path = tmp_path / "prepared.csv"
-        _write_dataset_csv(dataset_path)
         prepare_calls = []
 
         class FakeResolver:
             def __init__(self, *args, **kwargs):
                 pass
 
-            async def prepare(self, symbol_interval, start_time, end_time, allow_download=True, max_download_ranges=None):
+            async def prepare(
+                self,
+                symbol_interval,
+                start_time,
+                end_time,
+                allow_download=True,
+                max_download_ranges=None,
+                allow_incomplete_coverage=False,
+            ):
                 prepare_calls.append((symbol_interval.name(), start_time, end_time, allow_download))
                 return SimpleNamespace(
                     ok=True,
-                    dataset_ref=SimpleNamespace(path=str(dataset_path)),
+                    dataset_ref=SimpleNamespace(
+                        dataset_key="BTCUSDT-1h|1700000000|1700003600",
+                        source_type="db",
+                        symbol="BTCUSDT",
+                        interval="1h",
+                        start_time=1_700_000_000,
+                        end_time=1_700_000_000 + 3600,
+                        path=None,
+                    ),
                 )
 
         monkeypatch.setattr("trader.task.backtrader_task.DatasetResolver", FakeResolver)
@@ -81,15 +114,16 @@ def test_backtrader_task_start_uses_dataset_resolver_for_db_backtests(monkeypatc
             strategies=["macd_triple_divergence"],
             auto_download=True,
         )
-        db_manager = SimpleNamespace(kline=SimpleNamespace(get_klines=MagicMock()))
+        get_klines = AsyncMock(return_value=[_kline(1_700_000_000), _kline(1_700_000_000 + 3600)])
+        db_manager = SimpleNamespace(kline=SimpleNamespace(get_klines=get_klines))
         task = BackTraderTask(tcfg, Config(), DummyLog(), db_manager=db_manager, exchange=SimpleNamespace())
 
         result = await task.start(None)
 
         assert prepare_calls == [("BTCUSDT-1h", 1_700_000_000, 1_700_000_000 + 3600, True)]
         assert result[0] == ["fake-strategy"]
-        assert isinstance(result[1], BinanceCSVData)
-        db_manager.kline.get_klines.assert_not_called()
+        assert isinstance(result[1], BinanceData)
+        get_klines.assert_awaited_once_with("BTCUSDT-1h", 1_700_000_000, 1_700_000_000 + 3600)
 
     asyncio.run(_test())
 
@@ -104,11 +138,27 @@ def test_task_manager_prepares_shared_dataset_once_for_same_dataset_key(monkeypa
             def __init__(self, *args, **kwargs):
                 pass
 
-            async def prepare(self, symbol_interval, start_time, end_time, allow_download=True, max_download_ranges=None):
+            async def prepare(
+                self,
+                symbol_interval,
+                start_time,
+                end_time,
+                allow_download=True,
+                max_download_ranges=None,
+                allow_incomplete_coverage=False,
+            ):
                 prepare_calls.append((symbol_interval.name(), start_time, end_time, allow_download))
                 return SimpleNamespace(
                     ok=True,
-                    dataset_ref=SimpleNamespace(path=str(dataset_path)),
+                    dataset_ref=SimpleNamespace(
+                        dataset_key="BTCUSDT-1h|1700000000|1700003600",
+                        source_type="db",
+                        symbol="BTCUSDT",
+                        interval="1h",
+                        start_time=1_700_000_000,
+                        end_time=1_700_000_000 + 3600,
+                        path=None,
+                    ),
                 )
 
         monkeypatch.setattr("trader.task.task_manager.DatasetResolver", FakeResolver)
@@ -147,7 +197,9 @@ def test_task_manager_prepares_shared_dataset_once_for_same_dataset_key(monkeypa
 
         assert failures == []
         assert prepare_calls == [("BTCUSDT-1h", 1_700_000_000, 1_700_000_000 + 3600, True)]
-        assert tasks[0].dataset_ref.path == str(dataset_path)
-        assert tasks[1].dataset_ref.path == str(dataset_path)
+        assert tasks[0].dataset_ref.dataset_key == "BTCUSDT-1h|1700000000|1700003600"
+        assert tasks[1].dataset_ref.dataset_key == "BTCUSDT-1h|1700000000|1700003600"
+        assert tasks[0].dataset_ref.path is None
+        assert tasks[1].dataset_ref.path is None
 
     asyncio.run(_test())

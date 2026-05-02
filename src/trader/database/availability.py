@@ -1,10 +1,9 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 from logging import Logger
 
-from pymongo import ASCENDING
-from pymongo.synchronous.collection import Collection
-
-from trader.database.collection import get_name_for_availability
+from trader.database.models import AvailabilityModel
 
 
 @dataclass(frozen=True)
@@ -17,42 +16,34 @@ class AvailabilityState:
     source: str
 
 
+def model_to_availability_state(row: AvailabilityModel) -> AvailabilityState:
+    return AvailabilityState(
+        exchange=row.exchange,
+        symbol=row.symbol,
+        interval=row.interval,
+        earliest_known_open_time=row.earliest_known_open_time,
+        updated_at=row.updated_at,
+        source=row.source,
+    )
+
+
 class AvailabilityCol:
-    def __init__(self, db, log: Logger):
-        self.db = db
+    def __init__(self, log: Logger):
         self.log = log
 
-    def get_collection(self) -> Collection:
-        collection_name = get_name_for_availability()
-        if collection_name in self.db.list_collection_names():
-            return self.db[collection_name]
-
-        self.log.info(f"Create collection {collection_name} and index")
-        col = self.db[collection_name]
-        col.create_index([("exchange", ASCENDING), ("symbol", ASCENDING), ("interval", ASCENDING)], unique=True)
-        return col
-
-    def get_state(self, exchange: str, symbol: str, interval: str) -> AvailabilityState | None:
-        col = self.get_collection()
-        result = col.find_one({"exchange": exchange, "symbol": symbol, "interval": interval})
-        if result is None:
+    async def get_state(self, exchange: str, symbol: str, interval: str) -> AvailabilityState | None:
+        row = await AvailabilityModel.filter(exchange=exchange, symbol=symbol, interval=interval).first()
+        if row is None:
             return None
-        return AvailabilityState(
-            exchange=result["exchange"],
-            symbol=result["symbol"],
-            interval=result["interval"],
-            earliest_known_open_time=result["earliest_known_open_time"],
-            updated_at=result["updated_at"],
-            source=result["source"],
-        )
+        return model_to_availability_state(row)
 
-    def get_earliest_known_open_time(self, exchange: str, symbol: str, interval: str) -> int | None:
-        state = self.get_state(exchange, symbol, interval)
+    async def get_earliest_known_open_time(self, exchange: str, symbol: str, interval: str) -> int | None:
+        state = await self.get_state(exchange, symbol, interval)
         if state is None:
             return None
         return state.earliest_known_open_time
 
-    def update_earliest_known_open_time(
+    async def update_earliest_known_open_time(
         self,
         exchange: str,
         symbol: str,
@@ -60,18 +51,18 @@ class AvailabilityCol:
         earliest_known_open_time: int,
         source: str = "backward_fill",
     ) -> bool:
-        col = self.get_collection()
-        current = col.find_one({"exchange": exchange, "symbol": symbol, "interval": interval})
-        if current is not None and current.get("earliest_known_open_time", earliest_known_open_time) <= earliest_known_open_time:
+        current = await AvailabilityModel.filter(exchange=exchange, symbol=symbol, interval=interval).first()
+        if current is not None and current.earliest_known_open_time <= earliest_known_open_time:
             return False
 
-        payload = {
-            "exchange": exchange,
-            "symbol": symbol,
-            "interval": interval,
-            "earliest_known_open_time": earliest_known_open_time,
-            "updated_at": earliest_known_open_time,
-            "source": source,
-        }
-        col.replace_one({"exchange": exchange, "symbol": symbol, "interval": interval}, payload, upsert=True)
+        await AvailabilityModel.update_or_create(
+            exchange=exchange,
+            symbol=symbol,
+            interval=interval,
+            defaults={
+                "earliest_known_open_time": earliest_known_open_time,
+                "updated_at": earliest_known_open_time,
+                "source": source,
+            },
+        )
         return True

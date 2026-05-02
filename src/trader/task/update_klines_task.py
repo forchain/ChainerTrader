@@ -47,7 +47,6 @@ class UpdateKlinesTask(BaseTask):
         super().start(queue)
 
         collection_name = self.tcfg.symbol_interval.name()
-        self.db_manager.kline.get_collection(collection_name)
 
         start_time, end_time = self._determine_time_range()
 
@@ -81,7 +80,7 @@ class UpdateKlinesTask(BaseTask):
         return start_time, end_time
 
     async def _handle_force_update(self, collection_name: str, start_time: int, end_time: int):
-        deleted = self.db_manager.kline.delete_klines_in_range(collection_name, start_time, end_time)
+        deleted = await self.db_manager.kline.delete_klines_in_range(collection_name, start_time, end_time)
         self.log.info(f"{self.name()} force_update: deleted {deleted} records")
 
         await download_range(
@@ -97,8 +96,8 @@ class UpdateKlinesTask(BaseTask):
         )
 
     async def _handle_normal_update(self, collection_name: str, start_time: int, end_time: int):
-        db_first = self.db_manager.kline.get_first_kline(collection_name)
-        db_last = self.db_manager.kline.get_latest_kline(collection_name)
+        db_first = await self.db_manager.kline.get_first_kline(collection_name)
+        db_last = await self.db_manager.kline.get_latest_kline(collection_name)
 
         if db_first is None or db_last is None:
             self.log.info(f"{self.name()} no existing records, download full range")
@@ -261,7 +260,7 @@ async def download_range(
 
         retry_count = 0
 
-        ret = db_manager.kline.add_klines(col_name, kls)
+        ret = await db_manager.kline.add_klines(col_name, kls, source="exchange")
         total_records += ret
 
         if ret != len(kls):
@@ -339,7 +338,7 @@ async def download_range_backward(
             break
 
         retry_count = 0
-        ret = db_manager.kline.add_klines(col_name, kls)
+        ret = await db_manager.kline.add_klines(col_name, kls, source="exchange")
         total_records += ret
 
         batch_first_open_time = kls[0].open_time
@@ -364,7 +363,7 @@ async def download_range_backward(
     availability = getattr(db_manager, "availability", None)
     if confirmed_boundary and earliest_seen_open_time is not None and availability is not None:
         exchange_name = exchange.name() if hasattr(exchange, "name") else "UNKNOWN"
-        availability.update_earliest_known_open_time(
+        await availability.update_earliest_known_open_time(
             exchange_name,
             symbol_interval.symbol(),
             symbol_interval.interval.value,

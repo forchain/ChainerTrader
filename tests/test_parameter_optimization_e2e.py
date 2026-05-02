@@ -50,11 +50,11 @@ class MemoryKlineStore:
     def __init__(self, initial: dict[str, list[Kline]] | None = None):
         self.data = {name: list(items) for name, items in (initial or {}).items()}
 
-    def get_klines(self, name: str, start_time: int = 0, end_time: int = 0):
+    async def get_klines(self, name: str, start_time: int = 0, end_time: int = 0):
         rows = list(self.data.get(name, []))
         return [row for row in rows if (start_time == 0 or row.open_time >= start_time) and (end_time == 0 or row.open_time <= end_time)]
 
-    def add_klines(self, name: str, klines: list[Kline]):
+    async def add_klines(self, name: str, klines: list[Kline]):
         bucket = self.data.setdefault(name, [])
         existing = {item.open_time for item in bucket}
         added = 0
@@ -68,7 +68,7 @@ class MemoryKlineStore:
         return added
 
 
-def test_e2e_dataset_resolver_repairs_gap_writes_db_and_materializes_cache(tmp_path: Path):
+def test_e2e_dataset_resolver_ignores_internal_gap_and_returns_db_ref():
     async def _test():
         start_time = 1_700_000_000
         mid_time = start_time + 3600
@@ -83,29 +83,67 @@ def test_e2e_dataset_resolver_repairs_gap_writes_db_and_materializes_cache(tmp_p
             }
         )
         db_manager = SimpleNamespace(kline=store)
+        download_calls = []
 
         async def downloader(name, log, db_manager_arg, collection_name, exchange, symbol_interval_arg, range_start, range_end, quit_event):
-            assert collection_name == symbol_interval.name()
-            assert range_start == mid_time
-            assert range_end == mid_time
-            db_manager_arg.kline.add_klines(collection_name, [make_kline(mid_time, 101.0)])
+            download_calls.append((range_start, range_end))
             return True
 
         resolver = DatasetResolver(
             db_manager=db_manager,
             exchange=SimpleNamespace(),
             log=DummyLog(),
-            cache_dir=tmp_path,
             range_downloader=downloader,
         )
 
         result = await resolver.prepare(symbol_interval, start_time, end_time)
 
         assert result.ok is True
-        assert [item.open_time for item in store.get_klines(symbol_interval.name(), start_time, end_time)] == [start_time, mid_time, end_time]
-        cache_path = Path(result.dataset_ref.path)
-        assert cache_path.exists()
-        assert cache_path.read_text(encoding="utf-8").count("\n") == 3
+        assert result.dataset_ref.source_type == "db"
+        assert result.dataset_ref.path is None
+        assert download_calls == []
+        assert [item.open_time for item in await store.get_klines(symbol_interval.name(), start_time, end_time)] == [start_time, end_time]
+
+    asyncio.run(_test())
+
+
+def test_e2e_dataset_resolver_repairs_only_missing_edges():
+    async def _test():
+        start_time = 1_700_000_000
+        second_time = start_time + 3600
+        end_time = start_time + 7200
+        symbol_interval = SymbolInterval("BTC-USDT", Interval.INTERVAL_1h)
+        store = MemoryKlineStore(
+            {
+                symbol_interval.name(): [
+                    make_kline(second_time, 101.0),
+                ]
+            }
+        )
+        db_manager = SimpleNamespace(kline=store)
+        download_calls = []
+
+        async def downloader(name, log, db_manager_arg, collection_name, exchange, symbol_interval_arg, range_start, range_end, quit_event):
+            download_calls.append((range_start, range_end))
+            await db_manager_arg.kline.add_klines(collection_name, [make_kline(range_start, 100.0)])
+            return True
+
+        resolver = DatasetResolver(
+            db_manager=db_manager,
+            exchange=SimpleNamespace(),
+            log=DummyLog(),
+            range_downloader=downloader,
+        )
+
+        result = await resolver.prepare(symbol_interval, start_time, end_time)
+
+        assert result.ok is True
+        assert download_calls == [(start_time, start_time), (end_time, end_time)]
+        assert [item.open_time for item in await store.get_klines(symbol_interval.name(), start_time, end_time)] == [
+            start_time,
+            second_time,
+            end_time,
+        ]
 
     asyncio.run(_test())
 
@@ -148,16 +186,16 @@ def test_e2e_artifact_directory_contains_runs_aggregate_failures_and_rankings(tm
     run_dir = write_optimization_artifacts(
         tmp_path,
         "run-1",
-            [
-                {
-                    "strategy": "macd_triple_divergence",
-                    "symbol": "BTCUSDT",
-                    "interval": "1d",
-                    "optimization_run_id": "run-1",
-                    "report_version": "2.0",
-                    "param_id": "param-a",
-                    "params": {"fast_period": 5},
-                    "dataset_ref": "dataset-a",
+        [
+            {
+                "strategy": "macd_triple_divergence",
+                "symbol": "BTCUSDT",
+                "interval": "1d",
+                "optimization_run_id": "run-1",
+                "report_version": "2.0",
+                "param_id": "param-a",
+                "params": {"fast_period": 5},
+                "dataset_ref": "dataset-a",
                 "summary": {
                     "total_return_pct": 9.0,
                     "hold_return_pct": 3.0,
@@ -206,14 +244,14 @@ def test_e2e_optimization_run_id_links_manifest_run_reports_and_aggregate(tmp_pa
     run_id = tasks[0].optimization_run_id
     sample_records = [
         {
-                "task_id": task.id,
-                "report": {
-                    "strategy": task.strategy_name(),
-                    "symbol": task.symbol_interval.symbol(),
-                    "interval": task.symbol_interval.interval.value,
-                    "optimization_run_id": run_id,
-                    "report_version": "2.0",
-                    "param_id": task.param_id,
+            "task_id": task.id,
+            "report": {
+                "strategy": task.strategy_name(),
+                "symbol": task.symbol_interval.symbol(),
+                "interval": task.symbol_interval.interval.value,
+                "optimization_run_id": run_id,
+                "report_version": "2.0",
+                "param_id": task.param_id,
                 "params": task.strategy_params,
                 "dataset_ref": f"{task.symbol_interval.name()}|dataset",
                 "summary": {

@@ -1,3 +1,4 @@
+import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
@@ -12,6 +13,7 @@ from trader.common.logger import Logger
 from trader.common.message import new_stat_msg
 from trader.database.manager import DatabaseManager
 from trader.exchange.binance.csvdata import BinanceCSVData
+from trader.exchange.binance.data import BinanceData
 from trader.exchange.binance.exchange import BinanceExchange
 from trader.statistics.stat import BackTraderStat
 from trader.strategy.trader_result import TraderResult, parse_trader_result
@@ -33,14 +35,16 @@ class BacktestSampleSpec:
     interval: str
     start_time: int
     end_time: int
-    data_path: str
-    use_data_range: bool
-    free_cash: float
     cfg: dict[str, Any]
     strategy_params: dict[str, Any]
     optimization_run_id: str | None
     param_id: str | None
     dataset_key: str | None
+    source_type: str = "csv"
+    data_path: str | None = None
+    db_url: str | None = None
+    use_data_range: bool = False
+    free_cash: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -59,15 +63,22 @@ def build_backtest_sample_spec(cfg: Config, tcfg: TaskConfig) -> BacktestSampleS
     data_path = None
     use_data_range = False
     dataset_key = getattr(tcfg.dataset_ref, "dataset_key", None) if tcfg.dataset_ref else None
+    source_type = "db"
 
     if tcfg.csv:
+        source_type = "csv"
         data_path = path.get_file_path(tcfg.csv)
         use_data_range = tcfg.start_time > 0 or tcfg.end_time > 0
     elif tcfg.dataset_ref is not None:
-        data_path = tcfg.dataset_ref.path
+        source_type = getattr(tcfg.dataset_ref, "source_type", None)
+        data_path = getattr(tcfg.dataset_ref, "path", None)
+        if source_type is None:
+            source_type = "csv" if data_path else "db"
 
-    if data_path is None:
+    if source_type == "csv" and data_path is None:
         raise ValueError(f"missing data source for backtest sample task_id={tcfg.id}")
+    if source_type == "db" and not cfg.db:
+        raise ValueError(f"missing database URL for backtest sample task_id={tcfg.id}")
 
     free_cash = cfg.cash if tcfg.free < 0 else tcfg.free
     symbol = f"{tcfg.symbol_interval.sy.base}-{tcfg.symbol_interval.sy.quote}"
@@ -79,7 +90,9 @@ def build_backtest_sample_spec(cfg: Config, tcfg: TaskConfig) -> BacktestSampleS
         interval=tcfg.symbol_interval.interval.value,
         start_time=tcfg.start_time,
         end_time=tcfg.end_time,
+        source_type=source_type,
         data_path=data_path,
+        db_url=cfg.db,
         use_data_range=use_data_range,
         free_cash=free_cash,
         cfg=cfg.to_dict(),
@@ -91,6 +104,8 @@ def build_backtest_sample_spec(cfg: Config, tcfg: TaskConfig) -> BacktestSampleS
 
 
 def _build_csv_data_for_spec(spec: BacktestSampleSpec):
+    if spec.data_path is None:
+        raise ValueError(f"missing CSV path for backtest sample task_id={spec.task_id}")
     if not spec.use_data_range:
         return BinanceCSVData(dataname=spec.data_path)
     if spec.start_time <= 0 and spec.end_time <= 0:
@@ -110,6 +125,27 @@ def _build_csv_data_for_spec(spec: BacktestSampleSpec):
         fromdate=datetime.fromtimestamp(spec.start_time),
         todate=datetime.fromtimestamp(spec.end_time),
     )
+
+
+async def _build_db_data_for_spec(spec: BacktestSampleSpec, cfg: Config, logger: Logger):
+    db_manager = DatabaseManager(cfg, logger)
+    await db_manager.start()
+    try:
+        symbol_interval = SymbolInterval(spec.symbol, Interval(spec.interval))
+        klines = await db_manager.kline.get_klines(symbol_interval.name(), spec.start_time, spec.end_time) or []
+        if not klines:
+            raise ValueError(f"no kline data available for dataset={spec.dataset_key}")
+        return BinanceData(klines)
+    finally:
+        await db_manager.stop()
+
+
+def _build_data_for_spec(spec: BacktestSampleSpec, cfg: Config, logger: Logger):
+    if spec.source_type == "csv":
+        return _build_csv_data_for_spec(spec)
+    if spec.source_type == "db":
+        return asyncio.run(_build_db_data_for_spec(spec, cfg, logger))
+    raise ValueError(f"unsupported backtest sample source_type={spec.source_type}")
 
 
 def _write_worker_pid(run_id: str | None, task_id: int) -> Path | None:
@@ -134,6 +170,8 @@ def _write_worker_pid(run_id: str | None, task_id: int) -> Path | None:
 
 def run_backtest_sample(spec: BacktestSampleSpec) -> BacktestSampleResult:
     cfg = Config(**spec.cfg)
+    if spec.db_url:
+        cfg.db = spec.db_url
     logger = Logger(cfg, 10000, True)
     pid_file = _write_worker_pid(spec.optimization_run_id, spec.task_id)
     try:
@@ -149,7 +187,7 @@ def run_backtest_sample(spec: BacktestSampleSpec) -> BacktestSampleResult:
                 error=f"Not support strategy:{spec.strategy_name}",
             )
 
-        data = _build_csv_data_for_spec(spec)
+        data = _build_data_for_spec(spec, cfg, logger)
         symbol_interval = SymbolInterval(spec.symbol, Interval(spec.interval))
         report_context = {
             "optimization_run_id": spec.optimization_run_id,
@@ -253,7 +291,7 @@ class BackTraderTask(BaseTask):
                     fromdate=datetime.fromtimestamp(self.tcfg.start_time),
                     todate=datetime.fromtimestamp(self.tcfg.end_time),
                 )
-        if data is None and self.tcfg.dataset_ref is not None:
+        if data is None and self.tcfg.dataset_ref is not None and getattr(self.tcfg.dataset_ref, "path", None):
             data = BinanceCSVData(dataname=self.tcfg.dataset_ref.path)
         if self.db_manager and data is None:
             resolver = DatasetResolver(self.db_manager, self.exchange, self.log)
@@ -268,7 +306,18 @@ class BackTraderTask(BaseTask):
                 self.log.error(f"Dataset preparation failed for {self.name()}: {prepare_result.failure.message}")
                 return None
             self.tcfg.dataset_ref = prepare_result.dataset_ref
-            data = BinanceCSVData(dataname=self.tcfg.dataset_ref.path)
+            klines = (
+                await self.db_manager.kline.get_klines(
+                    self.tcfg.symbol_interval.name(),
+                    self.tcfg.dataset_ref.start_time,
+                    self.tcfg.dataset_ref.end_time,
+                )
+                or []
+            )
+            if not klines:
+                self.log.error(f"No kline data for {self.name()} dataset={self.tcfg.dataset_ref.dataset_key}")
+                return None
+            data = BinanceData(klines)
 
         if data is None:
             self.log.error(f"No strategy data for {self.name()}")

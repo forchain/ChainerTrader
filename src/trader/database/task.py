@@ -1,79 +1,84 @@
+from __future__ import annotations
+
+from datetime import datetime
 from logging import Logger
 
-from pymongo import ASCENDING
-from pymongo.synchronous.collection import Collection
+from trader.database.models import TaskStateModel
+from trader.utils.task_state import DATETIME_FORMART, PRIMARY_KEY, TaskState, parse_task_state
 
-from trader.database.collection import get_name_for_tasks
-from trader.utils.task_state import PRIMARY_KEY, TaskState, parse_task_state
+
+def model_to_task_state(row: TaskStateModel) -> TaskState:
+    payload = {
+        PRIMARY_KEY: row.task_id,
+        "state": row.state,
+        "name": row.name,
+        "start_time": row.start_time.strftime(DATETIME_FORMART),
+        "commission": row.commission,
+        "initial_cash": row.initial_cash,
+        "config_json": row.config_json,
+        "tret": row.tret,
+    }
+    if row.strategy_start_time > 0:
+        payload["strategy_start_time"] = datetime.fromtimestamp(row.strategy_start_time).strftime(DATETIME_FORMART)
+    if row.strategy_end_time > 0:
+        payload["strategy_end_time"] = datetime.fromtimestamp(row.strategy_end_time).strftime(DATETIME_FORMART)
+    return parse_task_state(payload)
 
 
 class TaskCol:
-    def __init__(self, db, log: Logger):
-        self.db = db
+    def __init__(self, log: Logger):
         self.log = log
 
-    def get_collection(self) -> Collection:
-        collection_name = get_name_for_tasks()
-        if collection_name in self.db.list_collection_names():
-            return self.db[collection_name]
-        else:
-            self.log.info(f"Create collection {collection_name} and index")
-            col = self.db[collection_name]
-            col.create_index([(PRIMARY_KEY, ASCENDING)], unique=True)
-            return col
-
-    def add_tasks(self, tasks: list[TaskState]) -> int:
-        col = self.get_collection()
-
+    async def add_tasks(self, tasks: list[TaskState]) -> int:
         if len(tasks) <= 0:
             return 0
+
         total = 0
         for ta in tasks:
-            tad = ta.to_dict()
             try:
-                col.replace_one({"_id": ta.id}, tad, upsert=True)
-            except Exception as e:
-                self.log.error(e)
+                await TaskStateModel.update_or_create(
+                    task_id=ta.id,
+                    defaults={
+                        "state": ta.state.name,
+                        "name": ta.name,
+                        "start_time": ta.start_time,
+                        "commission": ta.commission,
+                        "strategy_start_time": ta.strategy_start_time,
+                        "strategy_end_time": ta.strategy_end_time,
+                        "initial_cash": ta.initial_cash,
+                        "config_json": ta.config_json,
+                        "tret": ta.tret.to_dict() if ta.tret else None,
+                    },
+                )
+            except Exception as exc:
+                self.log.error(exc)
             else:
                 total += 1
-            finally:
-                continue
 
         self.log.debug(f"add tasks, total:{total}")
         return total
 
-    def del_task(self, id: int) -> bool:
-        col = self.get_collection()
+    async def del_task(self, id: int) -> bool:
         try:
-            result = col.delete_one({"_id": id})
-            if result.deleted_count != 1:
+            deleted_count = await TaskStateModel.filter(task_id=id).delete()
+            if deleted_count != 1:
                 self.log.error(f"Can't find task-{id}")
                 return False
-
-        except Exception as e:
-            self.log.error(e)
+        except Exception as exc:
+            self.log.error(exc)
             return False
 
         self.log.debug(f"del task, id:{id}")
         return True
 
-    def get_task(self, id: int) -> TaskState | None:
-        col = self.get_collection()
-
-        result = col.find_one({PRIMARY_KEY: id})
-        if result is None:
+    async def get_task(self, id: int) -> TaskState | None:
+        row = await TaskStateModel.filter(task_id=id).first()
+        if row is None:
             return None
-        ts = parse_task_state(result)
-        self.log.debug(f"get task({result['_id']}):{ts.to_json()}")
+        ts = model_to_task_state(row)
+        self.log.debug(f"get task({row.task_id}):{ts.to_json()}")
         return ts
 
-    def get_all_tasks(self) -> list[TaskState]:
-        col = self.get_collection()
-        results = col.find().sort(PRIMARY_KEY, ASCENDING)
-        if results is None:
-            return None
-
-        ts: list[TaskState] = []
-        for ret in results:
-            ts.append(parse_task_state(ret))
-        return ts
+    async def get_all_tasks(self) -> list[TaskState]:
+        rows = await TaskStateModel.all().order_by("task_id")
+        return [model_to_task_state(row) for row in rows]

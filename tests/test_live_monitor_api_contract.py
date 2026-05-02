@@ -1,3 +1,4 @@
+import asyncio
 from types import SimpleNamespace
 
 import pytest
@@ -101,7 +102,7 @@ def test_build_live_strategy_summary_contains_web_panel_fields():
 def test_build_initial_snapshot_returns_latest_500_chart_candles():
     klines = [_kline(BASE + i * 60, close=100 + i) for i in range(600)]
 
-    snapshot = build_initial_snapshot(FakeTask(), FakeDb(klines), runtime_status={"state": "running"})
+    snapshot = asyncio.run(build_initial_snapshot(FakeTask(), FakeDb(klines), runtime_status={"state": "running"}))
 
     assert snapshot["strategy_id"] == 7
     assert snapshot["market"] == "BTCUSDT"
@@ -126,7 +127,7 @@ def test_build_initial_snapshot_returns_historical_operation_overlays_inside_loa
     hidden_op = Operate(OperateType.SELL, BASE - 60, 98.0)
     klines = [_kline(BASE + i * 60, close=100 + i) for i in range(5)]
 
-    snapshot = build_initial_snapshot(FakeTask(operations=[hidden_op, visible_op]), FakeDb(klines), limit=5)
+    snapshot = asyncio.run(build_initial_snapshot(FakeTask(operations=[hidden_op, visible_op]), FakeDb(klines), limit=5))
 
     assert [item["time"] for item in snapshot["overlays"]["signals"]] == [BASE + 3 * 60]
     assert snapshot["overlays"]["signals"][0]["signal_event_id"] == "sig-1"
@@ -135,14 +136,14 @@ def test_build_initial_snapshot_returns_historical_operation_overlays_inside_loa
 
 
 def test_build_initial_snapshot_marks_history_window_insufficient():
-    snapshot = build_initial_snapshot(FakeTask(), FakeDb([_kline(BASE)]))
+    snapshot = asyncio.run(build_initial_snapshot(FakeTask(), FakeDb([_kline(BASE)])))
 
     assert len(snapshot["candles"]) == 1
     assert snapshot["history_window"]["insufficient"] is True
 
 
 def test_build_initial_snapshot_uses_task_state_when_runtime_status_is_not_provided():
-    snapshot = build_initial_snapshot(FakeTask(state=TaskStateType.RUNNING), FakeDb([_kline(BASE)]))
+    snapshot = asyncio.run(build_initial_snapshot(FakeTask(state=TaskStateType.RUNNING), FakeDb([_kline(BASE)])))
 
     assert snapshot["runtime_status"]["state"] == "RUNNING"
 
@@ -221,3 +222,6 @@ async def test_debug_manual_entry_is_local_only_and_uses_standard_manual_notific
         "risk_overlay",
         "notification",
     ]
+
+
+import asyncio
