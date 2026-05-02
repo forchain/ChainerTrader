@@ -1,4 +1,5 @@
 import asyncio
+import contextvars
 from asyncio import Queue
 from datetime import datetime, timedelta
 import time
@@ -221,6 +222,8 @@ class TraderTask(BaseTask):
                 warmup = await _maybe_await(self.db_manager.kline.get_latest_klines(collection_name, warmup_limit)) or []
         self.log.info(f"Realtime live warmup ready: collection={collection_name} candles={len(warmup)}/{warmup_limit}")
         loop = asyncio.get_running_loop()
+        live_operation_context = contextvars.copy_context()
+        live_operation_tasks: set[asyncio.Task] = set()
 
         async def handle_live_operation(op):
             ret = self._trader_result_for_live_operation(op)
@@ -239,15 +242,29 @@ class TraderTask(BaseTask):
             stat.manual_trade_notifications = notifications
             await queue.put(new_stat_msg(stat, self.tcfg.id))
 
+        def schedule_live_operation(op):
+            task = loop.create_task(handle_live_operation(op), context=live_operation_context.copy())
+            live_operation_tasks.add(task)
+
+            def discard_live_operation(done_task):
+                live_operation_tasks.discard(done_task)
+                if done_task.cancelled():
+                    return
+                exc = done_task.exception()
+                if exc is not None:
+                    self.log.error(f"Realtime live operation failed: {exc}")
+
+            task.add_done_callback(discard_live_operation)
+
         def handle_operation(op):
             try:
                 running_loop = asyncio.get_running_loop()
             except RuntimeError:
                 running_loop = None
             if running_loop is loop:
-                asyncio.create_task(handle_live_operation(op))
+                schedule_live_operation(op)
             else:
-                loop.call_soon_threadsafe(lambda: asyncio.create_task(handle_live_operation(op)))
+                loop.call_soon_threadsafe(schedule_live_operation, op, context=live_operation_context.copy())
 
         strategy_kwargs = build_strategy_kwargs(
             self.cfg,
@@ -338,6 +355,8 @@ class TraderTask(BaseTask):
                 await queue.put(new_stat_msg(stat, self.tcfg.id))
         finally:
             runner.stop()
+            if live_operation_tasks:
+                await asyncio.gather(*live_operation_tasks, return_exceptions=True)
             await subscription.unsubscribe()
 
     def _trader_result_for_live_operation(self, op) -> TraderResult:

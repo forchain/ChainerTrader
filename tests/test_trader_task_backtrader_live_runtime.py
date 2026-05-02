@@ -1,7 +1,9 @@
 import asyncio
+import threading
 from types import SimpleNamespace
 
 import pytest
+from tortoise.context import TortoiseContext, get_current_context
 
 from trader.common.config import Config
 from trader.common.logger import Logger
@@ -335,6 +337,62 @@ async def test_trader_task_realtime_publishes_dashboard_events_and_runtime_statu
     status = next(event for event in events if event.event_type == "runtime_status")
     assert status.payload["feed_phase"] == "live"
     assert status.payload["latest_delivered_open_time"] == BASE + 180
+
+
+@pytest.mark.anyio
+async def test_trader_task_realtime_preserves_tortoise_context_for_threaded_operations(monkeypatch):
+    class ThreadedOperationRunner(FakeRunner):
+        def put_kline(self, kline):
+            super().put_kline(kline)
+            operation_handler = self.kwargs["operation_handler"]
+            op = SimpleNamespace(
+                otype=OperateType.BUY,
+                dtime=kline.open_time,
+                price=101.0,
+                signal_event_id="threaded-sig-1",
+                to_dict=lambda: {"operate": "BUY", "datetime": kline.open_time, "price": 101.0},
+            )
+            thread = threading.Thread(target=lambda: operation_handler(op))
+            thread.start()
+            thread.join()
+            return True
+
+    class ContextRecordingTaskStore:
+        def __init__(self):
+            self.seen_contexts = []
+
+        async def get_task(self, task_id):
+            self.seen_contexts.append(get_current_context())
+            return None
+
+        async def add_tasks(self, tasks):
+            return len(tasks)
+
+    FakeRunner.instances = []
+    fetched = [_kline(BASE + i * 60, close=100 + i) for i in range(3)]
+    cfg = Config(window=500)
+    tcfg = TaskConfig(
+        83,
+        TaskType.TRADER,
+        SymbolInterval("BTC-USDT", Interval.INTERVAL_1m),
+        strategies=["macd_triple_divergence"],
+        free=1000,
+        live_execution_mode="manual_notify",
+        live_data_mode="realtime",
+    )
+    db = FakeDb()
+    db.task = ContextRecordingTaskStore()
+    task = TraderTask(tcfg, cfg, Logger(cfg), db, FakeExchange(fetched))
+    hub = FakeHub([_update(BASE + 180, closed=True)], task.quit)
+
+    monkeypatch.setattr("trader.task.trader_task.BacktraderLiveRunner", ThreadedOperationRunner)
+    monkeypatch.setattr("trader.task.trader_task.GLOBAL_MARKET_STREAM_HUB", hub)
+
+    with TortoiseContext() as ctx:
+        await task.start_realtime(asyncio.Queue(), [NoopStrategy])
+        await asyncio.sleep(0.01)
+
+    assert db.task.seen_contexts == [ctx]
 
 
 @pytest.mark.anyio
