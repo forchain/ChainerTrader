@@ -129,6 +129,33 @@ async def test_market_stream_hub_restarts_connector_on_disconnect():
 
 
 @pytest.mark.anyio
+async def test_market_stream_hub_restarts_when_connector_stop_fails_on_disconnect():
+    class StopFailingConnector(RecordingConnector):
+        async def stop(self, key):
+            self.stopped.append(key)
+            raise RuntimeError("Cannot write to closing transport")
+
+    connector = StopFailingConnector()
+    caught_up = []
+
+    async def catch_up(key):
+        caught_up.append(key)
+
+    hub = MarketStreamHub(connector, catch_up=catch_up)
+    key = MarketStreamKey("BINANCE", "BTCUSDT", "1m")
+    await hub.subscribe(key)
+
+    await hub.handle_disconnect(key)
+
+    assert connector.stopped == [key]
+    assert connector.started == [key, key]
+    assert caught_up == [key]
+    status = hub.status(key)
+    assert status.state == MarketStreamState.RUNNING
+    assert status.last_error == "Cannot write to closing transport"
+
+
+@pytest.mark.anyio
 async def test_binance_kline_adapter_opens_connection_before_subscribing(monkeypatch):
     import binance_sdk_spot
 
@@ -140,6 +167,56 @@ async def test_binance_kline_adapter_opens_connection_before_subscribing(monkeyp
 
         async def unsubscribe(self):
             calls.append(("unsubscribe",))
+
+    class FakeWebSocketStreams:
+        async def create_connection(self):
+            calls.append(("create_connection",))
+
+        async def kline(self, symbol, interval):
+            calls.append(("kline", symbol, interval))
+            return FakeHandle()
+
+        async def close_connection(self):
+            calls.append(("close_connection",))
+
+    class FakeSpot:
+        def __init__(self, config_ws_streams):
+            self.config_ws_streams = config_ws_streams
+            self.websocket_streams = FakeWebSocketStreams()
+
+    monkeypatch.setattr(binance_sdk_spot, "Spot", FakeSpot)
+    adapter = BinanceKlineWebSocketAdapter()
+    key = MarketStreamKey("BINANCE", "BTCUSDT", "1m")
+
+    async def on_update(update):
+        return None
+
+    await adapter.start(key, on_update)
+    await adapter.stop(key)
+
+    assert adapter._handles == {}
+    assert calls == [
+        ("create_connection",),
+        ("kline", "btcusdt", "1m"),
+        ("on", "message"),
+        ("unsubscribe",),
+        ("close_connection",),
+    ]
+
+
+@pytest.mark.anyio
+async def test_binance_kline_adapter_closes_connection_when_unsubscribe_transport_is_closing(monkeypatch):
+    import binance_sdk_spot
+
+    calls = []
+
+    class FakeHandle:
+        def on(self, event, callback):
+            calls.append(("on", event))
+
+        async def unsubscribe(self):
+            calls.append(("unsubscribe",))
+            raise RuntimeError("Cannot write to closing transport")
 
     class FakeWebSocketStreams:
         async def create_connection(self):

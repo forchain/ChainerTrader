@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import dataclass
 from enum import Enum
 from typing import Awaitable, Callable, Protocol
@@ -132,7 +133,13 @@ class MarketStreamHub:
             entry.state = MarketStreamState.RECONNECTING
             reconnect_callbacks = list((entry.reconnect_callbacks or {}).values())
 
-        await self.connector.stop(key)
+        try:
+            await self.connector.stop(key)
+        except Exception as exc:
+            async with self._lock:
+                entry = self._streams.get(key)
+                if entry is not None:
+                    entry.last_error = str(exc)
         if self.catch_up:
             await self.catch_up(key)
         for reconnect_callback in reconnect_callbacks:
@@ -207,8 +214,14 @@ class BinanceKlineWebSocketAdapter:
         stream = self._handles.pop(key, None)
         if stream is not None:
             handle, client = stream
-            await handle.unsubscribe()
-            await client.websocket_streams.close_connection()
+            try:
+                await handle.unsubscribe()
+            except Exception as exc:
+                logging.warning("Binance kline unsubscribe failed for %s: %s", key.stream_name(), exc)
+            try:
+                await client.websocket_streams.close_connection()
+            except Exception as exc:
+                logging.warning("Binance kline websocket close failed for %s: %s", key.stream_name(), exc)
 
 
 GLOBAL_MARKET_STREAM_HUB = MarketStreamHub(BinanceKlineWebSocketAdapter())
