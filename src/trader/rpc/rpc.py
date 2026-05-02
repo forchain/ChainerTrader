@@ -25,6 +25,8 @@ async def lifespan(rpc: FastAPI):
     rpc.state.live_event_bus = GLOBAL_LIVE_EVENT_BUS
 
     app.start()
+    await app.wait_until_handler_ready()
+    app.raise_main_task_error()
     yield
     await app.stop()
 

@@ -129,6 +129,9 @@ class App:
             loop.close()
             self.logger.info(f"{self.name()} tasks exited.")
 
+    def _mark_handler_ready(self):
+        pass
+
     def shutdown(self, quit: Event):
         self.logger.info(f"Received shutdown signal, stopping {self.name()}...")
         self.exit_handle(quit)
@@ -144,6 +147,7 @@ class App:
             await queue.put(msg)
 
         self.logger.info(f"{self.name()} enter handler: init messages={len(msgs)}")
+        self._mark_handler_ready()
 
         try:
             while True:
