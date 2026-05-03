@@ -144,6 +144,7 @@ reports
 .worktrees/
 tmp
 data
+artifacts
 
 # Local notification credentials
 configs/notices/notice.json

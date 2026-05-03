@@ -8,7 +8,7 @@ from trader.utils.symbol_interval import Interval, get_time_duration
 def get_exchange():
     exchange = BinanceExchange(ExchangeConfig())
     exchange.start()
-    return exchange, TaskConfig(TaskType.TRADER)
+    return exchange, TaskConfig(1, TaskType.TRADER)
 
 
 def test_get_latest_klines():
