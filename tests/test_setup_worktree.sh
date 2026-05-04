@@ -34,8 +34,15 @@ import sys
 sys.exit(0)
 EOF
 
+cat << 'EOF' > Makefile
+install:
+	mkdir -p .venv/bin
+	printf '%s\n' '#!/usr/bin/env bash' 'if [ "$${1:-}" = "--version" ]; then echo "Python 3.test"; exit 0; fi' 'exit 0' > .venv/bin/python
+	chmod +x .venv/bin/python
+EOF
+
 touch .env
-git add scripts/ .env
+git add Makefile scripts/ .env
 git commit -m "Initial commit" >/dev/null
 
 echo "=> Creating test worktree at $WORKTREE_DIR"

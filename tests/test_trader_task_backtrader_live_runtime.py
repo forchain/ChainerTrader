@@ -464,11 +464,16 @@ async def test_trader_task_realtime_publishes_warmup_operations_for_dashboard_wi
 
 
 @pytest.mark.anyio
-async def test_trader_task_realtime_marks_idle_stream_disconnected(monkeypatch):
-    import trader.task.trader_task as trader_task_module
-
+async def test_trader_task_realtime_does_not_disconnect_on_business_message_idle(monkeypatch):
     class IdleSubscription:
+        def __init__(self, quit_event):
+            self.quit_event = quit_event
+            self.calls = 0
+
         async def get(self):
+            self.calls += 1
+            if self.calls >= 3:
+                self.quit_event.set()
             await asyncio.sleep(0.01)
             raise asyncio.TimeoutError
 
@@ -483,15 +488,13 @@ async def test_trader_task_realtime_marks_idle_stream_disconnected(monkeypatch):
         async def subscribe(self, key, reconnect_callback=None):
             self.key = key
             self.reconnect_callback = reconnect_callback
-            return IdleSubscription()
+            return IdleSubscription(self.quit_event)
 
         def status(self, key):
             return SimpleNamespace(state=SimpleNamespace(value="running"), subscriber_count=1, last_error=None)
 
         async def handle_disconnect(self, key):
             self.disconnects.append(key)
-            if self.reconnect_callback is not None:
-                await self.reconnect_callback()
             self.quit_event.set()
 
     FakeRunner.instances = []
@@ -511,9 +514,7 @@ async def test_trader_task_realtime_marks_idle_stream_disconnected(monkeypatch):
 
     monkeypatch.setattr("trader.task.trader_task.BacktraderLiveRunner", FakeRunner)
     monkeypatch.setattr("trader.task.trader_task.GLOBAL_MARKET_STREAM_HUB", hub)
-    monkeypatch.setattr(trader_task_module, "REALTIME_STREAM_QUEUE_TIMEOUT_SECONDS", 0.01, raising=False)
-    monkeypatch.setattr(trader_task_module, "REALTIME_STREAM_STALE_SECONDS", 0.01, raising=False)
 
     await asyncio.wait_for(task.start_realtime(asyncio.Queue(), [NoopStrategy]), timeout=0.5)
 
-    assert hub.disconnects == [hub.key]
+    assert hub.disconnects == []
