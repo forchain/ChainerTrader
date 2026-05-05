@@ -131,6 +131,11 @@ class OptStatAnalyzer(bt.Analyzer):
 class MaxDrawdownAnalyzer(bt.Analyzer):
     """
     增量计算资金曲线的最大回撤，内存占用极低。
+
+    max_drawdown keeps the legacy full-equity high-water-mark drawdown.
+    active_max_drawdown resets at each position window and only updates while
+    there is an open position, which is the risk metric used for trade-active
+    reporting.
     """
 
     def __init__(self):
@@ -143,6 +148,14 @@ class MaxDrawdownAnalyzer(bt.Analyzer):
         self.max_dd_start = None  # 峰值时间
         self.max_dd_end = None  # 谷值时间
 
+        # 记录持仓阶段最大回撤的信息。每次从空仓进入持仓时重置 active peak。
+        self.active_peak_equity = None
+        self.active_peak_time = None
+        self.active_position_sign = 0
+        self.active_max_dd = 0.0
+        self.active_max_dd_start = None
+        self.active_max_dd_end = None
+
     def start(self):
         # 初始化初始资金，避免第一根Bar之前没有基准
         self.peak_equity = self.strategy.broker.get_cash()
@@ -153,33 +166,69 @@ class MaxDrawdownAnalyzer(bt.Analyzer):
         current_time = self.strategy.datetime.datetime()
         current_equity = self.strategy.broker.getvalue()
 
-        # 1. 这里的逻辑：如果不仅要防守，还要考虑到初始资金可能就是最高点的情况
-        # 初始化 peak（如果是第一帧）
+        self._update_full_drawdown(current_time, current_equity)
+        self._update_active_drawdown(current_time, current_equity)
+
+    def _update_full_drawdown(self, current_time, current_equity):
         if self.peak_time is None:
             self.peak_equity = current_equity
             self.peak_time = current_time
 
-        # 2. 如果创新高（High Water Mark）
         if current_equity > self.peak_equity:
             self.peak_equity = current_equity
             self.peak_time = current_time
-            # 创新高时，当前回撤为0，不需要更新 max_dd
-
-        # 3. 如果未创新高，计算当前回撤
         else:
-            # 防御性编程：防止除以0
             if self.peak_equity > 0:
                 drawdown = (self.peak_equity - current_equity) / self.peak_equity * 100.0
 
-                # 如果当前回撤大于历史最大回撤，更新记录
                 if drawdown > self.max_dd:
                     self.max_dd = drawdown
                     self.max_dd_start = self.peak_time  # 回撤的起点是之前的最高点时刻
                     self.max_dd_end = current_time  # 回撤的终点是当前时刻（谷底）
+
+    def _update_active_drawdown(self, current_time, current_equity):
+        position_sign = self._position_sign()
+        if position_sign == 0:
+            self.active_peak_equity = None
+            self.active_peak_time = None
+            self.active_position_sign = 0
+            return
+
+        if self.active_peak_time is None or self.active_position_sign != position_sign:
+            self.active_peak_equity = current_equity
+            self.active_peak_time = current_time
+            self.active_position_sign = position_sign
+            return
+
+        if current_equity > self.active_peak_equity:
+            self.active_peak_equity = current_equity
+            self.active_peak_time = current_time
+            return
+
+        if self.active_peak_equity and self.active_peak_equity > 0:
+            drawdown = (self.active_peak_equity - current_equity) / self.active_peak_equity * 100.0
+            if drawdown > self.active_max_dd:
+                self.active_max_dd = drawdown
+                self.active_max_dd_start = self.active_peak_time
+                self.active_max_dd_end = current_time
+
+    def _position_sign(self):
+        try:
+            position_size = float(getattr(getattr(self.strategy, "position", None), "size", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            return 0
+        if position_size > 0.0:
+            return 1
+        if position_size < 0.0:
+            return -1
+        return 0
 
     def get_analysis(self):
         return {
             "max_drawdown": self.max_dd,
             "start": self.max_dd_start,
             "end": self.max_dd_end,
+            "active_max_drawdown": self.active_max_dd,
+            "active_start": self.active_max_dd_start,
+            "active_end": self.active_max_dd_end,
         }

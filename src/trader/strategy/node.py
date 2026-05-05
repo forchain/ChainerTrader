@@ -149,9 +149,12 @@ class Node:
 
         # 通过自定义分析器获取最大回撤及其对应的起止时间
         maxdd_ex = ret.analyzers.maxdd_ex.get_analysis()
-        maxDrawdown = maxdd_ex.get("max_drawdown", 0.0)
-        maxDrawdownStart = maxdd_ex.get("start")
-        maxDrawdownEnd = maxdd_ex.get("end")
+        fullMaxDrawdown = maxdd_ex.get("max_drawdown", 0.0)
+        fullMaxDrawdownStart = maxdd_ex.get("start")
+        fullMaxDrawdownEnd = maxdd_ex.get("end")
+        maxDrawdown = maxdd_ex.get("active_max_drawdown", fullMaxDrawdown)
+        maxDrawdownStart = maxdd_ex.get("active_start")
+        maxDrawdownEnd = maxdd_ex.get("active_end")
 
         # 使用起止时间计算最大回撤对应的持续时间（峰 -> 谷）
         if maxDrawdownStart is not None and maxDrawdownEnd is not None:
@@ -184,11 +187,15 @@ class Node:
         table.add_row(["持有增长率:", (f"{hold_rate:.2f}%")])
         if sharpeRatio["sharperatio"]:
             table.add_row(["夏普比率", (f"{sharpeRatio['sharperatio']:.2f}")])
-        table.add_row(["最大回撤:", (f"{maxDrawdown:.2f}%")])
-        table.add_row(["回撤时长:", (f"{maxDrawdownDuration}")])
+        table.add_row(["持仓最大回撤:", (f"{maxDrawdown:.2f}%")])
+        table.add_row(["持仓回撤时长:", (f"{maxDrawdownDuration}")])
         if maxDrawdownStart is not None and maxDrawdownEnd is not None:
-            table.add_row(["最大回撤开始时间", (f"{maxDrawdownStart}")])
-            table.add_row(["最大回撤结束时间", (f"{maxDrawdownEnd}")])
+            table.add_row(["持仓最大回撤开始时间", (f"{maxDrawdownStart}")])
+            table.add_row(["持仓最大回撤结束时间", (f"{maxDrawdownEnd}")])
+        table.add_row(["全程最大回撤:", (f"{fullMaxDrawdown:.2f}%")])
+        if fullMaxDrawdownStart is not None and fullMaxDrawdownEnd is not None:
+            table.add_row(["全程最大回撤开始时间", (f"{fullMaxDrawdownStart}")])
+            table.add_row(["全程最大回撤结束时间", (f"{fullMaxDrawdownEnd}")])
         table.add_row(["波动率:", (f"{volatility:.2f}%")])
         table.add_row(["胜率:", (f"{winRate:.2f}%")])
         table.add_row(["平均盈亏比:", (f"{plr:.2f}")])

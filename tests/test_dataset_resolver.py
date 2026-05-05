@@ -3,7 +3,7 @@ import csv
 import sys
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 
 def _ensure_pymongo_stub():
@@ -31,6 +31,7 @@ def _ensure_binance_exchange_stub():
 
     binance_module = ModuleType(module_name)
     binance_module.BinanceExchange = object
+    binance_module.KLINE_LIMIT_MAX = 1000
     binance_module.get_oldest_time = lambda: None
     sys.modules[module_name] = binance_module
 
@@ -44,8 +45,11 @@ from trader.utils.symbol_interval import Interval, SymbolInterval  # noqa: E402
 
 
 class DummyLog:
+    def __init__(self):
+        self.messages = []
+
     def info(self, *args, **kwargs):
-        pass
+        self.messages.append(" ".join(str(arg) for arg in args))
 
     def warning(self, *args, **kwargs):
         pass
@@ -84,7 +88,7 @@ def test_prepare_uses_db_and_materializes_cache_without_downloading(tmp_path: Pa
             make_kline(start_time + 3600, 101.0),
             make_kline(end_time, 102.0),
         ]
-        kline_store = SimpleNamespace(get_klines=MagicMock(return_value=bars))
+        kline_store = SimpleNamespace(get_klines=AsyncMock(return_value=bars))
         db_manager = SimpleNamespace(kline=kline_store)
 
         async def downloader(*args, **kwargs):
@@ -200,7 +204,7 @@ def test_prepare_allows_incomplete_coverage_when_downloading_disabled(tmp_path: 
             make_kline(start_time + 3600, 101.0),
             make_kline(start_time + 2 * 3600, 102.0),
         ]
-        kline_store = SimpleNamespace(get_klines=MagicMock(return_value=bars))
+        kline_store = SimpleNamespace(get_klines=AsyncMock(return_value=bars))
 
         async def downloader(*args, **kwargs):
             raise AssertionError("downloader should not be called when allow_download is False")
@@ -236,7 +240,7 @@ def test_prepare_reuses_same_dataset_ref_for_duplicate_requests(tmp_path: Path):
             make_kline(start_time, 100.0),
             make_kline(end_time, 101.0),
         ]
-        kline_store = SimpleNamespace(get_klines=MagicMock(return_value=bars))
+        kline_store = SimpleNamespace(get_klines=AsyncMock(return_value=bars))
         db_manager = SimpleNamespace(kline=kline_store)
 
         resolver = DatasetResolver(
@@ -333,6 +337,83 @@ def test_prepare_skips_leading_gap_before_first_available_kline(tmp_path: Path):
         assert result.ok is True
         assert kline_store.get_klines.call_count == 1
         assert availability_store.get_earliest_known_open_time.call_count == 1
+
+    asyncio.run(_test())
+
+
+def test_prepare_clamps_requested_start_to_recorded_first_available_kline(tmp_path: Path):
+    async def _test():
+        requested_start = 1_700_000_000
+        requested_start = requested_start - (requested_start % 86400)
+        listed_start = requested_start + 3 * 3600
+        end_time = requested_start + 23 * 3600
+        bars = [
+            make_kline(listed_start, 100.0),
+            make_kline(listed_start + 3600, 101.0),
+            make_kline(end_time, 102.0),
+        ]
+        kline_store = SimpleNamespace(get_klines=AsyncMock(return_value=bars))
+
+        class AvailabilityStore:
+            def __init__(self):
+                self.calls = []
+
+            async def get_earliest_known_open_time(self, exchange, symbol, interval):
+                self.calls.append((exchange, symbol, interval))
+                return listed_start
+
+        availability_store = AvailabilityStore()
+
+        async def downloader(*args, **kwargs):
+            raise AssertionError("downloader should not be called before recorded first available kline")
+
+        log = DummyLog()
+        resolver = DatasetResolver(
+            db_manager=SimpleNamespace(kline=kline_store, availability=availability_store),
+            exchange=SimpleNamespace(name=lambda: "BINANCE"),
+            log=log,
+            cache_dir=tmp_path,
+            range_downloader=downloader,
+        )
+
+        result = await resolver.prepare(SymbolInterval("BTC-USDT", Interval.INTERVAL_1h), requested_start, end_time)
+
+        assert result.ok is True
+        assert result.dataset_ref.start_time == listed_start
+        assert kline_store.get_klines.call_args.args == ("BTCUSDT-1h", listed_start, end_time)
+        assert availability_store.calls == [("BINANCE", "BTCUSDT", "1h")]
+        assert any("update dataset start_time to first available kline" in message for message in log.messages)
+
+    asyncio.run(_test())
+
+
+def test_prepare_does_not_download_when_requested_range_is_before_recorded_first_available(tmp_path: Path):
+    async def _test():
+        requested_start = 1_700_000_000
+        requested_end = requested_start + 2 * 3600
+        listed_start = requested_end + 3600
+        kline_store = SimpleNamespace(get_klines=AsyncMock())
+
+        class AvailabilityStore:
+            async def get_earliest_known_open_time(self, exchange, symbol, interval):
+                return listed_start
+
+        async def downloader(*args, **kwargs):
+            raise AssertionError("downloader should not be called when recorded boundary is after request end")
+
+        resolver = DatasetResolver(
+            db_manager=SimpleNamespace(kline=kline_store, availability=AvailabilityStore()),
+            exchange=SimpleNamespace(name=lambda: "BINANCE"),
+            log=DummyLog(),
+            cache_dir=tmp_path,
+            range_downloader=downloader,
+        )
+
+        result = await resolver.prepare(SymbolInterval("BTC-USDT", Interval.INTERVAL_1h), requested_start, requested_end)
+
+        assert result.ok is False
+        assert result.failure.reason == "no_data"
+        kline_store.get_klines.assert_not_called()
 
     asyncio.run(_test())
 

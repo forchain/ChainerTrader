@@ -2,6 +2,8 @@
   const runId = new URLSearchParams(window.location.search).get("run_id");
   const embeddedWorkbench = window.__WORKBENCH_DATA__ || null;
   const filterInput = document.getElementById("filter-input");
+  const symbolFilter = document.getElementById("symbol-filter");
+  const intervalFilter = document.getElementById("interval-filter");
   const paramFilters = document.getElementById("param-filters");
   const sortSelect = document.getElementById("sort-select");
   const runMeta = document.getElementById("run-meta");
@@ -35,12 +37,15 @@
     selectedRank: (workbench.items[0] || {}).rank || null,
     activeTab: "parameter_observability",
     activeSampleId: ((workbench.items[0] || {}).samples || [])[0]?.sample_id || null,
+    symbolFilter: "",
+    intervalFilter: "",
     activeFilters: {},
     currentPage: 1,
-    sortMode: "score_desc",
+    sortMode: "return_desc",
   };
 
   renderSummary(workbench);
+  renderDimensionFilters();
   renderParamFilters();
   renderCandidates();
   renderDetail();
@@ -58,6 +63,20 @@
     });
   }
 
+  if (symbolFilter) {
+    symbolFilter.addEventListener("change", () => {
+      state.symbolFilter = symbolFilter.value;
+      applyFilters();
+    });
+  }
+
+  if (intervalFilter) {
+    intervalFilter.addEventListener("change", () => {
+      state.intervalFilter = intervalFilter.value;
+      applyFilters();
+    });
+  }
+
   prevPageButton.addEventListener("click", () => {
     if (state.currentPage <= 1) return;
     state.currentPage -= 1;
@@ -70,6 +89,25 @@
     state.currentPage += 1;
     renderCandidates();
   });
+
+  function renderDimensionFilters() {
+    if (!symbolFilter || !intervalFilter) return;
+    renderSelectOptions(symbolFilter, "币种", uniqueValues("symbol"));
+    renderSelectOptions(intervalFilter, "周期", uniqueValues("interval"));
+  }
+
+  function uniqueValues(key) {
+    return [...new Set(state.items.map((item) => item[key]).filter(Boolean))]
+      .map(String)
+      .sort((a, b) => a.localeCompare(b, "zh-Hans-CN", { numeric: true }));
+  }
+
+  function renderSelectOptions(select, label, values) {
+    select.innerHTML = `
+      <option value="">${escapeHtml(label)}: 全部</option>
+      ${values.map((value) => `<option value="${escapeAttr(value)}">${escapeHtml(value)}</option>`).join("")}
+    `;
+  }
 
   function renderParamFilters() {
     const valuesByKey = new Map();
@@ -107,6 +145,8 @@
   function applyFilters() {
     const needle = filterInput.value.trim().toLowerCase();
     state.filteredItems = state.items.filter((item) => {
+      if (state.symbolFilter && item.symbol !== state.symbolFilter) return false;
+      if (state.intervalFilter && item.interval !== state.intervalFilter) return false;
       const haystack = [
         item.symbol,
         item.interval,
@@ -158,6 +198,7 @@
       const observationSummary = summarizeObservations(item.parameter_observations || []);
       const winRate = (item.summary || {}).avg_win_rate_pct;
       const winRateText = (winRate === null || winRate === undefined) ? "" : ` | 胜率 ${formatPct(winRate)}`;
+      const openTradeText = item.summary.open_trades ? ` | 未平仓 ${item.summary.open_trades}` : "";
       return `
         <article class="candidate ${item.rank === state.selectedRank ? "active" : ""}" data-rank="${escapeAttr(String(item.rank))}">
           <div class="candidate-top">
@@ -165,7 +206,7 @@
             <div class="candidate-score">${formatNumber(item.score)}</div>
           </div>
           <div class="candidate-meta">
-            收益 ${formatPct(item.summary.avg_total_return_pct)} | 回撤 ${formatPct(item.summary.avg_max_dd_pct)} | 交易 ${item.summary.total_trades}${winRateText}
+            收益 ${formatPct(item.summary.avg_total_return_pct)} | 拿住 ${formatPct(item.summary.avg_hold_return_pct)} | 超额 ${formatPct(item.summary.avg_excess_return_pct)} | 持仓回撤 ${formatPct(item.summary.avg_max_dd_pct)} | 交易 ${item.summary.total_trades}${openTradeText}${winRateText}
           </div>
           <div class="candidate-observation">
             ${escapeHtml(observationSummary)}<br>
@@ -204,8 +245,12 @@
           <span>param_id: ${escapeHtml(item.param_id)}</span>
           <span>score: ${formatNumber(item.score)}</span>
           <span>收益: ${formatPct(item.summary.avg_total_return_pct)}</span>
-          <span>回撤: ${formatPct(item.summary.avg_max_dd_pct)}</span>
+          <span>拿住: ${formatPct(item.summary.avg_hold_return_pct)}</span>
+          <span>超额: ${formatPct(item.summary.avg_excess_return_pct)}</span>
+          <span>持仓回撤: ${formatPct(item.summary.avg_max_dd_pct)}</span>
+          <span>全程回撤: ${formatPct(item.summary.avg_full_max_dd_pct)}</span>
           <span>交易数: ${item.summary.total_trades}</span>
+          ${item.summary.open_trades ? `<span>未平仓: ${item.summary.open_trades}</span>` : ""}
           ${renderWinRate(item)}
         </div>
       </section>
@@ -319,15 +364,19 @@
             </tr>
           </thead>
           <tbody>
-            ${trades.map((trade) => `
+            ${trades.map((trade) => {
+              const isOpen = trade.status === "open";
+              const exitValue = isOpen ? `当前: ${trade.current_px ?? "-"}` : `出: ${trade.exit || "-"}`;
+              const pnlValue = isOpen ? `未实现PnL: ${trade.unrealized_pnl_pct ?? "-"}%` : `PnL: ${trade.pnl_pct ?? "-"}%`;
+              return `
               <tr>
                 <td><div class="stack"><span class="primary">${escapeHtml(String(trade.dir || ""))}</span><span class="secondary">#${escapeHtml(String(trade.id || ""))}</span></div></td>
-                <td><div class="stack"><span class="primary">进: ${escapeHtml(String(trade.entry || "-"))}</span><span class="secondary">信号: ${escapeHtml(String(trade.entry_signal_time || "-"))}</span><span class="primary">出: ${escapeHtml(String(trade.exit || "-"))}</span><span class="secondary">信号: ${escapeHtml(String(trade.exit_signal_time || "-"))}</span></div></td>
-                <td><div class="stack"><span class="primary">${escapeHtml(String(trade.entry_px || "-"))} → ${escapeHtml(String(trade.exit_px || "-"))}</span><span class="secondary">数量: ${escapeHtml(String(trade.qty ?? "-"))}</span><span class="secondary">PnL: ${escapeHtml(String(trade.pnl_pct ?? "-"))}%</span></div></td>
+                <td><div class="stack"><span class="primary">进: ${escapeHtml(String(trade.entry || "-"))}</span><span class="secondary">信号: ${escapeHtml(String(trade.entry_signal_time || "-"))}</span><span class="primary">${escapeHtml(String(exitValue))}</span><span class="secondary">信号: ${escapeHtml(String(trade.exit_signal_time || "-"))}</span></div></td>
+                <td><div class="stack"><span class="primary">${escapeHtml(String(trade.entry_px || "-"))} → ${escapeHtml(String(isOpen ? trade.current_px ?? "-" : trade.exit_px || "-"))}</span><span class="secondary">数量: ${escapeHtml(String(trade.qty ?? "-"))}</span><span class="secondary">${escapeHtml(String(pnlValue))}</span></div></td>
                 <td><div class="stack"><span class="primary">${formatStopRange(trade)}</span><span class="secondary">TP: ${escapeHtml(String(trade.framework_tp_price ?? "-"))}</span></div></td>
                 <td><div class="stack"><span class="primary">${escapeHtml(String(trade.exit_reason_label || trade.exit_reason_code || "-"))}</span><span class="secondary">${escapeHtml(String(trade.exit_reason_detail || ""))}</span></div></td>
               </tr>
-            `).join("")}
+            `;}).join("")}
           </tbody>
         </table>
       </div>

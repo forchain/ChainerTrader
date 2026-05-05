@@ -103,6 +103,9 @@ class BaseStrategy(bt.Strategy):
         stop_order: Optional[bt.Order] = None
         tp_order: Optional[bt.Order] = None
         pending_exit_reason: Optional[Dict[str, Any]] = None
+        requested_exit_reason_code: Optional[str] = None
+        requested_exit_reason_label: Optional[str] = None
+        requested_exit_reason_detail: Optional[str] = None
         exit_reason_code: Optional[str] = None
         exit_reason_label: Optional[str] = None
         exit_reason_detail: Optional[str] = None
@@ -273,7 +276,17 @@ class BaseStrategy(bt.Strategy):
                 else:
                     if role == _ORDER_ROLE_STOP:
                         stop_multiple_r = self._calculate_stop_multiple_r(ctx)
-                        detail = f"触发框架止损，止损位达到 {stop_multiple_r:.2f}R" if stop_multiple_r is not None else "触发框架止损"
+                        if stop_multiple_r is None:
+                            detail = "触发框架止损"
+                        else:
+                            smr = float(stop_multiple_r)
+                            if abs(smr) <= _BREAKEVEN_EPS:
+                                kind = "保本"
+                            elif smr > 0.0:
+                                kind = "移动盈利"
+                            else:
+                                kind = "止损"
+                            detail = f"触发框架止损（{kind}），止损位达到 {smr:.2f}R"
                         self._finalize_exit_reason(
                             ctx,
                             code="framework_stop",
@@ -293,6 +306,35 @@ class BaseStrategy(bt.Strategy):
                         )
                     else:
                         pending = dict(ctx.pending_exit_reason or {})
+                        if not pending:
+                            req_code = getattr(ctx, "requested_exit_reason_code", None)
+                            req_label = getattr(ctx, "requested_exit_reason_label", None)
+                            req_detail = getattr(ctx, "requested_exit_reason_detail", None)
+                            if req_code is not None or req_label is not None or req_detail is not None:
+                                pending = {
+                                    "code": req_code,
+                                    "label": req_label,
+                                    "detail": req_detail,
+                                }
+                        if not pending:
+                            # Heuristic fallback: some strategies may request an immediate exit but end up
+                            # closing via an order path that loses pending metadata. Prefer a classified
+                            # strategy stop over "unclassified_exit" when we can safely infer it.
+                            try:
+                                macd_stop_enabled = bool(getattr(getattr(self, "params", None), "macd_stop_enabled", False))
+                            except Exception:
+                                macd_stop_enabled = False
+                            sig_bar = None
+                            try:
+                                sig_bar = (getattr(ctx, "signal_metadata", None) or {}).get("signal_bar_index")
+                            except Exception:
+                                sig_bar = None
+                            if macd_stop_enabled and sig_bar is not None and ctx.exit_key_bar_index == int(sig_bar) + 1:
+                                pending = {
+                                    "code": "strategy_stop",
+                                    "label": "策略止损逻辑退出",
+                                    "detail": "MACD 三背离后续走势失效",
+                                }
                         self._finalize_exit_reason(
                             ctx,
                             code=str(pending.get("code") or "unclassified_exit"),
@@ -631,6 +673,9 @@ class BaseStrategy(bt.Strategy):
             "stop_multiple_r": stop_multiple_r,
             "risk_reward_ratio": risk_reward_ratio,
         }
+        ctx.requested_exit_reason_code = code
+        ctx.requested_exit_reason_label = label
+        ctx.requested_exit_reason_detail = detail
 
     def _finalize_exit_reason(
         self,
@@ -647,6 +692,9 @@ class BaseStrategy(bt.Strategy):
         ctx.stop_multiple_r = stop_multiple_r
         ctx.exit_risk_reward_ratio = risk_reward_ratio
         ctx.pending_exit_reason = None
+        ctx.requested_exit_reason_code = None
+        ctx.requested_exit_reason_label = None
+        ctx.requested_exit_reason_detail = None
 
     def enter_trade(
         self,
@@ -730,39 +778,40 @@ class BaseStrategy(bt.Strategy):
             self.log_info(f"进场忽略(已禁用关键K): trade_id={ctx.trade_id} key={ctx.key} key_bar_index={int(key_bar_index)}")
             return ctx
 
-        # Pre-compute stop based on key low (+ ATR adjustment if requested)
-        stop_price = float(key_ref.low) if ctx.direction == "LONG" else float(key_ref.high)
-        if sl_atr_mult != 0.0:
-            self._ensure_atr_indicator()
-            shift = int(key_bar_index) - self.bar_idx()
-            # ATR needs atrperiod bars to calculate, so we need to safely access it
-            atr_val = 0.0
-            if self.atr is not None:
-                # Try to get ATR value at shift position, fallback to current bar or 0.0
-                for attempt_shift in [shift, 0]:
-                    try:
-                        val = self.atr[attempt_shift]
-                        # Check if value is valid (not None, not NaN, not Inf)
-                        if val is not None:
-                            val_float = float(val)
-                            if not (math.isnan(val_float) or math.isinf(val_float)):
-                                atr_val = val_float
-                                break
-                    except (IndexError, TypeError, ValueError):
-                        continue
-            if ctx.direction == "LONG":
-                stop_price = float(key_ref.low) - (sl_atr_mult * atr_val)
-            else:
-                stop_price = float(key_ref.high) + (sl_atr_mult * atr_val)
+        # Pre-compute stop based on signal-suggested stop (preferred) or key low/high (+ ATR adjustment if requested).
+        suggested_stop = None
+        try:
+            suggested_stop = (ctx.signal_metadata or {}).get("suggested_stop_price")
+        except Exception:
+            suggested_stop = None
 
-        suggested_stop = ctx.signal_metadata.get("suggested_stop_price")
         if suggested_stop is not None:
-            try:
-                suggested_stop_val = float(suggested_stop)
-                if not (math.isnan(suggested_stop_val) or math.isinf(suggested_stop_val)):
-                    stop_price = suggested_stop_val
-            except (TypeError, ValueError):
-                pass
+            stop_price = float(suggested_stop)
+        else:
+            stop_price = float(key_ref.low) if ctx.direction == "LONG" else float(key_ref.high)
+            if sl_atr_mult != 0.0:
+                self._ensure_atr_indicator()
+                shift = int(key_bar_index) - self.bar_idx()
+                # ATR needs atrperiod bars to calculate, so we need to safely access it
+                atr_val = 0.0
+                if self.atr is not None:
+                    # Try to get ATR value at shift position, fallback to current bar or 0.0
+                    for attempt_shift in [shift, 0]:
+                        try:
+                            val = self.atr[attempt_shift]
+                            # Check if value is valid (not None, not NaN, not Inf)
+                            if val is not None:
+                                val_float = float(val)
+                                if not (math.isnan(val_float) or math.isinf(val_float)):
+                                    atr_val = val_float
+                                    break
+                        except (IndexError, TypeError, ValueError):
+                            continue
+                if ctx.direction == "LONG":
+                    stop_price = float(key_ref.low) - (sl_atr_mult * atr_val)
+                else:
+                    stop_price = float(key_ref.high) + (sl_atr_mult * atr_val)
+
         ctx.initial_stop_price = stop_price
         ctx.stop_price = stop_price
 
@@ -850,9 +899,19 @@ class BaseStrategy(bt.Strategy):
             label=exit_reason_label or "未分类退出",
             detail=exit_reason_detail,
         )
+        # Mirror the requested reason onto the context so reporting and any fallback finalization
+        # never loses the classification even if an order-status race drops pending metadata.
+        if ctx.exit_reason_code is None:
+            ctx.exit_reason_code = exit_reason_code or "unclassified_exit"
+        if ctx.exit_reason_label is None:
+            ctx.exit_reason_label = exit_reason_label or "未分类退出"
+        if ctx.exit_reason_detail is None and exit_reason_detail is not None:
+            ctx.exit_reason_detail = exit_reason_detail
 
         if not exit_need_confirm:
-            oco_order = ctx.stop_order if ctx.stop_order is not None else None
+            # For immediate exits, cancel any existing stop/tp orders to ensure 
+            # the market order takes precedence and fills at the next open (or current close if CoC).
+            self._cancel_stop_order(ctx)
             self._cancel_tp_order(ctx)
             close_size = float(abs(getattr(self.position, "size", 0.0)))
             if close_size <= 0.0:
@@ -860,9 +919,9 @@ class BaseStrategy(bt.Strategy):
                 return ctx
             pos_size = float(getattr(self.position, "size", 0.0))
             order = (
-                self.sell(size=close_size, tradeid=ctx.trade_id, oco=oco_order, **{_ORDER_ROLE_KEY: _ORDER_ROLE_EXIT})
+                self.sell(size=close_size, tradeid=ctx.trade_id, **{_ORDER_ROLE_KEY: _ORDER_ROLE_EXIT})
                 if pos_size > 0
-                else self.buy(size=close_size, tradeid=ctx.trade_id, oco=oco_order, **{_ORDER_ROLE_KEY: _ORDER_ROLE_EXIT})
+                else self.buy(size=close_size, tradeid=ctx.trade_id, **{_ORDER_ROLE_KEY: _ORDER_ROLE_EXIT})
             )
             if order is None:
                 self.log_info(f"创建平仓订单失败: trade_id={ctx.trade_id} key={ctx.key}")
@@ -1310,6 +1369,10 @@ class BaseStrategy(bt.Strategy):
                 ctx.exit_key_banned = True
                 if ctx.exit_key_bar_index is not None:
                     self._banned_exit_key_bar_index.add(int(ctx.exit_key_bar_index))
+                ctx.pending_exit_reason = None
+                ctx.requested_exit_reason_code = None
+                ctx.requested_exit_reason_label = None
+                ctx.requested_exit_reason_detail = None
                 if ctx.direction == "LONG":
                     self.log_info(f"出场确认失败: trade_id={ctx.trade_id} key={ctx.key} close={close:.6f} > key_high")
                 else:

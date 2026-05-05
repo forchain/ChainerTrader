@@ -2,7 +2,7 @@ import asyncio
 import sys
 from datetime import datetime, timedelta
 from types import ModuleType, SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -42,19 +42,23 @@ def _ensure_binance_exchange_stub():
         return datetime.strptime("2000-01-01 00:00:00", "%Y-%m-%d %H:%M:%S")
 
     binance_module.BinanceExchange = _BinanceExchange
+    binance_module.KLINE_LIMIT_MAX = 1000
     binance_module.get_oldest_time = get_oldest_time
     sys.modules[module_name] = binance_module
 
 
 _ensure_binance_exchange_stub()
 
-from trader.task.update_klines_task import download_range, download_range_backward  # noqa: E402
+from trader.task.update_klines_task import _compute_limit_for_range, download_range, download_range_backward  # noqa: E402
 from trader.utils.symbol_interval import Interval, SymbolInterval, add_time_duration  # noqa: E402
 
 
 class DummyLog:
+    def __init__(self):
+        self.messages = []
+
     def info(self, *args, **kwargs):
-        pass
+        self.messages.append(" ".join(str(arg) for arg in args))
 
     def warning(self, *args, **kwargs):
         pass
@@ -68,6 +72,22 @@ class DummyLog:
 
 def create_kline_mock(open_time: int):
     return SimpleNamespace(open_time=open_time)
+
+
+def test_compute_limit_for_range_uses_binance_kline_maximum_for_full_batches():
+    symbol_interval = SymbolInterval("BTC-USDT", Interval.INTERVAL_1d)
+    start_time = 1_700_000_000
+    end_time = add_time_duration(start_time, symbol_interval.interval, 1_499)
+
+    assert _compute_limit_for_range(symbol_interval, start_time, end_time) == 1000
+
+
+def test_compute_limit_for_range_uses_remaining_candle_count_below_maximum():
+    symbol_interval = SymbolInterval("BTC-USDT", Interval.INTERVAL_1d)
+    start_time = 1_700_000_000
+    end_time = add_time_duration(start_time, symbol_interval.interval, 41)
+
+    assert _compute_limit_for_range(symbol_interval, start_time, end_time) == 42
 
 
 def test_download_range_basic():
@@ -145,6 +165,30 @@ def test_download_range_invalid_range():
 
         assert result is False
         exchange.get_klines.assert_not_called()
+
+    asyncio.run(_test())
+
+
+def test_download_range_backward_skips_exchange_when_range_has_no_remaining_candles():
+    async def _test():
+        log = DummyLog()
+        symbol_interval = SymbolInterval("BTC-USDT", Interval.INTERVAL_1h)
+        exchange = SimpleNamespace(get_klines_by_end=MagicMock())
+
+        result = await download_range_backward(
+            "update-task",
+            log,
+            SimpleNamespace(kline=SimpleNamespace(add_klines=AsyncMock())),
+            "BTCUSDT-1h",
+            exchange,
+            symbol_interval,
+            200,
+            100,
+            asyncio.Event(),
+        )
+
+        assert result is True
+        exchange.get_klines_by_end.assert_not_called()
 
     asyncio.run(_test())
 
@@ -232,7 +276,7 @@ def test_download_range_backward_updates_confirmed_earliest_metadata():
         batch_2 = [create_kline_mock(1_700_007_200), create_kline_mock(1_700_010_800)]
         batch_1 = [create_kline_mock(1_700_000_000), create_kline_mock(1_700_003_600)]
 
-        availability = SimpleNamespace(update_earliest_known_open_time=MagicMock())
+        availability = SimpleNamespace(update_earliest_known_open_time=AsyncMock())
         db_manager = SimpleNamespace(
             kline=SimpleNamespace(add_klines=MagicMock(side_effect=[2, 2])),
             availability=availability,
@@ -313,7 +357,7 @@ def test_download_range_backward_confirms_boundary_when_first_batch_is_empty():
         end_time = 1_600_000_000
         start_time = end_time - 10 * 86400
 
-        availability = SimpleNamespace(update_earliest_known_open_time=MagicMock())
+        availability = SimpleNamespace(update_earliest_known_open_time=AsyncMock())
         db_manager = SimpleNamespace(
             kline=SimpleNamespace(add_klines=MagicMock()),
             availability=availability,
@@ -343,6 +387,7 @@ def test_download_range_backward_confirms_boundary_when_first_batch_is_empty():
             add_time_duration(end_time, symbol_interval.interval, 1),
             source="backward_fill",
         )
+        assert any("detected earliest available kline" in message for message in log.messages)
 
     asyncio.run(_test())
 

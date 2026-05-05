@@ -8,15 +8,8 @@
     "end_time": "2026-04-28 00:00:00",
     "auto_download": true,
     "param_grid": {
-      "chainer_mode": [
-        "LONG_ONLY",
-        "SHORT_ONLY",
-        "BOTH"
-      ],
-      "chainer_stoploss_atr_mult": [
-        0,
-        1
-      ],
+      "chainer_mode": ["BOTH"],
+      "chainer_stoploss_atr_mult": [1],
       "chainer_need_confirm": [
         false,
         true
@@ -30,10 +23,6 @@
         1,
         1.5,
         2
-      ],
-      "chainer_min_equity_percent": [
-        0.1,
-        0.5
       ]
     }
   }

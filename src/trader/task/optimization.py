@@ -13,7 +13,13 @@ def has_parameter_search(task_definition: dict) -> bool:
 def expand_parameter_space(task_definition: dict) -> list[dict]:
     combinations = task_definition.get("param_combinations")
     if combinations is not None:
-        return [dict(item) for item in combinations]
+        expanded_combinations = []
+        for item in combinations:
+            keys = list(item.keys())
+            values = [value if isinstance(value, list) else [value] for value in item.values()]
+            for combo in itertools.product(*values):
+                expanded_combinations.append(dict(zip(keys, combo)))
+        return expanded_combinations
 
     grid = task_definition.get("param_grid")
     if not grid:

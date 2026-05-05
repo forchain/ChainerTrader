@@ -37,6 +37,17 @@ def test_symbols_intervals():
         print(si.symbol_interval.name())
 
 
+def test_parse_symbols_trims_whitespace_after_commas():
+    cfg = (
+        '[{"task_type":"BACK_TRADER","symbols":"BTC-USDT, ZEC-USDT, XLM-USDT",'
+        '"interval":"1d","strategy":"macd_triple_divergence"}]'
+    )
+
+    tcfgs = parse_task_config(cfg)
+
+    assert [tcfg.symbol_interval.symbol() for tcfg in tcfgs] == ["BTCUSDT", "ZECUSDT", "XLMUSDT"]
+
+
 def test_taskconfig():
     file = os.path.join(GetConfigsDir(), "tasks", "backtests", "multi_backtrader.json")
     tcfgs = parse_task_config(file)

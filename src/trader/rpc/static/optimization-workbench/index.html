@@ -28,12 +28,20 @@
           <div class="param-filters">
             <label>
               <select id="sort-select">
-                <option value="score_desc">排序: 评分（高→低）</option>
-                <option value="return_desc">收益（高→低）</option>
+                <option value="return_desc">排序: 收益（高→低）</option>
+                <option value="score_desc">评分（高→低）</option>
                 <option value="dd_asc">回撤（低→高）</option>
                 <option value="trades_desc">交易数（多→少）</option>
                 <option value="winrate_desc">胜率（高→低）</option>
               </select>
+            </label>
+          </div>
+          <div id="dimension-filters" class="param-filters">
+            <label>
+              <select id="symbol-filter"></select>
+            </label>
+            <label>
+              <select id="interval-filter"></select>
             </label>
           </div>
           <div id="param-filters" class="param-filters"></div>

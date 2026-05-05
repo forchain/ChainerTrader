@@ -81,3 +81,58 @@ def test_stoploss_atr_mult_applies_even_when_cfg_atr_disabled():
     assert st.entry_ctx.initial_stop_price is not None
     # key_low=95, ATR(3) should be ~10 => stop should be < 95 when mult=1.0
     assert float(st.entry_ctx.initial_stop_price) < float(st.entry_ctx.key_kline_ref.low)
+
+
+def test_suggested_stop_price_does_not_override_framework_stop_price():
+    class SuggestedStopIsolationStrategy(BaseStrategy):
+        params = (
+            ("name", "SUGGESTED_STOP_ISOLATION_TEST"),
+            ("chainer_mode", "LONG_ONLY"),
+            ("chainer_stoploss_atr_mult", 0.0),
+            ("chainer_need_confirm", False),
+            ("chainer_enable_breakeven", False),
+            ("chainer_risk_reward_ratio", 0.0),
+        )
+
+        def __init__(self):
+            super().__init__()
+            self.entry_ctx = None
+
+        def next(self):
+            super().next()
+            if self.order is not None:
+                return
+            if self.entry_ctx is not None:
+                return
+            if len(self) < 4:
+                return
+            self.entry_ctx = self.enter_trade(
+                trade_key=None,
+                direction="LONG",
+                key_bar_index=self.bar_idx(),
+                stoploss_atr_mult=None,
+                need_confirm=False,
+                enable_breakeven=False,
+                risk_reward_ratio=0.0,
+                signal_metadata={"suggested_stop_price": 70.0, "signal_time": "2024-01-01T00:00:00"},
+            )
+
+    rows = [
+        dict(open=100, high=105, low=95, close=100),
+        dict(open=100, high=105, low=95, close=100),
+        dict(open=100, high=105, low=95, close=100),
+        dict(open=100, high=105, low=95, close=100),
+        dict(open=100, high=105, low=95, close=100),
+    ]
+    cerebro = bt.Cerebro()
+    cerebro.addstrategy(SuggestedStopIsolationStrategy)
+    data_feed = bt.feeds.PandasData(dataname=_build_df(rows), datetime="datetime")
+    cerebro.adddata(data_feed)
+    cerebro.broker.setcash(100000.0)
+    cerebro.broker.setcommission(commission=0.0)
+    strategies = cerebro.run()
+    st = strategies[0]
+
+    assert st.entry_ctx is not None
+    assert float(st.entry_ctx.initial_stop_price) == float(st.entry_ctx.key_kline_ref.low)
+    assert st.entry_ctx.signal_metadata.get("suggested_stop_price") == 70.0

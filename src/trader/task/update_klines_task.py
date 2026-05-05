@@ -5,14 +5,14 @@ from trader.common.common import sleep
 from trader.common.config import Config
 from trader.common.logger import Logger
 from trader.database.manager import DatabaseManager
-from trader.exchange.binance.exchange import BinanceExchange, get_oldest_time
+from trader.exchange.binance.exchange import BinanceExchange, KLINE_LIMIT_MAX, get_oldest_time
 from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig
 from trader.utils.symbol_interval import SymbolInterval, add_time_duration, get_time_duration
 
 DOWNLOAD_SPACE_TIME = 5
 DOWNLOAD_RETRY_MAX = 5
-KLINE_REQUEST_LIMIT_MAX = 500
+KLINE_REQUEST_LIMIT_MAX = KLINE_LIMIT_MAX
 
 
 def _compute_limit_for_range(symbol_interval: SymbolInterval, start_time: int, end_time: int) -> int:
@@ -295,7 +295,7 @@ async def download_range_backward(
 ) -> bool:
     if start_time > end_time:
         log.warning(f"{name} invalid backward range: start={start_time} > end={end_time}")
-        return False
+        return True
 
     log.info(
         f"{name} download_range_backward: start={datetime.fromtimestamp(start_time)}, end={datetime.fromtimestamp(end_time)}"
@@ -313,6 +313,9 @@ async def download_range_backward(
             return False
 
         batch_limit = _compute_limit_for_range(symbol_interval, start_time, current_end)
+        if batch_limit <= 0:
+            log.info(f"{name} no remaining candles to download")
+            break
         if hasattr(exchange, "get_klines_by_end"):
             kls = exchange.get_klines_by_end(symbol_interval, current_end, limit=batch_limit)
         else:
@@ -363,6 +366,9 @@ async def download_range_backward(
     availability = getattr(db_manager, "availability", None)
     if confirmed_boundary and earliest_seen_open_time is not None and availability is not None:
         exchange_name = exchange.name() if hasattr(exchange, "name") else "UNKNOWN"
+        log.info(
+            f"{name} detected earliest available kline: exchange={exchange_name} symbol_interval={symbol_interval.name()} earliest={datetime.fromtimestamp(earliest_seen_open_time)}"
+        )
         await availability.update_earliest_known_open_time(
             exchange_name,
             symbol_interval.symbol(),

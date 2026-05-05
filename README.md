@@ -42,7 +42,7 @@ ChainerTrader exposes one runtime with several user-visible capabilities:
           | Strategy Layer |   | Data Preparation |
           |----------------|   |------------------|
           | Backtrader     |   | CSV datasets     |
-          | Chainer engine |   | MongoDB klines   |
+          | Chainer engine |   | SQL klines       |
           | Strategy logic |   | Exchange sync    |
           +--------+-------+   +---------+--------+
                    |                     |
@@ -80,22 +80,19 @@ ChainerTrader exposes one runtime with several user-visible capabilities:
 
 ## Database Design
 
-ChainerTrader uses MongoDB as its primary persistent store for runtime and historical market data workflows.
+ChainerTrader uses Tortoise ORM with a SQL database as its primary persistent store for runtime state, historical market data, and market-data availability metadata. Local development defaults to SQLite via `TRADER_DB`.
 
 Detailed database design reference:
 
 - [docs/architecture/database-design.md](docs/architecture/database-design.md)
 
-### Collections Overview
+### Tables Overview
 
-ChainerTrader uses three main collection families in MongoDB.
+ChainerTrader uses three main table families through repository interfaces under `src/trader/database/`.
 
-#### 1. `klines-<symbol-interval>`
+#### 1. `klines`
 
-One collection per trading pair and timeframe, for example:
-
-- `klines-BTCUSDT-1h`
-- `klines-ETHUSDT-4h`
+One relational table stores candles for all exchanges, trading pairs, and timeframes.
 
 Purpose:
 
@@ -106,7 +103,7 @@ Purpose:
 Fields:
 
 - `open_time`
-  Primary key. Candle open timestamp.
+  Candle open timestamp, unique together with exchange, symbol, and interval.
 - `open_datetime`
   Human-readable open timestamp.
 - `open`
@@ -243,7 +240,7 @@ This database design supports:
 - database-backed backtests without requiring users to maintain every CSV by hand
 - incremental kline updates
 - optimization runs that reuse prepared datasets instead of repeatedly downloading the same data
-- lightweight runtime state tracking without a complex relational schema
+- lightweight runtime state tracking through explicit relational tables
 
 ### Operational Data Flow
 
@@ -254,7 +251,7 @@ Exchange / CSV
 Data preparation
      |
      v
-MongoDB kline storage
+Tortoise SQL kline storage
      |
      +--> backtests
      +--> optimization runs
@@ -296,7 +293,7 @@ Representative config locations:
 
 - Python 3.11+
 - `uv` recommended for environment management
-- MongoDB if you want database-backed workflows
+- SQLite by default for database-backed workflows; other Tortoise-supported SQL databases can be configured with `TRADER_DB`
 - Exchange credentials if you want live exchange-backed data operations
 
 ### Local Setup
@@ -315,7 +312,7 @@ Common settings:
 
 ```env
 TRADER_LOG_LEVEL="INFO"
-TRADER_DB="mongodb://localhost:27017/"
+TRADER_DB="sqlite://data/trader.db"
 TRADER_EXCHANGE='{"ty":"BINANCE","api_key":"","api_secret":""}'
 TRADER_API="127.0.0.1:8000"
 TRADER_NOTICE="./configs/notices/notice.json"
@@ -344,12 +341,12 @@ trader -h
 python -m trader --tasks configs/tasks/examples/backtrader_strategy.json
 ```
 
-### Run a Backtest Against MongoDB / Exchange-Prepared Data
+### Run a Backtest Against SQL / Exchange-Prepared Data
 
 ```bash
 python -m trader \
   --tasks configs/tasks/backtests/multi_backtrader.json \
-  --db mongodb://localhost:27017/ \
+  --db sqlite://data/trader.db \
   --exchange=BINANCE \
   --log_level INFO
 ```
