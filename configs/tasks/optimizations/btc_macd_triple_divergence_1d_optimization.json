@@ -10,20 +10,9 @@
     "param_grid": {
       "chainer_mode": ["BOTH"],
       "chainer_stoploss_atr_mult": [1],
-      "chainer_need_confirm": [
-        false,
-        true
-      ],
-      "chainer_enable_breakeven": [
-        false,
-        true
-      ],
-      "chainer_risk_reward_ratio": [
-        0,
-        1,
-        1.5,
-        2
-      ]
+      "chainer_need_confirm": [false],
+      "chainer_enable_breakeven": [true],
+      "chainer_risk_reward_ratio": [0]
     }
   }
 ]
