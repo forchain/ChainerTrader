@@ -259,20 +259,33 @@ class MarketStreamHub:
 class BinanceKlineWebSocketAdapter:
     def __init__(self, *, stream_url: str | None = None):
         self.stream_url = stream_url
+        self._client = None
+        self._stream_client = None
         self._handles = {}
+        self._disconnect_callbacks: dict[MarketStreamKey, DisconnectCallback] = {}
         self._stopping: set[MarketStreamKey] = set()
+        self._connection_lock = asyncio.Lock()
 
     async def start(self, key: MarketStreamKey, on_update: UpdateCallback, on_disconnect: DisconnectCallback | None = None) -> None:
         from binance_common.configuration import ConfigurationWebSocketStreams
         from binance_sdk_spot import Spot
 
-        config = ConfigurationWebSocketStreams(stream_url=self.stream_url or BINANCE_SPOT_WS_STREAM_URL)
-        client = Spot(config_ws_streams=config)
-        stream_client = client.websocket_streams
-        if on_disconnect is not None:
-            self._attach_disconnect_callback(key, stream_client, on_disconnect)
-        await stream_client.create_connection()
-        handle = await stream_client.kline(symbol=key.symbol.lower(), interval=key.interval)
+        async with self._connection_lock:
+            if on_disconnect is not None:
+                self._disconnect_callbacks[key] = on_disconnect
+            if self._stream_client is None:
+                config = ConfigurationWebSocketStreams(stream_url=self.stream_url or BINANCE_SPOT_WS_STREAM_URL)
+                self._client = Spot(config_ws_streams=config)
+                self._stream_client = self._client.websocket_streams
+                self._attach_disconnect_callback(self._stream_client)
+                await self._stream_client.create_connection()
+            stream_client = self._stream_client
+            try:
+                handle = await stream_client.kline(symbol=key.symbol.lower(), interval=key.interval)
+            except Exception:
+                if on_disconnect is not None:
+                    self._disconnect_callbacks.pop(key, None)
+                raise
 
         def on_message(message) -> None:
             update = normalize_binance_kline_message(message, exchange=key.exchange)
@@ -283,10 +296,14 @@ class BinanceKlineWebSocketAdapter:
                 asyncio.run(on_update(update))
 
         handle.on("message", on_message)
-        self._handles[key] = (handle, client)
+        self._handles[key] = (handle, self._client)
 
     async def stop(self, key: MarketStreamKey, reason: str = "") -> None:
-        stream = self._handles.pop(key, None)
+        async with self._connection_lock:
+            stream = self._handles.pop(key, None)
+            self._disconnect_callbacks.pop(key, None)
+            client = stream[1] if stream is not None else None
+            should_close = client is not None and all(existing_client is not client for _handle, existing_client in self._handles.values())
         if stream is not None:
             handle, client = stream
             stop_reason = reason or "unspecified"
@@ -300,16 +317,22 @@ class BinanceKlineWebSocketAdapter:
                     logging.warning("Binance kline unsubscribe failed for %s: reason=%s error=%s", key.stream_name(), stop_reason, exc)
                 finally:
                     self._forget_sdk_stream_mapping(key.stream_name())
-                try:
-                    logging.info("Closing Binance kline websocket for %s: reason=%s", key.stream_name(), stop_reason)
-                    await client.websocket_streams.close_connection()
-                    logging.info("Closed Binance kline websocket for %s: reason=%s", key.stream_name(), stop_reason)
-                except Exception as exc:
-                    logging.warning("Binance kline websocket close failed for %s: reason=%s error=%s", key.stream_name(), stop_reason, exc)
+                if should_close:
+                    try:
+                        logging.info("Closing Binance kline websocket for %s: reason=%s", key.stream_name(), stop_reason)
+                        await client.websocket_streams.close_connection()
+                        logging.info("Closed Binance kline websocket for %s: reason=%s", key.stream_name(), stop_reason)
+                    except Exception as exc:
+                        logging.warning("Binance kline websocket close failed for %s: reason=%s error=%s", key.stream_name(), stop_reason, exc)
+                    finally:
+                        async with self._connection_lock:
+                            if self._client is client and not self._handles:
+                                self._client = None
+                                self._stream_client = None
             finally:
                 self._stopping.discard(key)
 
-    def _attach_disconnect_callback(self, key: MarketStreamKey, stream_client, on_disconnect: DisconnectCallback) -> None:
+    def _attach_disconnect_callback(self, stream_client) -> None:
         original_receive_loop = stream_client.receive_loop
 
         async def receive_loop_with_disconnect(connection) -> None:
@@ -318,46 +341,48 @@ class BinanceKlineWebSocketAdapter:
                 await original_receive_loop(connection)
             except asyncio.CancelledError:
                 logging.info(
-                    "Binance kline websocket receive loop cancelled for %s: connection_id=%s reconnect=%s stopping=%s",
-                    key.stream_name(),
+                    "Binance kline websocket receive loop cancelled: connection_id=%s reconnect=%s stopping=%s",
                     connection_id,
                     getattr(connection, "reconnect", False),
-                    key in self._stopping,
+                    bool(self._stopping),
                 )
                 raise
             except Exception as exc:
                 logging.warning(
-                    "Binance kline websocket receive loop failed for %s: connection_id=%s reconnect=%s stopping=%s error=%s",
-                    key.stream_name(),
+                    "Binance kline websocket receive loop failed: connection_id=%s reconnect=%s stopping=%s error=%s",
                     connection_id,
                     getattr(connection, "reconnect", False),
-                    key in self._stopping,
+                    bool(self._stopping),
                     exc,
                 )
             else:
                 logging.warning(
-                    "Binance kline websocket receive loop ended for %s: connection_id=%s reconnect=%s stopping=%s",
-                    key.stream_name(),
+                    "Binance kline websocket receive loop ended: connection_id=%s reconnect=%s stopping=%s",
                     connection_id,
                     getattr(connection, "reconnect", False),
-                    key in self._stopping,
+                    bool(self._stopping),
                 )
             finally:
-                if key in self._stopping or getattr(connection, "reconnect", False):
+                if self._stopping or getattr(connection, "reconnect", False):
                     logging.info(
-                        "Binance kline websocket receive loop ended without hub reconnect for %s: connection_id=%s reconnect=%s stopping=%s",
-                        key.stream_name(),
+                        "Binance kline websocket receive loop ended without hub reconnect: connection_id=%s reconnect=%s stopping=%s",
                         connection_id,
                         getattr(connection, "reconnect", False),
-                        key in self._stopping,
+                        bool(self._stopping),
                     )
                     return
+                callbacks = list(self._disconnect_callbacks.items())
+                streams = ", ".join(key.stream_name() for key, _callback in callbacks)
                 logging.warning(
-                    "Binance kline websocket disconnected for %s: connection_id=%s; scheduling reconnect",
-                    key.stream_name(),
+                    "Binance kline websocket disconnected: connection_id=%s streams=%s; scheduling reconnect",
                     connection_id,
+                    streams,
                 )
-                asyncio.create_task(on_disconnect())
+                async with self._connection_lock:
+                    self._client = None
+                    self._stream_client = None
+                for _key, on_disconnect in callbacks:
+                    asyncio.create_task(on_disconnect())
 
         stream_client.receive_loop = receive_loop_with_disconnect
 

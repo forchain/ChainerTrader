@@ -254,6 +254,9 @@ async def test_binance_kline_adapter_opens_connection_before_subscribing(monkeyp
             calls.append(("unsubscribe",))
 
     class FakeWebSocketStreams:
+        async def receive_loop(self, connection):
+            return None
+
         async def create_connection(self):
             calls.append(("create_connection",))
 
@@ -290,6 +293,72 @@ async def test_binance_kline_adapter_opens_connection_before_subscribing(monkeyp
 
 
 @pytest.mark.anyio
+async def test_binance_kline_adapter_reuses_one_connection_for_multiple_kline_streams(monkeypatch):
+    import binance_sdk_spot
+
+    calls = []
+
+    class FakeHandle:
+        def __init__(self, stream):
+            self.stream = stream
+
+        def on(self, event, callback):
+            calls.append(("on", self.stream, event))
+
+        async def unsubscribe(self):
+            calls.append(("unsubscribe", self.stream))
+
+    class FakeWebSocketStreams:
+        def __init__(self):
+            self.connections = []
+
+        async def receive_loop(self, connection):
+            return None
+
+        async def create_connection(self):
+            calls.append(("create_connection",))
+            self.connections.append(SimpleNamespace(reconnect=False))
+
+        async def kline(self, symbol, interval):
+            stream = f"{symbol}@kline_{interval}"
+            calls.append(("kline", symbol, interval))
+            return FakeHandle(stream)
+
+        async def close_connection(self):
+            calls.append(("close_connection",))
+            self.connections.clear()
+
+    class FakeSpot:
+        def __init__(self, config_ws_streams):
+            self.config_ws_streams = config_ws_streams
+            self.websocket_streams = FakeWebSocketStreams()
+
+    monkeypatch.setattr(binance_sdk_spot, "Spot", FakeSpot)
+    adapter = BinanceKlineWebSocketAdapter()
+    btc = MarketStreamKey("BINANCE", "BTCUSDT", "1m")
+    eth = MarketStreamKey("BINANCE", "ETHUSDT", "1m")
+
+    async def on_update(update):
+        return None
+
+    await adapter.start(btc, on_update)
+    await adapter.start(eth, on_update)
+    await adapter.stop(btc, reason="test cleanup")
+    await adapter.stop(eth, reason="test cleanup")
+
+    assert calls == [
+        ("create_connection",),
+        ("kline", "btcusdt", "1m"),
+        ("on", "btcusdt@kline_1m", "message"),
+        ("kline", "ethusdt", "1m"),
+        ("on", "ethusdt@kline_1m", "message"),
+        ("unsubscribe", "btcusdt@kline_1m"),
+        ("unsubscribe", "ethusdt@kline_1m"),
+        ("close_connection",),
+    ]
+
+
+@pytest.mark.anyio
 async def test_binance_kline_adapter_closes_connection_when_unsubscribe_transport_is_closing(monkeypatch, caplog):
     import binance_sdk_spot
 
@@ -304,6 +373,9 @@ async def test_binance_kline_adapter_closes_connection_when_unsubscribe_transpor
             raise RuntimeError("Cannot write to closing transport")
 
     class FakeWebSocketStreams:
+        async def receive_loop(self, connection):
+            return None
+
         async def create_connection(self):
             calls.append(("create_connection",))
 
@@ -358,6 +430,9 @@ async def test_binance_kline_adapter_removes_sdk_stream_mapping_when_unsubscribe
             raise RuntimeError("Cannot write to closing transport")
 
     class FakeWebSocketStreams:
+        async def receive_loop(self, connection):
+            return None
+
         async def create_connection(self):
             calls.append(("create_connection",))
 
@@ -442,5 +517,85 @@ async def test_binance_kline_adapter_invokes_disconnect_callback_when_sdk_receiv
         await adapter.stop(key, reason="test cleanup")
 
     assert ("receive_loop", False) in calls
-    assert "Binance kline websocket receive loop ended for btcusdt@kline_1m" in caplog.text
+    assert "Binance kline websocket receive loop ended" in caplog.text
+    assert "streams=btcusdt@kline_1m" in caplog.text
     assert "scheduling reconnect" in caplog.text
+
+
+@pytest.mark.anyio
+async def test_binance_kline_adapter_notifies_all_streams_when_shared_connection_ends(monkeypatch):
+    import binance_sdk_spot
+
+    calls = []
+    disconnected = []
+    stream_clients = []
+    disconnect_now = asyncio.Event()
+
+    class FakeHandle:
+        def __init__(self, stream):
+            self.stream = stream
+
+        def on(self, event, callback):
+            calls.append(("on", self.stream, event))
+
+        async def unsubscribe(self):
+            calls.append(("unsubscribe", self.stream))
+
+    class FakeWebSocketStreams:
+        def __init__(self):
+            self.connections = []
+            stream_clients.append(self)
+
+        async def create_connection(self):
+            calls.append(("create_connection", len(stream_clients)))
+            self.connections.append(SimpleNamespace(reconnect=False))
+            self.receive_task = asyncio.create_task(self.receive_loop(self.connections[-1]))
+            await asyncio.sleep(0)
+
+        async def receive_loop(self, connection):
+            await disconnect_now.wait()
+            calls.append(("receive_loop", len(stream_clients), connection.reconnect))
+
+        async def kline(self, symbol, interval):
+            stream = f"{symbol}@kline_{interval}"
+            calls.append(("kline", stream, len(stream_clients)))
+            return FakeHandle(stream)
+
+        async def close_connection(self):
+            calls.append(("close_connection", len(stream_clients)))
+            self.connections.clear()
+
+    class FakeSpot:
+        def __init__(self, config_ws_streams):
+            self.config_ws_streams = config_ws_streams
+            self.websocket_streams = FakeWebSocketStreams()
+
+    monkeypatch.setattr(binance_sdk_spot, "Spot", FakeSpot)
+    adapter = BinanceKlineWebSocketAdapter()
+    btc = MarketStreamKey("BINANCE", "BTCUSDT", "1m")
+    eth = MarketStreamKey("BINANCE", "ETHUSDT", "1m")
+
+    async def on_update(update):
+        return None
+
+    async def btc_disconnect():
+        disconnected.append(btc)
+
+    async def eth_disconnect():
+        disconnected.append(eth)
+
+    await adapter.start(btc, on_update, btc_disconnect)
+    await adapter.start(eth, on_update, eth_disconnect)
+    disconnect_now.set()
+
+    for _ in range(10):
+        if set(disconnected) == {btc, eth}:
+            break
+        await asyncio.sleep(0)
+
+    assert set(disconnected) == {btc, eth}
+
+    await adapter.start(btc, on_update, btc_disconnect)
+
+    assert len(stream_clients) == 2
+    assert ("create_connection", 2) in calls
