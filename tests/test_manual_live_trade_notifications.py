@@ -13,6 +13,7 @@ from trader.notify.trade_notification import (
     ManualNotifySmokeKline,
     ManualTradeAccountState,
     ManualTradeNotificationEvent,
+    normalize_live_execution_mode,
     build_manual_notify_smoke_event,
     render_manual_trade_email,
 )
@@ -101,6 +102,43 @@ def test_parse_task_config_accepts_manual_notify_mode_and_start_position():
     assert tasks[0].manual_start_position == 0.125
     assert tasks[0].to_dict()["live_execution_mode"] == "manual_notify"
     assert tasks[0].to_dict()["manual_start_position"] == 0.125
+
+
+def test_parse_task_config_accepts_staged_auto_trade_options():
+    tasks = parse_task_config(
+        json.dumps(
+            [
+                {
+                    "task_type": "TRADER",
+                    "symbol": "BTC-USDT",
+                    "interval": "1m",
+                    "strategy": "macd_triple_divergence",
+                    "free": 2500,
+                    "live_execution_mode": "small_live_auto",
+                    "live_trade_max_notional": 15,
+                    "live_short_execution": "margin_cross",
+                }
+            ]
+        )
+    )
+
+    assert len(tasks) == 1
+    assert tasks[0].live_execution_mode == "small_live_auto"
+    assert tasks[0].live_trade_max_notional == 15.0
+    assert tasks[0].live_short_execution == "margin_cross"
+    assert tasks[0].to_dict()["live_trade_max_notional"] == 15.0
+    assert tasks[0].to_dict()["live_short_execution"] == "margin_cross"
+
+
+def test_normalize_live_execution_mode_preserves_staged_modes_and_rejects_unknown():
+    assert normalize_live_execution_mode("small_live_auto") == "small_live_auto"
+    assert normalize_live_execution_mode("full_live_auto") == "full_live_auto"
+
+    with pytest.raises(ValueError, match="paper_auto is no longer supported"):
+        normalize_live_execution_mode("paper_auto")
+
+    with pytest.raises(ValueError, match="unsupported live_execution_mode"):
+        normalize_live_execution_mode("surprise")
 
 
 def test_manual_buy_operation_creates_entry_notification_and_updates_local_state():

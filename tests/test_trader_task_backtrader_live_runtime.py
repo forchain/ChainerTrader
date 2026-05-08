@@ -7,6 +7,9 @@ from tortoise.context import TortoiseContext, get_current_context
 
 from trader.common.config import Config
 from trader.common.logger import Logger
+from trader.execution.models import ExecutionSide, ExecutionStatus, GatewayMode, OrderIntent
+from trader.execution.state import ExecutionStateRecord
+from trader.live.auto_execution import AUTO_EXECUTION_EVENT_TYPE
 from trader.live.market_data import BackfillPlan, BackfillRequestKind, normalize_binance_kline_message
 from trader.task.task_config import TaskConfig
 from trader.task.task_type import TaskType
@@ -59,6 +62,8 @@ class FakeExchange:
     def __init__(self, fetched):
         self.fetched = fetched
         self.latest_requests = []
+        self.new_order_calls = []
+        self.balance_reads = []
 
     def name(self):
         return "BINANCE"
@@ -69,6 +74,14 @@ class FakeExchange:
 
     def get_klines(self, si, start_time=None, end_time=None, limit=500):
         return [kline for kline in self.fetched if start_time <= kline.open_time <= end_time][:limit]
+
+    def get_account_balance(self, asset):
+        self.balance_reads.append(asset)
+        return 0.0
+
+    def new_order(self, *args, **kwargs):
+        self.new_order_calls.append((args, kwargs))
+        raise AssertionError("manual_notify realtime runtime must not place exchange orders")
 
 
 class FakeRunner:
@@ -127,6 +140,49 @@ class FakeHub:
 
 def _kline(open_time, close=100.0):
     return Kline(open_time, close - 1, close + 1, close - 2, close, open_time + 59, 1, 1, 1, 1, 1)
+
+
+@pytest.mark.anyio
+async def test_trader_task_persists_live_auto_execution_state_records():
+    class StateStore:
+        def __init__(self):
+            self.saved = []
+
+        async def save(self, record):
+            self.saved.append(record)
+            return record
+
+    db = FakeDb()
+    db.execution_state = StateStore()
+    tcfg = TaskConfig(
+        86,
+        TaskType.TRADER,
+        SymbolInterval("BTC-USDT", Interval.INTERVAL_1m),
+        strategies=["macd_triple_divergence"],
+        free=1000,
+        live_execution_mode="small_live_auto",
+        live_data_mode="realtime",
+    )
+    task = TraderTask(tcfg, Config(window=500), Logger(Config(window=500)), db, FakeExchange([]))
+    intent = OrderIntent.entry(
+        intent_id="intent-1",
+        operation_id="op-1",
+        symbol="BTCUSDT",
+        side=ExecutionSide.LONG,
+        quantity=0.25,
+    )
+    record = ExecutionStateRecord.from_order_intent(
+        intent,
+        gateway=GatewayMode.BINANCE_LIVE,
+        staged_execution_mode="small_live_auto",
+        status=ExecutionStatus.SUBMITTED,
+        exchange_order_id="live-1",
+        timestamp=BASE,
+    )
+
+    await task._persist_auto_execution_state(SimpleNamespace(execution_state_records=[record]))
+
+    assert db.execution_state.saved == [record]
 
 
 def _update(open_time, closed):
@@ -337,6 +393,20 @@ async def test_trader_task_realtime_publishes_dashboard_events_and_runtime_statu
     status = next(event for event in events if event.event_type == "runtime_status")
     assert status.payload["feed_phase"] == "live"
     assert status.payload["latest_delivered_open_time"] == BASE + 180
+
+
+@pytest.mark.anyio
+async def test_trader_task_realtime_paper_auto_is_rejected_before_runtime(monkeypatch):
+    with pytest.raises(ValueError, match="paper_auto is no longer supported"):
+        TaskConfig(
+            84,
+            TaskType.TRADER,
+            SymbolInterval("BTC-USDT", Interval.INTERVAL_1m),
+            strategies=["macd_triple_divergence"],
+            free=1000,
+            live_execution_mode="paper_auto",
+            live_data_mode="realtime",
+        )
 
 
 @pytest.mark.anyio

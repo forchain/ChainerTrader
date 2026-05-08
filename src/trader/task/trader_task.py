@@ -10,6 +10,7 @@ from trader.common.message import new_stat_msg
 from trader.database.manager import DatabaseManager
 from trader.exchange.binance.data import BinanceData
 from trader.exchange.binance.exchange import BinanceExchange
+from trader.live.auto_execution import AutoExecutionRouter, execution_outcome_event
 from trader.live.backtrader_runtime import BacktraderLiveRunner
 from trader.live.dashboard import (
     build_risk_overlay_events,
@@ -72,6 +73,9 @@ class TraderTask(BaseTask):
         super().__init__(tcfg, cfg, log, db_manager, exchange)
         self._manual_cash = self._manual_starting_cash()
         self._manual_position = float(getattr(tcfg, "manual_start_position", 0.0) or 0.0)
+        self._auto_execution_router = AutoExecutionRouter(tcfg, exchange=exchange, cfg=cfg, log=log)
+        self.ts.auto_execution_outcomes = []
+        self.ts.execution_reconcile = []
 
     def is_manual_notify_mode(self) -> bool:
         return normalize_live_execution_mode(getattr(self.tcfg, "live_execution_mode", None)) == MANUAL_NOTIFY_MODE
@@ -185,10 +189,6 @@ class TraderTask(BaseTask):
                     await sleep_loop(self.log, dist, self.quit, "next K-line...")
 
     async def start_realtime(self, queue: Queue, strategy):
-        if not self.is_manual_notify_mode():
-            self.log.error("realtime live runtime currently supports manual_notify mode only")
-            return
-
         async def publish_event(event):
             await GLOBAL_LIVE_EVENT_BUS.publish(event)
 
@@ -219,6 +219,7 @@ class TraderTask(BaseTask):
                 await _add_repository_klines(self.db_manager.kline, collection_name, fetched_warmup)
                 warmup = await _maybe_await(self.db_manager.kline.get_latest_klines(collection_name, warmup_limit)) or []
         self.log.info(f"Realtime live warmup ready: collection={collection_name} candles={len(warmup)}/{warmup_limit}")
+        await self._reconcile_execution_state()
         loop = asyncio.get_running_loop()
         live_operation_context = contextvars.copy_context()
         live_operation_tasks: set[asyncio.Task] = set()
@@ -227,9 +228,20 @@ class TraderTask(BaseTask):
             ret = self._trader_result_for_live_operation(op)
             await self.process_result(ret)
             feed_phase = str(getattr(op, "feed_phase", "") or "").lower()
-            notifications = [] if feed_phase == "warmup" else self.handle_manual_trade_notifications(ret)
+            notifications = []
+            auto_execution_outcomes = []
+            if self.is_manual_notify_mode():
+                notifications = [] if feed_phase == "warmup" else self.handle_manual_trade_notifications(ret)
+            else:
+                outcome = self._auto_execution_router.route(op)
+                auto_execution_outcomes = [outcome]
+                await self._persist_auto_execution_state(outcome)
+                self.ts.auto_execution_outcomes = list(getattr(self.ts, "auto_execution_outcomes", []) or []) + auto_execution_outcomes
+                await _maybe_await(self.db_manager.task.add_tasks([self.ts]))
             event_time = int(getattr(op, "dtime", datetime.now().timestamp()))
             await publish_event(strategy_execution_event(self.tcfg.id, event_time, ret, [op]))
+            for outcome in auto_execution_outcomes:
+                await publish_event(execution_outcome_event(self.tcfg.id, outcome))
             if getattr(op, "otype", None) != OperateType.RISK_UPDATE:
                 await publish_event(build_signal_marker_event(self.tcfg.id, op, getattr(self.tcfg, "live_execution_mode", "manual_notify")))
             for event in build_risk_overlay_events(self.tcfg.id, op):
@@ -287,6 +299,9 @@ class TraderTask(BaseTask):
 
         def runtime_status() -> dict:
             status = runner.status() if hasattr(runner, "status") else {}
+            execution_reconcile = list(getattr(self.ts, "execution_reconcile", []) or [])
+            status["execution_reconcile_open_count"] = len(execution_reconcile)
+            status["execution_reconcile"] = execution_reconcile
             stream_status = GLOBAL_MARKET_STREAM_HUB.status(key) if hasattr(GLOBAL_MARKET_STREAM_HUB, "status") else None
             if stream_status is not None:
                 status.update(
@@ -302,6 +317,7 @@ class TraderTask(BaseTask):
             await publish_event(runtime_status_event(self.tcfg.id, event_time or int(datetime.now().timestamp()), runtime_status()))
 
         async def catch_up_missing_closed_klines() -> None:
+            await self._reconcile_execution_state()
             latest = await _maybe_await(self.db_manager.kline.get_latest_kline(collection_name))
             plan = plan_initial_backfill(latest, now=int(datetime.now().timestamp()), interval=self.tcfg.symbol_interval.interval)
             fetched = []
@@ -349,6 +365,48 @@ class TraderTask(BaseTask):
             if live_operation_tasks:
                 await asyncio.gather(*live_operation_tasks, return_exceptions=True)
             await subscription.unsubscribe()
+
+    async def _reconcile_execution_state(self) -> list[dict]:
+        if self.is_manual_notify_mode():
+            self.ts.execution_reconcile = []
+            return []
+        store = getattr(self.db_manager, "execution_state", None)
+        if store is None:
+            self.ts.execution_reconcile = []
+            return []
+        records = await _maybe_await(store.list_open_by_symbol(self.tcfg.symbol_interval.symbol()))
+        payload = [self._execution_state_record_payload(record) for record in records]
+        self.ts.execution_reconcile = payload
+        return payload
+
+    async def _persist_auto_execution_state(self, outcome) -> None:
+        store = getattr(self.db_manager, "execution_state", None)
+        if store is None:
+            return
+        for record in list(getattr(outcome, "execution_state_records", []) or []):
+            await _maybe_await(store.save(record))
+
+    def _execution_state_record_payload(self, record) -> dict:
+        gateway = getattr(record, "gateway", None)
+        status = getattr(record, "status", None)
+        return {
+            "idempotency_key": getattr(record, "idempotency_key", None),
+            "intent_id": getattr(record, "intent_id", None),
+            "operation_id": getattr(record, "operation_id", None),
+            "gateway": getattr(gateway, "value", gateway),
+            "staged_execution_mode": getattr(record, "staged_execution_mode", None),
+            "symbol": getattr(record, "symbol", None),
+            "trade_id": getattr(record, "trade_id", None),
+            "order_role": getattr(record, "order_role", None),
+            "status": getattr(status, "value", status),
+            "exchange_order_id": getattr(record, "exchange_order_id", None),
+            "protection_id": getattr(record, "protection_id", None),
+            "quantity": getattr(record, "quantity", None),
+            "price": getattr(record, "price", None),
+            "stop_price": getattr(record, "stop_price", None),
+            "take_profit_price": getattr(record, "take_profit_price", None),
+            "updated_at": getattr(record, "updated_at", None),
+        }
 
     def _trader_result_for_live_operation(self, op) -> TraderResult:
         return TraderResult(
