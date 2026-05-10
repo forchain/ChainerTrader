@@ -23,7 +23,9 @@ from urllib.parse import urlencode, urlparse
 
 from trader.common.logger import default
 from trader.exchange.balance import Balance
+from trader.exchange.ccxt_driver import CcxtExchangeDriver
 from trader.exchange.binance.margin import MarginTradingManager
+from trader.exchange.driver import ExchangeDriverType
 from trader.exchange.exchange_config import ExchangeConfig, MarginMode
 from trader.exchange.exchange_type import ExchangeType
 from trader.execution.models import (
@@ -54,27 +56,61 @@ class BinanceExchange:
     def __init__(self, cfg: ExchangeConfig, log=default()):
         self.log = log
         self.cfg = cfg
+        self.driver_type = getattr(cfg, "driver", ExchangeDriverType.CCXT)
+        self.ccxt_driver = CcxtExchangeDriver(cfg, log=log) if self.driver_type == ExchangeDriverType.CCXT else None
         self.margin_mode = cfg.margin_mode if hasattr(cfg, 'margin_mode') else MarginMode.SPOT
         self.log.info(f"Init Exchange {self.name()} with margin_mode={self.margin_mode.value}")
 
-        configuration_rest_api = ConfigurationRestAPI(
-            api_key=cfg.api_key,
-            api_secret=cfg.api_secret,
-            base_path=SPOT_REST_API_PROD_URL,
-            timeout=10000,
-            backoff=1,
-        )
-        self.spot_client = Spot(config_rest_api=configuration_rest_api)
+        self.spot_client = None
+        if not self._use_ccxt():
+            configuration_rest_api = ConfigurationRestAPI(
+                api_key=cfg.api_key,
+                api_secret=cfg.api_secret,
+                base_path=SPOT_REST_API_PROD_URL,
+                timeout=10000,
+                backoff=1,
+            )
+            self.spot_client = Spot(config_rest_api=configuration_rest_api)
 
         self.account = None
         self.commission: AccountCommissionResponse | None = None
         self.rate_limits: dict[str, datetime] = {}
         self.server_time: Optional[float] = None
 
+    def _use_ccxt(self) -> bool:
+        return self.driver_type == ExchangeDriverType.CCXT
+
+    def supported_gateway_capabilities(self):
+        from trader.execution.models import GatewayCapability
+
+        supported = {
+            GatewayCapability.MARKET_ENTRY,
+            GatewayCapability.MARKET_CLOSE,
+            GatewayCapability.CANCEL_ORDER,
+            GatewayCapability.RECONCILE,
+        }
+        if self._use_ccxt():
+            supported |= {
+                GatewayCapability.PROTECTIVE_STOP,
+                GatewayCapability.TAKE_PROFIT_LIMIT,
+                GatewayCapability.OCO_PROTECTION,
+                GatewayCapability.BREAKEVEN_REPLACEMENT,
+            }
+        else:
+            supported |= {
+                GatewayCapability.PROTECTIVE_STOP,
+                GatewayCapability.TAKE_PROFIT_LIMIT,
+                GatewayCapability.OCO_PROTECTION,
+                GatewayCapability.BREAKEVEN_REPLACEMENT,
+            }
+        return supported
+
     def name(self):
         return ExchangeType.BINANCE.name
 
     def start(self):
+        if self._use_ccxt():
+            return self.ccxt_driver.start()
         if not self.ping():
             return False
 
@@ -88,11 +124,15 @@ class BinanceExchange:
         return True
 
     def stop(self):
+        if self._use_ccxt():
+            return self.ccxt_driver.stop()
         self.log.info(f"Stop {self.name()} exchange")
         # if self.spot_ws_client:
         #    self.spot_ws_client.stop()
 
     def server_datetime(self):
+        if self._use_ccxt():
+            return self.ccxt_driver.server_datetime()
         if self.server_time is None:
             return None
 
@@ -100,6 +140,8 @@ class BinanceExchange:
         return dt
 
     def server_time_offset(self):
+        if self._use_ccxt():
+            return self.ccxt_driver.server_time_offset()
         return self.server_time - datetime.now().timestamp()
 
     def _has_valid_margin_base_path(self) -> bool:
@@ -117,6 +159,8 @@ class BinanceExchange:
         end_time: int = None,
         limit: int = KLINE_LIMIT_DEFAULT,
     ) -> list[Kline]:
+        if self._use_ccxt():
+            return self.ccxt_driver.get_klines(si, start_time, end_time, limit)
         r_limit = limit
         if r_limit > KLINE_LIMIT_MAX:
             r_limit = KLINE_LIMIT_MAX
@@ -151,6 +195,8 @@ class BinanceExchange:
         return kls
 
     def get_latest_klines(self, si: SymbolInterval, limit: int = KLINE_LIMIT_DEFAULT) -> list[Kline]:
+        if self._use_ccxt():
+            return self.ccxt_driver.get_latest_klines(si, limit)
         return self.get_klines(si, None, None, limit)
 
     def get_klines_by_end(
@@ -159,6 +205,8 @@ class BinanceExchange:
         end_time: int,
         limit: int = KLINE_LIMIT_DEFAULT,
     ) -> list[Kline]:
+        if self._use_ccxt():
+            return self.ccxt_driver.get_klines_by_end(si, end_time, limit)
         r_limit = min(limit, KLINE_LIMIT_MAX)
         try:
             rsp = self.spot_client.rest_api.klines(
@@ -187,12 +235,16 @@ class BinanceExchange:
         start_time: int = None,
         limit: int = KLINE_LIMIT_DEFAULT,
     ) -> list[Kline]:
+        if self._use_ccxt():
+            return self.ccxt_driver.get_klines_by_start(si, start_time, limit)
         r_end_time = int(datetime.now().timestamp())
         if start_time is None or start_time == 0:
             start_time = int(get_oldest_time().timestamp())
         return self.get_klines(si, start_time, r_end_time, limit)
 
     def get_account(self):
+        if self._use_ccxt():
+            return self.ccxt_driver.get_account()
         if self.has_rate_limit():
             self.log.error("Rate limit")
             return self.account
@@ -212,6 +264,8 @@ class BinanceExchange:
         return self.account
 
     def get_account_balance(self, asset: str) -> float:
+        if self._use_ccxt():
+            return self.ccxt_driver.get_account_balance(asset)
         acct = self.get_account()
         if acct and acct.balances:
             for ba in acct.balances:
@@ -220,6 +274,8 @@ class BinanceExchange:
         return 0
 
     def get_account_balances(self) -> list[Balance]:
+        if self._use_ccxt():
+            return self.ccxt_driver.get_account_balances()
         acct = self.get_account()
 
         ret: list[Balance] = []
@@ -230,6 +286,8 @@ class BinanceExchange:
         return ret
 
     def get_position_view(self, symbol: Symbol) -> list[PositionView]:
+        if self._use_ccxt():
+            return self.ccxt_driver.get_position_view(symbol)
         if self.margin_mode != MarginMode.SPOT:
             return MarginTradingManager(self.cfg, self.log).get_position_view(symbol)
 
@@ -245,6 +303,8 @@ class BinanceExchange:
         return []
 
     def account_commission(self, symbol: str = None) -> AccountCommissionResponse:
+        if self._use_ccxt():
+            return self.ccxt_driver.account_commission(symbol)
         if self.has_rate_limit():
             self.log.error("Rate limit")
             return self.commission
@@ -264,12 +324,16 @@ class BinanceExchange:
         return self.commission
 
     def get_account_commission(self, symbol: str) -> float | None:
+        if self._use_ccxt():
+            return self.ccxt_driver.get_account_commission(symbol)
         commission = self.account_commission(symbol)
         if commission and commission.standard_commission and commission.standard_commission.taker:
             return float(commission.standard_commission.taker)
         return None
 
     def ping(self) -> bool:
+        if self._use_ccxt():
+            return self.ccxt_driver.ping()
         if self.has_rate_limit():
             self.log.error("Rate limit")
             return False
@@ -287,6 +351,8 @@ class BinanceExchange:
         return True
 
     def time(self) -> datetime:
+        if self._use_ccxt():
+            return self.ccxt_driver.time()
         if self.has_rate_limit():
             self.log.error("Rate limit")
             return self.server_datetime()
@@ -311,6 +377,8 @@ class BinanceExchange:
         return self.server_datetime()
 
     def exchange_info(self, symbol: str = None):
+        if self._use_ccxt():
+            return self.ccxt_driver.exchange_info(symbol)
         if self.has_rate_limit():
             self.log.error("Rate limit")
             return None
@@ -329,6 +397,8 @@ class BinanceExchange:
         return None
 
     def new_order(self, symbol: Symbol, op: OperateType, quantity: float = 0):
+        if self._use_ccxt():
+            return self.ccxt_driver.new_order(symbol, op, quantity)
         if self.has_rate_limit("ORDERS"):
             self.log.error("Rate limit")
             return None
@@ -367,6 +437,8 @@ class BinanceExchange:
             return None
 
     def new_oco_order(self, symbol: Symbol, op: OperateType, quantity: float, stop_price: float, take_profit_price: float):
+        if self._use_ccxt():
+            return self.ccxt_driver.new_oco_order(symbol, op, quantity, stop_price, take_profit_price)
         if self.has_rate_limit("ORDERS"):
             self.log.error("Rate limit")
             return None
@@ -403,6 +475,8 @@ class BinanceExchange:
             return None
 
     def new_stop_order(self, symbol: Symbol, op: OperateType, quantity: float, stop_price: float):
+        if self._use_ccxt():
+            return self.ccxt_driver.new_stop_order(symbol, op, quantity, stop_price)
         if self.has_rate_limit("ORDERS"):
             self.log.error("Rate limit")
             return None
@@ -434,6 +508,8 @@ class BinanceExchange:
             return None
 
     def new_take_profit_order(self, symbol: Symbol, op: OperateType, quantity: float, limit_price: float):
+        if self._use_ccxt():
+            return self.ccxt_driver.new_take_profit_order(symbol, op, quantity, limit_price)
         if self.has_rate_limit("ORDERS"):
             self.log.error("Rate limit")
             return None
@@ -465,6 +541,8 @@ class BinanceExchange:
             return None
 
     def replace_stop_order(self, symbol: Symbol, side: OperateType, order_id: str, quantity: float, stop_price: float):
+        if self._use_ccxt():
+            return self.ccxt_driver.replace_stop_order(symbol, side, order_id, quantity, stop_price)
         if self.has_rate_limit("ORDERS"):
             self.log.error("Rate limit")
             return None
@@ -520,6 +598,8 @@ class BinanceExchange:
         return MarginTradingManager(self.cfg, self.log).new_order(symbol, op, self._normalize_quantity(symbol, quantity))
 
     def get_open_protection_orders(self, symbol: Symbol) -> list[ProtectionOrderView]:
+        if self._use_ccxt():
+            return self.ccxt_driver.get_open_protection_orders(symbol)
         if self.margin_mode != MarginMode.SPOT:
             return MarginTradingManager(self.cfg, self.log).get_open_protection_orders(symbol)
 
@@ -596,6 +676,8 @@ class BinanceExchange:
             return []
 
     def verify_order_ids(self, symbol: Symbol, order_ids: list[str]) -> bool:
+        if self._use_ccxt():
+            return self.ccxt_driver.verify_order_ids(symbol, order_ids)
         if self.margin_mode != MarginMode.SPOT:
             manager = MarginTradingManager(self.cfg, self.log)
             if hasattr(manager, "verify_order_ids"):
@@ -607,6 +689,8 @@ class BinanceExchange:
         return all(isinstance(oid, str) and len(oid) > 0 for oid in order_ids)
 
     def delete_order(self, symbol: str):
+        if self._use_ccxt():
+            return self.ccxt_driver.delete_order(symbol)
         if self.has_rate_limit("ORDERS"):
             self.log.error("Rate limit")
             return None
@@ -625,6 +709,16 @@ class BinanceExchange:
 
         except Exception as e:
             self.log.error(e)
+
+    def cancel_all_open_orders(self, symbol: Symbol):
+        if self._use_ccxt():
+            return self.ccxt_driver.cancel_all_open_orders(symbol)
+        if self.margin_mode != MarginMode.SPOT:
+            manager = MarginTradingManager(self.cfg, self.log)
+            response = manager.client.rest_api.margin_account_cancel_all_open_orders_on_a_symbol(symbol=symbol.name())
+            return response.data()
+        response = self.spot_client.rest_api.delete_open_orders(symbol=symbol.name())
+        return response.data()
 
     def update_rate_limits(self, rate_limits: list[RateLimit]):
         for rl in rate_limits:

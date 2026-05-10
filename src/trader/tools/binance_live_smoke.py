@@ -4,12 +4,13 @@ import json
 import os
 import time
 from dataclasses import asdict, dataclass, field
-from decimal import Decimal, ROUND_DOWN
+from decimal import ROUND_DOWN, Decimal
 from typing import Any
 
 from trader.common.config import Config
 from trader.common.logger import Logger
 from trader.exchange.binance.exchange import BinanceExchange
+from trader.exchange.driver import ExchangeDriverType
 from trader.exchange.exchange_config import ExchangeConfig, MarginMode
 from trader.live.auto_execution import AutoExecutionRouter, AutoExecutionStatus
 from trader.task.task_config import TaskConfig
@@ -63,6 +64,7 @@ def run_binance_live_smoke_from_env() -> LiveSmokeReport:
     symbol = Symbol(raw_symbol)
     run_spot = os.getenv("CHAINERTRADER_LIVE_SMOKE_ENABLE_SPOT", "1") == "1"
     run_margin = os.getenv("CHAINERTRADER_LIVE_SMOKE_ENABLE_MARGIN", "0") == "1"
+    driver = _env_driver_type()
     stop_offset = _env_decimal("CHAINERTRADER_LIVE_SMOKE_STOP_OFFSET", "0.05")
     take_profit_offset = _env_decimal("CHAINERTRADER_LIVE_SMOKE_TAKE_PROFIT_OFFSET", "0.05")
 
@@ -70,25 +72,29 @@ def run_binance_live_smoke_from_env() -> LiveSmokeReport:
     log = Logger(cfg).log()
     report = LiveSmokeReport(symbol=symbol.name(), notional=float(max_notional), spot_enabled=run_spot, margin_enabled=run_margin)
 
-    if run_spot:
-        exchange = BinanceExchange(ExchangeConfig(api_key=api_key, api_secret=api_secret, margin_mode=MarginMode.SPOT), log)
-        _run_spot_long_flow(exchange, symbol, max_notional, stop_offset, take_profit_offset, report, cfg)
-    else:
-        report.add("spot_long_flow", "skipped", reason="CHAINERTRADER_LIVE_SMOKE_ENABLE_SPOT is not 1")
-
     if run_margin:
-        exchange = BinanceExchange(
+        margin_exchange = BinanceExchange(
             ExchangeConfig(
                 api_key=api_key,
                 api_secret=api_secret,
                 margin_mode=MarginMode.CROSS_MARGIN,
+                driver=driver,
                 base_path=os.getenv("BINANCE_MARGIN_BASE_PATH", "https://api.binance.com"),
             ),
             log,
         )
-        _run_margin_short_flow(exchange, symbol, max_notional, stop_offset, take_profit_offset, report, cfg)
+        _run_margin_short_flow(margin_exchange, symbol, max_notional, stop_offset, take_profit_offset, report, cfg)
     else:
         report.add("margin_short_flow", "skipped", reason="set CHAINERTRADER_LIVE_SMOKE_ENABLE_MARGIN=1 to test cross-margin short")
+
+    if run_spot:
+        exchange = BinanceExchange(
+            ExchangeConfig(api_key=api_key, api_secret=api_secret, margin_mode=MarginMode.SPOT, driver=driver),
+            log,
+        )
+        _run_spot_long_flow(exchange, symbol, max_notional, stop_offset, take_profit_offset, report, cfg)
+    else:
+        report.add("spot_long_flow", "skipped", reason="CHAINERTRADER_LIVE_SMOKE_ENABLE_SPOT is not 1")
 
     return report
 
@@ -97,25 +103,23 @@ def _run_spot_long_flow(
     exchange: BinanceExchange,
     symbol: Symbol,
     notional: Decimal,
-    stop_offset: Decimal,
-    take_profit_offset: Decimal,
+    _stop_offset: Decimal,
+    _take_profit_offset: Decimal,
     report: LiveSmokeReport,
     cfg: Config,
 ) -> None:
     price = _latest_price(exchange, symbol)
     quantity = _quantity_for_notional(exchange, symbol, notional, price)
-    tcfg = _task_config(symbol, notional, live_short_execution="disabled")
+    tcfg = _task_config(symbol, notional, chainer_mode="LONG_ONLY")
     router = AutoExecutionRouter(tcfg, exchange=exchange, cfg=cfg)
     entry = _operation(OperateType.BUY, price)
-    entry.stop_loss = float(price * (Decimal("1") - stop_offset))
-    entry.take_profit = float(price * (Decimal("1") + take_profit_offset))
-    _attach_macd_like_metadata(entry, direction="LONG", stop_price=entry.stop_loss, take_profit=entry.take_profit)
+    _attach_signal_metadata(entry, direction="LONG")
 
     try:
         outcome = router.route(entry)
-        _require_submitted(outcome, "spot long entry with native bracket")
+        _require_submitted(outcome, "spot long entry")
         report.add(
-            "spot_long_entry_bracket",
+            "spot_long_entry",
             "passed",
             quantity=float(quantity),
             order_id=_order_id(outcome.exchange_order),
@@ -126,58 +130,33 @@ def _run_spot_long_flow(
         _cancel_all_open_orders(exchange, symbol, report, step_prefix="spot")
 
     close = _operation(OperateType.SELL, price)
-    _attach_macd_like_metadata(close, direction="LONG", stop_price=entry.stop_loss, take_profit=entry.take_profit)
+    _attach_signal_metadata(close, direction="LONG")
     close_outcome = router.route(close)
     _require_submitted(close_outcome, "spot long close")
     report.add("spot_long_close", "passed", order_id=_order_id(close_outcome.exchange_order))
-
-    stop_only = _operation(OperateType.BUY, price)
-    stop_only.stop_loss = float(price * (Decimal("1") - stop_offset))
-    _attach_macd_like_metadata(stop_only, direction="LONG", stop_price=stop_only.stop_loss, take_profit=0.0)
-    try:
-        stop_outcome = router.route(stop_only)
-        _require_submitted(stop_outcome, "spot long entry with native stop")
-        protection_id = _first_protection_order_id(stop_outcome)
-        risk_update = _operation(OperateType.RISK_UPDATE, price)
-        risk_update.breakeven_new_stop = float(price * (Decimal("1") - (stop_offset / Decimal("2"))))
-        risk_update.protection_order_id = protection_id
-        _attach_macd_like_metadata(risk_update, direction="LONG", stop_price=risk_update.breakeven_new_stop, take_profit=0.0)
-        replace_outcome = router.route(risk_update)
-        _require_submitted(replace_outcome, "spot long breakeven stop replacement")
-        report.add("spot_long_breakeven_replace", "passed", protection_order_id=protection_id)
-    finally:
-        _cancel_all_open_orders(exchange, symbol, report, step_prefix="spot_stop_only")
-
-    stop_only_close = _operation(OperateType.SELL, price)
-    _attach_macd_like_metadata(stop_only_close, direction="LONG", stop_price=stop_only.stop_loss, take_profit=0.0)
-    stop_only_close_outcome = router.route(stop_only_close)
-    _require_submitted(stop_only_close_outcome, "spot long stop-only close")
-    report.add("spot_long_stop_only_close", "passed", order_id=_order_id(stop_only_close_outcome.exchange_order))
 
 
 def _run_margin_short_flow(
     exchange: BinanceExchange,
     symbol: Symbol,
     notional: Decimal,
-    stop_offset: Decimal,
-    take_profit_offset: Decimal,
+    _stop_offset: Decimal,
+    _take_profit_offset: Decimal,
     report: LiveSmokeReport,
     cfg: Config,
 ) -> None:
     price = _latest_price(exchange, symbol)
     _quantity_for_notional(exchange, symbol, notional, price)
-    tcfg = _task_config(symbol, notional, live_short_execution="margin_cross")
+    tcfg = _task_config(symbol, notional, chainer_mode="BOTH")
     router = AutoExecutionRouter(tcfg, exchange=exchange, cfg=cfg)
     entry = _operation(OperateType.SHORT, price)
-    entry.stop_loss = float(price * (Decimal("1") + stop_offset))
-    entry.take_profit = float(price * (Decimal("1") - take_profit_offset))
-    _attach_macd_like_metadata(entry, direction="SHORT", stop_price=entry.stop_loss, take_profit=entry.take_profit)
+    _attach_signal_metadata(entry, direction="SHORT")
 
     try:
         outcome = router.route(entry)
-        _require_submitted(outcome, "margin short entry with native bracket")
+        _require_submitted(outcome, "margin short entry")
         report.add(
-            "margin_short_entry_bracket",
+            "margin_short_entry",
             "passed",
             order_id=_order_id(outcome.exchange_order),
             native_protection=outcome.native_protection,
@@ -187,36 +166,13 @@ def _run_margin_short_flow(
         _cancel_all_open_orders(exchange, symbol, report, step_prefix="margin")
 
     close = _operation(OperateType.CLOSE, price)
-    _attach_macd_like_metadata(close, direction="SHORT", stop_price=entry.stop_loss, take_profit=entry.take_profit)
+    _attach_signal_metadata(close, direction="SHORT")
     close_outcome = router.route(close)
     _require_submitted(close_outcome, "margin short close")
     report.add("margin_short_close", "passed", order_id=_order_id(close_outcome.exchange_order))
 
-    stop_only = _operation(OperateType.SHORT, price)
-    stop_only.stop_loss = float(price * (Decimal("1") + stop_offset))
-    _attach_macd_like_metadata(stop_only, direction="SHORT", stop_price=stop_only.stop_loss, take_profit=0.0)
-    try:
-        stop_outcome = router.route(stop_only)
-        _require_submitted(stop_outcome, "margin short entry with native stop")
-        protection_id = _first_protection_order_id(stop_outcome)
-        risk_update = _operation(OperateType.RISK_UPDATE, price)
-        risk_update.breakeven_new_stop = float(price * (Decimal("1") + (stop_offset / Decimal("2"))))
-        risk_update.protection_order_id = protection_id
-        _attach_macd_like_metadata(risk_update, direction="SHORT", stop_price=risk_update.breakeven_new_stop, take_profit=0.0)
-        replace_outcome = router.route(risk_update)
-        _require_submitted(replace_outcome, "margin short breakeven stop replacement")
-        report.add("margin_short_breakeven_replace", "passed", protection_order_id=protection_id)
-    finally:
-        _cancel_all_open_orders(exchange, symbol, report, step_prefix="margin_stop_only")
 
-    stop_only_close = _operation(OperateType.CLOSE, price)
-    _attach_macd_like_metadata(stop_only_close, direction="SHORT", stop_price=stop_only.stop_loss, take_profit=0.0)
-    stop_only_close_outcome = router.route(stop_only_close)
-    _require_submitted(stop_only_close_outcome, "margin short stop-only close")
-    report.add("margin_short_stop_only_close", "passed", order_id=_order_id(stop_only_close_outcome.exchange_order))
-
-
-def _task_config(symbol: Symbol, notional: Decimal, *, live_short_execution: str) -> TaskConfig:
+def _task_config(symbol: Symbol, notional: Decimal, *, chainer_mode: str) -> TaskConfig:
     return TaskConfig(
         0,
         TaskType.TRADER,
@@ -225,7 +181,7 @@ def _task_config(symbol: Symbol, notional: Decimal, *, live_short_execution: str
         free=float(notional),
         live_execution_mode="small_live_auto",
         live_trade_max_notional=float(notional),
-        live_short_execution=live_short_execution,
+        strategy_params={"chainer_mode": chainer_mode},
     )
 
 
@@ -250,7 +206,20 @@ def _attach_macd_like_metadata(op: Operate, *, direction: str, stop_price: float
     }
 
 
+def _attach_signal_metadata(op: Operate, *, direction: str) -> None:
+    op.signal_event_id = f"live-smoke-{direction.lower()}-{int(time.time())}"
+    op.signal_metadata = {
+        "strategy": "macd_triple_divergence",
+        "event_id": op.signal_event_id,
+    }
+
+
 def _latest_price(exchange: BinanceExchange, symbol: Symbol) -> Decimal:
+    if getattr(exchange, "spot_client", None) is None:
+        klines = exchange.get_latest_klines(SymbolInterval(f"{symbol.base}-{symbol.quote}", Interval.INTERVAL_1m), 1) or []
+        if not klines:
+            raise RuntimeError(f"missing latest price for {symbol.name()}: no klines returned")
+        return Decimal(str(klines[-1].close))
     payload = exchange.spot_client.rest_api.ticker_price(symbol=symbol.name()).data()
     price = _get(payload, "price")
     if price is None:
@@ -304,11 +273,10 @@ def _first_protection_order_id(outcome) -> str | None:
 
 def _cancel_all_open_orders(exchange: BinanceExchange, symbol: Symbol, report: LiveSmokeReport, *, step_prefix: str) -> None:
     try:
-        if exchange.margin_mode == MarginMode.SPOT:
-            payload = exchange.spot_client.rest_api.delete_open_orders(symbol=symbol.name()).data()
-        else:
-            manager = __import__("trader.exchange.binance.margin", fromlist=["MarginTradingManager"]).MarginTradingManager(exchange.cfg, exchange.log)
-            payload = manager.client.rest_api.margin_account_cancel_all_open_orders_on_a_symbol(symbol=symbol.name()).data()
+        cancel_all = getattr(exchange, "cancel_all_open_orders", None)
+        if cancel_all is None:
+            raise RuntimeError("exchange does not support cancel_all_open_orders")
+        payload = cancel_all(symbol)
         report.add(f"{step_prefix}_cancel_open_orders", "passed", canceled=_jsonable(payload))
     except Exception as exc:
         report.add(f"{step_prefix}_cancel_open_orders", "failed", error=str(exc))
@@ -354,6 +322,15 @@ def _jsonable(value: Any) -> Any:
 
 def _env_decimal(name: str, default: str) -> Decimal:
     return Decimal(str(os.getenv(name, default)))
+
+
+def _env_driver_type() -> ExchangeDriverType:
+    raw = str(os.getenv("CHAINERTRADER_LIVE_SMOKE_DRIVER", "ccxt")).strip().lower()
+    if raw in {"ccxt", ExchangeDriverType.CCXT.value}:
+        return ExchangeDriverType.CCXT
+    if raw in {"binance_native", "native", ExchangeDriverType.BINANCE_NATIVE.value}:
+        return ExchangeDriverType.BINANCE_NATIVE
+    raise RuntimeError(f"unsupported CHAINERTRADER_LIVE_SMOKE_DRIVER={raw}")
 
 
 def main() -> None:

@@ -28,6 +28,20 @@ TRADER_AUTH_PASSWORD = "TRADER_AUTH_PASSWORD"
 TRADER_PROTECTED_PATHS = "TRADER_PROTECTED_PATHS"
 
 
+def parse_log_file_config(value: Any) -> bool | str:
+    if isinstance(value, bool):
+        return value
+    raw = str(value or "").strip()
+    if not raw:
+        return False
+    normalized = raw.lower()
+    if normalized in {"true", "1", "yes", "on"}:
+        return True
+    if normalized in {"false", "0", "no", "off", "none", "null"}:
+        return False
+    return raw
+
+
 class Config:
     def __init__(
         self,
@@ -223,7 +237,7 @@ def new_and_env(cli: Namespace | None = None) -> Config:
 
     commission = float(os.environ.get(TRADER_COMMISSION, commission))
     period = int(os.environ.get(TRADER_PERIOD, period))
-    log_file = os.environ.get(TRADER_LOG_FILE, str(log_file)).lower() == "true"
+    log_file = parse_log_file_config(os.environ.get(TRADER_LOG_FILE, log_file))
     plot = os.environ.get(TRADER_PLOT, str(plot)).lower() == "true"
     mode = os.environ.get(TRADER_MODE, mode)
     log_level = os.environ.get(TRADER_LOG_LEVEL, log_level)

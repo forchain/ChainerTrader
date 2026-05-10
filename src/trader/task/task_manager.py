@@ -27,6 +27,7 @@ from trader.task.task_config import TaskConfig, parse_task_config
 from trader.task.task_type import TaskType
 from trader.task.trader_task import TraderTask
 from trader.task.update_klines_task import UpdateKlinesTask
+from trader.task.live_startup_self_check import infer_required_margin_mode
 from trader.utils.symbol_interval import SymbolInterval
 from trader.utils.task_state import TaskState
 
@@ -48,10 +49,17 @@ class TaskManager:
         self.async_tasks = []
         self.latest_si: SymbolInterval | None = None
 
-    def start(self):
+    def start(self, taskcs: list[TaskConfig] | None = None):
         self.log.info("TaskManager start")
-        if self.cfg.tasks:
+        if taskcs is None and self.cfg.tasks:
             taskcs = parse_task_config(self.cfg.tasks)
+        if taskcs is not None:
+            required_margin_mode = infer_required_margin_mode(taskcs)
+            if getattr(self.exchange, "margin_mode", None) is not None and required_margin_mode.value != self.exchange.margin_mode.value:
+                self.log.warning(
+                    f"TaskManager startup requires margin_mode={required_margin_mode.value}, exchange_margin_mode={self.exchange.margin_mode.value}"
+                )
+        if taskcs:
             if len(taskcs) <= 0:
                 return None
             return new_add_tasks_msg(taskcs)

@@ -18,6 +18,7 @@ from trader.execution.models import (
 from trader.execution.order_semantics import OrderSemanticsError, select_order_semantics
 from trader.execution.state import ExecutionStateRecord
 from trader.live.dashboard import DashboardEvent
+from trader.task.live_startup_self_check import task_requires_short_capability
 from trader.utils.operate import OperateType
 
 MANUAL_NOTIFY_MODE = "manual_notify"
@@ -155,6 +156,7 @@ class AutoExecutionRouter:
         self.log = log
         self.mode = normalize_live_execution_mode(getattr(tcfg, "live_execution_mode", None))
         self.short_execution = normalize_live_short_execution(getattr(tcfg, "live_short_execution", None))
+        self.requires_short_capability = task_requires_short_capability(tcfg)
         self.real_short_position = 0.0
         self._seen_operation_ids: set[str] = set()
         self.outcomes: list[AutoExecutionOutcome] = []
@@ -302,7 +304,7 @@ class AutoExecutionRouter:
             return self._route_real_short(op, price)
         if otype in (OperateType.BUY, OperateType.LONG):
             return self._route_real_long(op, price)
-        if otype == OperateType.CLOSE and self.short_execution == LiveShortExecution.MARGIN_CROSS.value:
+        if otype == OperateType.CLOSE and self.requires_short_capability:
             return self._route_real_short_close(op, price)
         if otype == OperateType.SELL:
             return self._route_real_exit(op, price)
@@ -337,6 +339,9 @@ class AutoExecutionRouter:
                     effective_quantity=quantity,
                 )
             )
+        if self.requires_short_capability and self._margin_ready():
+            outcome = self._submit_margin(op, notional, quantity, OperateType.BUY)
+            return outcome
         cash = self._balance(self.tcfg.symbol_interval.sy.quote)
         if cash < notional:
             return self._record(
@@ -370,11 +375,13 @@ class AutoExecutionRouter:
                     effective_quantity=base_balance,
                 )
             )
+        if self.requires_short_capability and self._margin_ready():
+            return self._submit_margin(op, notional, base_balance, OperateType.SELL)
         return self._submit_spot(op, notional, base_balance, OperateType.SELL)
 
     def _route_real_short(self, op, price: float) -> AutoExecutionOutcome:
         notional = self._requested_notional()
-        if self.short_execution != LiveShortExecution.MARGIN_CROSS.value:
+        if not self.requires_short_capability:
             quantity = notional / price if price > 0 and notional > 0 else 0.0
             return self._record(
                 self._outcome(
@@ -544,7 +551,7 @@ class AutoExecutionRouter:
     def _route_real_risk_update(self, op, price: float) -> AutoExecutionOutcome:
         side = self._risk_update_side(op)
         if side == ExecutionSide.SHORT:
-            if self.short_execution != LiveShortExecution.MARGIN_CROSS.value or not self._margin_ready():
+            if not self.requires_short_capability or not self._margin_ready():
                 return self._record(self._outcome(op, AutoExecutionStatus.SKIPPED, reason="margin_not_ready"))
             quantity = self.real_short_position
             empty_reason = "unknown_short_exposure"
@@ -600,10 +607,11 @@ class AutoExecutionRouter:
 
     def _submit_margin(self, op, notional: float, quantity: float, order_type: OperateType) -> AutoExecutionOutcome:
         try:
+            execution_side = ExecutionSide.LONG if order_type in (OperateType.BUY, OperateType.SELL) else ExecutionSide.SHORT
             selection = select_order_semantics(
                 op,
                 symbol=self.market,
-                side=ExecutionSide.SHORT,
+                side=execution_side,
                 quantity=quantity,
                 notional=notional,
                 allow_native_protection=True,
@@ -611,7 +619,7 @@ class AutoExecutionRouter:
             if selection.order is None:
                 return self._record(self._outcome(op, AutoExecutionStatus.SKIPPED, reason="unsupported_operation"))
             gateway = BinanceLiveExecutionGateway(self.exchange, staged_execution_mode=self.mode)
-            result = gateway.open_position(selection.order) if order_type == OperateType.SHORT else gateway.close_position(selection.order)
+            result = gateway.open_position(selection.order) if order_type in (OperateType.BUY, OperateType.SHORT) else gateway.close_position(selection.order)
             protection_result = gateway.place_protection(selection.risk) if result.accepted and selection.risk is not None else None
             fail_safe_result = self._fail_safe_close(gateway, selection.order, protection_result)
         except OrderSemanticsError as exc:

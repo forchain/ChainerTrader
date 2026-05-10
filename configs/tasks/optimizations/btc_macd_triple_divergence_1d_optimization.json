@@ -5,7 +5,6 @@
     "interval": "1d",
     "strategy": "macd_triple_divergence",
     "start_time": "2017-10-01 00:00:00",
-    "end_time": "2026-04-28 00:00:00",
     "auto_download": true,
     "param_grid": {
       "chainer_mode": ["BOTH"],

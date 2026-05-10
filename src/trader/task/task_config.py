@@ -36,6 +36,14 @@ def normalize_strategy_params(params: dict) -> dict:
     return normalized
 
 
+def infer_strategy_requires_short(strategy_params: dict | None, live_short_execution: str | None = None) -> bool:
+    params = dict(strategy_params or {})
+    mode = params.get("chainer_mode")
+    if mode is not None:
+        return str(mode).strip().upper() in {"SHORT_ONLY", "BOTH"}
+    return str(live_short_execution or "disabled").strip().lower() == "margin_cross"
+
+
 class TaskConfig:
     def __init__(
         self,
@@ -79,6 +87,7 @@ class TaskConfig:
         self.live_data_mode = str(live_data_mode or "polling").strip().lower()
         self.live_trade_max_notional = float(live_trade_max_notional or 0.0)
         self.live_short_execution = normalize_live_short_execution(live_short_execution)
+        self.requires_short_capability = infer_strategy_requires_short(self.strategy_params, self.live_short_execution)
 
         self.id = id
 
@@ -121,6 +130,7 @@ class TaskConfig:
             "live_data_mode": self.live_data_mode,
             "live_trade_max_notional": self.live_trade_max_notional,
             "live_short_execution": self.live_short_execution,
+            "requires_short_capability": self.requires_short_capability,
         }
 
     def strategy_name(self):

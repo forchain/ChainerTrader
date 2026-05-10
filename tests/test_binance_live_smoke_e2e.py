@@ -1,12 +1,20 @@
+import os
 from decimal import Decimal
 from types import SimpleNamespace
-
-import os
 
 import pytest
 
 from trader.exchange.binance.exchange import BinanceExchange
-from trader.tools.binance_live_smoke import _latest_price, run_binance_live_smoke_from_env
+from trader.exchange.driver import ExchangeDriverType
+from trader.exchange.exchange_config import ExchangeConfig
+from trader.execution.models import GatewayCapability
+from trader.tools.binance_live_smoke import (
+    LiveSmokeReport,
+    _cancel_all_open_orders,
+    _env_driver_type,
+    _latest_price,
+    run_binance_live_smoke_from_env,
+)
 from trader.utils.symbol_interval import Symbol
 
 
@@ -23,9 +31,53 @@ def test_binance_live_smoke_covers_chainer_protection_and_macd_metadata():
 
     assert report.passed, report.to_dict()
     step_names = {step.name for step in report.steps if step.status == "passed"}
-    assert {"spot_long_entry_bracket", "spot_long_breakeven_replace", "spot_long_close"}.issubset(step_names)
+    if os.getenv("CHAINERTRADER_LIVE_SMOKE_ENABLE_SPOT") == "1":
+        assert {"spot_long_entry", "spot_long_close"}.issubset(step_names)
     if os.getenv("CHAINERTRADER_LIVE_SMOKE_ENABLE_MARGIN") == "1":
-        assert {"margin_short_entry_bracket", "margin_short_breakeven_replace", "margin_short_close"}.issubset(step_names)
+        assert {"margin_short_entry", "margin_short_close"}.issubset(step_names)
+
+
+def test_live_smoke_defaults_to_ccxt_driver(monkeypatch):
+    monkeypatch.delenv("CHAINERTRADER_LIVE_SMOKE_DRIVER", raising=False)
+
+    assert _env_driver_type() == ExchangeDriverType.CCXT
+
+
+def test_live_smoke_can_explicitly_select_binance_native_driver(monkeypatch):
+    monkeypatch.setenv("CHAINERTRADER_LIVE_SMOKE_DRIVER", "binance_native")
+
+    assert _env_driver_type() == ExchangeDriverType.BINANCE_NATIVE
+
+
+def test_ccxt_backed_binance_exchange_declares_protection_capabilities():
+    exchange = BinanceExchange(ExchangeConfig(driver=ExchangeDriverType.CCXT))
+
+    assert GatewayCapability.PROTECTIVE_STOP in exchange.supported_gateway_capabilities()
+    assert GatewayCapability.TAKE_PROFIT_LIMIT in exchange.supported_gateway_capabilities()
+    assert GatewayCapability.OCO_PROTECTION in exchange.supported_gateway_capabilities()
+    assert GatewayCapability.BREAKEVEN_REPLACEMENT in exchange.supported_gateway_capabilities()
+
+
+def test_live_smoke_cancel_all_open_orders_uses_exchange_adapter_without_spot_client():
+    class FakeCcxtBackedExchange:
+        spot_client = None
+        margin_mode = None
+
+        def __init__(self):
+            self.calls = []
+
+        def cancel_all_open_orders(self, symbol):
+            self.calls.append(symbol.name())
+            return [{"id": "stop-1", "status": "canceled"}]
+
+    exchange = FakeCcxtBackedExchange()
+    report = LiveSmokeReport(symbol="BTCUSDT", notional=11.0, spot_enabled=True, margin_enabled=False)
+
+    _cancel_all_open_orders(exchange, Symbol("BTC-USDT"), report, step_prefix="spot")
+
+    assert exchange.calls == ["BTCUSDT"]
+    assert report.steps[-1].name == "spot_cancel_open_orders"
+    assert report.steps[-1].status == "passed"
 
 
 def test_latest_price_reads_binance_oneof_wrappers():

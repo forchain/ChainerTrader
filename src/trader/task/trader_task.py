@@ -193,8 +193,13 @@ class TraderTask(BaseTask):
             await GLOBAL_LIVE_EVENT_BUS.publish(event)
 
         collection_name = self.tcfg.symbol_interval.name()
+        key = MarketStreamKey(self.exchange.name(), self.tcfg.symbol_interval.symbol(), self.tcfg.symbol_interval.interval.value)
         latest = await _maybe_await(self.db_manager.kline.get_latest_kline(collection_name))
         plan = plan_initial_backfill(latest, now=int(datetime.now().timestamp()), interval=self.tcfg.symbol_interval.interval)
+        self.log.info(
+            f"Realtime startup backfill started: task_id={self.tcfg.id} collection={collection_name} "
+            f"stream={key.stream_name()} kind={plan.kind.value} limit={plan.limit} missing_count={plan.missing_count}"
+        )
         fetched = []
         if plan.kind == BackfillRequestKind.LATEST:
             fetched = self.exchange.get_latest_klines(self.tcfg.symbol_interval, plan.limit) or []
@@ -210,8 +215,13 @@ class TraderTask(BaseTask):
             )
         if fetched:
             await _add_repository_klines(self.db_manager.kline, collection_name, fetched)
+        self.log.info(
+            f"Realtime startup backfill completed: task_id={self.tcfg.id} collection={collection_name} "
+            f"stream={key.stream_name()} fetched={len(fetched)}"
+        )
 
         warmup_limit = min(int(self.cfg.window), 500)
+        self.log.info(f"Realtime live warmup started: task_id={self.tcfg.id} collection={collection_name} target={warmup_limit}")
         warmup = await _maybe_await(self.db_manager.kline.get_latest_klines(collection_name, warmup_limit)) or []
         if len(warmup) < warmup_limit:
             fetched_warmup = self.exchange.get_latest_klines(self.tcfg.symbol_interval, warmup_limit) or []
@@ -223,6 +233,11 @@ class TraderTask(BaseTask):
         loop = asyncio.get_running_loop()
         live_operation_context = contextvars.copy_context()
         live_operation_tasks: set[asyncio.Task] = set()
+        live_tick_operations: dict[int, list[str]] = {}
+
+        def operation_name(op) -> str:
+            otype = getattr(op, "otype", None)
+            return getattr(otype, "name", str(otype or "UNKNOWN"))
 
         async def handle_live_operation(op):
             ret = self._trader_result_for_live_operation(op)
@@ -243,6 +258,11 @@ class TraderTask(BaseTask):
             for outcome in auto_execution_outcomes:
                 await publish_event(execution_outcome_event(self.tcfg.id, outcome))
             if getattr(op, "otype", None) != OperateType.RISK_UPDATE:
+                self.log.info(
+                    f"Realtime strategy signal: task_id={self.tcfg.id} strategy={self.tcfg.strategy_name()} "
+                    f"stream={key.stream_name()} open_time={event_time} operations=1 op_types=[{operation_name(op)}] "
+                    f"notifications={len(notifications)} execution_outcomes={len(auto_execution_outcomes)}"
+                )
                 await publish_event(build_signal_marker_event(self.tcfg.id, op, getattr(self.tcfg, "live_execution_mode", "manual_notify")))
             for event in build_risk_overlay_events(self.tcfg.id, op):
                 await publish_event(event)
@@ -267,6 +287,9 @@ class TraderTask(BaseTask):
             task.add_done_callback(discard_live_operation)
 
         def handle_operation(op):
+            event_time = int(getattr(op, "dtime", 0) or 0)
+            if event_time:
+                live_tick_operations.setdefault(event_time, []).append(operation_name(op))
             try:
                 running_loop = asyncio.get_running_loop()
             except RuntimeError:
@@ -295,7 +318,10 @@ class TraderTask(BaseTask):
         runner.start(warmup=warmup)
         await asyncio.sleep(0)
 
-        key = MarketStreamKey(self.exchange.name(), self.tcfg.symbol_interval.symbol(), self.tcfg.symbol_interval.interval.value)
+        connector = getattr(GLOBAL_MARKET_STREAM_HUB, "connector", None)
+        set_exchange = getattr(connector, "set_exchange", None)
+        if set_exchange is not None:
+            set_exchange(self.exchange)
 
         def runtime_status() -> dict:
             status = runner.status() if hasattr(runner, "status") else {}
@@ -340,9 +366,15 @@ class TraderTask(BaseTask):
             for kline in sorted_fetched:
                 await _add_repository_klines(self.db_manager.kline, collection_name, [kline])
                 runner.put_kline(kline)
+                self.log.debug(
+                    f"Realtime catch-up kline processed: task_id={self.tcfg.id} collection={collection_name} "
+                    f"stream={key.stream_name()} open_time={int(kline.open_time)} close={kline.close} volume={kline.volume}"
+                )
             await publish_runtime_status(int(sorted_fetched[-1].open_time))
 
         subscription = await GLOBAL_MARKET_STREAM_HUB.subscribe(key, reconnect_callback=catch_up_missing_closed_klines)
+        self.log.info(f"Realtime stream subscribed: task_id={self.tcfg.id} stream={key.stream_name()}")
+        self.log.info(f"Realtime waiting for next closed kline: task_id={self.tcfg.id} stream={key.stream_name()}")
         await publish_runtime_status()
         try:
             while not self.quit.is_set():
@@ -353,10 +385,26 @@ class TraderTask(BaseTask):
                 await publish_event(kline_update_event(self.tcfg.id, update))
                 if not update.is_closed:
                     continue
-                await _add_repository_klines(self.db_manager.kline, collection_name, [update.to_kline()])
-                runner.put_kline(update.to_kline())
+                kline = update.to_kline()
+                self.log.debug(
+                    f"Realtime kline accepted: task_id={self.tcfg.id} collection={collection_name} "
+                    f"stream={key.stream_name()} open_time={update.open_time} close_time={update.close_time} "
+                    f"close={update.close} volume={update.volume}"
+                )
+                await _add_repository_klines(self.db_manager.kline, collection_name, [kline])
+                self.log.debug(
+                    f"Realtime kline persisted: task_id={self.tcfg.id} collection={collection_name} "
+                    f"stream={key.stream_name()} open_time={update.open_time}"
+                )
+                runner.put_kline(kline)
                 await asyncio.sleep(0)
                 await publish_runtime_status(update.open_time)
+                op_types = live_tick_operations.pop(int(update.open_time), [])
+                self.log.debug(
+                    f"Realtime strategy tick completed: task_id={self.tcfg.id} strategy={self.tcfg.strategy_name()} "
+                    f"stream={key.stream_name()} open_time={update.open_time} operations={len(op_types)} "
+                    f"op_types={op_types} mode={getattr(self.tcfg, 'live_execution_mode', 'manual_notify')}"
+                )
                 stat = TraderStat(self.tcfg.strategy_name(), self.tcfg.symbol_interval.name(), self.ts)
                 stat.manual_trade_notifications = []
                 await queue.put(new_stat_msg(stat, self.tcfg.id))

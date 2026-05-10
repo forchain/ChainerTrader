@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 
 from trader.common.common import NAME
 from trader.common.config import Config
@@ -52,18 +53,26 @@ class Logger:
         return file_handler
 
     def file_name(self):
+        if isinstance(self.cfg.log_file, str):
+            return self.cfg.log_file
         return self.name + ".log"
 
     def initRoot(self):
         if self.cfg.log_file:
+            log_path = Path(self.file_name())
+            if log_path.parent != Path("."):
+                log_path.parent.mkdir(parents=True, exist_ok=True)
             logging.basicConfig(
-                filename=self.file_name(),
+                filename=str(log_path),
                 filemode="a",
                 level=self.cfg.log_level,
                 format=formatter_str(),
             )
         else:
             logging.basicConfig(level=self.cfg.log_level, format=formatter_str())
+
+        for noisy_logger in ("ccxt", "urllib3", "httpcore", "httpx", "asyncio"):
+            logging.getLogger(noisy_logger).setLevel(logging.INFO)
 
         logging.info("Init root logger")
 

@@ -6,7 +6,15 @@ from types import SimpleNamespace
 import pytest
 
 from trader.live.market_data import normalize_binance_kline_message
-from trader.live.stream import BinanceKlineWebSocketAdapter, MarketStreamHub, MarketStreamKey, MarketStreamState
+from trader.live.stream import (
+    GLOBAL_MARKET_STREAM_HUB,
+    BinanceKlineWebSocketAdapter,
+    CcxtPollingMarketStreamAdapter,
+    MarketStreamHub,
+    MarketStreamKey,
+    MarketStreamState,
+)
+from trader.utils.kline import Kline
 
 BASE = 1_714_281_600
 
@@ -53,6 +61,323 @@ def _update(symbol="BTCUSDT", interval="1m", open_time=BASE, closed=False):
             },
         }
     )
+
+
+def _kline(open_time=BASE):
+    return Kline(open_time, 100.0, 102.0, 99.0, 101.0, open_time + 59, 1.0, 0.0, 1, 0.0, 0.0)
+
+
+class FakeClock:
+    def __init__(self, now: float, *, auto_advance: bool = True):
+        self.now = float(now)
+        self.auto_advance = bool(auto_advance)
+        self.sleeps = []
+
+    def time(self):
+        return self.now
+
+    async def sleep(self, seconds):
+        seconds = max(0.0, float(seconds))
+        self.sleeps.append(seconds)
+        if self.auto_advance:
+            self.now += seconds
+        await asyncio.sleep(0)
+
+
+def test_global_market_stream_hub_defaults_to_ccxt_polling_not_binance_websocket():
+    assert isinstance(GLOBAL_MARKET_STREAM_HUB.connector, CcxtPollingMarketStreamAdapter)
+    assert not isinstance(GLOBAL_MARKET_STREAM_HUB.connector, BinanceKlineWebSocketAdapter)
+    assert GLOBAL_MARKET_STREAM_HUB.connector.poll_interval_seconds == 10.0
+
+
+@pytest.mark.anyio
+async def test_ccxt_polling_adapter_publishes_new_closed_candle_and_stops():
+    class FakeExchange:
+        def __init__(self):
+            self.calls = 0
+
+        def get_latest_klines(self, symbol_interval, limit):
+            self.calls += 1
+            if self.calls == 1:
+                return [_kline(BASE - 60)]
+            return [_kline(BASE - 60), _kline(BASE)]
+
+    updates = []
+    clock = FakeClock(BASE + 30)
+    adapter = CcxtPollingMarketStreamAdapter(
+        exchange=FakeExchange(),
+        poll_interval_seconds=0.0,
+        closed_kline_delay_seconds=5.0,
+        startup_stagger_seconds=0.0,
+        now_func=clock.time,
+        sleep_func=clock.sleep,
+    )
+    key = MarketStreamKey("BINANCE", "BTCUSDT", "1m")
+
+    async def on_update(update):
+        updates.append(update)
+        await adapter.stop(key, reason="test complete")
+
+    await adapter.start(key, on_update)
+    for _ in range(10):
+        if updates:
+            break
+        await asyncio.sleep(0)
+
+    assert [update.open_time for update in updates] == [BASE]
+    assert updates[0].is_closed is True
+
+
+@pytest.mark.anyio
+async def test_ccxt_polling_adapter_logs_baseline_and_new_closed_candles(caplog):
+    class FakeExchange:
+        def __init__(self):
+            self.calls = 0
+
+        def get_latest_klines(self, symbol_interval, limit):
+            self.calls += 1
+            if self.calls == 1:
+                return [_kline(BASE - 60)]
+            return [_kline(BASE - 60), _kline(BASE)]
+
+    updates = []
+    clock = FakeClock(BASE + 30)
+    adapter = CcxtPollingMarketStreamAdapter(
+        exchange=FakeExchange(),
+        poll_interval_seconds=0.0,
+        closed_kline_delay_seconds=5.0,
+        startup_stagger_seconds=0.0,
+        now_func=clock.time,
+        sleep_func=clock.sleep,
+    )
+    key = MarketStreamKey("BINANCE", "BTCUSDT", "1m")
+
+    async def on_update(update):
+        updates.append(update)
+        await adapter.stop(key, reason="test complete")
+
+    with caplog.at_level(logging.DEBUG):
+        await adapter.start(key, on_update)
+        for _ in range(10):
+            if updates:
+                break
+            await asyncio.sleep(0)
+
+    assert "CCXT polling scheduler stream registered" in caplog.text
+    assert "baseline_open_time" in caplog.text
+    assert "CCXT polling market stream new closed kline" in caplog.text
+    assert any(
+        record.levelno == logging.DEBUG and "CCXT polling market stream new closed kline" in record.message
+        for record in caplog.records
+    )
+
+
+@pytest.mark.anyio
+async def test_ccxt_polling_scheduler_does_not_overpoll_daily_stream_before_next_close():
+    class FakeExchange:
+        def __init__(self):
+            self.calls = 0
+
+        def get_latest_klines(self, symbol_interval, limit):
+            self.calls += 1
+            return [_kline(BASE)]
+
+    clock = FakeClock(BASE + 86_400 + 30, auto_advance=False)
+    exchange = FakeExchange()
+    adapter = CcxtPollingMarketStreamAdapter(
+        exchange=exchange,
+        min_request_spacing_seconds=0.0,
+        closed_kline_delay_seconds=5.0,
+        startup_stagger_seconds=0.0,
+        now_func=clock.time,
+        sleep_func=clock.sleep,
+    )
+    key = MarketStreamKey("BINANCE", "BTCUSDT", "1d")
+
+    async def on_update(update):
+        raise AssertionError("daily baseline must not publish existing closed kline")
+
+    await adapter.start(key, on_update)
+    for _ in range(5):
+        await asyncio.sleep(0)
+
+    assert exchange.calls == 1
+    assert clock.sleeps
+    assert min(clock.sleeps) > 3600
+    await adapter.stop(key, reason="test cleanup")
+
+
+@pytest.mark.anyio
+async def test_ccxt_polling_scheduler_waits_for_minute_close_before_refetching():
+    class FakeExchange:
+        def __init__(self):
+            self.calls = 0
+
+        def get_latest_klines(self, symbol_interval, limit):
+            self.calls += 1
+            if self.calls == 1:
+                return [_kline(BASE - 60)]
+            return [_kline(BASE - 60), _kline(BASE)]
+
+    clock = FakeClock(BASE + 30)
+    exchange = FakeExchange()
+    updates = []
+    adapter = CcxtPollingMarketStreamAdapter(
+        exchange=exchange,
+        min_request_spacing_seconds=0.0,
+        closed_kline_delay_seconds=5.0,
+        startup_stagger_seconds=0.0,
+        now_func=clock.time,
+        sleep_func=clock.sleep,
+    )
+    key = MarketStreamKey("BINANCE", "BTCUSDT", "1m")
+
+    async def on_update(update):
+        updates.append(update)
+        await adapter.stop(key, reason="test complete")
+
+    await adapter.start(key, on_update)
+    for _ in range(10):
+        if updates:
+            break
+        await asyncio.sleep(0)
+
+    assert exchange.calls == 2
+    assert [update.open_time for update in updates] == [BASE]
+    assert 35.0 in clock.sleeps
+
+
+@pytest.mark.anyio
+async def test_ccxt_polling_scheduler_applies_global_spacing_across_due_streams():
+    class FakeExchange:
+        def __init__(self):
+            self.calls = []
+
+        def get_latest_klines(self, symbol_interval, limit):
+            self.calls.append((symbol_interval.name(), clock.time()))
+            return [_kline(BASE)]
+
+    clock = FakeClock(BASE + 30)
+    exchange = FakeExchange()
+    adapter = CcxtPollingMarketStreamAdapter(
+        exchange=exchange,
+        min_request_spacing_seconds=10.0,
+        closed_kline_delay_seconds=5.0,
+        startup_stagger_seconds=0.0,
+        now_func=clock.time,
+        sleep_func=clock.sleep,
+    )
+
+    await adapter.start(MarketStreamKey("BINANCE", "BTCUSDT", "1m"), lambda update: None)
+    await adapter.start(MarketStreamKey("BINANCE", "ETHUSDT", "1m"), lambda update: None)
+    for _ in range(10):
+        if len(exchange.calls) >= 2:
+            break
+        await asyncio.sleep(0)
+
+    assert len(exchange.calls) >= 2
+    assert exchange.calls[1][1] - exchange.calls[0][1] >= 10.0
+    await adapter.stop(MarketStreamKey("BINANCE", "BTCUSDT", "1m"), reason="test cleanup")
+    await adapter.stop(MarketStreamKey("BINANCE", "ETHUSDT", "1m"), reason="test cleanup")
+
+
+@pytest.mark.anyio
+async def test_ccxt_polling_scheduler_prioritizes_minute_stream_after_daily_baseline():
+    class FakeExchange:
+        def __init__(self):
+            self.calls = []
+            self.third_call = asyncio.Event()
+
+        def get_latest_klines(self, symbol_interval, limit):
+            self.calls.append(symbol_interval.name())
+            if len(self.calls) >= 3:
+                self.third_call.set()
+            return [_kline(BASE)]
+
+    clock = FakeClock(BASE + 30)
+    exchange = FakeExchange()
+    adapter = CcxtPollingMarketStreamAdapter(
+        exchange=exchange,
+        min_request_spacing_seconds=10.0,
+        closed_kline_delay_seconds=5.0,
+        startup_stagger_seconds=10.0,
+        now_func=clock.time,
+        sleep_func=clock.sleep,
+    )
+
+    async def on_update(update):
+        return None
+
+    await adapter.start(MarketStreamKey("BINANCE", "BTCUSDT", "1d"), on_update)
+    clock.now += 1
+    await adapter.start(MarketStreamKey("BINANCE", "ETHUSDT", "1d"), on_update)
+    clock.now += 1
+    await adapter.start(MarketStreamKey("BINANCE", "BTCUSDT", "1m"), on_update)
+    await asyncio.wait_for(exchange.third_call.wait(), timeout=1.0)
+
+    assert exchange.calls[0] == "BTCUSDT-1m"
+    assert exchange.calls.index("BTCUSDT-1m") < exchange.calls.index("ETHUSDT-1d")
+    await adapter.stop(MarketStreamKey("BINANCE", "BTCUSDT", "1d"), reason="test cleanup")
+    await adapter.stop(MarketStreamKey("BINANCE", "ETHUSDT", "1d"), reason="test cleanup")
+    await adapter.stop(MarketStreamKey("BINANCE", "BTCUSDT", "1m"), reason="test cleanup")
+
+
+@pytest.mark.anyio
+async def test_ccxt_polling_scheduler_wakes_when_shorter_stream_registers_during_long_sleep():
+    class BlockingSleep:
+        def __init__(self, clock):
+            self.clock = clock
+            self.long_sleep_started = asyncio.Event()
+            self.long_sleep_cancelled = False
+
+        async def sleep(self, seconds):
+            seconds = float(seconds)
+            if seconds > 3600:
+                self.long_sleep_started.set()
+                try:
+                    await asyncio.Future()
+                except asyncio.CancelledError:
+                    self.long_sleep_cancelled = True
+                    raise
+            self.clock.now += max(0.0, seconds)
+            await asyncio.sleep(0)
+
+    class FakeExchange:
+        def __init__(self):
+            self.calls = []
+            self.minute_called = asyncio.Event()
+
+        def get_latest_klines(self, symbol_interval, limit):
+            self.calls.append(symbol_interval.name())
+            if symbol_interval.name().endswith("-1m"):
+                self.minute_called.set()
+                return [_kline(BASE - 60)]
+            return []
+
+    clock = FakeClock(BASE + 30, auto_advance=False)
+    sleep = BlockingSleep(clock)
+    exchange = FakeExchange()
+    adapter = CcxtPollingMarketStreamAdapter(
+        exchange=exchange,
+        min_request_spacing_seconds=10.0,
+        closed_kline_delay_seconds=5.0,
+        startup_stagger_seconds=10.0,
+        now_func=clock.time,
+        sleep_func=sleep.sleep,
+    )
+
+    async def on_update(update):
+        return None
+
+    await adapter.start(MarketStreamKey("BINANCE", "BTCUSDT", "1d"), on_update)
+    await asyncio.wait_for(sleep.long_sleep_started.wait(), timeout=1.0)
+    await adapter.start(MarketStreamKey("BINANCE", "BTCUSDT", "1m"), on_update)
+    await asyncio.wait_for(exchange.minute_called.wait(), timeout=1.0)
+
+    assert exchange.calls[:2] == ["BTCUSDT-1d", "BTCUSDT-1m"]
+    assert sleep.long_sleep_cancelled is True
+    await adapter.stop(MarketStreamKey("BINANCE", "BTCUSDT", "1d"), reason="test cleanup")
+    await adapter.stop(MarketStreamKey("BINANCE", "BTCUSDT", "1m"), reason="test cleanup")
 
 
 @pytest.mark.anyio

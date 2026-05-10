@@ -247,16 +247,25 @@ class BinanceLiveExecutionGateway(ExecutionGateway):
 
     @property
     def capabilities(self) -> GatewayCapabilities:
-        supported = {GatewayCapability.MARKET_ENTRY, GatewayCapability.MARKET_CLOSE, GatewayCapability.CANCEL_ORDER, GatewayCapability.RECONCILE}
-        if hasattr(self.exchange, "new_stop_order"):
-            supported.add(GatewayCapability.PROTECTIVE_STOP)
-        if hasattr(self.exchange, "new_take_profit_order"):
-            supported.add(GatewayCapability.TAKE_PROFIT_LIMIT)
-        if hasattr(self.exchange, "new_oco_order"):
-            supported.add(GatewayCapability.OCO_PROTECTION)
-        if hasattr(self.exchange, "replace_stop_order"):
-            supported.add(GatewayCapability.BREAKEVEN_REPLACEMENT)
-        return GatewayCapabilities(gateway=GatewayMode.BINANCE_LIVE, supported=supported, native_protection=True, local_guardian=False)
+        supported = getattr(self.exchange, "supported_gateway_capabilities", None)
+        if callable(supported):
+            supported = set(supported())
+        else:
+            supported = {GatewayCapability.MARKET_ENTRY, GatewayCapability.MARKET_CLOSE, GatewayCapability.CANCEL_ORDER, GatewayCapability.RECONCILE}
+            if hasattr(self.exchange, "new_stop_order"):
+                supported.add(GatewayCapability.PROTECTIVE_STOP)
+            if hasattr(self.exchange, "new_take_profit_order"):
+                supported.add(GatewayCapability.TAKE_PROFIT_LIMIT)
+            if hasattr(self.exchange, "new_oco_order"):
+                supported.add(GatewayCapability.OCO_PROTECTION)
+            if hasattr(self.exchange, "replace_stop_order"):
+                supported.add(GatewayCapability.BREAKEVEN_REPLACEMENT)
+        return GatewayCapabilities(
+            gateway=GatewayMode.BINANCE_LIVE,
+            supported=supported,
+            native_protection=GatewayCapability.PROTECTIVE_STOP in supported or GatewayCapability.OCO_PROTECTION in supported,
+            local_guardian=False,
+        )
 
     def open_position(self, intent: OrderIntent) -> ExecutionResult:
         op = OperateType.BUY if intent.side == ExecutionSide.LONG else OperateType.SHORT
@@ -409,4 +418,4 @@ class BinanceLiveExecutionGateway(ExecutionGateway):
         return bool(verifier(_symbol_arg(symbol), order_ids))
 
     def _protection_side(self, intent: RiskIntent) -> OperateType:
-        return OperateType.SELL if intent.side == ExecutionSide.LONG else OperateType.CLOSE
+        return OperateType.SELL if intent.side == ExecutionSide.LONG else OperateType.BUY

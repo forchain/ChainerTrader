@@ -1,6 +1,7 @@
 from enum import Enum
 from pydantic import BaseModel
 
+from trader.exchange.driver import ExchangeDriverType
 from trader.exchange.exchange_type import ExchangeType, parse_ex_type
 
 
@@ -12,10 +13,18 @@ class MarginMode(str, Enum):
 
 class ExchangeConfig(BaseModel):
     ty: ExchangeType = ExchangeType.BINANCE
+    driver: ExchangeDriverType = ExchangeDriverType.CCXT
     api_key: str = ""
     api_secret: str = ""
-    base_path:str = ""
+    base_path: str = ""
     margin_mode: MarginMode = MarginMode.SPOT
+
+    def with_margin_mode(self, margin_mode: MarginMode) -> "ExchangeConfig":
+        if self.margin_mode == margin_mode:
+            return self
+        payload = self.model_dump()
+        payload["margin_mode"] = margin_mode
+        return ExchangeConfig(**payload)
 
 
 # '{"ty": "BINANCE", "api_key": "","api_secret":""}'

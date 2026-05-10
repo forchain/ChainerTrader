@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import threading
 from types import SimpleNamespace
 
@@ -209,10 +210,10 @@ def _update(open_time, closed):
 
 
 @pytest.mark.anyio
-async def test_trader_task_realtime_uses_backtrader_live_runner_for_warmup_and_closed_updates(monkeypatch):
+async def test_trader_task_realtime_uses_backtrader_live_runner_for_warmup_and_closed_updates(monkeypatch, caplog):
     FakeRunner.instances = []
     fetched = [_kline(BASE + i * 60, close=100 + i) for i in range(3)]
-    cfg = Config(window=500)
+    cfg = Config(window=500, log_level="DEBUG")
     tcfg = TaskConfig(
         77,
         TaskType.TRADER,
@@ -228,7 +229,8 @@ async def test_trader_task_realtime_uses_backtrader_live_runner_for_warmup_and_c
     monkeypatch.setattr("trader.task.trader_task.BacktraderLiveRunner", FakeRunner)
     monkeypatch.setattr("trader.task.trader_task.GLOBAL_MARKET_STREAM_HUB", hub)
 
-    await task.start_realtime(asyncio.Queue(), [NoopStrategy])
+    with caplog.at_level(logging.DEBUG):
+        await task.start_realtime(asyncio.Queue(), [NoopStrategy])
 
     runner = FakeRunner.instances[0]
     assert "live_operation_sink" not in runner.kwargs["strategy_kwargs"]
@@ -237,6 +239,15 @@ async def test_trader_task_realtime_uses_backtrader_live_runner_for_warmup_and_c
     assert [kline.open_time for kline in runner.put_klines] == [BASE + 180]
     assert runner.stopped is True
     assert hub.subscription.unsubscribed is True
+    assert "Realtime kline accepted" in caplog.text
+    assert "Realtime kline persisted" in caplog.text
+    assert "Realtime strategy tick completed" in caplog.text
+    assert "operations=0" in caplog.text
+    assert "Realtime startup backfill started" in caplog.text
+    assert "Realtime startup backfill completed" in caplog.text
+    assert "Realtime live warmup started" in caplog.text
+    assert "Realtime stream subscribed" in caplog.text
+    assert "Realtime waiting for next closed kline" in caplog.text
 
 
 @pytest.mark.anyio

@@ -81,10 +81,10 @@ class BaseTask:
             config_dict["manual_start_position"] = self.tcfg.manual_start_position
         if getattr(self.tcfg, "live_trade_max_notional", 0.0):
             config_dict["live_trade_max_notional"] = self.tcfg.live_trade_max_notional
-        if getattr(self.tcfg, "live_short_execution", "disabled") != "disabled":
-            config_dict["live_short_execution"] = self.tcfg.live_short_execution
         if getattr(self.tcfg, "strategy_params", None):
             config_dict["strategy_params"] = self.tcfg.strategy_params
+        if getattr(self.tcfg, "requires_short_capability", False):
+            config_dict["requires_short_capability"] = True
 
         return json.dumps([config_dict], indent=2, ensure_ascii=False)
 

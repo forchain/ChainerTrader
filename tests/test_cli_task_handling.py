@@ -30,6 +30,36 @@ def test_app_start_returns_false_when_task_manager_returns_no_message(monkeypatc
     assert app.start() is False
 
 
+def test_app_start_runs_startup_self_check_before_task_launch(monkeypatch):
+    cfg = Config(
+        tasks='[{"task_type":"TRADER","symbol":"BTC-USDT","interval":"1h","strategy":"macd_triple_divergence","strategy_params":{"chainer_mode":"BOTH"}}]',
+        exchange='{"ty":"BINANCE","driver":"ccxt","api_key":"k","api_secret":"s"}',
+    )
+    app = App(cfg)
+    calls = []
+
+    monkeypatch.setattr(app.exchange, "start", lambda: calls.append("exchange.start"))
+    monkeypatch.setattr(app, "process", lambda msgs: calls.append(("process", len(msgs))))
+    monkeypatch.setattr(app.task_manager, "start", lambda *args, **kwargs: calls.append(("task_manager.start", len(args))) or None)
+
+    assert app.start() is False
+    assert "exchange.start" in calls
+    assert any(item[0] == "task_manager.start" for item in calls if isinstance(item, tuple))
+    assert hasattr(app, "startup_self_check")
+    assert app.startup_self_check.required_margin_mode.value == "cross_margin"
+
+
+def test_app_promotes_exchange_margin_mode_for_short_capable_tasks():
+    cfg = Config(
+        tasks='[{"task_type":"TRADER","symbol":"BTC-USDT","interval":"1h","strategy":"macd_triple_divergence","strategy_params":{"chainer_mode":"BOTH"}}]',
+        exchange='{"ty":"BINANCE","driver":"ccxt","api_key":"k","api_secret":"s"}',
+    )
+    app = App(cfg)
+
+    assert app.exchange is not None
+    assert app.exchange.margin_mode.value == "cross_margin"
+
+
 def test_base_task_stop_without_db_manager_does_not_crash():
     cfg = Config(tasks="[]")
     tcfg = TaskConfig(

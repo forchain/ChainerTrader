@@ -211,7 +211,7 @@ def try_db_download(symbol, interval, start_time, end_time, output_file):
 
         # Download missing ranges if needed
         if need_download:
-            exchange_cfg_json = os.environ.get("TRADER_EXCHANGE", "BINANCE")
+            exchange_cfg_json = os.environ.get("TRADER_EXCHANGE", '{"ty":"BINANCE","driver":"ccxt"}')
             ex_cfg = parse_exchange_config(exchange_cfg_json)
             exchange = BinanceExchange(ex_cfg, log.log())
 

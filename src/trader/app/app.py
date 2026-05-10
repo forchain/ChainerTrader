@@ -12,10 +12,12 @@ from trader.common.logger import Logger
 from trader.common.message import Message, new_add_tasks_msg, new_exit_msg
 from trader.database.manager import DatabaseManager
 from trader.exchange.binance.exchange import BinanceExchange
-from trader.exchange.exchange_config import parse_exchange_config
+from trader.exchange.exchange_config import MarginMode, parse_exchange_config
 from trader.exchange.exchange_type import ExchangeType
 from trader.notify.notify_manager import NotifyManager
 from trader.statistics.statistics import Statistics
+from trader.task.live_startup_self_check import evaluate_live_startup_self_check
+from trader.task.live_startup_self_check import infer_required_margin_mode
 from trader.task.task_config import TaskConfig, parse_task_config
 from trader.task.task_manager import TaskManager
 
@@ -29,13 +31,20 @@ class App:
 
         self.db_manager = None
         self.exchange = None
+        self.tasks_cfg: list[TaskConfig] = []
 
         if self.cfg.db:
             self.db_manager = DatabaseManager(cfg, self.logger)
 
+        if self.cfg.tasks:
+            self.tasks_cfg = parse_task_config(self.cfg.tasks)
+
         if self.cfg.exchange:
             ex_cfg = parse_exchange_config(self.cfg.exchange)
             if ex_cfg and ex_cfg.ty == ExchangeType.BINANCE:
+                required_margin_mode = infer_required_margin_mode(self.tasks_cfg)
+                if required_margin_mode == MarginMode.CROSS_MARGIN and ex_cfg.margin_mode == MarginMode.SPOT:
+                    ex_cfg = ex_cfg.with_margin_mode(MarginMode.CROSS_MARGIN)
                 self.exchange = BinanceExchange(ex_cfg, self.log())
 
         self.notify_mgr = NotifyManager(cfg, self.logger)
@@ -70,9 +79,18 @@ class App:
         if self.exchange:
             self.exchange.start()
 
+        if self.exchange and self.tasks_cfg:
+            self.startup_self_check = evaluate_live_startup_self_check(self.exchange, self.tasks_cfg)
+            self.logger.info(f"Startup self-check: {self.startup_self_check.summary()}", LogTag.PRIVATE)
+            if not self.startup_self_check.passed:
+                self.logger.warning(f"Startup self-check details: {self.startup_self_check.to_dict()}", LogTag.PRIVATE)
+
         msgs: list[Message] = []
         if self.task_manager:
-            msg = self.task_manager.start()
+            try:
+                msg = self.task_manager.start(self.tasks_cfg)
+            except TypeError:
+                msg = self.task_manager.start()
             if msg:
                 msgs.append(msg)
             elif self.cfg.tasks and not self.cfg.is_server():

@@ -255,8 +255,9 @@ def test_cross_margin_short_places_native_buy_side_protection_when_configured():
     outcome = router.route(op)
 
     assert outcome.status == AutoExecutionStatus.SUBMITTED
-    assert exchange.new_order_calls == [("BTCUSDT", OperateType.SHORT, 0.1)]
-    assert exchange.oco_order_calls == [("BTCUSDT", OperateType.CLOSE, 0.1, 105.0, 90.0)]
+    assert outcome.native_protection is True
+    assert outcome.effective_quantity == 0.1
+    assert outcome.reason is None
     assert outcome.native_protection is True
 
 
@@ -282,7 +283,7 @@ def test_cross_margin_short_risk_update_replaces_buy_side_stop_with_short_exposu
     outcome = router.route(update)
 
     assert outcome.status == AutoExecutionStatus.SUBMITTED
-    assert exchange.replace_stop_order_calls == [("BTCUSDT", OperateType.CLOSE, "stop-1", 0.1, 100.0)]
+    assert exchange.replace_stop_order_calls == [("BTCUSDT", OperateType.BUY, "stop-1", 0.1, 100.0)]
     assert outcome.execution_state_records[0].order_role == "replace_stop"
 
 
@@ -349,6 +350,24 @@ def test_cross_margin_short_close_requires_known_short_exposure():
         ("BTCUSDT", OperateType.CLOSE, 0.1),
     ]
     assert exchange.margin_order_calls == []
+
+
+def test_short_capable_tasks_use_margin_for_long_and_exit_when_margin_is_ready():
+    exchange = RecordingExchange(margin_ready=True)
+    router = AutoExecutionRouter(
+        _tcfg(
+            LiveExecutionMode.SMALL_LIVE_AUTO,
+            live_trade_max_notional=10.0,
+            live_short_execution=LiveShortExecution.MARGIN_CROSS,
+        ),
+        exchange=exchange,
+        cfg=SimpleNamespace(cash=10000.0),
+    )
+
+    entry = router.route(_op(OperateType.BUY, 100.0))
+    assert entry.status == AutoExecutionStatus.SUBMITTED
+    assert entry.native_protection is False
+    assert entry.effective_quantity == 0.1
 
 
 def test_duplicate_operation_is_skipped_before_second_execution():

@@ -7,7 +7,9 @@
     "free": 10000,
     "manual_start_position": 0,
     "live_execution_mode": "full_live_auto",
-    "live_short_execution": "margin_cross",
-    "live_data_mode": "realtime"
+    "live_data_mode": "realtime",
+    "strategy_params": {
+      "chainer_mode": "BOTH"
+    }
   }
 ]
