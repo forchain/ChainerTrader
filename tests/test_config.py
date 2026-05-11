@@ -109,7 +109,15 @@ def test_new_and_env_log_file_keeps_boolean_compatibility(monkeypatch):
     assert cfg.log_file is True
 
 
-def test_logger_writes_to_configured_log_file_path(tmp_path):
+def test_new_and_env_log_file_cli_preserves_path():
+    ns = argparse.Namespace(log_file="./logs/from-cli.log")
+
+    cfg = new_and_env(ns)
+
+    assert cfg.log_file == "./logs/from-cli.log"
+
+
+def test_logger_writes_to_configured_log_file_path(tmp_path, capsys):
     log_path = tmp_path / "logs" / "trader.log"
     cfg = Config(log_file=str(log_path))
 
@@ -129,8 +137,11 @@ def test_logger_writes_to_configured_log_file_path(tmp_path):
         for handler in original_handlers:
             logging.getLogger().addHandler(handler)
 
+    captured = capsys.readouterr()
+
     assert log_path.exists()
     assert "configured file path smoke" in log_path.read_text(encoding="utf-8")
+    assert "configured file path smoke" in captured.err
 
 
 def test_logger_keeps_noisy_third_party_debug_logs_quiet(tmp_path):

@@ -58,18 +58,15 @@ class Logger:
         return self.name + ".log"
 
     def initRoot(self):
+        handlers = [logging.StreamHandler()]
+
         if self.cfg.log_file:
             log_path = Path(self.file_name())
             if log_path.parent != Path("."):
                 log_path.parent.mkdir(parents=True, exist_ok=True)
-            logging.basicConfig(
-                filename=str(log_path),
-                filemode="a",
-                level=self.cfg.log_level,
-                format=formatter_str(),
-            )
-        else:
-            logging.basicConfig(level=self.cfg.log_level, format=formatter_str())
+            handlers.append(logging.FileHandler(str(log_path), mode="a"))
+
+        logging.basicConfig(level=self.cfg.log_level, format=formatter_str(), handlers=handlers)
 
         for noisy_logger in ("ccxt", "urllib3", "httpcore", "httpx", "asyncio"):
             logging.getLogger(noisy_logger).setLevel(logging.INFO)

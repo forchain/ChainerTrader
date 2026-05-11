@@ -264,7 +264,8 @@ def new_and_env(cli: Namespace | None = None) -> Config:
         if "period" in a:
             period = int(a["period"])
         if "log_file" in a:
-            log_file = bool(a["log_file"])
+            cli_log_file = a["log_file"]
+            log_file = cli_log_file if isinstance(cli_log_file, str) else bool(cli_log_file)
         if "plot" in a:
             plot = bool(a["plot"])
         if "mode" in a:
