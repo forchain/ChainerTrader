@@ -103,7 +103,7 @@ async def admin_dashboard(request: Request):
         "index.html",
         {
             "request": request,
-            "tasks_info": get_taskinfo(request.app.state.app),
+            "tasks_info": await get_taskinfo(request.app.state.app),
             "accts_info": get_accounts_info(request.app.state.app),
             "version": request.app.state.app.version(),
         },
@@ -112,7 +112,7 @@ async def admin_dashboard(request: Request):
 
 @rpc.get("/admin/tasks", response_class=HTMLResponse)
 async def admin_tasks_page(request: Request):
-    return templates.TemplateResponse("tasks.html", {"request": request, "tasks_info": get_taskinfo(request.app.state.app)})
+    return templates.TemplateResponse("tasks.html", {"request": request, "tasks_info": await get_taskinfo(request.app.state.app)})
 
 
 @rpc.get("/admin/klines", response_class=HTMLResponse)

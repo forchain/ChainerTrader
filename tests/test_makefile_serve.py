@@ -1,7 +1,7 @@
-from pathlib import Path
 import os
 import stat
 import subprocess
+from pathlib import Path
 
 
 def test_serve_sets_python_warning_filter_for_backtrader_invalid_escape_warning():
@@ -9,6 +9,16 @@ def test_serve_sets_python_warning_filter_for_backtrader_invalid_escape_warning(
     makefile = (repo_root / "Makefile").read_text(encoding="utf-8")
 
     assert 'PYTHONWARNINGS="ignore:invalid escape sequence"' in makefile
+
+
+def test_makefile_prefers_uv_run_for_test_lint_and_serve():
+    repo_root = Path(__file__).resolve().parents[1]
+    makefile = (repo_root / "Makefile").read_text(encoding="utf-8")
+
+    assert 'USING_UV=$(shell command -v uv >/dev/null 2>&1 && echo "yes")' in makefile
+    assert "uv run ruff check ." in makefile
+    assert "uv run pytest tests/" in makefile
+    assert 'PYTHONWARNINGS="ignore:invalid escape sequence" uv run trader' in makefile
 
 
 def test_serve_runtime_defaults_to_ccxt_polling_market_stream():
@@ -47,6 +57,7 @@ if [ "${1:-}" = "run" ] && [ "${2:-}" = "python" ]; then
   cat >/dev/null
   printf '%s\\n' 'export BINANCE_API_KEY=fake-key'
   printf '%s\\n' 'export BINANCE_API_SECRET=fake-secret'
+  printf '%s\\n' 'export TRADER_DB=sqlite://:memory:'
   exit 0
 fi
 if [ "${1:-}" = "run" ] && [ "${2:-}" = "pytest" ]; then
@@ -63,6 +74,7 @@ exit 64
 TRADER_COMMISSION = 0.001
 BINANCE_API_KEY = fake-key
 BINANCE_API_SECRET = fake-secret
+TRADER_DB = sqlite://:memory:
 """,
         encoding="utf-8",
     )

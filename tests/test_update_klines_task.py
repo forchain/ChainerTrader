@@ -107,7 +107,7 @@ def test_download_range_basic():
         klines_payload = [kline1]
 
         kline_mock = SimpleNamespace(
-            add_klines=MagicMock(return_value=1),
+            add_klines=AsyncMock(return_value=1),
         )
         db_manager = SimpleNamespace(kline=kline_mock)
 
@@ -278,7 +278,7 @@ def test_download_range_backward_updates_confirmed_earliest_metadata():
 
         availability = SimpleNamespace(update_earliest_known_open_time=AsyncMock())
         db_manager = SimpleNamespace(
-            kline=SimpleNamespace(add_klines=MagicMock(side_effect=[2, 2])),
+            kline=SimpleNamespace(add_klines=AsyncMock(side_effect=[2, 2])),
             availability=availability,
         )
         exchange = SimpleNamespace(
@@ -322,7 +322,7 @@ def test_download_range_backward_does_not_confirm_earliest_when_request_start_re
 
         availability = SimpleNamespace(update_earliest_known_open_time=MagicMock())
         db_manager = SimpleNamespace(
-            kline=SimpleNamespace(add_klines=MagicMock(return_value=2)),
+            kline=SimpleNamespace(add_klines=AsyncMock(return_value=2)),
             availability=availability,
         )
         exchange = SimpleNamespace(

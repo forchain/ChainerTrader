@@ -1,8 +1,9 @@
 import asyncio
-from asyncio import Queue
-from concurrent.futures import ProcessPoolExecutor, TimeoutError as FutureTimeoutError
 import inspect
 import os
+from asyncio import Queue
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from pathlib import Path
 
 from trader.common.common import sleep
@@ -15,20 +16,20 @@ from trader.exchange.binance.exchange import BinanceExchange
 from trader.exchange.exchange_config import MarginMode
 from trader.statistics.stat import BackTraderStat
 from trader.strategy.trader_result import parse_trader_result
-from trader.task.backtrader_task import BackTraderTask, BacktestSampleResult, build_backtest_sample_spec, run_backtest_sample
+from trader.task.backtrader_task import BacktestSampleResult, BackTraderTask, build_backtest_sample_spec, run_backtest_sample
 from trader.task.base_task import BaseTask
 from trader.task.check_klines_num_task import CheckKlinesNumTask
 from trader.task.check_klines_task import CheckKlinesTask
-from trader.task.debug_task import DebugTask
 from trader.task.dataset_resolver import DatasetPreparationFailure, DatasetPreparationResult, DatasetResolver
+from trader.task.debug_task import DebugTask
 from trader.task.import_csv_task import ImportCSVTask
-from trader.task.optimization_runtime import OptimizationRuntimeStatus, evaluate_abort_reason
+from trader.task.live_startup_self_check import infer_required_margin_mode, task_requires_short_capability
 from trader.task.optimization_report import write_optimization_artifacts
+from trader.task.optimization_runtime import OptimizationRuntimeStatus, evaluate_abort_reason
 from trader.task.task_config import TaskConfig, parse_task_config
 from trader.task.task_type import TaskType
 from trader.task.trader_task import TraderTask
 from trader.task.update_klines_task import UpdateKlinesTask
-from trader.task.live_startup_self_check import infer_required_margin_mode, task_requires_short_capability
 from trader.utils.symbol_interval import SymbolInterval
 from trader.utils.task_state import TaskState
 
@@ -421,7 +422,10 @@ class TaskManager:
         dataset_timeout_seconds = self._optimization_dataset_prepare_timeout_seconds()
         if dataset_jobs:
             self.log.info(
-                f"Optimization dataset preparation: datasets={len(dataset_jobs)} max_workers={self._dataset_prepare_max_workers()} timeout={dataset_timeout_seconds:.1f}s"
+                "Optimization dataset preparation: "
+                f"datasets={len(dataset_jobs)} "
+                f"max_workers={self._dataset_prepare_max_workers()} "
+                f"timeout={dataset_timeout_seconds:.1f}s"
             )
 
         async def run_job(dataset_key, job):
@@ -430,7 +434,9 @@ class TaskManager:
                 symbol_interval, start_time, end_time, allow_download, allow_incomplete_coverage = job
                 status_dataset_key = f"{symbol_interval.name()}|{start_time}|{end_time}"
                 self.log.info(
-                    f"Dataset preparation started: {status_dataset_key} allow_download={bool(allow_download)} allow_incomplete_coverage={bool(allow_incomplete_coverage)}"
+                    f"Dataset preparation started: {status_dataset_key} "
+                    f"allow_download={bool(allow_download)} "
+                    f"allow_incomplete_coverage={bool(allow_incomplete_coverage)}"
                 )
                 for run_id in dataset_run_ids.get(dataset_key, set()):
                     runtime = (runtimes or {}).get(run_id)
@@ -616,13 +622,13 @@ class TaskManager:
 
         return None
 
-    def get_all_task_state(self) -> list[TaskState]:
+    async def get_all_task_state(self) -> list[TaskState]:
         ret: list[TaskState] = []
         for ts in self.tasks.values():
             ret.append(ts.ts)
 
         if self.db_manager:
-            tss = self.db_manager.task.get_all_tasks()
+            tss = await self.db_manager.task.get_all_tasks()
             for ts in tss:
                 if self.has_task(ts.id):
                     continue

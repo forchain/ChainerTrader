@@ -8,7 +8,6 @@ from typing import Any, Callable
 from trader.common.config import Config
 from trader.common.logger import Logger, default
 from trader.database.manager import DatabaseManager
-from trader.exchange.binance.data import BinanceData
 from trader.exchange.binance.exchange import BinanceExchange
 from trader.live.dashboard import (
     DashboardEvent,
@@ -21,8 +20,6 @@ from trader.live.dashboard import (
     strategy_execution_event,
 )
 from trader.live.market_data import BackfillPlan, BackfillRequestKind, KlineUpdate, KlineUpdateBuffer, plan_initial_backfill
-from trader.strategy.node import Node
-from trader.strategy.strategy import parse_strategies
 from trader.task.task_config import TaskConfig
 from trader.utils.operate import Operate, OperateType
 
@@ -173,6 +170,10 @@ class RealtimeLiveStrategyRuntime:
         candles = await _maybe_await(self.db_manager.kline.get_latest_klines(self.collection_name, min(int(self.cfg.window), 500))) or []
         if self.strategy_runner is not None:
             return self.strategy_runner(candles)
+
+        from trader.exchange.binance.data import BinanceData
+        from trader.strategy.node import Node
+        from trader.strategy.strategy import parse_strategies
 
         strategy = parse_strategies(self.tcfg.strategies)
         if strategy is None:

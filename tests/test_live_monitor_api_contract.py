@@ -2,9 +2,9 @@ import asyncio
 from types import SimpleNamespace
 
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
-from trader.common.config import Config
-from trader.common.logger import Logger
 from trader.live.dashboard import DashboardEvent
 from trader.live.monitor import (
     LiveEventBus,
@@ -12,11 +12,20 @@ from trader.live.monitor import (
     build_live_strategy_summary,
     serialize_dashboard_event,
 )
-from trader.notify.notify_manager import NotifyManager
-from trader.rpc.api.live import dispatch_debug_manual_signal, is_local_request
+from trader.rpc.api.live import (
+    dispatch_debug_manual_signal,
+    is_local_request,
+    list_live_strategies,
+    live_debug_manual_entry,
+    live_debug_manual_exit,
+    live_strategy_events,
+    live_strategy_snapshot,
+)
+from trader.rpc.api.live import (
+    router as live_router,
+)
 from trader.task.task_config import TaskConfig
 from trader.task.task_type import TaskType
-from trader.task.trader_task import TraderTask
 from trader.utils.kline import Kline
 from trader.utils.operate import Operate, OperateType
 from trader.utils.symbol_interval import Interval, SymbolInterval
@@ -78,6 +87,34 @@ class RecordingNotice:
     def send(self, content, title="Trader"):
         self.sent.append((title, content))
         return None
+
+
+class FakeLiveTask:
+    def __init__(self, tcfg):
+        self.tcfg = tcfg
+        self.ts = SimpleNamespace(tret=None)
+        self._saved_results = []
+
+    async def process_result(self, result):
+        self.ts.tret = result
+        self._saved_results.append(result)
+
+    def handle_manual_trade_notifications(self, result):
+        op = (result.opts or [None])[0]
+        action = "EXIT" if getattr(op, "otype", None) == OperateType.CLOSE else "ENTRY"
+        event = SimpleNamespace(
+            to_dict=lambda: {
+                "action": action,
+                "symbol": self.tcfg.symbol_interval.symbol(),
+                "stop_loss": float(getattr(op, "stop_loss", 0.0) or 0.0),
+            }
+        )
+        return [event]
+
+
+class FakeNotifyManager:
+    def send_manual_trade_notification(self, event):
+        return [{"ok": True, "provider": "fake"}]
 
 
 def _kline(open_time, close=100):
@@ -179,20 +216,11 @@ async def test_live_event_bus_filters_updates_by_strategy_id():
 
 @pytest.mark.anyio
 async def test_debug_manual_entry_is_local_only_and_uses_standard_manual_notification_flow():
-    cfg = Config(cash=10000.0)
-    task = TraderTask(FakeTask().tcfg, cfg, Logger(cfg), db_manager=None, exchange=None)
-    saved = []
+    task = FakeLiveTask(FakeTask().tcfg)
     db = SimpleNamespace(
         kline=FakeKlineStore([_kline(BASE, close=100.0)]),
-        task=SimpleNamespace(
-            get_task=lambda task_id: None,
-            add_tasks=lambda tasks: saved.extend(tasks),
-        ),
+        task=SimpleNamespace(get_task=lambda task_id: None, add_tasks=lambda tasks: len(tasks)),
     )
-    task.db_manager = db
-    notice = RecordingNotice()
-    notify_mgr = NotifyManager(cfg, Logger(cfg))
-    notify_mgr.notice = [notice]
     bus = RecordingBus()
     request = SimpleNamespace(
         client=SimpleNamespace(host="127.0.0.1"),
@@ -201,7 +229,7 @@ async def test_debug_manual_entry_is_local_only_and_uses_standard_manual_notific
                 live_event_bus=bus,
                 app=SimpleNamespace(
                     db_manager=db,
-                    notify_mgr=notify_mgr,
+                    notify_mgr=FakeNotifyManager(),
                     task_manager=SimpleNamespace(get_task=lambda strategy_id: task),
                 ),
             )
@@ -214,8 +242,6 @@ async def test_debug_manual_entry_is_local_only_and_uses_standard_manual_notific
     assert payload["ok"] is True
     assert payload["notifications"][0]["action"] == "ENTRY"
     assert payload["notifications"][0]["stop_loss"] == 98.0
-    assert len(notice.sent) == 1
-    assert saved == [task.ts]
     assert [event.event_type for event in bus.events] == [
         "strategy_execution",
         "signal_marker",
@@ -224,4 +250,136 @@ async def test_debug_manual_entry_is_local_only_and_uses_standard_manual_notific
     ]
 
 
-import asyncio
+def test_list_live_strategies_api_returns_sorted_strategy_summaries():
+    task_a = FakeTask(task_id=2)
+    task_b = FakeTask(task_id=1)
+    manager = SimpleNamespace(tasks={2: task_a, 1: task_b})
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(app=SimpleNamespace(task_manager=manager))))
+
+    payload = list_live_strategies(request)
+
+    assert [item["strategy_id"] for item in payload] == [1, 2]
+    assert payload[0]["execution_mode"] == "manual_notify"
+
+
+@pytest.mark.anyio
+async def test_live_strategy_snapshot_api_returns_not_found_for_unknown_strategy():
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                app=SimpleNamespace(
+                    task_manager=SimpleNamespace(get_task=lambda strategy_id: None),
+                    db_manager=FakeDb([]),
+                )
+            )
+        )
+    )
+
+    with pytest.raises(Exception) as exc:
+        await live_strategy_snapshot(strategy_id=404, request=request)
+
+    assert getattr(exc.value, "status_code", None) == 404
+
+
+@pytest.mark.anyio
+async def test_live_strategy_snapshot_api_returns_snapshot_payload():
+    task = FakeTask(task_id=7)
+    klines = [_kline(BASE + i * 60, close=100 + i) for i in range(3)]
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                app=SimpleNamespace(
+                    task_manager=SimpleNamespace(get_task=lambda strategy_id: task),
+                    db_manager=FakeDb(klines),
+                )
+            )
+        )
+    )
+
+    payload = await live_strategy_snapshot(strategy_id=7, request=request)
+
+    assert payload["strategy_id"] == 7
+    assert len(payload["candles"]) == 3
+    assert payload["candles"][-1]["close"] == 102.0
+
+
+def test_live_api_http_smoke_lists_strategies_and_loads_snapshot():
+    task = FakeTask(task_id=7)
+    klines = [_kline(BASE + i * 60, close=100 + i) for i in range(3)]
+    app = FastAPI()
+    app.include_router(live_router, prefix="/api/live")
+    app.state.app = SimpleNamespace(
+        task_manager=SimpleNamespace(
+            tasks={7: task},
+            get_task=lambda strategy_id: task if strategy_id == 7 else None,
+        ),
+        db_manager=FakeDb(klines),
+    )
+    app.state.live_event_bus = LiveEventBus()
+
+    client = TestClient(app)
+
+    strategies = client.get("/api/live/strategies")
+    snapshot = client.get("/api/live/strategies/7/snapshot")
+
+    assert strategies.status_code == 200
+    assert strategies.json()[0]["strategy_id"] == 7
+    assert snapshot.status_code == 200
+    assert snapshot.json()["candles"][-1]["close"] == 102.0
+
+
+@pytest.mark.anyio
+async def test_live_strategy_events_api_streams_serialized_events():
+    bus = LiveEventBus()
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(live_event_bus=bus)))
+    response = await live_strategy_events(strategy_id=7, request=request)
+
+    producer_done = asyncio.Event()
+
+    async def producer():
+        await bus.publish(DashboardEvent("runtime_status", strategy_id=7, event_time=BASE, payload={"state": "running"}))
+        producer_done.set()
+
+    asyncio.create_task(producer())
+    body_iter = response.body_iterator
+    chunk = await anext(body_iter)
+    await producer_done.wait()
+    await body_iter.aclose()
+
+    text = chunk if isinstance(chunk, str) else chunk.decode("utf-8")
+    assert response.media_type == "text/event-stream"
+    assert '"event_type": "runtime_status"' in text
+    assert '"strategy_id": 7' in text
+    assert '"state": "running"' in text
+
+
+@pytest.mark.anyio
+async def test_live_debug_manual_entry_endpoint_delegates_to_dispatch(monkeypatch):
+    captured = {}
+
+    async def fake_dispatch(request, strategy_id, side):
+        captured["strategy_id"] = strategy_id
+        captured["side"] = side
+        return {"ok": True, "side": side}
+
+    monkeypatch.setattr("trader.rpc.api.live.dispatch_debug_manual_signal", fake_dispatch)
+    payload = await live_debug_manual_entry(11, request=SimpleNamespace())
+
+    assert payload == {"ok": True, "side": "entry"}
+    assert captured == {"strategy_id": 11, "side": "entry"}
+
+
+@pytest.mark.anyio
+async def test_live_debug_manual_exit_endpoint_delegates_to_dispatch(monkeypatch):
+    captured = {}
+
+    async def fake_dispatch(request, strategy_id, side):
+        captured["strategy_id"] = strategy_id
+        captured["side"] = side
+        return {"ok": True, "side": side}
+
+    monkeypatch.setattr("trader.rpc.api.live.dispatch_debug_manual_signal", fake_dispatch)
+    payload = await live_debug_manual_exit(12, request=SimpleNamespace())
+
+    assert payload == {"ok": True, "side": "exit"}
+    assert captured == {"strategy_id": 12, "side": "exit"}

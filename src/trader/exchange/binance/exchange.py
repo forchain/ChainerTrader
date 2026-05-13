@@ -1,20 +1,35 @@
 from datetime import datetime, timedelta
 from decimal import Decimal, ROUND_DOWN
-from typing import Optional
+from typing import Any, Optional
 
-from binance_common.configuration import ConfigurationRestAPI
-from binance_common.constants import SPOT_REST_API_PROD_URL
-from binance_common.models import RateLimit
-from binance_sdk_spot import Spot
-from binance_sdk_spot.rest_api.models import (
-    AccountCommissionResponse,
-    NewOrderSideEnum,
-    NewOrderTypeEnum,
-    OrderOcoSideEnum,
-    OrderCancelReplaceSideEnum,
-    OrderCancelReplaceTypeEnum,
-    OrderCancelReplaceCancelReplaceModeEnum,
-)
+try:
+    from binance_common.configuration import ConfigurationRestAPI
+    from binance_common.constants import SPOT_REST_API_PROD_URL
+    from binance_common.models import RateLimit
+    from binance_sdk_spot import Spot
+    from binance_sdk_spot.rest_api.models import (
+        AccountCommissionResponse,
+        NewOrderSideEnum,
+        NewOrderTypeEnum,
+        OrderOcoSideEnum,
+        OrderCancelReplaceSideEnum,
+        OrderCancelReplaceTypeEnum,
+        OrderCancelReplaceCancelReplaceModeEnum,
+    )
+    BINANCE_NATIVE_SDK_AVAILABLE = True
+except ModuleNotFoundError:
+    ConfigurationRestAPI = None  # type: ignore[assignment]
+    SPOT_REST_API_PROD_URL = "https://api.binance.com"  # type: ignore[assignment]
+    RateLimit = Any  # type: ignore[assignment]
+    Spot = None  # type: ignore[assignment]
+    AccountCommissionResponse = Any  # type: ignore[assignment]
+    NewOrderSideEnum = None  # type: ignore[assignment]
+    NewOrderTypeEnum = None  # type: ignore[assignment]
+    OrderOcoSideEnum = None  # type: ignore[assignment]
+    OrderCancelReplaceSideEnum = None  # type: ignore[assignment]
+    OrderCancelReplaceTypeEnum = None  # type: ignore[assignment]
+    OrderCancelReplaceCancelReplaceModeEnum = None  # type: ignore[assignment]
+    BINANCE_NATIVE_SDK_AVAILABLE = False
 import requests
 import time
 import hmac
@@ -24,7 +39,12 @@ from urllib.parse import urlencode, urlparse
 from trader.common.logger import default
 from trader.exchange.balance import Balance
 from trader.exchange.ccxt_driver import CcxtExchangeDriver
-from trader.exchange.binance.margin import MarginTradingManager
+try:
+    from trader.exchange.binance.margin import MarginTradingManager
+    BINANCE_MARGIN_SDK_AVAILABLE = True
+except ModuleNotFoundError:
+    MarginTradingManager = None  # type: ignore[assignment]
+    BINANCE_MARGIN_SDK_AVAILABLE = False
 from trader.exchange.driver import ExchangeDriverType
 from trader.exchange.exchange_config import ExchangeConfig, MarginMode
 from trader.exchange.exchange_type import ExchangeType
@@ -63,6 +83,11 @@ class BinanceExchange:
 
         self.spot_client = None
         if not self._use_ccxt():
+            if not BINANCE_NATIVE_SDK_AVAILABLE:
+                raise ModuleNotFoundError(
+                    "Binance native SDK dependencies are missing. Install 'binance-common' and 'binance-sdk-spot', "
+                    "or use ExchangeDriverType.CCXT."
+                )
             configuration_rest_api = ConfigurationRestAPI(
                 api_key=cfg.api_key,
                 api_secret=cfg.api_secret,
@@ -76,6 +101,7 @@ class BinanceExchange:
         self.commission: AccountCommissionResponse | None = None
         self.rate_limits: dict[str, datetime] = {}
         self.server_time: Optional[float] = None
+        self._cross_margin_not_ready_warned = False
 
     def _use_ccxt(self) -> bool:
         return self.driver_type == ExchangeDriverType.CCXT
@@ -117,8 +143,10 @@ class BinanceExchange:
         dt = self.time()
         self.log.info(f"Start {self.name()} exchange: server_time={dt} server_time_offset={self.server_time_offset()}")
 
-        if self._has_valid_margin_base_path():
+        if self._has_valid_margin_base_path() and BINANCE_MARGIN_SDK_AVAILABLE:
             MarginTradingManager(self.cfg, self.log).get_summary_of_margin_account()
+        elif self._has_valid_margin_base_path():
+            self.log.warning("Skip margin summary: binance margin SDK dependency is unavailable")
         else:
             self.log.info("Skip margin summary: margin base_path is not configured with an absolute URL")
         return True
@@ -592,9 +620,14 @@ class BinanceExchange:
     def is_cross_margin_ready(self) -> bool:
         if self.margin_mode != MarginMode.CROSS_MARGIN:
             return False
+        if self._use_ccxt():
+            return True
         if not self._has_valid_margin_base_path():
-            self.log.warning("Cross margin is not ready: margin base_path is not configured with an absolute URL")
+            if not self._cross_margin_not_ready_warned:
+                self.log.warning("Cross margin is not ready: margin base_path is not configured with an absolute URL")
+                self._cross_margin_not_ready_warned = True
             return False
+        self._cross_margin_not_ready_warned = False
         return True
 
     def new_margin_order(self, symbol: Symbol, op: OperateType, quantity: float = 0):

@@ -92,7 +92,7 @@ async def build_initial_snapshot(task, db_manager, runtime_status: dict | None =
     if db_manager is not None and getattr(db_manager, "kline", None) is not None:
         candles = await _maybe_await(db_manager.kline.get_latest_klines(tcfg.symbol_interval.name(), limit)) or []
 
-    overlays = build_snapshot_overlays(task, db_manager, candles)
+    overlays = await build_snapshot_overlays(task, db_manager, candles)
     return {
         "strategy_id": tcfg.id,
         "market": tcfg.symbol_interval.symbol(),
@@ -105,7 +105,7 @@ async def build_initial_snapshot(task, db_manager, runtime_status: dict | None =
         "runtime_status": runtime_status or {"state": state.name if state is not None else "UNKNOWN"},
         "enabled_overlays": list(DEFAULT_OVERLAYS),
         "overlays": overlays,
-        "auto_execution_outcomes": _task_auto_execution_outcomes(task, db_manager, candles),
+        "auto_execution_outcomes": await _task_auto_execution_outcomes(task, db_manager, candles),
         "history_window": {
             "limit": limit,
             "loaded": len(candles),
@@ -121,16 +121,13 @@ def _serialize_auto_execution_outcome(outcome) -> dict[str, Any]:
     return dict(outcome)
 
 
-def _task_auto_execution_outcomes(task, db_manager, candles: list) -> list[dict[str, Any]]:
+async def _task_auto_execution_outcomes(task, db_manager, candles: list) -> list[dict[str, Any]]:
     ts = getattr(task, "ts", None)
     outcomes = list(getattr(ts, "auto_execution_outcomes", []) or [])
     if not outcomes:
         task_store = getattr(db_manager, "task", None) if db_manager is not None else None
         if task_store is not None:
-            try:
-                saved_task = task_store.get_task(task.tcfg.id)
-            except AttributeError:
-                saved_task = None
+            saved_task = await _maybe_await(task_store.get_task(task.tcfg.id))
             outcomes = list(getattr(saved_task, "auto_execution_outcomes", []) or []) if saved_task is not None else []
 
     serialized = []
@@ -143,7 +140,7 @@ def _task_auto_execution_outcomes(task, db_manager, candles: list) -> list[dict[
     return serialized
 
 
-def _task_result_operations(task, db_manager) -> list:
+async def _task_result_operations(task, db_manager) -> list:
     ts = getattr(task, "ts", None)
     tret = getattr(ts, "tret", None)
     if tret is not None:
@@ -152,10 +149,7 @@ def _task_result_operations(task, db_manager) -> list:
     task_store = getattr(db_manager, "task", None) if db_manager is not None else None
     if task_store is None:
         return []
-    try:
-        saved_task = task_store.get_task(task.tcfg.id)
-    except AttributeError:
-        return []
+    saved_task = await _maybe_await(task_store.get_task(task.tcfg.id))
     saved_result = getattr(saved_task, "tret", None) if saved_task is not None else None
     return list(getattr(saved_result, "opts", []) or [])
 
@@ -169,13 +163,13 @@ def _within_loaded_window(op, candles: list) -> bool:
     return start_time <= op_time <= end_time
 
 
-def build_snapshot_overlays(task, db_manager, candles: list) -> dict[str, list[dict[str, Any]]]:
+async def build_snapshot_overlays(task, db_manager, candles: list) -> dict[str, list[dict[str, Any]]]:
     signals = []
     risk = []
     strategy_events = []
     mode = getattr(task.tcfg, "live_execution_mode", "auto_trade")
     signal_number = 0
-    for op in _task_result_operations(task, db_manager):
+    for op in await _task_result_operations(task, db_manager):
         if not _within_loaded_window(op, candles):
             continue
         signal_number += 1
