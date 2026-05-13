@@ -26,6 +26,7 @@ TRADER_API = "TRADER_API"
 TRADER_AUTH_USERNAME = "TRADER_AUTH_USERNAME"
 TRADER_AUTH_PASSWORD = "TRADER_AUTH_PASSWORD"
 TRADER_PROTECTED_PATHS = "TRADER_PROTECTED_PATHS"
+TRADER_MIN_LIVE_TRADE_NOTIONAL = "TRADER_MIN_LIVE_TRADE_NOTIONAL"
 
 
 def parse_log_file_config(value: Any) -> bool | str:
@@ -72,6 +73,7 @@ class Config:
         optimization_min_runnable_ratio: float = 0.1,
         optimization_parallelism_collapse_ratio: float = 0.25,
         optimization_worker_cpu_efficiency_threshold: float = 0.1,
+        min_live_trade_notional: float = 11.0,
     ):
         self.commission = commission
         self.period = period
@@ -101,6 +103,7 @@ class Config:
         self.optimization_min_runnable_ratio = optimization_min_runnable_ratio
         self.optimization_parallelism_collapse_ratio = optimization_parallelism_collapse_ratio
         self.optimization_worker_cpu_efficiency_threshold = optimization_worker_cpu_efficiency_threshold
+        self.min_live_trade_notional = float(min_live_trade_notional)
 
     def export_env(self):
         os.environ[TRADER_COMMISSION] = str(self.commission)
@@ -128,6 +131,7 @@ class Config:
             os.environ[TRADER_AUTH_PASSWORD] = self.auth_password
         if self.protected_paths:
             os.environ[TRADER_PROTECTED_PATHS] = ",".join(self.protected_paths)
+        os.environ[TRADER_MIN_LIVE_TRADE_NOTIONAL] = str(self.min_live_trade_notional)
 
     def to_dict(self):
         return {
@@ -158,6 +162,7 @@ class Config:
             "optimization_min_runnable_ratio": self.optimization_min_runnable_ratio,
             "optimization_parallelism_collapse_ratio": self.optimization_parallelism_collapse_ratio,
             "optimization_worker_cpu_efficiency_threshold": self.optimization_worker_cpu_efficiency_threshold,
+            "min_live_trade_notional": self.min_live_trade_notional,
         }
 
     def safe_to_dict(self):
@@ -175,6 +180,7 @@ class Config:
             "stat": self.stat,
             "api": self.api,
             "protected_paths": self.protected_paths,
+            "min_live_trade_notional": self.min_live_trade_notional,
         }
 
         # Mask sensitive fields
@@ -234,6 +240,7 @@ def new_and_env(cli: Namespace | None = None) -> Config:
     auth_username = None
     auth_password = None
     protected_paths: list[str] = []
+    min_live_trade_notional = 11.0
 
     commission = float(os.environ.get(TRADER_COMMISSION, commission))
     period = int(os.environ.get(TRADER_PERIOD, period))
@@ -252,6 +259,7 @@ def new_and_env(cli: Namespace | None = None) -> Config:
     api = os.environ.get(TRADER_API, api)
     auth_username = os.environ.get(TRADER_AUTH_USERNAME, auth_username)
     auth_password = os.environ.get(TRADER_AUTH_PASSWORD, auth_password)
+    min_live_trade_notional = float(os.environ.get(TRADER_MIN_LIVE_TRADE_NOTIONAL, min_live_trade_notional))
 
     protected_paths_env = os.environ.get(TRADER_PROTECTED_PATHS, "")
     if protected_paths_env:
@@ -297,6 +305,8 @@ def new_and_env(cli: Namespace | None = None) -> Config:
         if "protected_paths" in a:
             raw_pp = a["protected_paths"]
             protected_paths = [p.strip() for p in raw_pp.split(",") if p.strip()] if raw_pp else []
+        if "min_live_trade_notional" in a:
+            min_live_trade_notional = float(a["min_live_trade_notional"])
 
     return Config(
         commission=commission,
@@ -317,4 +327,5 @@ def new_and_env(cli: Namespace | None = None) -> Config:
         auth_username=auth_username,
         auth_password=auth_password,
         protected_paths=protected_paths,
+        min_live_trade_notional=min_live_trade_notional,
     )

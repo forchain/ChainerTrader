@@ -4,6 +4,7 @@ from datetime import datetime
 
 from trader.common import path
 from trader.common.common import parse_datetime
+from trader.common.config import TRADER_MIN_LIVE_TRADE_NOTIONAL
 from trader.task.optimization import expand_parameter_space, has_parameter_search, make_optimization_run_id, make_param_id
 from trader.task.task_type import TaskType, parse_task_type
 from trader.live.auto_execution import (
@@ -46,6 +47,10 @@ def infer_strategy_requires_short(strategy_params: dict | None, live_short_execu
     if mode is not None:
         return str(mode).strip().upper() in {"SHORT_ONLY", "BOTH"}
     return str(live_short_execution or "disabled").strip().lower() == "margin_cross"
+
+
+def _global_min_live_trade_notional() -> float:
+    return float(os.environ.get(TRADER_MIN_LIVE_TRADE_NOTIONAL, 11.0) or 11.0)
 
 
 class TaskConfig:
@@ -209,7 +214,17 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
         live_execution_mode = normalize_live_execution_mode(tcd.get("live_execution_mode", "auto_trade"))
         manual_start_position = float(tcd.get("manual_start_position", 0.0) or 0.0)
         live_data_mode = str(tcd.get("live_data_mode", "polling")).strip().lower()
-        live_trade_max_notional = float(tcd.get("live_trade_max_notional", 0.0) or 0.0)
+        global_min_notional = _global_min_live_trade_notional()
+        configured_notional = "live_trade_max_notional" in tcd and tcd.get("live_trade_max_notional") not in (None, "")
+        if configured_notional:
+            live_trade_max_notional = float(tcd.get("live_trade_max_notional", 0.0) or 0.0)
+            if live_trade_max_notional < global_min_notional:
+                raise ValueError(
+                    f"live_trade_max_notional({live_trade_max_notional}) is below global minimum "
+                    f"TRADER_MIN_LIVE_TRADE_NOTIONAL({global_min_notional})"
+                )
+        else:
+            live_trade_max_notional = float(global_min_notional)
         live_short_execution = normalize_live_short_execution(tcd.get("live_short_execution", "disabled"))
         live_margin_borrow_block_policy = normalize_margin_borrow_block_policy(
             tcd.get("live_margin_borrow_block_policy", "auto_repay_then_retry_once")

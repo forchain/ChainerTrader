@@ -248,11 +248,17 @@ class TraderTask(BaseTask):
             if self.is_manual_notify_mode():
                 notifications = [] if feed_phase == "warmup" else self.handle_manual_trade_notifications(ret)
             else:
-                outcome = self._auto_execution_router.route(op)
-                auto_execution_outcomes = [outcome]
-                await self._persist_auto_execution_state(outcome)
-                self.ts.auto_execution_outcomes = list(getattr(self.ts, "auto_execution_outcomes", []) or []) + auto_execution_outcomes
-                await _maybe_await(self.db_manager.task.add_tasks([self.ts]))
+                if feed_phase == "warmup":
+                    self.log.info(
+                        f"Realtime warmup operation ignored for auto execution: task_id={self.tcfg.id} "
+                        f"strategy={self.tcfg.strategy_name()} operation={operation_name(op)} event_time={int(getattr(op, 'dtime', 0) or 0)}"
+                    )
+                else:
+                    outcome = self._auto_execution_router.route(op)
+                    auto_execution_outcomes = [outcome]
+                    await self._persist_auto_execution_state(outcome)
+                    self.ts.auto_execution_outcomes = list(getattr(self.ts, "auto_execution_outcomes", []) or []) + auto_execution_outcomes
+                    await _maybe_await(self.db_manager.task.add_tasks([self.ts]))
             event_time = int(getattr(op, "dtime", datetime.now().timestamp()))
             await publish_event(strategy_execution_event(self.tcfg.id, event_time, ret, [op]))
             for outcome in auto_execution_outcomes:
