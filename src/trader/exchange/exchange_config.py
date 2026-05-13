@@ -16,7 +16,11 @@ class ExchangeConfig(BaseModel):
     driver: ExchangeDriverType = ExchangeDriverType.CCXT
     api_key: str = ""
     api_secret: str = ""
+    # Legacy shared base path (kept for backward compatibility).
     base_path: str = ""
+    # Optional explicit endpoints per trading path.
+    spot_base_path: str = ""
+    margin_base_path: str = ""
     margin_mode: MarginMode = MarginMode.SPOT
 
     def with_margin_mode(self, margin_mode: MarginMode) -> "ExchangeConfig":

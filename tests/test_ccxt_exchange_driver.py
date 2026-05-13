@@ -58,7 +58,8 @@ class FakeCcxtClient:
         self.cancel_order_calls.append(payload)
         return {"id": order_id, "symbol": symbol, "status": "canceled"}
 
-    def fetch_open_orders(self, symbol):
+    def fetch_open_orders(self, symbol, since=None, limit=None, params=None):
+        self.fetch_open_orders_call = (symbol, since, limit, params or {})
         return [
             {
                 "id": "stop-1",
@@ -88,6 +89,10 @@ class FakeCcxtClient:
                 "info": {"orderListId": 77},
             },
         ]
+
+    def sapiPostMarginRepay(self, params):
+        self.last_margin_repay_params = params
+        return {"tranId": 123456, **params}
 
 
 def _driver():
@@ -155,6 +160,21 @@ def test_ccxt_driver_places_market_orders_with_normalized_amount_and_symbol():
     assert driver.client.create_order_calls == [("BTC/USDT", "market", "buy", 0.25, None, {})]
 
 
+def test_ccxt_cross_margin_close_maps_to_buy_auto_repay_not_sell():
+    client = FakeCcxtClient()
+    driver = CcxtExchangeDriver(
+        ExchangeConfig(ty=ExchangeType.BINANCE, driver=ExchangeDriverType.CCXT, margin_mode=MarginMode.CROSS_MARGIN),
+        client=client,
+    )
+
+    payload = driver.new_order(Symbol("BTC-USDT"), OperateType.CLOSE, 0.250019)
+
+    assert payload["side"] == "buy"
+    assert client.create_order_calls == [
+        ("BTC/USDT", "market", "buy", 0.25, None, {"marginMode": "cross", "sideEffectType": "AUTO_REPAY"})
+    ]
+
+
 def test_ccxt_driver_places_stop_take_profit_and_bracket_orders():
     driver = _driver()
 
@@ -192,3 +212,55 @@ def test_ccxt_driver_cancels_all_open_orders_for_symbol():
         ("tp-1", "BTC/USDT", {}),
         ("stop-oco", "BTC/USDT", {}),
     ]
+
+
+def test_ccxt_cross_margin_open_order_queries_use_margin_mode_params():
+    client = FakeCcxtClient()
+    driver = CcxtExchangeDriver(
+        ExchangeConfig(ty=ExchangeType.BINANCE, driver=ExchangeDriverType.CCXT, margin_mode=MarginMode.CROSS_MARGIN),
+        client=client,
+    )
+
+    orders = driver.get_open_orders(Symbol("BTC-USDT"))
+
+    assert len(orders) == 3
+    assert client.fetch_open_orders_call == ("BTC/USDT", None, None, {"marginMode": "cross"})
+
+
+def test_ccxt_cross_margin_cancel_all_uses_margin_mode_params():
+    client = FakeCcxtClient()
+    driver = CcxtExchangeDriver(
+        ExchangeConfig(ty=ExchangeType.BINANCE, driver=ExchangeDriverType.CCXT, margin_mode=MarginMode.CROSS_MARGIN),
+        client=client,
+    )
+
+    driver.cancel_all_open_orders(Symbol("BTC-USDT"))
+
+    assert client.fetch_open_orders_call == ("BTC/USDT", None, None, {"marginMode": "cross"})
+    assert client.cancel_order_calls == [
+        ("stop-1", "BTC/USDT", {"marginMode": "cross"}),
+        ("tp-1", "BTC/USDT", {"marginMode": "cross"}),
+        ("stop-oco", "BTC/USDT", {"marginMode": "cross"}),
+    ]
+
+
+def test_ccxt_default_type_is_spot_for_cross_margin_to_avoid_futures_endpoint_routing():
+    driver = CcxtExchangeDriver(
+        ExchangeConfig(ty=ExchangeType.BINANCE, driver=ExchangeDriverType.CCXT, margin_mode=MarginMode.CROSS_MARGIN),
+        client=FakeCcxtClient(),
+    )
+    assert driver._default_type() == "spot"
+
+
+def test_ccxt_auto_repay_for_borrow_block_uses_margin_repay_endpoint():
+    client = FakeCcxtClient()
+    driver = CcxtExchangeDriver(
+        ExchangeConfig(ty=ExchangeType.BINANCE, driver=ExchangeDriverType.CCXT, margin_mode=MarginMode.CROSS_MARGIN),
+        client=client,
+    )
+
+    result = driver.auto_repay_for_borrow_block("BTC-USDT")
+
+    assert result["symbol"] == "BTCUSDT"
+    assert "results" in result
+    assert isinstance(result["results"], list)

@@ -12,6 +12,7 @@ from trader.common.logger import Logger
 from trader.common.message import new_add_tasks_msg, new_exit_msg, new_stat_msg
 from trader.database.manager import DatabaseManager
 from trader.exchange.binance.exchange import BinanceExchange
+from trader.exchange.exchange_config import MarginMode
 from trader.statistics.stat import BackTraderStat
 from trader.strategy.trader_result import parse_trader_result
 from trader.task.backtrader_task import BackTraderTask, BacktestSampleResult, build_backtest_sample_spec, run_backtest_sample
@@ -27,7 +28,7 @@ from trader.task.task_config import TaskConfig, parse_task_config
 from trader.task.task_type import TaskType
 from trader.task.trader_task import TraderTask
 from trader.task.update_klines_task import UpdateKlinesTask
-from trader.task.live_startup_self_check import infer_required_margin_mode
+from trader.task.live_startup_self_check import infer_required_margin_mode, task_requires_short_capability
 from trader.utils.symbol_interval import SymbolInterval
 from trader.utils.task_state import TaskState
 
@@ -44,6 +45,9 @@ class TaskManager:
         self.cfg = cfg
         self.db_manager = db_manager
         self.exchange = exchange
+        self._exchange_by_mode: dict[str, BinanceExchange] = {}
+        if getattr(exchange, "margin_mode", None) is not None:
+            self._exchange_by_mode[exchange.margin_mode.value] = exchange
         self.log.info("Init TaskManager")
         self.tasks: dict[int, BaseTask] = {}
         self.async_tasks = []
@@ -56,8 +60,9 @@ class TaskManager:
         if taskcs is not None:
             required_margin_mode = infer_required_margin_mode(taskcs)
             if getattr(self.exchange, "margin_mode", None) is not None and required_margin_mode.value != self.exchange.margin_mode.value:
-                self.log.warning(
-                    f"TaskManager startup requires margin_mode={required_margin_mode.value}, exchange_margin_mode={self.exchange.margin_mode.value}"
+                self.log.info(
+                    f"TaskManager mixed-mode detected: required_margin_mode={required_margin_mode.value}, "
+                    f"default_exchange_margin_mode={self.exchange.margin_mode.value}. Per-task exchange routing enabled."
                 )
         if taskcs:
             if len(taskcs) <= 0:
@@ -94,6 +99,7 @@ class TaskManager:
             return
 
         self.log.info(f"Try to add tasks:{len(taskcs)}")
+        self._ensure_routed_exchanges(taskcs)
 
         async_tasks = []
         bttaskcs = []
@@ -139,18 +145,19 @@ class TaskManager:
 
     async def add_task(self, cfg, queue: Queue):
         task = None
+        task_exchange = self._exchange_for_task(cfg)
         if cfg.ttype == TaskType.TRADER:
-            task = TraderTask(cfg, self.cfg, self.log, self.db_manager, self.exchange)
+            task = TraderTask(cfg, self.cfg, self.log, self.db_manager, task_exchange)
         elif cfg.ttype == TaskType.BACK_TRADER:
-            task = BackTraderTask(cfg, self.cfg, self.log, self.db_manager, self.exchange)
+            task = BackTraderTask(cfg, self.cfg, self.log, self.db_manager, task_exchange)
         elif cfg.ttype == TaskType.UPDATE_KLINES:
-            task = UpdateKlinesTask(cfg, self.cfg, self.log, self.db_manager, self.exchange)
+            task = UpdateKlinesTask(cfg, self.cfg, self.log, self.db_manager, task_exchange)
         elif cfg.ttype == TaskType.CHECK_KLINES:
-            task = CheckKlinesTask(cfg, self.cfg, self.log, self.db_manager, self.exchange)
+            task = CheckKlinesTask(cfg, self.cfg, self.log, self.db_manager, task_exchange)
         elif cfg.ttype == TaskType.IMPORT_CSV:
-            task = ImportCSVTask(cfg, self.cfg, self.log, self.db_manager, self.exchange)
+            task = ImportCSVTask(cfg, self.cfg, self.log, self.db_manager, task_exchange)
         elif cfg.ttype == TaskType.CHECK_KLINES_NUM:
-            task = CheckKlinesNumTask(cfg, self.cfg, self.log, self.db_manager, self.exchange)
+            task = CheckKlinesNumTask(cfg, self.cfg, self.log, self.db_manager, task_exchange)
         elif cfg.ttype == TaskType.DEBUG:
             task = DebugTask(cfg, self.cfg, self.log, self.db_manager)
 
@@ -160,6 +167,45 @@ class TaskManager:
         self.tasks[task.id()] = task
 
         await task.start(queue)
+
+    def _exchange_for_task(self, cfg: TaskConfig) -> BinanceExchange:
+        if cfg.ttype != TaskType.TRADER:
+            return self.exchange
+        target_mode = MarginMode.CROSS_MARGIN if task_requires_short_capability(cfg) else MarginMode.SPOT
+        cached = self._exchange_by_mode.get(target_mode.value)
+        if cached is not None:
+            return cached
+        try:
+            routed = self._exchange_for_mode(target_mode)
+            self.log.info(
+                f"TaskManager created routed exchange for mode={target_mode.value} task_id={cfg.id} strategy={cfg.strategy_name()}"
+            )
+            return routed
+        except Exception as exc:
+            self.log.warning(
+                f"TaskManager failed to create routed exchange for mode={target_mode.value}, falling back to default exchange: {exc}"
+            )
+            return self.exchange
+
+    def _ensure_routed_exchanges(self, taskcs: list[TaskConfig]) -> None:
+        need_spot = any(tc.ttype == TaskType.TRADER and not task_requires_short_capability(tc) for tc in taskcs)
+        need_margin = any(tc.ttype == TaskType.TRADER and task_requires_short_capability(tc) for tc in taskcs)
+        if need_spot:
+            _ = self._exchange_by_mode.get(MarginMode.SPOT.value) or self._exchange_for_mode(MarginMode.SPOT)
+        if need_margin:
+            _ = self._exchange_by_mode.get(MarginMode.CROSS_MARGIN.value) or self._exchange_for_mode(MarginMode.CROSS_MARGIN)
+
+    def _exchange_for_mode(self, mode: MarginMode) -> BinanceExchange:
+        cached = self._exchange_by_mode.get(mode.value)
+        if cached is not None:
+            return cached
+        base_cfg = getattr(self.exchange, "cfg", None)
+        if base_cfg is None or not hasattr(base_cfg, "with_margin_mode"):
+            return self.exchange
+        cloned_cfg = base_cfg.with_margin_mode(mode)
+        routed = BinanceExchange(cloned_cfg, self.log)
+        self._exchange_by_mode[mode.value] = routed
+        return routed
 
     async def add_backtrader_task(self, cfgs, queue: Queue):
         runtimes = self._optimization_runtimes(cfgs)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import ROUND_DOWN, Decimal
+import os
 from typing import Any
 
 try:
@@ -11,7 +12,7 @@ except Exception:  # pragma: no cover - optional until dependency is installed
 
 from trader.common.logger import default
 from trader.exchange.balance import Balance
-from trader.exchange.exchange_config import ExchangeConfig
+from trader.exchange.exchange_config import ExchangeConfig, MarginMode
 from trader.exchange.exchange_type import ExchangeType
 from trader.execution.models import ExecutionSide, ExecutionStatus, PositionView, ProtectionIntentType, ProtectionOrderView
 from trader.utils.kline import Kline
@@ -209,7 +210,7 @@ class CcxtExchangeDriver:
             self._order_side(op),
             self._normalize_amount(symbol, quantity),
             None,
-            self._order_params(),
+            self._order_params({"sideEffectType": "AUTO_REPAY"} if op == OperateType.CLOSE else None),
         )
 
     def new_stop_order(self, symbol: Symbol, op: OperateType, quantity: float, stop_price: float):
@@ -238,7 +239,7 @@ class CcxtExchangeDriver:
         cancel_order = getattr(self.client, "cancel_order", None)
         if cancel_order is None:
             return None
-        return cancel_order(order_id, self._ccxt_symbol(symbol.name()))
+        return cancel_order(order_id, self._ccxt_symbol(symbol.name()), self._margin_order_params())
 
     def delete_order(self, symbol: str):
         return self.cancel_order(self._symbol_from_any(symbol), symbol)
@@ -250,17 +251,25 @@ class CcxtExchangeDriver:
             return []
         market_symbol = self._ccxt_symbol(symbol.name())
         canceled = []
-        for order in fetch_open_orders(market_symbol) or []:
+        params = self._margin_order_params()
+        for order in fetch_open_orders(market_symbol, None, None, params) or []:
             order_id = self._as_dict(order).get("id")
             if order_id:
-                canceled.append(cancel_order(str(order_id), market_symbol))
+                canceled.append(cancel_order(str(order_id), market_symbol, params))
         return canceled
+
+    def get_open_orders(self, symbol: Symbol) -> list[dict[str, Any]]:
+        fetch_open_orders = getattr(self.client, "fetch_open_orders", None)
+        if fetch_open_orders is None:
+            return []
+        orders = fetch_open_orders(self._ccxt_symbol(symbol.name()), None, None, self._margin_order_params())
+        return [self._as_dict(order) for order in orders or []]
 
     def get_open_protection_orders(self, symbol: Symbol) -> list[ProtectionOrderView]:
         fetch_open_orders = getattr(self.client, "fetch_open_orders", None)
         if fetch_open_orders is None:
             return []
-        orders = fetch_open_orders(self._ccxt_symbol(symbol.name()))
+        orders = fetch_open_orders(self._ccxt_symbol(symbol.name()), None, None, self._margin_order_params())
         protection_orders: list[ProtectionOrderView] = []
         grouped: dict[str, list[dict[str, Any]]] = {}
         for order in orders or []:
@@ -279,6 +288,80 @@ class CcxtExchangeDriver:
     def verify_order_ids(self, symbol: Symbol, order_ids: list[str]) -> bool:
         return bool(order_ids) and all(isinstance(order_id, str) and order_id.strip() for order_id in order_ids)
 
+    def auto_repay_for_borrow_block(self, symbol: str) -> dict[str, Any]:
+        if self.cfg.margin_mode == MarginMode.SPOT:
+            return {"ok": False, "reason": "spot_mode_no_margin_repay"}
+        repay_fn = getattr(self.client, "sapiPostMarginRepay", None) or getattr(self.client, "sapi_post_margin_repay", None)
+        if repay_fn is None:
+            return {"ok": False, "reason": "margin_repay_endpoint_missing"}
+
+        symbol_obj = self._symbol_from_any(symbol)
+        assets = [symbol_obj.base, symbol_obj.quote]
+        max_repay = float(os.getenv("CHAINERTRADER_MARGIN_AUTO_REPAY_MAX_PER_ASSET", "50") or 50.0)
+        min_repay = float(os.getenv("CHAINERTRADER_MARGIN_AUTO_REPAY_MIN_AMOUNT", "0.000001") or 0.000001)
+
+        account = self.get_account() or {}
+        info = account.get("info", {}) if isinstance(account, dict) else {}
+        user_assets = info.get("userAssets", []) if isinstance(info, dict) else []
+        by_asset: dict[str, dict[str, Any]] = {}
+        for row in user_assets or []:
+            if isinstance(row, dict) and row.get("asset"):
+                by_asset[str(row["asset"])] = row
+
+        results: list[dict[str, Any]] = []
+        any_repaid = False
+        for asset in assets:
+            row = by_asset.get(asset, {})
+            borrowed = float(row.get("borrowed", 0.0) or 0.0)
+            interest = float(row.get("interest", 0.0) or 0.0)
+            free = float(row.get("free", 0.0) or 0.0)
+            liability = max(borrowed + interest, 0.0)
+            repay_amount = min(liability, free, max_repay)
+            if repay_amount < min_repay:
+                results.append(
+                    {
+                        "asset": asset,
+                        "status": "skipped",
+                        "borrowed": borrowed,
+                        "interest": interest,
+                        "free": free,
+                        "reason": "no_repayable_liability_or_free",
+                    }
+                )
+                continue
+            try:
+                payload = repay_fn({"asset": asset, "amount": self._format_decimal_amount(repay_amount)})
+                results.append(
+                    {
+                        "asset": asset,
+                        "status": "repaid",
+                        "amount": repay_amount,
+                        "borrowed": borrowed,
+                        "interest": interest,
+                        "free": free,
+                        "payload": payload,
+                    }
+                )
+                any_repaid = True
+            except Exception as exc:
+                results.append(
+                    {
+                        "asset": asset,
+                        "status": "error",
+                        "amount": repay_amount,
+                        "borrowed": borrowed,
+                        "interest": interest,
+                        "free": free,
+                        "error": str(exc),
+                    }
+                )
+        return {
+            "ok": any_repaid,
+            "symbol": symbol_obj.name(),
+            "max_repay_per_asset": max_repay,
+            "results": results,
+        }
+
     def _build_client(self):
         if self._client_factory is not None:
             return self._client_factory(self.cfg)
@@ -286,7 +369,16 @@ class CcxtExchangeDriver:
             raise ImportError("ccxt is required to use the ccxt exchange driver")
         exchange_id = self.cfg.ty.name.lower() if hasattr(self.cfg.ty, "name") else "binance"
         exchange_cls = getattr(ccxt, exchange_id)
-        options = {"defaultType": self._default_type()}
+        options = {
+            "defaultType": self._default_type(),
+            # Keep live smoke routing on spot/margin APIs only.
+            # Some ccxt versions probe delivery/futures markets during load_markets
+            # unless fetch types are explicitly constrained.
+            "fetchMarkets": {"types": ["spot"]},
+            # Reduce Binance -1021 timestamp drift failures in live/cleanup paths.
+            "adjustForTimeDifference": True,
+            "recvWindow": int(os.getenv("CHAINERTRADER_BINANCE_RECV_WINDOW", "20000") or 20000),
+        }
         return exchange_cls(
             {
                 "apiKey": self.cfg.api_key,
@@ -298,7 +390,9 @@ class CcxtExchangeDriver:
         )
 
     def _default_type(self) -> str:
-        return "spot" if self.cfg.margin_mode.value == "spot" else "margin"
+        # Binance cross/isolated margin should use spot market type with margin params.
+        # Using defaultType=margin may route to futures-like endpoints in some ccxt versions.
+        return "spot"
 
     def _ensure_markets_loaded(self):
         load_markets = getattr(self.client, "load_markets", None)
@@ -319,6 +413,13 @@ class CcxtExchangeDriver:
             params.setdefault("marginMode", "isolated")
             params.setdefault("sideEffectType", "AUTO_BORROW_REPAY")
         return params
+
+    def _margin_order_params(self) -> dict[str, Any]:
+        if self.cfg.margin_mode.value == "cross_margin":
+            return {"marginMode": "cross"}
+        if self.cfg.margin_mode.value == "isolated_margin":
+            return {"marginMode": "isolated"}
+        return {}
 
     def _ccxt_symbol(self, symbol: str) -> str:
         if "/" in symbol:
@@ -344,7 +445,9 @@ class CcxtExchangeDriver:
     def _order_side(self, op: OperateType) -> str:
         if op in (OperateType.BUY, OperateType.LONG):
             return "buy"
-        if op in (OperateType.SELL, OperateType.SHORT, OperateType.CLOSE):
+        if op == OperateType.CLOSE:
+            return "buy" if self.cfg.margin_mode != MarginMode.SPOT else "sell"
+        if op in (OperateType.SELL, OperateType.SHORT):
             return "sell"
         return op.name.lower()
 
@@ -401,6 +504,11 @@ class CcxtExchangeDriver:
             return float(value)
         quant = Decimal("1").scaleb(-precision)
         return float((Decimal(str(value)) / quant).to_integral_value(rounding=ROUND_DOWN) * quant)
+
+    def _format_decimal_amount(self, value: float) -> str:
+        quantized = Decimal(str(value)).quantize(Decimal("0.00000001"), rounding=ROUND_DOWN)
+        text = format(quantized, "f")
+        return text.rstrip("0").rstrip(".") if "." in text else text
 
     def _rows_to_klines(
         self,

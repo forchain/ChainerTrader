@@ -145,12 +145,21 @@ class BinanceExchange:
         return self.server_time - datetime.now().timestamp()
 
     def _has_valid_margin_base_path(self) -> bool:
-        base_path = getattr(self.cfg, "base_path", None)
+        base_path = self._margin_base_path()
         if not base_path:
             return False
 
         parsed = urlparse(base_path)
         return bool(parsed.scheme and parsed.netloc)
+
+    def _margin_base_path(self) -> str:
+        margin_path = getattr(self.cfg, "margin_base_path", None)
+        if margin_path:
+            return str(margin_path)
+        legacy = getattr(self.cfg, "base_path", None)
+        if legacy:
+            return str(legacy)
+        return ""
 
     def get_klines(
         self,
@@ -687,6 +696,17 @@ class BinanceExchange:
             return False
         # For now, we trust that if we got IDs back from an order placement, they are valid.
         return all(isinstance(oid, str) and len(oid) > 0 for oid in order_ids)
+
+    def get_open_orders(self, symbol: Symbol):
+        if self._use_ccxt():
+            return self.ccxt_driver.get_open_orders(symbol)
+        if self.margin_mode != MarginMode.SPOT:
+            response = MarginTradingManager(self.cfg, self.log).client.rest_api.query_margin_accounts_open_orders(
+                symbol=symbol.name()
+            )
+            return response.data()
+        response = self.spot_client.rest_api.get_open_orders(symbol=symbol.name())
+        return response.data()
 
     def delete_order(self, symbol: str):
         if self._use_ccxt():

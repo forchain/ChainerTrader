@@ -298,6 +298,29 @@ class BinanceLiveExecutionGateway(ExecutionGateway):
         method = getattr(self.exchange, "replace_stop_order", None)
         if method is None:
             return _unsupported(intent.intent_id, intent.operation_id, GatewayCapability.BREAKEVEN_REPLACEMENT, GatewayMode.BINANCE_LIVE)
+        if not str(intent.replacement_of_order_id or "").strip():
+            event = ExecutionEvent(
+                event_type=ExecutionEventType.PROTECTION_MISSING,
+                gateway=GatewayMode.BINANCE_LIVE,
+                staged_execution_mode=self.staged_execution_mode,
+                intent_id=intent.intent_id,
+                operation_id=intent.operation_id,
+                symbol=intent.symbol,
+                trade_id=intent.trade_id,
+                status=ExecutionStatus.FAILED,
+                reason=ExecutionReason.PROTECTION_MISSING,
+                quantity=intent.quantity,
+                price=intent.stop_price,
+                metadata={"native": True, "missing": "replacement_of_order_id"},
+            )
+            return ExecutionResult(
+                intent_id=intent.intent_id,
+                operation_id=intent.operation_id,
+                status=ExecutionStatus.FAILED,
+                reason=ExecutionReason.PROTECTION_MISSING,
+                events=[event],
+                metadata={"missing": "replacement_of_order_id"},
+            )
         side = self._protection_side(intent)
         payload = method(_symbol_arg(intent.symbol), side, intent.replacement_of_order_id, intent.quantity, intent.stop_price)
         return self._native_protection_result(intent, payload, event_type=ExecutionEventType.PROTECTION_REPLACED)

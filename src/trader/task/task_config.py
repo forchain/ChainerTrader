@@ -6,7 +6,11 @@ from trader.common import path
 from trader.common.common import parse_datetime
 from trader.task.optimization import expand_parameter_space, has_parameter_search, make_optimization_run_id, make_param_id
 from trader.task.task_type import TaskType, parse_task_type
-from trader.live.auto_execution import normalize_live_execution_mode, normalize_live_short_execution
+from trader.live.auto_execution import (
+    normalize_live_execution_mode,
+    normalize_live_short_execution,
+    normalize_margin_borrow_block_policy,
+)
 from trader.utils.symbol_interval import Interval, SymbolInterval
 from trader.utils.symbols_interval import SymbolsInterval
 
@@ -67,6 +71,7 @@ class TaskConfig:
         live_data_mode: str = "polling",
         live_trade_max_notional: float = 0.0,
         live_short_execution: str = "disabled",
+        live_margin_borrow_block_policy: str = "auto_repay_then_retry_once",
     ):
         self.ttype = ttype
         self.csv = csv
@@ -87,6 +92,7 @@ class TaskConfig:
         self.live_data_mode = str(live_data_mode or "polling").strip().lower()
         self.live_trade_max_notional = float(live_trade_max_notional or 0.0)
         self.live_short_execution = normalize_live_short_execution(live_short_execution)
+        self.live_margin_borrow_block_policy = normalize_margin_borrow_block_policy(live_margin_borrow_block_policy)
         self.requires_short_capability = infer_strategy_requires_short(self.strategy_params, self.live_short_execution)
 
         self.id = id
@@ -130,6 +136,7 @@ class TaskConfig:
             "live_data_mode": self.live_data_mode,
             "live_trade_max_notional": self.live_trade_max_notional,
             "live_short_execution": self.live_short_execution,
+            "live_margin_borrow_block_policy": self.live_margin_borrow_block_policy,
             "requires_short_capability": self.requires_short_capability,
         }
 
@@ -204,6 +211,9 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
         live_data_mode = str(tcd.get("live_data_mode", "polling")).strip().lower()
         live_trade_max_notional = float(tcd.get("live_trade_max_notional", 0.0) or 0.0)
         live_short_execution = normalize_live_short_execution(tcd.get("live_short_execution", "disabled"))
+        live_margin_borrow_block_policy = normalize_margin_borrow_block_policy(
+            tcd.get("live_margin_borrow_block_policy", "auto_repay_then_retry_once")
+        )
 
         csv = None
         if "csv" in tcd:
@@ -269,6 +279,7 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
                     live_data_mode=live_data_mode,
                     live_trade_max_notional=live_trade_max_notional,
                     live_short_execution=live_short_execution,
+                    live_margin_borrow_block_policy=live_margin_borrow_block_policy,
                 )
                 ret.append(tc)
                 last_task_id = tc.id
@@ -296,6 +307,7 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
                             live_data_mode=live_data_mode,
                             live_trade_max_notional=live_trade_max_notional,
                             live_short_execution=live_short_execution,
+                            live_margin_borrow_block_policy=live_margin_borrow_block_policy,
                         )
                         ret.append(tc)
                         last_task_id = tc.id
@@ -319,6 +331,7 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
                         live_data_mode=live_data_mode,
                         live_trade_max_notional=live_trade_max_notional,
                         live_short_execution=live_short_execution,
+                        live_margin_borrow_block_policy=live_margin_borrow_block_policy,
                     )
                     ret.append(tc)
                     last_task_id = tc.id

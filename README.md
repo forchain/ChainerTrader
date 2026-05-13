@@ -489,22 +489,35 @@ python -m trader \
   --exchange=BINANCE
 ```
 
-For real-order smoke testing, use a dedicated exchange key, a minimal notional, and explicit operator opt-in. The end-to-end Binance live smoke test places real orders through the same live gateway used by `small_live_auto`; it covers Chainer-style entry, stop/take-profit protection, breakeven stop replacement, close, execution-state records, and MACD triple divergence style signal/framework metadata. The smoke defaults to the CCXT driver; set `CHAINERTRADER_LIVE_SMOKE_DRIVER=binance_native` only when deliberately testing the legacy Binance SDK path. Spot long testing is enabled by default; cross-margin short testing is disabled unless explicitly opted in.
+For real-order smoke testing, use a dedicated exchange key, a minimal notional, and explicit operator opt-in. The end-to-end Binance live smoke test places real orders through the same live gateway used by `small_live_auto`; it covers Chainer-style entry, stop/take-profit protection, breakeven stop replacement, close, execution-state records, and MACD triple divergence style signal/framework metadata. The smoke defaults to the CCXT driver; set `CHAINERTRADER_LIVE_SMOKE_DRIVER=binance_native` only when deliberately testing the legacy Binance SDK path.
+
+The black-box acceptance contract is strict:
+- single run must cover both spot long and cross-margin short flows
+- `TRADER_DB` must be configured because execution-state closure is part of acceptance
+- short verification must run with `live_short_execution=margin_cross`
+- report output must be validated against Binance Web order/trade history
 
 ```bash
 export BINANCE_API_KEY="..."
 export BINANCE_API_SECRET="..."
+export TRADER_DB="sqlite://data/trader.db"
 export CHAINERTRADER_SMALL_LIVE_MAX_NOTIONAL=11
 export CHAINERTRADER_SMALL_LIVE_HARD_LIMIT=25
 export CHAINERTRADER_LIVE_SMOKE_SYMBOL=BTC-USDT
 export CHAINERTRADER_LIVE_SMOKE_DRIVER=ccxt
+export CHAINERTRADER_LIVE_SMOKE_ENABLE_SPOT=1
+export CHAINERTRADER_LIVE_SMOKE_ENABLE_MARGIN=1
 
-# Spot long only: BUY -> bracket protection -> replace stop -> cancel protection -> SELL.
+# Required dual-flow acceptance: spot long + margin short in one run.
 scripts/run_binance_live_smoke_e2e.sh
-
-# Optional cross-margin short flow: SHORT -> buy-side bracket protection -> replace stop -> cancel protection -> CLOSE.
-CHAINERTRADER_LIVE_SMOKE_ENABLE_MARGIN=1 scripts/run_binance_live_smoke_e2e.sh
 ```
+
+Manual Binance Web checks after the run:
+- Spot Order History contains `spot_long_entry` and `spot_long_close` `order_id`.
+- Margin Order History contains `margin_short_entry` and `margin_short_close` `order_id`.
+- Open Orders for the symbol has no residual protection orders after cancel steps.
+- Trade/Fee history has fills and fees matching submitted entry/close orders.
+- The run report includes execution-state records for entry/protection/replace/close.
 
 The legacy guard-only smoke remains available through `CHAINERTRADER_ENABLE_SMALL_LIVE_SMOKE=1`, but it only validates opt-in and configuration gates; use `scripts/run_binance_live_smoke_e2e.sh` for real exchange behavior.
 

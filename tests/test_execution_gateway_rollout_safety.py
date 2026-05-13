@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from trader.execution import ExecutionEventType, ExecutionSide
+from trader.execution import ExecutionEventType, ExecutionReason, ExecutionSide, ExecutionStatus
 from trader.execution.gateways import BacktraderExecutionGateway, BinanceLiveExecutionGateway
 from trader.strategy.execution_kernel import LegacyStrategyExecutionAdapter
 from trader.utils.operate import Operate, OperateType
@@ -42,6 +42,7 @@ def test_macd_triple_divergence_flow_has_portable_backtrader_and_live_gateway_ev
     breakeven_op = Operate(OperateType.RISK_UPDATE, 1_714_281_660, 100000.0)
     breakeven_op.signal_event_id = "macd-triple-divergence-signal-1-breakeven"
     breakeven_op.framework_trade = {"trade_id": "trade-1", "direction": "LONG"}
+    breakeven_op.protection_order_id = "stop-1"
     breakeven_op.breakeven_new_stop = 100000.0
     close_op = Operate(OperateType.SELL, 1_714_281_720, 109000.0)
     close_op.signal_event_id = "macd-triple-divergence-signal-1-close"
@@ -77,7 +78,24 @@ class FakeLiveExchange:
         return {"orders": [{"orderId": "stop-1"}, {"orderId": "tp-1"}]}
 
     def replace_stop_order(self, symbol, side, order_id, quantity, stop_price):
+        if not order_id:
+            raise AssertionError("replace_stop_order must not be called without an order_id")
         return {"orderId": "stop-2"}
+
+
+def test_live_gateway_rejects_breakeven_replace_without_existing_protection_order_id():
+    adapter = LegacyStrategyExecutionAdapter(symbol="BTCUSDT", default_quantity=0.25)
+    breakeven_op = Operate(OperateType.RISK_UPDATE, 1_714_281_660, 100000.0)
+    breakeven_op.signal_event_id = "macd-triple-divergence-signal-1-breakeven"
+    breakeven_op.framework_trade = {"trade_id": "trade-1", "direction": "LONG"}
+    breakeven_op.breakeven_new_stop = 100000.0
+
+    breakeven = adapter.risk_intent_from_operation(breakeven_op, trade_id="trade-1", side=ExecutionSide.LONG)
+    result = BinanceLiveExecutionGateway(FakeLiveExchange()).replace_protection(breakeven)
+
+    assert result.status == ExecutionStatus.FAILED
+    assert result.reason == ExecutionReason.PROTECTION_MISSING
+    assert result.gateway_order_id is None
 
 
 @pytest.mark.skipif(os.getenv("CHAINERTRADER_ENABLE_SMALL_LIVE_SMOKE") != "1", reason="small live smoke requires explicit opt-in")

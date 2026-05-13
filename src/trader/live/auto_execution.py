@@ -37,6 +37,11 @@ class LiveShortExecution(str, Enum):
     DISABLED = "disabled"
     MARGIN_CROSS = "margin_cross"
 
+class MarginBorrowBlockPolicy(str, Enum):
+    SKIP_SHORT_CONTINUE = "skip_short_continue"
+    AUTO_REPAY_THEN_RETRY_ONCE = "auto_repay_then_retry_once"
+    HARD_FAIL_STOP_TASK = "hard_fail_stop_task"
+
 
 class AutoExecutionStatus(str, Enum):
     SUBMITTED = "submitted"
@@ -48,6 +53,11 @@ REAL_AUTO_MODES = {LiveExecutionMode.SMALL_LIVE_AUTO.value, LiveExecutionMode.FU
 STAGED_AUTO_MODES = set(REAL_AUTO_MODES)
 SUPPORTED_LIVE_EXECUTION_MODES = {LiveExecutionMode.MANUAL_NOTIFY.value, *STAGED_AUTO_MODES}
 SUPPORTED_SHORT_EXECUTION_MODES = {LiveShortExecution.DISABLED.value, LiveShortExecution.MARGIN_CROSS.value}
+SUPPORTED_MARGIN_BORROW_BLOCK_POLICIES = {
+    MarginBorrowBlockPolicy.SKIP_SHORT_CONTINUE.value,
+    MarginBorrowBlockPolicy.AUTO_REPAY_THEN_RETRY_ONCE.value,
+    MarginBorrowBlockPolicy.HARD_FAIL_STOP_TASK.value,
+}
 
 
 @dataclass
@@ -118,6 +128,14 @@ def normalize_live_short_execution(value: str | LiveShortExecution | None) -> st
     return mode
 
 
+def normalize_margin_borrow_block_policy(value: str | MarginBorrowBlockPolicy | None) -> str:
+    raw = value.value if isinstance(value, MarginBorrowBlockPolicy) else value
+    mode = str(raw or MarginBorrowBlockPolicy.SKIP_SHORT_CONTINUE.value).strip().lower()
+    if mode not in SUPPORTED_MARGIN_BORROW_BLOCK_POLICIES:
+        raise ValueError(f"unsupported live_margin_borrow_block_policy: {raw}")
+    return mode
+
+
 def is_manual_notify_mode(value: str | None) -> bool:
     return normalize_live_execution_mode(value) == LiveExecutionMode.MANUAL_NOTIFY.value
 
@@ -156,8 +174,13 @@ class AutoExecutionRouter:
         self.log = log
         self.mode = normalize_live_execution_mode(getattr(tcfg, "live_execution_mode", None))
         self.short_execution = normalize_live_short_execution(getattr(tcfg, "live_short_execution", None))
+        self.margin_borrow_block_policy = normalize_margin_borrow_block_policy(
+            getattr(tcfg, "live_margin_borrow_block_policy", None)
+        )
         self.requires_short_capability = task_requires_short_capability(tcfg)
         self.real_short_position = 0.0
+        self.real_long_position = 0.0
+        self._protection_order_ids_by_trade: dict[str, str] = {}
         self._seen_operation_ids: set[str] = set()
         self.outcomes: list[AutoExecutionOutcome] = []
 
@@ -221,7 +244,37 @@ class AutoExecutionRouter:
 
     def _record(self, outcome: AutoExecutionOutcome) -> AutoExecutionOutcome:
         self.outcomes.append(outcome)
+        self._audit_outcome(outcome)
         return outcome
+
+    def _audit_outcome(self, outcome: AutoExecutionOutcome) -> None:
+        logger = getattr(self, "log", None)
+        if logger is None:
+            return
+        order_id = self._exchange_order_id(outcome.exchange_order)
+        payload = {
+            "task_id": outcome.task_id,
+            "mode": outcome.mode,
+            "market": outcome.market,
+            "operation_id": outcome.operation_id,
+            "operation_type": outcome.operation_type,
+            "status": outcome.status.value if isinstance(outcome.status, Enum) else str(outcome.status),
+            "reason": outcome.reason,
+            "order_id": order_id,
+            "effective_quantity": outcome.effective_quantity,
+            "effective_notional": outcome.effective_notional,
+        }
+        if outcome.status == AutoExecutionStatus.SUBMITTED:
+            if not order_id:
+                logger.error(f"[auto_execution] submitted_without_order_id {payload}")
+            else:
+                logger.info(f"[auto_execution] submitted {payload}")
+            return
+        if outcome.status == AutoExecutionStatus.FAILED:
+            logger.error(f"[auto_execution] failed {payload}")
+            return
+        if outcome.status == AutoExecutionStatus.SKIPPED and str(outcome.reason or "").startswith("margin_borrow_blocked_-3006"):
+            logger.warning(f"[auto_execution] margin_borrow_blocked {payload}")
 
     def _gateway_mode(self) -> GatewayMode:
         if self.mode == LiveExecutionMode.MANUAL_NOTIFY.value:
@@ -355,10 +408,13 @@ class AutoExecutionRouter:
                     effective_quantity=quantity,
                 )
             )
-        return self._submit_spot(op, notional, quantity, op.otype)
+        outcome = self._submit_spot(op, notional, quantity, op.otype)
+        if outcome.status == AutoExecutionStatus.SUBMITTED and op.otype in (OperateType.BUY, OperateType.LONG):
+            self.real_long_position += quantity
+        return outcome
 
     def _route_real_exit(self, op, price: float) -> AutoExecutionOutcome:
-        base_balance = self._balance(self.tcfg.symbol_interval.sy.base)
+        base_balance = self.real_long_position if self.real_long_position > 0 else self._balance(self.tcfg.symbol_interval.sy.base)
         if base_balance <= 0:
             return self._record(self._outcome(op, AutoExecutionStatus.SKIPPED, reason="empty_or_unknown_position"))
         notional = base_balance * price
@@ -377,7 +433,10 @@ class AutoExecutionRouter:
             )
         if self.requires_short_capability and self._margin_ready():
             return self._submit_margin(op, notional, base_balance, OperateType.SELL)
-        return self._submit_spot(op, notional, base_balance, OperateType.SELL)
+        outcome = self._submit_spot(op, notional, base_balance, OperateType.SELL)
+        if outcome.status == AutoExecutionStatus.SUBMITTED and self.real_long_position > 0:
+            self.real_long_position = 0.0
+        return outcome
 
     def _route_real_short(self, op, price: float) -> AutoExecutionOutcome:
         notional = self._requested_notional()
@@ -525,6 +584,7 @@ class AutoExecutionRouter:
             records.append(self._state_record_for_risk(selection.risk, protection_result, op))
             if protection_result.accepted:
                 native_protection = True
+                self._remember_protection_order(selection.risk, protection_result)
             else:
                 status = AutoExecutionStatus.FAILED
                 reason = str(protection_result.reason or "protection_failed")
@@ -556,12 +616,13 @@ class AutoExecutionRouter:
             quantity = self.real_short_position
             empty_reason = "unknown_short_exposure"
         else:
-            quantity = self._balance(self.tcfg.symbol_interval.sy.base)
+            quantity = self.real_long_position if self.real_long_position > 0 else self._balance(self.tcfg.symbol_interval.sy.base)
             empty_reason = "empty_or_unknown_position"
         if quantity <= 0:
             return self._record(self._outcome(op, AutoExecutionStatus.SKIPPED, reason=empty_reason))
         notional = quantity * price
         try:
+            self._attach_known_protection_order_id(op)
             selection = select_order_semantics(op, symbol=self.market, side=side, quantity=quantity, notional=notional)
             if selection.risk is None:
                 return self._record(self._outcome(op, AutoExecutionStatus.SKIPPED, reason="missing_protection_intent"))
@@ -620,6 +681,15 @@ class AutoExecutionRouter:
                 return self._record(self._outcome(op, AutoExecutionStatus.SKIPPED, reason="unsupported_operation"))
             gateway = BinanceLiveExecutionGateway(self.exchange, staged_execution_mode=self.mode)
             result = gateway.open_position(selection.order) if order_type in (OperateType.BUY, OperateType.SHORT) else gateway.close_position(selection.order)
+            if order_type == OperateType.SHORT and self._is_margin_borrow_block_result(result):
+                return self._handle_margin_borrow_block(
+                    op=op,
+                    notional=notional,
+                    quantity=quantity,
+                    gateway=gateway,
+                    selection=selection,
+                    initial_result=result,
+                )
             protection_result = gateway.place_protection(selection.risk) if result.accepted and selection.risk is not None else None
             fail_safe_result = self._fail_safe_close(gateway, selection.order, protection_result)
         except OrderSemanticsError as exc:
@@ -656,6 +726,7 @@ class AutoExecutionRouter:
             records.append(self._state_record_for_risk(selection.risk, protection_result, op))
             if protection_result.accepted:
                 native_protection = True
+                self._remember_protection_order(selection.risk, protection_result)
             else:
                 status = AutoExecutionStatus.FAILED
                 reason = str(protection_result.reason or "protection_failed")
@@ -678,12 +749,169 @@ class AutoExecutionRouter:
             ).with_native_protection(native_protection)
         )
 
+    def _handle_margin_borrow_block(self, *, op, notional: float, quantity: float, gateway: BinanceLiveExecutionGateway, selection, initial_result) -> AutoExecutionOutcome:
+        policy = self.margin_borrow_block_policy
+        base_reason = f"margin_borrow_blocked_-3006 policy={policy}"
+        initial_events = [event.to_dict() for event in initial_result.events]
+        initial_records = [self._state_record_for_order(selection.order, initial_result, op)]
+        if policy == MarginBorrowBlockPolicy.HARD_FAIL_STOP_TASK.value:
+            return self._record(
+                self._outcome(
+                    op,
+                    AutoExecutionStatus.FAILED,
+                    reason=base_reason,
+                    requested_notional=notional,
+                    requested_quantity=quantity,
+                    effective_notional=notional,
+                    effective_quantity=quantity,
+                    exchange_order={"orderId": initial_result.gateway_order_id} if initial_result.gateway_order_id is not None else None,
+                    execution_events=initial_events,
+                    execution_state_records=initial_records,
+                )
+            )
+        if policy == MarginBorrowBlockPolicy.SKIP_SHORT_CONTINUE.value:
+            return self._record(
+                self._outcome(
+                    op,
+                    AutoExecutionStatus.SKIPPED,
+                    reason=base_reason,
+                    requested_notional=notional,
+                    requested_quantity=quantity,
+                    effective_notional=notional,
+                    effective_quantity=quantity,
+                    execution_events=initial_events,
+                    execution_state_records=initial_records,
+                )
+            )
+        repay = self._attempt_margin_auto_repay_for_block(selection.order.symbol)
+        if not repay.get("ok"):
+            return self._record(
+                self._outcome(
+                    op,
+                    AutoExecutionStatus.SKIPPED,
+                    reason=f"{base_reason} auto_repay_unavailable",
+                    requested_notional=notional,
+                    requested_quantity=quantity,
+                    effective_notional=notional,
+                    effective_quantity=quantity,
+                    execution_events=initial_events,
+                    execution_state_records=initial_records,
+                )
+            )
+        retry_result = gateway.open_position(selection.order)
+        retry_events = [event.to_dict() for event in retry_result.events]
+        retry_records = [self._state_record_for_order(selection.order, retry_result, op)]
+        if self._is_margin_borrow_block_result(retry_result):
+            return self._record(
+                self._outcome(
+                    op,
+                    AutoExecutionStatus.SKIPPED,
+                    reason=f"{base_reason} auto_repay_retry_failed",
+                    requested_notional=notional,
+                    requested_quantity=quantity,
+                    effective_notional=notional,
+                    effective_quantity=quantity,
+                    execution_events=initial_events + retry_events,
+                    execution_state_records=initial_records + retry_records,
+                )
+            )
+        if not retry_result.accepted:
+            return self._record(
+                self._outcome(
+                    op,
+                    AutoExecutionStatus.FAILED,
+                    reason=f"{base_reason} retry_non_borrow_failure",
+                    requested_notional=notional,
+                    requested_quantity=quantity,
+                    effective_notional=notional,
+                    effective_quantity=quantity,
+                    execution_events=initial_events + retry_events,
+                    execution_state_records=initial_records + retry_records,
+                )
+            )
+        protection_result = gateway.place_protection(selection.risk) if selection.risk is not None else None
+        events = initial_events + retry_events
+        records = initial_records + retry_records
+        native_protection = False
+        status = AutoExecutionStatus.SUBMITTED
+        reason = f"{base_reason} auto_repay_retry_passed"
+        if protection_result is not None:
+            events.extend(event.to_dict() for event in protection_result.events)
+            records.append(self._state_record_for_risk(selection.risk, protection_result, op))
+            if protection_result.accepted:
+                native_protection = True
+                self._remember_protection_order(selection.risk, protection_result)
+            else:
+                status = AutoExecutionStatus.FAILED
+                reason = f"{base_reason} protection_failed_after_retry"
+        return self._record(
+            self._outcome(
+                op,
+                status,
+                reason=reason,
+                requested_notional=notional,
+                requested_quantity=quantity,
+                effective_notional=notional,
+                effective_quantity=quantity,
+                exchange_order={"orderId": retry_result.gateway_order_id} if retry_result.gateway_order_id is not None else None,
+                execution_events=events,
+                execution_state_records=records,
+            ).with_native_protection(native_protection)
+        )
+
+    def _attempt_margin_auto_repay_for_block(self, symbol: str) -> dict[str, Any]:
+        if self.exchange is None:
+            return {"ok": False, "reason": "exchange_missing"}
+        helper = getattr(self.exchange, "auto_repay_for_borrow_block", None)
+        if callable(helper):
+            try:
+                return dict(helper(symbol))
+            except Exception as exc:
+                return {"ok": False, "reason": str(exc)}
+        return {"ok": False, "reason": "auto_repay_not_supported"}
+
+    def _is_margin_borrow_block_result(self, result) -> bool:
+        if getattr(result, "accepted", False):
+            return False
+        candidates: list[str] = []
+        for event in getattr(result, "events", []) or []:
+            metadata = getattr(event, "metadata", None)
+            if isinstance(metadata, dict):
+                candidates.append(str(metadata.get("raw_payload", "")))
+        candidates.append(str(getattr(result, "metadata", "")))
+        candidates.append(str(getattr(result, "reason", "")))
+        text = " ".join(candidates).lower()
+        return "-3006" in text or "borrow amount has exceed maximum borrow amount" in text
+
     def _risk_update_side(self, op) -> ExecutionSide:
         framework_trade = getattr(op, "framework_trade", None)
         direction = framework_trade.get("direction") if isinstance(framework_trade, dict) else None
         if str(direction or "").upper() == "SHORT":
             return ExecutionSide.SHORT
         return ExecutionSide.LONG
+
+    def _attach_known_protection_order_id(self, op) -> None:
+        if str(getattr(op, "protection_order_id", "") or "").strip():
+            return
+        framework_trade = getattr(op, "framework_trade", None)
+        trade_id = framework_trade.get("trade_id") if isinstance(framework_trade, dict) else None
+        if trade_id is None:
+            return
+        order_id = self._protection_order_ids_by_trade.get(str(trade_id))
+        if order_id:
+            setattr(op, "protection_order_id", order_id)
+
+    def _remember_protection_order(self, intent, result) -> None:
+        trade_id = str(getattr(intent, "trade_id", "") or "").strip()
+        order_id = self._first_gateway_order_id(getattr(result, "gateway_order_id", None))
+        if trade_id and order_id:
+            self._protection_order_ids_by_trade[trade_id] = order_id
+
+    def _first_gateway_order_id(self, value: Any) -> str | None:
+        text = str(value or "").strip()
+        if not text:
+            return None
+        return text.split(",", 1)[0].strip() or None
 
     def _close_intent_for_fail_safe(self, entry_intent: OrderIntent) -> OrderIntent:
         return OrderIntent.close(

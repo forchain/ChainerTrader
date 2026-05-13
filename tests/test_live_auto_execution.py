@@ -77,6 +77,9 @@ class RecordingExchange:
     def is_cross_margin_ready(self):
         return self.margin_ready
 
+    def auto_repay_for_borrow_block(self, symbol):
+        return {"ok": True, "symbol": symbol}
+
 
 def _tcfg(
     mode,
@@ -85,6 +88,7 @@ def _tcfg(
     manual_start_position=0.0,
     live_trade_max_notional=0.0,
     live_short_execution="disabled",
+    live_margin_borrow_block_policy="skip_short_continue",
 ):
     return TaskConfig(
         id=9,
@@ -96,6 +100,7 @@ def _tcfg(
         live_execution_mode=mode,
         live_trade_max_notional=live_trade_max_notional,
         live_short_execution=live_short_execution,
+        live_margin_borrow_block_policy=live_margin_borrow_block_policy,
     )
 
 
@@ -153,6 +158,26 @@ def test_small_live_auto_places_native_protection_for_stop_and_take_profit():
     assert [event["event_type"] for event in outcome.execution_events][-1] == "protection_armed"
     assert [record.order_role for record in outcome.execution_state_records] == ["entry", "bracket"]
     assert [record.status.value for record in outcome.execution_state_records] == ["submitted", "accepted"]
+
+
+def test_small_live_auto_spot_close_uses_router_position_not_account_total_balance():
+    exchange = RecordingExchange(quote_balance=1000.0, base_balance=0.75)
+    router = AutoExecutionRouter(
+        _tcfg(LiveExecutionMode.SMALL_LIVE_AUTO, live_trade_max_notional=25.0),
+        exchange=exchange,
+        cfg=SimpleNamespace(cash=10000.0),
+    )
+
+    entry = router.route(_op(OperateType.BUY, 100.0))
+    close = router.route(_op(OperateType.SELL, 110.0, BASE + 60))
+
+    assert entry.status == AutoExecutionStatus.SUBMITTED
+    assert close.status == AutoExecutionStatus.SUBMITTED
+    assert close.effective_quantity == 0.25
+    assert exchange.new_order_calls == [
+        ("BTCUSDT", OperateType.BUY, 0.25),
+        ("BTCUSDT", OperateType.SELL, 0.25),
+    ]
 
 
 def test_live_auto_rejects_side_invalid_protection_before_order_submission():
@@ -368,6 +393,149 @@ def test_short_capable_tasks_use_margin_for_long_and_exit_when_margin_is_ready()
     assert entry.status == AutoExecutionStatus.SUBMITTED
     assert entry.native_protection is False
     assert entry.effective_quantity == 0.1
+
+
+def test_margin_borrow_block_skip_policy_skips_short_and_continues():
+    class BorrowBlockedExchange(RecordingExchange):
+        def __init__(self):
+            super().__init__(margin_ready=True)
+            self.short_calls = 0
+            self.repay_calls = 0
+
+        def new_order(self, symbol, op, quantity):
+            self.new_order_calls.append((symbol.name(), op, quantity))
+            if op == OperateType.SHORT:
+                self.short_calls += 1
+                return {"code": -3006, "msg": "Your borrow amount has exceed maximum borrow amount"}
+            return {"orderId": "spot-1"}
+
+        def auto_repay_for_borrow_block(self, symbol):
+            self.repay_calls += 1
+            return {"ok": True, "symbol": symbol}
+
+    exchange = BorrowBlockedExchange()
+    router = AutoExecutionRouter(
+        _tcfg(
+            LiveExecutionMode.SMALL_LIVE_AUTO,
+            live_trade_max_notional=10.0,
+            live_short_execution=LiveShortExecution.MARGIN_CROSS,
+            live_margin_borrow_block_policy="skip_short_continue",
+        ),
+        exchange=exchange,
+        cfg=SimpleNamespace(cash=10000.0),
+    )
+
+    short_outcome = router.route(_op(OperateType.SHORT, 100.0))
+    long_outcome = router.route(_op(OperateType.BUY, 100.0, BASE + 60))
+
+    assert short_outcome.status == AutoExecutionStatus.SKIPPED
+    assert "margin_borrow_blocked_-3006" in str(short_outcome.reason)
+    assert exchange.repay_calls == 0
+    assert long_outcome.status == AutoExecutionStatus.SUBMITTED
+
+
+def test_margin_borrow_block_hard_fail_policy_fails_short():
+    class BorrowBlockedExchange(RecordingExchange):
+        def __init__(self):
+            super().__init__(margin_ready=True)
+
+        def new_order(self, symbol, op, quantity):
+            self.new_order_calls.append((symbol.name(), op, quantity))
+            if op == OperateType.SHORT:
+                return {"code": -3006, "msg": "Your borrow amount has exceed maximum borrow amount"}
+            return {"orderId": "spot-1"}
+
+    exchange = BorrowBlockedExchange()
+    router = AutoExecutionRouter(
+        _tcfg(
+            LiveExecutionMode.SMALL_LIVE_AUTO,
+            live_trade_max_notional=10.0,
+            live_short_execution=LiveShortExecution.MARGIN_CROSS,
+            live_margin_borrow_block_policy="hard_fail_stop_task",
+        ),
+        exchange=exchange,
+        cfg=SimpleNamespace(cash=10000.0),
+    )
+
+    short_outcome = router.route(_op(OperateType.SHORT, 100.0))
+    assert short_outcome.status == AutoExecutionStatus.FAILED
+    assert "hard_fail_stop_task" in str(short_outcome.reason)
+
+
+def test_margin_borrow_block_auto_repay_policy_retries_once_and_submits():
+    class BorrowBlockedThenPassExchange(RecordingExchange):
+        def __init__(self):
+            super().__init__(margin_ready=True)
+            self.short_calls = 0
+            self.repay_calls = 0
+
+        def new_order(self, symbol, op, quantity):
+            self.new_order_calls.append((symbol.name(), op, quantity))
+            if op == OperateType.SHORT:
+                self.short_calls += 1
+                if self.short_calls == 1:
+                    return {"code": -3006, "msg": "Your borrow amount has exceed maximum borrow amount"}
+                return {"orderId": "margin-retry-1"}
+            return {"orderId": "spot-1"}
+
+        def auto_repay_for_borrow_block(self, symbol):
+            self.repay_calls += 1
+            return {"ok": True, "symbol": symbol}
+
+    exchange = BorrowBlockedThenPassExchange()
+    router = AutoExecutionRouter(
+        _tcfg(
+            LiveExecutionMode.SMALL_LIVE_AUTO,
+            live_trade_max_notional=10.0,
+            live_short_execution=LiveShortExecution.MARGIN_CROSS,
+            live_margin_borrow_block_policy="auto_repay_then_retry_once",
+        ),
+        exchange=exchange,
+        cfg=SimpleNamespace(cash=10000.0),
+    )
+
+    outcome = router.route(_op(OperateType.SHORT, 100.0))
+    assert outcome.status == AutoExecutionStatus.SUBMITTED
+    assert "auto_repay_retry_passed" in str(outcome.reason)
+    assert exchange.short_calls == 2
+    assert exchange.repay_calls == 1
+
+
+def test_margin_borrow_block_auto_repay_policy_retries_once_then_skips():
+    class BorrowBlockedAlwaysExchange(RecordingExchange):
+        def __init__(self):
+            super().__init__(margin_ready=True)
+            self.short_calls = 0
+            self.repay_calls = 0
+
+        def new_order(self, symbol, op, quantity):
+            self.new_order_calls.append((symbol.name(), op, quantity))
+            if op == OperateType.SHORT:
+                self.short_calls += 1
+                return {"code": -3006, "msg": "Your borrow amount has exceed maximum borrow amount"}
+            return {"orderId": "spot-1"}
+
+        def auto_repay_for_borrow_block(self, symbol):
+            self.repay_calls += 1
+            return {"ok": True, "symbol": symbol}
+
+    exchange = BorrowBlockedAlwaysExchange()
+    router = AutoExecutionRouter(
+        _tcfg(
+            LiveExecutionMode.SMALL_LIVE_AUTO,
+            live_trade_max_notional=10.0,
+            live_short_execution=LiveShortExecution.MARGIN_CROSS,
+            live_margin_borrow_block_policy="auto_repay_then_retry_once",
+        ),
+        exchange=exchange,
+        cfg=SimpleNamespace(cash=10000.0),
+    )
+
+    outcome = router.route(_op(OperateType.SHORT, 100.0))
+    assert outcome.status == AutoExecutionStatus.SKIPPED
+    assert "auto_repay_retry_failed" in str(outcome.reason)
+    assert exchange.short_calls == 2
+    assert exchange.repay_calls == 1
 
 
 def test_duplicate_operation_is_skipped_before_second_execution():

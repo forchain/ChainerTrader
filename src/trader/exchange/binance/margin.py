@@ -45,7 +45,11 @@ class MarginTradingManager(metaclass=SingletonMeta):
         configuration_rest_api = ConfigurationRestAPI(
             api_key=cfg.api_key,
             api_secret=cfg.api_secret,
-            base_path=cfg.base_path if cfg.base_path is not None else MARGIN_TRADING_REST_API_PROD_URL,
+            base_path=(
+                cfg.margin_base_path
+                if getattr(cfg, "margin_base_path", None)
+                else (cfg.base_path if cfg.base_path is not None else MARGIN_TRADING_REST_API_PROD_URL)
+            ),
             timeout=10000,
             backoff=1,
         )
