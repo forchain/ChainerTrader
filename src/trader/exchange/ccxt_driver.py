@@ -362,6 +362,100 @@ class CcxtExchangeDriver:
             "results": results,
         }
 
+    def get_max_borrowable(self, asset: str, symbol: str | None = None) -> dict[str, Any]:
+        if self.cfg.margin_mode == MarginMode.SPOT:
+            return {"ok": False, "asset": asset, "reason": "spot_mode_no_margin_borrow"}
+        method = getattr(self.client, "sapiGetMarginMaxBorrowable", None) or getattr(
+            self.client, "sapi_get_margin_max_borrowable", None
+        )
+        if method is None:
+            return {"ok": False, "asset": asset, "reason": "max_borrowable_endpoint_missing"}
+        params: dict[str, Any] = {"asset": str(asset).upper()}
+        if self.cfg.margin_mode == MarginMode.ISOLATED_MARGIN:
+            params["isIsolated"] = "TRUE"
+            if symbol:
+                params["symbol"] = self._symbol_from_any(symbol).name()
+        else:
+            params["isIsolated"] = "FALSE"
+        try:
+            payload = method(params)
+        except Exception as exc:
+            return {"ok": False, "asset": str(asset).upper(), "reason": str(exc), "params": params}
+        if isinstance(payload, dict):
+            return {"ok": True, **payload, "raw_payload": payload}
+        return {"ok": True, "asset": str(asset).upper(), "raw_payload": payload}
+
+    def auto_repay_all_liabilities_for_borrow_block(
+        self,
+        symbol: str,
+        *,
+        max_total: float,
+        max_per_asset: float,
+        min_amount: float = 0.000001,
+        excluded_assets: list[str] | tuple[str, ...] | set[str] | None = None,
+    ) -> dict[str, Any]:
+        if self.cfg.margin_mode == MarginMode.SPOT:
+            return {"ok": False, "policy": "repay_all", "reason": "spot_mode_no_margin_repay"}
+        repay_fn = getattr(self.client, "sapiPostMarginRepay", None) or getattr(self.client, "sapi_post_margin_repay", None)
+        if repay_fn is None:
+            return {"ok": False, "policy": "repay_all", "reason": "margin_repay_endpoint_missing"}
+
+        excluded = {str(asset).upper() for asset in (excluded_assets or [])}
+        remaining_total = max(float(max_total or 0.0), 0.0)
+        max_per_asset = max(float(max_per_asset or 0.0), 0.0)
+        min_amount = max(float(min_amount or 0.0), 0.0)
+        account = self.get_account() or {}
+        info = account.get("info", {}) if isinstance(account, dict) else {}
+        user_assets = info.get("userAssets", []) if isinstance(info, dict) else []
+        results: list[dict[str, Any]] = []
+        total_repaid = 0.0
+
+        for row in user_assets or []:
+            if not isinstance(row, dict) or not row.get("asset"):
+                continue
+            asset = str(row["asset"]).upper()
+            borrowed = float(row.get("borrowed", 0.0) or 0.0)
+            interest = float(row.get("interest", 0.0) or 0.0)
+            free = float(row.get("free", 0.0) or 0.0)
+            liability = max(borrowed + interest, 0.0)
+            base = {"asset": asset, "borrowed": borrowed, "interest": interest, "free": free, "liability": liability}
+            if liability <= 0:
+                results.append({**base, "status": "skipped", "reason": "no_liability"})
+                continue
+            if asset in excluded:
+                results.append({**base, "status": "skipped", "reason": "excluded_asset"})
+                continue
+            if remaining_total < min_amount:
+                results.append({**base, "status": "skipped", "reason": "total_cap_exhausted", "amount": 0.0})
+                continue
+            repay_amount = min(liability, free, max_per_asset, remaining_total)
+            if repay_amount < min_amount:
+                results.append({**base, "status": "skipped", "reason": "below_min_or_no_capacity", "amount": repay_amount})
+                continue
+            try:
+                payload = repay_fn({"asset": asset, "amount": self._format_decimal_amount(repay_amount)})
+                total_repaid += repay_amount
+                remaining_total = max(remaining_total - repay_amount, 0.0)
+                results.append({**base, "status": "repaid", "amount": repay_amount, "payload": payload})
+            except Exception as exc:
+                results.append({**base, "status": "error", "amount": repay_amount, "error": str(exc)})
+
+        return {
+            "ok": total_repaid > 0,
+            "policy": "repay_all",
+            "symbol": self._symbol_from_any(symbol).name(),
+            "max_total": float(max_total or 0.0),
+            "max_per_asset": max_per_asset,
+            "min_amount": min_amount,
+            "excluded_assets": sorted(excluded),
+            "total_repaid": total_repaid,
+            "account_snapshot": {
+                "marginLevel": info.get("marginLevel"),
+                "collateralMarginLevel": info.get("collateralMarginLevel"),
+            },
+            "results": results,
+        }
+
     def _build_client(self):
         if self._client_factory is not None:
             return self._client_factory(self.cfg)

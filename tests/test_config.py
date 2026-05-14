@@ -50,6 +50,46 @@ def test_parse_symbols_trims_whitespace_after_commas():
     assert [tcfg.symbol_interval.symbol() for tcfg in tcfgs] == ["BTCUSDT", "ZECUSDT", "XLMUSDT"]
 
 
+def test_parse_task_config_accepts_margin_borrow_controls():
+    cfg = (
+        '[{"task_type":"TRADER","symbol":"BTC-USDT","interval":"1m","strategy":"macd_triple_divergence",'
+        '"live_short_execution":"margin_cross","live_margin_borrow_block_policy":"repay_all",'
+        '"live_margin_borrow_precheck":true,"live_margin_auto_repay_max_total":100,'
+        '"live_margin_auto_repay_max_per_asset":50,"live_margin_auto_repay_min_amount":0.000001,'
+        '"live_margin_auto_repay_excluded_assets":["BNB"]}]'
+    )
+
+    task = parse_task_config(cfg)[0]
+
+    assert task.live_margin_borrow_block_policy == "repay_all"
+    assert task.live_margin_borrow_precheck is True
+    assert task.live_margin_auto_repay_max_total == 100.0
+    assert task.live_margin_auto_repay_max_per_asset == 50.0
+    assert task.live_margin_auto_repay_excluded_assets == ["BNB"]
+
+
+def test_parse_task_config_keeps_legacy_margin_borrow_policy_aliases():
+    cfg = (
+        '[{"task_type":"TRADER","symbol":"BTC-USDT","interval":"1m","strategy":"macd_triple_divergence",'
+        '"live_margin_borrow_block_policy":"auto_repay_then_retry_once"}]'
+    )
+
+    task = parse_task_config(cfg)[0]
+
+    assert task.live_margin_borrow_block_policy == "repay_single"
+
+
+def test_task_config_parses_direct_margin_borrow_precheck_string():
+    task = TaskConfig(
+        1,
+        TaskType.TRADER,
+        SymbolInterval("BTC-USDT", Interval.INTERVAL_1m),
+        live_margin_borrow_precheck="false",
+    )
+
+    assert task.live_margin_borrow_precheck is False
+
+
 def test_taskconfig():
     file = os.path.join(GetConfigsDir(), "tasks", "backtests", "multi_backtrader.json")
     tcfgs = parse_task_config(file)

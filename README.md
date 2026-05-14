@@ -480,6 +480,15 @@ On restart or reconnect, automatic live modes load open execution state for the 
 
 Real short execution is disabled unless `live_short_execution` is explicitly set to `margin_cross`. In the first implementation, real shorts use Binance cross margin only; isolated margin and futures are separate future integrations. Operators must ensure exchange credentials, cross-margin account readiness, and any borrow/repay risk are understood before enabling cross-margin short execution.
 
+Cross-margin live execution includes borrow-risk controls for orders that may require Binance margin borrowing. When `live_margin_borrow_precheck` is enabled, ChainerTrader checks Binance max-borrow capacity before cross-margin long or short entries and skips orders that clearly cannot borrow enough. If Binance still returns `-3006 EXCEED_MAX_BORROWABLE`, `live_margin_borrow_block_policy` controls the response:
+
+- `skip_continue`: skip the blocked signal and keep the task running.
+- `repay_single`: repay current symbol liabilities, then retry once.
+- `repay_all`: repay all repayable cross-margin liabilities within configured caps, then retry once.
+- `stop_task`: surface the blocked order as a hard execution failure.
+
+`repay_all` is explicit opt-in and should be used with conservative caps such as `live_margin_auto_repay_max_total`, `live_margin_auto_repay_max_per_asset`, and `live_margin_auto_repay_excluded_assets`. Auto-repay outcomes include structured `margin_borrow_control` metadata in execution outcomes and dashboard payloads so operators can audit which assets were checked, repaid, skipped, or retried.
+
 Small-live example with a 10 USDT per-order cap:
 
 ```bash

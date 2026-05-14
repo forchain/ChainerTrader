@@ -38,6 +38,7 @@ class RecordingExchange:
         self.take_profit_order_calls = []
         self.replace_stop_order_calls = []
         self.balance_reads = []
+        self.max_borrowable_reads = []
 
     def get_account_balance(self, asset):
         self.balance_reads.append(asset)
@@ -80,6 +81,31 @@ class RecordingExchange:
     def auto_repay_for_borrow_block(self, symbol):
         return {"ok": True, "symbol": symbol}
 
+    def auto_repay_all_liabilities_for_borrow_block(
+        self,
+        symbol,
+        *,
+        max_total,
+        max_per_asset,
+        min_amount=0.000001,
+        excluded_assets=None,
+    ):
+        return {
+            "ok": True,
+            "policy": "repay_all",
+            "symbol": symbol,
+            "max_total": max_total,
+            "max_per_asset": max_per_asset,
+            "min_amount": min_amount,
+            "excluded_assets": list(excluded_assets or []),
+            "total_repaid": min(max_total, max_per_asset),
+            "results": [],
+        }
+
+    def get_max_borrowable(self, asset, symbol=None):
+        self.max_borrowable_reads.append((asset, symbol))
+        return {"asset": asset, "amount": "1000000", "borrowLimit": "1000000"}
+
 
 def _tcfg(
     mode,
@@ -88,7 +114,7 @@ def _tcfg(
     manual_start_position=0.0,
     live_trade_max_notional=0.0,
     live_short_execution="disabled",
-    live_margin_borrow_block_policy="skip_short_continue",
+    live_margin_borrow_block_policy="skip_continue",
 ):
     return TaskConfig(
         id=9,
@@ -339,6 +365,32 @@ def test_live_auto_submits_fail_safe_close_when_required_protection_is_unverifie
     assert [record.order_role for record in outcome.execution_state_records] == ["entry", "bracket", "close"]
 
 
+def test_live_auto_submits_fail_safe_close_when_protection_order_is_rejected_by_exchange():
+    class RejectStopProtectionExchange(RecordingExchange):
+        def new_stop_order(self, symbol, side, quantity, stop_price):
+            raise RuntimeError("binance Stop price would trigger immediately.")
+
+    exchange = RejectStopProtectionExchange(quote_balance=1000.0)
+    router = AutoExecutionRouter(
+        _tcfg(LiveExecutionMode.SMALL_LIVE_AUTO, free=500.0, live_trade_max_notional=25.0),
+        exchange=exchange,
+        cfg=SimpleNamespace(cash=10000.0),
+    )
+    op = _op(OperateType.BUY, 100.0)
+    op.stop_loss = 95.0
+
+    outcome = router.route(op)
+
+    assert outcome.status == AutoExecutionStatus.FAILED
+    assert outcome.reason == "gateway_rejected; fail_safe_close_submitted"
+    assert exchange.new_order_calls == [
+        ("BTCUSDT", OperateType.BUY, 0.25),
+        ("BTCUSDT", OperateType.SELL, 0.25),
+    ]
+    assert [event["event_type"] for event in outcome.execution_events].count("protection_missing") == 1
+    assert [record.order_role for record in outcome.execution_state_records] == ["entry", "stop_loss", "close"]
+
+
 def test_cross_margin_short_close_requires_known_short_exposure():
     unknown_exchange = RecordingExchange(margin_ready=True)
     unknown = AutoExecutionRouter(
@@ -419,7 +471,7 @@ def test_margin_borrow_block_skip_policy_skips_short_and_continues():
             LiveExecutionMode.SMALL_LIVE_AUTO,
             live_trade_max_notional=10.0,
             live_short_execution=LiveShortExecution.MARGIN_CROSS,
-            live_margin_borrow_block_policy="skip_short_continue",
+            live_margin_borrow_block_policy="skip_continue",
         ),
         exchange=exchange,
         cfg=SimpleNamespace(cash=10000.0),
@@ -434,7 +486,7 @@ def test_margin_borrow_block_skip_policy_skips_short_and_continues():
     assert long_outcome.status == AutoExecutionStatus.SUBMITTED
 
 
-def test_margin_borrow_block_hard_fail_policy_fails_short():
+def test_margin_borrow_block_stop_task_policy_fails_short():
     class BorrowBlockedExchange(RecordingExchange):
         def __init__(self):
             super().__init__(margin_ready=True)
@@ -451,7 +503,7 @@ def test_margin_borrow_block_hard_fail_policy_fails_short():
             LiveExecutionMode.SMALL_LIVE_AUTO,
             live_trade_max_notional=10.0,
             live_short_execution=LiveShortExecution.MARGIN_CROSS,
-            live_margin_borrow_block_policy="hard_fail_stop_task",
+            live_margin_borrow_block_policy="stop_task",
         ),
         exchange=exchange,
         cfg=SimpleNamespace(cash=10000.0),
@@ -459,10 +511,10 @@ def test_margin_borrow_block_hard_fail_policy_fails_short():
 
     short_outcome = router.route(_op(OperateType.SHORT, 100.0))
     assert short_outcome.status == AutoExecutionStatus.FAILED
-    assert "hard_fail_stop_task" in str(short_outcome.reason)
+    assert "stop_task" in str(short_outcome.reason)
 
 
-def test_margin_borrow_block_auto_repay_policy_retries_once_and_submits():
+def test_margin_borrow_block_repay_single_policy_retries_once_and_submits():
     class BorrowBlockedThenPassExchange(RecordingExchange):
         def __init__(self):
             super().__init__(margin_ready=True)
@@ -488,7 +540,7 @@ def test_margin_borrow_block_auto_repay_policy_retries_once_and_submits():
             LiveExecutionMode.SMALL_LIVE_AUTO,
             live_trade_max_notional=10.0,
             live_short_execution=LiveShortExecution.MARGIN_CROSS,
-            live_margin_borrow_block_policy="auto_repay_then_retry_once",
+            live_margin_borrow_block_policy="repay_single",
         ),
         exchange=exchange,
         cfg=SimpleNamespace(cash=10000.0),
@@ -501,7 +553,99 @@ def test_margin_borrow_block_auto_repay_policy_retries_once_and_submits():
     assert exchange.repay_calls == 1
 
 
-def test_margin_borrow_block_auto_repay_policy_retries_once_then_skips():
+def test_margin_borrow_precheck_skips_margin_long_when_quote_borrow_capacity_is_too_low():
+    class LowBorrowCapacityExchange(RecordingExchange):
+        def get_max_borrowable(self, asset, symbol=None):
+            self.max_borrowable_reads.append((asset, symbol))
+            return {"asset": asset, "amount": "4.0", "borrowLimit": "4.0"}
+
+    exchange = LowBorrowCapacityExchange(quote_balance=5.0, margin_ready=True)
+    router = AutoExecutionRouter(
+        _tcfg(
+            LiveExecutionMode.SMALL_LIVE_AUTO,
+            live_trade_max_notional=10.0,
+            live_short_execution=LiveShortExecution.MARGIN_CROSS,
+        ),
+        exchange=exchange,
+        cfg=SimpleNamespace(cash=10000.0),
+    )
+
+    outcome = router.route(_op(OperateType.BUY, 100.0))
+
+    assert outcome.status == AutoExecutionStatus.SKIPPED
+    assert str(outcome.reason).startswith("margin_borrow_precheck_insufficient_capacity")
+    assert "asset=USDT" in str(outcome.reason)
+    assert exchange.max_borrowable_reads == [("USDT", "BTCUSDT")]
+    assert exchange.new_order_calls == []
+
+
+def test_margin_borrow_precheck_skips_margin_short_when_base_borrow_capacity_is_too_low():
+    class LowBorrowCapacityExchange(RecordingExchange):
+        def get_max_borrowable(self, asset, symbol=None):
+            self.max_borrowable_reads.append((asset, symbol))
+            return {"asset": asset, "amount": "0.05", "borrowLimit": "0.05"}
+
+    exchange = LowBorrowCapacityExchange(base_balance=0.02, margin_ready=True)
+    router = AutoExecutionRouter(
+        _tcfg(
+            LiveExecutionMode.SMALL_LIVE_AUTO,
+            live_trade_max_notional=10.0,
+            live_short_execution=LiveShortExecution.MARGIN_CROSS,
+        ),
+        exchange=exchange,
+        cfg=SimpleNamespace(cash=10000.0),
+    )
+
+    outcome = router.route(_op(OperateType.SHORT, 100.0))
+
+    assert outcome.status == AutoExecutionStatus.SKIPPED
+    assert str(outcome.reason).startswith("margin_borrow_precheck_insufficient_capacity")
+    assert "asset=BTC" in str(outcome.reason)
+    assert exchange.max_borrowable_reads == [("BTC", "BTCUSDT")]
+    assert exchange.new_order_calls == []
+
+
+def test_margin_borrow_block_repay_single_policy_handles_margin_long_orders():
+    class LongBorrowBlockedThenPassExchange(RecordingExchange):
+        def __init__(self):
+            super().__init__(margin_ready=True)
+            self.long_calls = 0
+            self.repay_calls = 0
+
+        def new_order(self, symbol, op, quantity):
+            self.new_order_calls.append((symbol.name(), op, quantity))
+            if op == OperateType.BUY:
+                self.long_calls += 1
+                if self.long_calls == 1:
+                    return {"code": -3006, "msg": "Your borrow amount has exceed maximum borrow amount"}
+                return {"orderId": "margin-long-retry-1"}
+            return {"orderId": "spot-1"}
+
+        def auto_repay_for_borrow_block(self, symbol):
+            self.repay_calls += 1
+            return {"ok": True, "symbol": symbol}
+
+    exchange = LongBorrowBlockedThenPassExchange()
+    router = AutoExecutionRouter(
+        _tcfg(
+            LiveExecutionMode.SMALL_LIVE_AUTO,
+            live_trade_max_notional=10.0,
+            live_short_execution=LiveShortExecution.MARGIN_CROSS,
+            live_margin_borrow_block_policy="repay_single",
+        ),
+        exchange=exchange,
+        cfg=SimpleNamespace(cash=10000.0),
+    )
+
+    outcome = router.route(_op(OperateType.BUY, 100.0))
+
+    assert outcome.status == AutoExecutionStatus.SUBMITTED
+    assert "auto_repay_retry_passed" in str(outcome.reason)
+    assert exchange.long_calls == 2
+    assert exchange.repay_calls == 1
+
+
+def test_margin_borrow_block_repay_single_policy_retries_once_then_skips():
     class BorrowBlockedAlwaysExchange(RecordingExchange):
         def __init__(self):
             super().__init__(margin_ready=True)
@@ -525,7 +669,7 @@ def test_margin_borrow_block_auto_repay_policy_retries_once_then_skips():
             LiveExecutionMode.SMALL_LIVE_AUTO,
             live_trade_max_notional=10.0,
             live_short_execution=LiveShortExecution.MARGIN_CROSS,
-            live_margin_borrow_block_policy="auto_repay_then_retry_once",
+            live_margin_borrow_block_policy="repay_single",
         ),
         exchange=exchange,
         cfg=SimpleNamespace(cash=10000.0),
@@ -536,6 +680,61 @@ def test_margin_borrow_block_auto_repay_policy_retries_once_then_skips():
     assert "auto_repay_retry_failed" in str(outcome.reason)
     assert exchange.short_calls == 2
     assert exchange.repay_calls == 1
+
+
+def test_margin_borrow_block_repay_all_policy_uses_account_level_repay_report():
+    class BorrowBlockedThenPassExchange(RecordingExchange):
+        def __init__(self):
+            super().__init__(margin_ready=True)
+            self.short_calls = 0
+            self.repay_all_calls = []
+
+        def new_order(self, symbol, op, quantity):
+            self.new_order_calls.append((symbol.name(), op, quantity))
+            if op == OperateType.SHORT:
+                self.short_calls += 1
+                if self.short_calls == 1:
+                    return {"code": -3006, "msg": "Your borrow amount has exceed maximum borrow amount"}
+                return {"orderId": "margin-retry-1"}
+            return {"orderId": "spot-1"}
+
+        def auto_repay_all_liabilities_for_borrow_block(
+            self,
+            symbol,
+            *,
+            max_total,
+            max_per_asset,
+            min_amount=0.000001,
+            excluded_assets=None,
+        ):
+            self.repay_all_calls.append((symbol, max_total, max_per_asset, min_amount, list(excluded_assets or [])))
+            return {
+                "ok": True,
+                "policy": "repay_all",
+                "symbol": symbol,
+                "total_repaid": 25.0,
+                "results": [{"asset": "ETH", "status": "repaid", "amount": 25.0}],
+            }
+
+    exchange = BorrowBlockedThenPassExchange()
+    tcfg = _tcfg(
+        LiveExecutionMode.SMALL_LIVE_AUTO,
+        live_trade_max_notional=10.0,
+        live_short_execution=LiveShortExecution.MARGIN_CROSS,
+        live_margin_borrow_block_policy="repay_all",
+    )
+    tcfg.live_margin_auto_repay_max_total = 100.0
+    tcfg.live_margin_auto_repay_max_per_asset = 50.0
+    tcfg.live_margin_auto_repay_min_amount = 0.000001
+    tcfg.live_margin_auto_repay_excluded_assets = ["BNB"]
+    router = AutoExecutionRouter(tcfg, exchange=exchange, cfg=SimpleNamespace(cash=10000.0))
+
+    outcome = router.route(_op(OperateType.SHORT, 100.0))
+
+    assert outcome.status == AutoExecutionStatus.SUBMITTED
+    assert outcome.margin_borrow_control["policy"] == "repay_all"
+    assert outcome.margin_borrow_control["repay"]["total_repaid"] == 25.0
+    assert exchange.repay_all_calls == [("BTCUSDT", 100.0, 50.0, 0.000001, ["BNB"])]
 
 
 def test_duplicate_operation_is_skipped_before_second_execution():

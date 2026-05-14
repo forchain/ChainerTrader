@@ -38,9 +38,10 @@ class LiveShortExecution(str, Enum):
     MARGIN_CROSS = "margin_cross"
 
 class MarginBorrowBlockPolicy(str, Enum):
-    SKIP_SHORT_CONTINUE = "skip_short_continue"
-    AUTO_REPAY_THEN_RETRY_ONCE = "auto_repay_then_retry_once"
-    HARD_FAIL_STOP_TASK = "hard_fail_stop_task"
+    SKIP_CONTINUE = "skip_continue"
+    REPAY_SINGLE = "repay_single"
+    REPAY_ALL = "repay_all"
+    STOP_TASK = "stop_task"
 
 
 class AutoExecutionStatus(str, Enum):
@@ -54,9 +55,10 @@ STAGED_AUTO_MODES = set(REAL_AUTO_MODES)
 SUPPORTED_LIVE_EXECUTION_MODES = {LiveExecutionMode.MANUAL_NOTIFY.value, *STAGED_AUTO_MODES}
 SUPPORTED_SHORT_EXECUTION_MODES = {LiveShortExecution.DISABLED.value, LiveShortExecution.MARGIN_CROSS.value}
 SUPPORTED_MARGIN_BORROW_BLOCK_POLICIES = {
-    MarginBorrowBlockPolicy.SKIP_SHORT_CONTINUE.value,
-    MarginBorrowBlockPolicy.AUTO_REPAY_THEN_RETRY_ONCE.value,
-    MarginBorrowBlockPolicy.HARD_FAIL_STOP_TASK.value,
+    MarginBorrowBlockPolicy.SKIP_CONTINUE.value,
+    MarginBorrowBlockPolicy.REPAY_SINGLE.value,
+    MarginBorrowBlockPolicy.REPAY_ALL.value,
+    MarginBorrowBlockPolicy.STOP_TASK.value,
 }
 
 
@@ -80,6 +82,7 @@ class AutoExecutionOutcome:
     execution_state_records: list[ExecutionStateRecord] = field(default_factory=list, repr=False)
     native_protection: bool = False
     local_guardian: bool = False
+    margin_borrow_control: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         status = self.status.value if isinstance(self.status, Enum) else str(self.status)
@@ -101,6 +104,7 @@ class AutoExecutionOutcome:
             "execution_events": list(self.execution_events),
             "native_protection": self.native_protection,
             "local_guardian": self.local_guardian,
+            "margin_borrow_control": dict(self.margin_borrow_control),
         }
 
     def with_native_protection(self, enabled: bool) -> "AutoExecutionOutcome":
@@ -130,7 +134,20 @@ def normalize_live_short_execution(value: str | LiveShortExecution | None) -> st
 
 def normalize_margin_borrow_block_policy(value: str | MarginBorrowBlockPolicy | None) -> str:
     raw = value.value if isinstance(value, MarginBorrowBlockPolicy) else value
-    mode = str(raw or MarginBorrowBlockPolicy.SKIP_SHORT_CONTINUE.value).strip().lower()
+    mode = str(raw or MarginBorrowBlockPolicy.SKIP_CONTINUE.value).strip().lower()
+    aliases = {
+        "skip": MarginBorrowBlockPolicy.SKIP_CONTINUE.value,
+        "skip_short_continue": MarginBorrowBlockPolicy.SKIP_CONTINUE.value,
+        "skip_continue": MarginBorrowBlockPolicy.SKIP_CONTINUE.value,
+        "auto_repay_then_retry_once": MarginBorrowBlockPolicy.REPAY_SINGLE.value,
+        "repay_symbol_assets_retry": MarginBorrowBlockPolicy.REPAY_SINGLE.value,
+        "repay_single": MarginBorrowBlockPolicy.REPAY_SINGLE.value,
+        "repay_all_liabilities_retry": MarginBorrowBlockPolicy.REPAY_ALL.value,
+        "repay_all": MarginBorrowBlockPolicy.REPAY_ALL.value,
+        "hard_fail_stop_task": MarginBorrowBlockPolicy.STOP_TASK.value,
+        "stop_task": MarginBorrowBlockPolicy.STOP_TASK.value,
+    }
+    mode = aliases.get(mode, mode)
     if mode not in SUPPORTED_MARGIN_BORROW_BLOCK_POLICIES:
         raise ValueError(f"unsupported live_margin_borrow_block_policy: {raw}")
     return mode
@@ -211,7 +228,9 @@ class AutoExecutionRouter:
         exchange_order=None,
         execution_events: list[dict[str, Any]] | None = None,
         execution_state_records: list[ExecutionStateRecord] | None = None,
+        margin_borrow_control: dict[str, Any] | None = None,
     ) -> AutoExecutionOutcome:
+        margin_borrow_control = dict(margin_borrow_control or {})
         normalized_events = execution_events
         if normalized_events is None:
             normalized_events = self._normalized_execution_events(
@@ -220,6 +239,7 @@ class AutoExecutionRouter:
                 reason=reason,
                 exchange_order=exchange_order,
                 quantity=effective_quantity,
+                margin_borrow_control=margin_borrow_control,
             )
         return AutoExecutionOutcome(
             task_id=int(self.tcfg.id),
@@ -240,6 +260,7 @@ class AutoExecutionRouter:
             execution_state_records=list(execution_state_records or []),
             native_protection=False,
             local_guardian=False,
+            margin_borrow_control=margin_borrow_control,
         )
 
     def _record(self, outcome: AutoExecutionOutcome) -> AutoExecutionOutcome:
@@ -263,6 +284,7 @@ class AutoExecutionRouter:
             "order_id": order_id,
             "effective_quantity": outcome.effective_quantity,
             "effective_notional": outcome.effective_notional,
+            "margin_borrow_control": dict(outcome.margin_borrow_control),
         }
         if outcome.status == AutoExecutionStatus.SUBMITTED:
             if not order_id:
@@ -289,6 +311,7 @@ class AutoExecutionRouter:
         reason: str | None,
         exchange_order: Any,
         quantity: float,
+        margin_borrow_control: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         if status == AutoExecutionStatus.SUBMITTED:
             statuses = [ExecutionStatus.SUBMITTED, ExecutionStatus.ACCEPTED]
@@ -316,6 +339,7 @@ class AutoExecutionRouter:
                         "legacy_status": status.value if isinstance(status, Enum) else str(status),
                         "legacy_reason": reason,
                         "operation_type": getattr(getattr(op, "otype", None), "name", "UNKNOWN"),
+                        "margin_borrow_control": dict(margin_borrow_control or {}),
                     },
                 ).to_dict()
             )
@@ -393,6 +417,20 @@ class AutoExecutionRouter:
                 )
             )
         if self.requires_short_capability and self._margin_ready():
+            precheck = self._margin_borrow_precheck(op, OperateType.BUY, notional, quantity)
+            if precheck is not None:
+                return self._record(
+                    self._outcome(
+                        op,
+                        AutoExecutionStatus.SKIPPED,
+                        reason=self._margin_precheck_reason(precheck),
+                        requested_notional=notional,
+                        requested_quantity=quantity,
+                        effective_notional=notional,
+                        effective_quantity=quantity,
+                        margin_borrow_control=precheck,
+                    )
+                )
             outcome = self._submit_margin(op, notional, quantity, OperateType.BUY)
             return outcome
         cash = self._balance(self.tcfg.symbol_interval.sy.quote)
@@ -473,6 +511,20 @@ class AutoExecutionRouter:
                     effective_quantity=quantity,
                 )
             )
+        precheck = self._margin_borrow_precheck(op, OperateType.SHORT, notional, quantity)
+        if precheck is not None:
+            return self._record(
+                self._outcome(
+                    op,
+                    AutoExecutionStatus.SKIPPED,
+                    reason=self._margin_precheck_reason(precheck),
+                    requested_notional=notional,
+                    requested_quantity=quantity,
+                    effective_notional=notional,
+                    effective_quantity=quantity,
+                    margin_borrow_control=precheck,
+                )
+            )
         outcome = self._submit_margin(op, notional, quantity, OperateType.SHORT)
         if outcome.status == AutoExecutionStatus.SUBMITTED:
             self.real_short_position += quantity
@@ -526,6 +578,73 @@ class AutoExecutionRouter:
         if result is False:
             return "exchange_order_size_rejected"
         return str(result)
+
+    def _margin_borrow_precheck(self, op, order_type: OperateType, notional: float, quantity: float) -> dict[str, Any] | None:
+        if not bool(getattr(self.tcfg, "live_margin_borrow_precheck", True)):
+            return None
+        if self.exchange is None or not hasattr(self.exchange, "get_max_borrowable"):
+            return None
+        if order_type == OperateType.BUY:
+            asset = self.tcfg.symbol_interval.sy.quote
+            balance = self._balance(asset)
+            shortfall = max(float(notional) - balance, 0.0)
+        elif order_type == OperateType.SHORT:
+            asset = self.tcfg.symbol_interval.sy.base
+            balance = self._balance(asset)
+            shortfall = max(float(quantity) - balance, 0.0)
+        else:
+            return None
+        if shortfall <= 0:
+            return None
+        try:
+            payload = self.exchange.get_max_borrowable(asset, symbol=self.market)
+        except Exception as exc:
+            return {
+                "stage": "precheck",
+                "status": "unavailable",
+                "asset": asset,
+                "balance": balance,
+                "estimated_shortfall": shortfall,
+                "reason": str(exc),
+            }
+        amount = self._numeric_payload_value(payload, "amount")
+        if amount is None:
+            return None
+        if amount + 1e-12 >= shortfall:
+            return None
+        return {
+            "stage": "precheck",
+            "status": "insufficient_capacity",
+            "policy": self.margin_borrow_block_policy,
+            "asset": asset,
+            "balance": balance,
+            "estimated_shortfall": shortfall,
+            "max_borrowable": amount,
+            "borrow_limit": self._numeric_payload_value(payload, "borrowLimit"),
+            "raw_payload": payload,
+        }
+
+    def _numeric_payload_value(self, payload: Any, key: str) -> float | None:
+        value = None
+        if isinstance(payload, dict):
+            value = payload.get(key)
+        else:
+            value = getattr(payload, key, None)
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    def _margin_precheck_reason(self, precheck: dict[str, Any]) -> str:
+        if precheck.get("status") == "unavailable":
+            return f"margin_borrow_precheck_unavailable asset={precheck.get('asset')} reason={precheck.get('reason')}"
+        return (
+            "margin_borrow_precheck_insufficient_capacity "
+            f"asset={precheck.get('asset')} "
+            f"shortfall={precheck.get('estimated_shortfall')} "
+            f"max_borrowable={precheck.get('max_borrowable')} "
+            f"borrow_limit={precheck.get('borrow_limit')}"
+        )
 
     def _submit_spot(self, op, notional: float, quantity: float, order_type: OperateType) -> AutoExecutionOutcome:
         side = ExecutionSide.LONG
@@ -681,7 +800,7 @@ class AutoExecutionRouter:
                 return self._record(self._outcome(op, AutoExecutionStatus.SKIPPED, reason="unsupported_operation"))
             gateway = BinanceLiveExecutionGateway(self.exchange, staged_execution_mode=self.mode)
             result = gateway.open_position(selection.order) if order_type in (OperateType.BUY, OperateType.SHORT) else gateway.close_position(selection.order)
-            if order_type == OperateType.SHORT and self._is_margin_borrow_block_result(result):
+            if order_type in (OperateType.BUY, OperateType.SHORT) and self._is_margin_borrow_block_result(result):
                 return self._handle_margin_borrow_block(
                     op=op,
                     notional=notional,
@@ -754,7 +873,16 @@ class AutoExecutionRouter:
         base_reason = f"margin_borrow_blocked_-3006 policy={policy}"
         initial_events = [event.to_dict() for event in initial_result.events]
         initial_records = [self._state_record_for_order(selection.order, initial_result, op)]
-        if policy == MarginBorrowBlockPolicy.HARD_FAIL_STOP_TASK.value:
+        control = {
+            "stage": "post_error",
+            "trigger": "binance_-3006",
+            "policy": policy,
+            "symbol": selection.order.symbol,
+            "operation_type": getattr(getattr(op, "otype", None), "name", "UNKNOWN"),
+            "requested_notional": notional,
+            "requested_quantity": quantity,
+        }
+        if policy == MarginBorrowBlockPolicy.STOP_TASK.value:
             return self._record(
                 self._outcome(
                     op,
@@ -767,9 +895,10 @@ class AutoExecutionRouter:
                     exchange_order={"orderId": initial_result.gateway_order_id} if initial_result.gateway_order_id is not None else None,
                     execution_events=initial_events,
                     execution_state_records=initial_records,
+                    margin_borrow_control=control,
                 )
             )
-        if policy == MarginBorrowBlockPolicy.SKIP_SHORT_CONTINUE.value:
+        if policy == MarginBorrowBlockPolicy.SKIP_CONTINUE.value:
             return self._record(
                 self._outcome(
                     op,
@@ -781,9 +910,11 @@ class AutoExecutionRouter:
                     effective_quantity=quantity,
                     execution_events=initial_events,
                     execution_state_records=initial_records,
+                    margin_borrow_control=control,
                 )
             )
         repay = self._attempt_margin_auto_repay_for_block(selection.order.symbol)
+        control["repay"] = repay
         if not repay.get("ok"):
             return self._record(
                 self._outcome(
@@ -796,6 +927,7 @@ class AutoExecutionRouter:
                     effective_quantity=quantity,
                     execution_events=initial_events,
                     execution_state_records=initial_records,
+                    margin_borrow_control=control,
                 )
             )
         retry_result = gateway.open_position(selection.order)
@@ -813,6 +945,7 @@ class AutoExecutionRouter:
                     effective_quantity=quantity,
                     execution_events=initial_events + retry_events,
                     execution_state_records=initial_records + retry_records,
+                    margin_borrow_control={**control, "retry_status": "borrow_blocked"},
                 )
             )
         if not retry_result.accepted:
@@ -827,6 +960,7 @@ class AutoExecutionRouter:
                     effective_quantity=quantity,
                     execution_events=initial_events + retry_events,
                     execution_state_records=initial_records + retry_records,
+                    margin_borrow_control={**control, "retry_status": "failed"},
                 )
             )
         protection_result = gateway.place_protection(selection.risk) if selection.risk is not None else None
@@ -856,19 +990,38 @@ class AutoExecutionRouter:
                 exchange_order={"orderId": retry_result.gateway_order_id} if retry_result.gateway_order_id is not None else None,
                 execution_events=events,
                 execution_state_records=records,
+                margin_borrow_control={**control, "retry_status": "submitted"},
             ).with_native_protection(native_protection)
         )
 
     def _attempt_margin_auto_repay_for_block(self, symbol: str) -> dict[str, Any]:
         if self.exchange is None:
             return {"ok": False, "reason": "exchange_missing"}
+        if self.margin_borrow_block_policy == MarginBorrowBlockPolicy.REPAY_ALL.value:
+            helper = getattr(self.exchange, "auto_repay_all_liabilities_for_borrow_block", None)
+            if callable(helper):
+                try:
+                    return dict(
+                        helper(
+                            symbol,
+                            max_total=float(getattr(self.tcfg, "live_margin_auto_repay_max_total", 0.0) or 0.0),
+                            max_per_asset=float(getattr(self.tcfg, "live_margin_auto_repay_max_per_asset", 0.0) or 0.0),
+                            min_amount=float(getattr(self.tcfg, "live_margin_auto_repay_min_amount", 0.000001) or 0.000001),
+                            excluded_assets=list(getattr(self.tcfg, "live_margin_auto_repay_excluded_assets", []) or []),
+                        )
+                    )
+                except Exception as exc:
+                    return {"ok": False, "policy": "repay_all", "reason": str(exc)}
+            return {"ok": False, "policy": "repay_all", "reason": "auto_repay_all_not_supported"}
         helper = getattr(self.exchange, "auto_repay_for_borrow_block", None)
         if callable(helper):
             try:
-                return dict(helper(symbol))
+                result = dict(helper(symbol))
+                result.setdefault("policy", "repay_single")
+                return result
             except Exception as exc:
                 return {"ok": False, "reason": str(exc)}
-        return {"ok": False, "reason": "auto_repay_not_supported"}
+        return {"ok": False, "policy": "repay_single", "reason": "auto_repay_not_supported"}
 
     def _is_margin_borrow_block_result(self, result) -> bool:
         if getattr(result, "accepted", False):

@@ -13,6 +13,8 @@ class FakeCcxtClient:
         self.fetch_ohlcv_calls = []
         self.create_order_calls = []
         self.cancel_order_calls = []
+        self.max_borrowable_calls = []
+        self.margin_repay_calls = []
         self.markets = {
             "BTC/USDT": {
                 "symbol": "BTC/USDT",
@@ -42,7 +44,15 @@ class FakeCcxtClient:
         return {
             "free": {"BTC": 1.25, "USDT": 125.5},
             "total": {"BTC": 1.5, "USDT": 200.0},
-            "info": {"userAssets": [{"asset": "BTC", "netAsset": "-0.75"}]},
+            "info": {
+                "marginLevel": "1.7",
+                "collateralMarginLevel": "1.6",
+                "userAssets": [
+                    {"asset": "BTC", "netAsset": "-0.75", "borrowed": "0.5", "interest": "0.01", "free": "0.25"},
+                    {"asset": "ETH", "netAsset": "-2.0", "borrowed": "2.0", "interest": "0.02", "free": "1.0"},
+                    {"asset": "BNB", "netAsset": "-1.0", "borrowed": "1.0", "interest": "0.01", "free": "1.0"},
+                ],
+            },
         }
 
     def fetch_trading_fee(self, symbol):
@@ -91,8 +101,19 @@ class FakeCcxtClient:
         ]
 
     def sapiPostMarginRepay(self, params):
+        self.margin_repay_calls.append(params)
         self.last_margin_repay_params = params
         return {"tranId": 123456, **params}
+
+    def sapiGetMarginMaxBorrowable(self, params):
+        self.max_borrowable_calls.append(params)
+        return {"asset": params["asset"], "amount": "123.45", "borrowLimit": "500.0"}
+
+
+class FailingMaxBorrowableClient(FakeCcxtClient):
+    def sapiGetMarginMaxBorrowable(self, params):
+        self.max_borrowable_calls.append(params)
+        raise RuntimeError("signature rejected")
 
 
 def _driver():
@@ -252,7 +273,7 @@ def test_ccxt_default_type_is_spot_for_cross_margin_to_avoid_futures_endpoint_ro
     assert driver._default_type() == "spot"
 
 
-def test_ccxt_auto_repay_for_borrow_block_uses_margin_repay_endpoint():
+def test_ccxt_repay_single_for_borrow_block_uses_margin_repay_endpoint():
     client = FakeCcxtClient()
     driver = CcxtExchangeDriver(
         ExchangeConfig(ty=ExchangeType.BINANCE, driver=ExchangeDriverType.CCXT, margin_mode=MarginMode.CROSS_MARGIN),
@@ -264,3 +285,59 @@ def test_ccxt_auto_repay_for_borrow_block_uses_margin_repay_endpoint():
     assert result["symbol"] == "BTCUSDT"
     assert "results" in result
     assert isinstance(result["results"], list)
+
+
+def test_ccxt_driver_queries_cross_margin_max_borrowable():
+    client = FakeCcxtClient()
+    driver = CcxtExchangeDriver(
+        ExchangeConfig(ty=ExchangeType.BINANCE, driver=ExchangeDriverType.CCXT, margin_mode=MarginMode.CROSS_MARGIN),
+        client=client,
+    )
+
+    result = driver.get_max_borrowable("USDT", symbol="BTCUSDT")
+
+    assert result["asset"] == "USDT"
+    assert result["amount"] == "123.45"
+    assert result["borrowLimit"] == "500.0"
+    assert client.max_borrowable_calls == [{"asset": "USDT", "isIsolated": "FALSE"}]
+
+
+def test_ccxt_driver_returns_structured_max_borrowable_failure():
+    client = FailingMaxBorrowableClient()
+    driver = CcxtExchangeDriver(
+        ExchangeConfig(ty=ExchangeType.BINANCE, driver=ExchangeDriverType.CCXT, margin_mode=MarginMode.CROSS_MARGIN),
+        client=client,
+    )
+
+    result = driver.get_max_borrowable("USDT", symbol="BTCUSDT")
+
+    assert result["ok"] is False
+    assert result["asset"] == "USDT"
+    assert "signature rejected" in result["reason"]
+
+
+def test_ccxt_repay_all_liabilities_respects_caps_and_exclusions():
+    client = FakeCcxtClient()
+    driver = CcxtExchangeDriver(
+        ExchangeConfig(ty=ExchangeType.BINANCE, driver=ExchangeDriverType.CCXT, margin_mode=MarginMode.CROSS_MARGIN),
+        client=client,
+    )
+
+    result = driver.auto_repay_all_liabilities_for_borrow_block(
+        "BTC-USDT",
+        max_total=1.0,
+        max_per_asset=0.75,
+        min_amount=0.000001,
+        excluded_assets=["BNB"],
+    )
+
+    assert result["ok"] is True
+    assert result["policy"] == "repay_all"
+    assert result["total_repaid"] == 1.0
+    assert client.margin_repay_calls == [
+        {"asset": "BTC", "amount": "0.25"},
+        {"asset": "ETH", "amount": "0.75"},
+    ]
+    bnb = next(item for item in result["results"] if item["asset"] == "BNB")
+    assert bnb["status"] == "skipped"
+    assert bnb["reason"] == "excluded_asset"

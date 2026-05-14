@@ -7,6 +7,7 @@
     "free": 10000,
     "live_execution_mode": "small_live_auto",
     "live_data_mode": "realtime",
+    "live_margin_borrow_block_policy": "repay_all",
     "strategy_params": {
       "chainer_mode": "BOTH",
       "chainer_stoploss_atr_mult": 1,
@@ -24,6 +25,7 @@
     "free": 10000,
     "live_execution_mode": "small_live_auto",
     "live_data_mode": "realtime",
+    "live_margin_borrow_block_policy": "repay_single",
     "strategy_params": {
       "chainer_mode": "BOTH",
       "chainer_stoploss_atr_mult": 1,
@@ -41,6 +43,7 @@
     "free": 10000,
     "live_execution_mode": "small_live_auto",
     "live_data_mode": "realtime",
+    "live_margin_borrow_block_policy": "repay_single",
     "strategy_params": {
       "chainer_mode": "BOTH",
       "chainer_stoploss_atr_mult": 1,
@@ -58,6 +61,7 @@
     "free": 10000,
     "live_execution_mode": "small_live_auto",
     "live_data_mode": "realtime",
+    "live_margin_borrow_block_policy": "repay_single",
     "strategy_params": {
       "chainer_mode": "BOTH",
       "chainer_stoploss_atr_mult": 1,
@@ -75,6 +79,7 @@
     "free": 10000,
     "live_execution_mode": "small_live_auto",
     "live_data_mode": "realtime",
+    "live_margin_borrow_block_policy": "repay_single",
     "strategy_params": {
       "chainer_mode": "BOTH",
       "chainer_stoploss_atr_mult": 1,
@@ -92,6 +97,7 @@
     "free": 10000,
     "live_execution_mode": "small_live_auto",
     "live_data_mode": "realtime",
+    "live_margin_borrow_block_policy": "repay_single",
     "strategy_params": {
       "chainer_mode": "BOTH",
       "chainer_stoploss_atr_mult": 1,
@@ -109,6 +115,7 @@
     "free": 10000,
     "live_execution_mode": "small_live_auto",
     "live_data_mode": "realtime",
+    "live_margin_borrow_block_policy": "repay_single",
     "strategy_params": {
       "chainer_mode": "BOTH",
       "chainer_stoploss_atr_mult": 1,
@@ -126,6 +133,7 @@
     "free": 10000,
     "live_execution_mode": "small_live_auto",
     "live_data_mode": "realtime",
+    "live_margin_borrow_block_policy": "repay_single",
     "strategy_params": {
       "chainer_mode": "BOTH",
       "chainer_stoploss_atr_mult": 1,
@@ -143,6 +151,7 @@
     "free": 10000,
     "live_execution_mode": "small_live_auto",
     "live_data_mode": "realtime",
+    "live_margin_borrow_block_policy": "repay_single",
     "strategy_params": {
       "chainer_mode": "BOTH",
       "chainer_stoploss_atr_mult": 1,
@@ -160,6 +169,7 @@
     "free": 10000,
     "live_execution_mode": "small_live_auto",
     "live_data_mode": "realtime",
+    "live_margin_borrow_block_policy": "repay_single",
     "strategy_params": {
       "chainer_mode": "BOTH",
       "chainer_stoploss_atr_mult": 1,
@@ -177,6 +187,7 @@
     "free": 10000,
     "live_execution_mode": "small_live_auto",
     "live_data_mode": "realtime",
+    "live_margin_borrow_block_policy": "repay_single",
     "strategy_params": {
       "chainer_mode": "BOTH",
       "chainer_stoploss_atr_mult": 1,
