@@ -452,20 +452,27 @@ class TestDeleteKlinesInRange:
     def test_delete_range_called_on_force_update(self):
         """Verify delete is called when force_update is True."""
         from trader.database.kline import KlineCol
-
-        mock_db = MagicMock()
-        mock_collection = MagicMock()
-        mock_collection.delete_many.return_value = SimpleNamespace(deleted_count=10)
-        mock_db.list_collection_names.return_value = ["klines-BTCUSDT-1h"]
-        mock_db.__getitem__ = MagicMock(return_value=mock_collection)
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock, patch
 
         log = DummyLog()
-        kline_col = KlineCol(mock_db, log)
+        kline_col = KlineCol(log)
 
-        result = kline_col.delete_klines_in_range("BTCUSDT-1h", 1000, 2000)
+        async def _test():
+            # Mock the chain: _base_query().filter().delete()
+            mock_query = MagicMock()
+            mock_filter_result = MagicMock()
+            mock_filter_result.delete = AsyncMock(return_value=10)
+            mock_query.filter.return_value = mock_filter_result
 
-        assert result == 10
-        mock_collection.delete_many.assert_called_once()
+            with patch.object(kline_col, "_base_query", return_value=mock_query):
+                result = await kline_col.delete_klines_in_range("BTCUSDT-1h", 1000, 2000)
+
+                assert result == 10
+                mock_query.filter.assert_called_once()
+                mock_filter_result.delete.assert_called_once()
+
+        asyncio.run(_test())
 
 
 class TestTaskConfigForceUpdate:

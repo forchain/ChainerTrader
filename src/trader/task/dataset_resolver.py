@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import csv
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -114,21 +115,34 @@ class DatasetResolver:
             self._log_prepare_result(symbol_interval, start_time, end_time, result, time.perf_counter() - started_at)
             return result
 
-        if cache_start > cache_end:
+        if cache_start > end_time:
             result = self._failure(dataset_key, "no_data", "requested range is before first available kline")
             self._prepared[dataset_key] = result
             self._log_prepare_result(symbol_interval, start_time, end_time, result, time.perf_counter() - started_at)
             return result
 
+        dataset_ref = self._build_dataset_ref(symbol_interval, cache_start, cache_end)
         klines = list(await self.db_manager.kline.get_klines(symbol_interval.name(), cache_start, cache_end) or [])
         missing_ranges = self._detect_missing_ranges(
             symbol_interval,
-            cache_start,
-            cache_end,
+            start_time,
+            end_time,
             klines,
             first_available_open_time=first_available_open_time,
         )
 
+        if missing_ranges:
+            # If the narrow window is incomplete, expand to detect missing edges in the broad cache window
+            # so we proactively fill the daily bucket.
+            missing_ranges = self._detect_missing_ranges(
+                symbol_interval,
+                cache_start,
+                cache_end,
+                klines,
+                first_available_open_time=first_available_open_time,
+            )
+
+        coverage_relaxed = False
         if missing_ranges:
             did_download = False
             if not allow_download or self.exchange is None:
@@ -141,6 +155,7 @@ class DatasetResolver:
                 suffix = f" remaining_missing_ranges={len(missing_ranges)} preview={preview}" if missing_ranges else ""
                 self.log.warning(f"dataset coverage incomplete but downloading disabled and allowed: dataset={dataset_key}.{suffix}")
                 missing_ranges = []
+                coverage_relaxed = True
             if max_download_ranges is not None and len(missing_ranges) > max_download_ranges:
                 result = self._failure(
                     dataset_key,
@@ -175,8 +190,8 @@ class DatasetResolver:
                 first_available_open_time = await self._get_first_available_open_time(symbol_interval)
                 missing_ranges = self._detect_missing_ranges(
                     symbol_interval,
-                    cache_start,
-                    cache_end,
+                    start_time,
+                    end_time,
                     klines,
                     first_available_open_time=first_available_open_time,
                 )
@@ -190,13 +205,29 @@ class DatasetResolver:
                         return result
                     self.log.warning(f"dataset coverage incomplete but allowed: dataset={dataset_key}.{suffix}")
 
+        cache_path = Path(dataset_ref.path) if dataset_ref.path else None
+        if (
+            self.cache_dir is not None
+            and cache_path is not None
+            and cache_path.exists()
+            and not missing_ranges
+            and not coverage_relaxed
+            and len(klines) == self._count_csv_data_rows(cache_path)
+        ):
+            result = DatasetPreparationResult(ok=True, dataset_ref=dataset_ref, cache_hit=True)
+            self._prepared[dataset_key] = result
+            self._log_prepare_result(symbol_interval, start_time, end_time, result, time.perf_counter() - started_at)
+            return result
+
         if not klines:
             result = self._failure(dataset_key, "no_data", "no kline data available for dataset")
             self._prepared[dataset_key] = result
             self._log_prepare_result(symbol_interval, start_time, end_time, result, time.perf_counter() - started_at)
             return result
 
-        dataset_ref = self._build_dataset_ref(symbol_interval, cache_start, cache_end)
+        if self.cache_dir is not None:
+            self._materialize_cache(cache_path, klines)
+
         result = DatasetPreparationResult(ok=True, dataset_ref=dataset_ref, cache_hit=False)
         self._prepared[dataset_key] = result
         self._log_prepare_result(symbol_interval, start_time, end_time, result, time.perf_counter() - started_at)
@@ -207,6 +238,7 @@ class DatasetResolver:
 
     def _build_dataset_ref(self, symbol_interval: SymbolInterval, start_time: int, end_time: int) -> DatasetRef:
         dataset_key = self._build_dataset_key(symbol_interval, start_time, end_time)
+        filename = f"{symbol_interval.symbol()}-{symbol_interval.interval.value}-{start_time}-{end_time}.csv"
         return DatasetRef(
             dataset_key=dataset_key,
             symbol=symbol_interval.symbol(),
@@ -214,6 +246,7 @@ class DatasetResolver:
             start_time=start_time,
             end_time=end_time,
             source_type="db",
+            path=str(self.cache_dir / filename) if self.cache_dir is not None else None,
         )
 
     def _cache_range(self, symbol_interval: SymbolInterval, start_time: int, end_time: int) -> tuple[int, int]:
@@ -221,10 +254,15 @@ class DatasetResolver:
         if step <= 0 or start_time > end_time:
             return start_time, end_time
 
-        # Normalize to the strategy interval so second-level end time changes inside the same candle
-        # do not produce a different dataset identity or extra database work.
-        aligned_end = end_time - ((end_time - start_time) % step)
-        return start_time, max(start_time, aligned_end)
+        # Cache buckets are day-granular so repeated runs within the same day reuse the same dataset export.
+        # We still align to the interval step to avoid asking for impossible open_time values.
+        day_seconds = 86400
+        day_start = start_time - (start_time % day_seconds)
+        day_end = ((end_time // day_seconds) + 1) * day_seconds - 1
+        aligned = self._aligned_expected_range(day_start, day_end, step, reference_open_time=0)
+        if aligned is None:
+            return day_start, day_end
+        return aligned
 
     async def _get_first_available_open_time(self, symbol_interval: SymbolInterval) -> int | None:
         availability_store = getattr(self.db_manager, "availability", None)
@@ -315,6 +353,41 @@ class DatasetResolver:
             return None
 
         return aligned_start, aligned_end
+
+    def _materialize_cache(self, output_path: Path, klines: list[Kline]):
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = output_path.with_name(f"{output_path.name}.tmp")
+        try:
+            with tmp_path.open("w", encoding="utf-8", newline="") as handle:
+                writer = csv.writer(handle)
+                for kl in klines:
+                    writer.writerow(
+                        [
+                            kl.open_time * 1000,
+                            kl.open,
+                            kl.high,
+                            kl.low,
+                            kl.close,
+                            kl.volume,
+                            kl.close_time * 1000,
+                            kl.vol_quote,
+                            kl.trades,
+                            kl.vol_taker_base,
+                            kl.vol_taker_quote,
+                            kl.ignore,
+                        ]
+                    )
+            tmp_path.replace(output_path)
+        except Exception:
+            tmp_path.unlink(missing_ok=True)
+            raise
+
+    def _count_csv_data_rows(self, path: Path) -> int:
+        try:
+            with path.open("r", encoding="utf-8", newline="") as handle:
+                return sum(1 for _ in csv.reader(handle))
+        except OSError:
+            return -1
 
     def _failure(self, dataset_key: str, reason: str, message: str) -> DatasetPreparationResult:
         return DatasetPreparationResult(

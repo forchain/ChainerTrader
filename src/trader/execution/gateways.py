@@ -441,4 +441,4 @@ class BinanceLiveExecutionGateway(ExecutionGateway):
         return bool(verifier(_symbol_arg(symbol), order_ids))
 
     def _protection_side(self, intent: RiskIntent) -> OperateType:
-        return OperateType.SELL if intent.side == ExecutionSide.LONG else OperateType.BUY
+        return OperateType.SELL if intent.side == ExecutionSide.LONG else OperateType.CLOSE

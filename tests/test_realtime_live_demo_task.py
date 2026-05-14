@@ -26,10 +26,11 @@ def test_realtime_macd_production_tasks_cover_top_markets_with_daily_and_btc_int
     assert len(set(symbols)) == 10
     for task in tasks:
         assert task.strategy_name() == "macd_triple_divergence"
-        assert task.live_execution_mode == "manual_notify"
+        assert task.live_execution_mode == "small_live_auto"
+
         assert task.live_data_mode == "realtime"
         assert task.strategy_params["chainer_stoploss_atr_mult"] == 1
         assert task.strategy_params["chainer_enable_breakeven"] is True
         assert task.strategy_params["chainer_risk_reward_ratio"] == 0
-        assert task.strategy_params["chainer_need_confirm"] is True
+        assert task.strategy_params["chainer_need_confirm"] is False
         assert task.strategy_params["macd_stop_enabled"] is True

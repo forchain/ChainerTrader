@@ -18,6 +18,7 @@ Data preparation (run before test):
 import csv
 import logging
 import os
+import asyncio
 from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Optional
@@ -25,12 +26,14 @@ from typing import List, Optional
 import backtrader as bt
 import matplotlib.pyplot as plt
 import numpy as np
+import pytest
 from dotenv import load_dotenv
 from matplotlib.path import Path
 from matplotlib.ticker import ScalarFormatter
-from pymongo import MongoClient
 
 from trader.database.kline import KlineCol
+from trader.database.manager import build_tortoise_config
+from tortoise import Tortoise
 from trader.exchange.binance.data import BinanceData
 from trader.libraries.chainer_trader import ChainerTraderLib
 
@@ -406,20 +409,16 @@ class ChainerTraderTestStrategy(bt.Strategy):
         self.records.append(record)
 
 
-def get_klines_from_db():
-    """Load klines from MongoDB."""
-    db_uri = os.environ.get("TRADER_DB", "mongodb://localhost:27017/")
-    db_name = os.environ.get("TRADER_DB_NAME", "trader")
-    
-    client = MongoClient(db_uri)
-    db = client[db_name]
-    
+async def get_klines_from_db():
+    """Load klines from Tortoise ORM."""
+    db_url = os.environ.get("TRADER_DB_URL", "sqlite://:memory:")
+    await Tortoise.init(config=build_tortoise_config(db_url))
+    await Tortoise.generate_schemas()
+
     log = logging.getLogger(__name__)
-    kline_col = KlineCol(db, log)
-    
-    klines = kline_col.get_klines(SYMBOL_INTERVAL, START_TIME, END_TIME)
-    client.close()
-    
+    kline_col = KlineCol(log)
+
+    klines = await kline_col.get_klines(SYMBOL_INTERVAL, START_TIME, END_TIME)
     return klines
 
 
@@ -758,12 +757,18 @@ def plot_chainer_trader(records: List[SignalRecord], output_file: str):
 
 def test_chainer_trader(main=False):
     """Test ChainerTrader indicator logic with BTC-USDT 1h data."""
-    klines = get_klines_from_db()
-    
-    if klines is None or len(klines) == 0:
-        print(f"No klines found for {SYMBOL_INTERVAL}. Please download data first.")
-        return
-    
+
+    async def _run():
+        klines = await get_klines_from_db()
+        if klines is None or len(klines) == 0:
+            pytest.skip(f"No klines found for {SYMBOL_INTERVAL}. Please download data first.")
+        return klines
+
+    try:
+        klines = asyncio.run(_run())
+    finally:
+        asyncio.run(Tortoise.close_connections())
+
     print(f"Loaded {len(klines)} klines from {SYMBOL_INTERVAL}")
     print(f"Date range: {klines[0].open_datetime()} - {klines[-1].open_datetime()}")
     print()

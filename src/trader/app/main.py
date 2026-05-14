@@ -4,12 +4,12 @@ from dotenv import load_dotenv
 
 from trader.app.app import App, version
 from trader.common.config import new_and_env
-from trader.rpc.rpc import start
+from trader.rpc.app import start
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Implement TradvingView Algorithms of Youtube Channel Shi Hun",
+        description="Implement TradingView Algorithms of Youtube Channel Shi Hun",
         epilog="Chainer Labs",
         fromfile_prefix_chars="@",
     )

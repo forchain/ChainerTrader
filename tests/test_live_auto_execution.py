@@ -308,7 +308,7 @@ def test_cross_margin_short_risk_update_replaces_buy_side_stop_with_short_exposu
     outcome = router.route(update)
 
     assert outcome.status == AutoExecutionStatus.SUBMITTED
-    assert exchange.replace_stop_order_calls == [("BTCUSDT", OperateType.BUY, "stop-1", 0.1, 100.0)]
+    assert exchange.replace_stop_order_calls == [("BTCUSDT", OperateType.CLOSE, "stop-1", 0.1, 100.0)]
     assert outcome.execution_state_records[0].order_role == "replace_stop"
 
 
