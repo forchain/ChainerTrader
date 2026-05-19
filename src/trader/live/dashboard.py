@@ -193,6 +193,7 @@ def build_risk_overlay_events(strategy_id: int, op) -> list[DashboardEvent]:
                 strategy_id=strategy_id,
                 event_time=event_time,
                 payload={
+                    "time": event_time,
                     "time_text": event_time_text(event_time),
                     "overlay_type": "stop_loss",
                     "price": float(stop_loss),
@@ -211,6 +212,7 @@ def build_risk_overlay_events(strategy_id: int, op) -> list[DashboardEvent]:
                 strategy_id=strategy_id,
                 event_time=event_time,
                 payload={
+                    "time": event_time,
                     "time_text": event_time_text(event_time),
                     "overlay_type": "take_profit",
                     "price": float(take_profit),
@@ -229,6 +231,7 @@ def build_risk_overlay_events(strategy_id: int, op) -> list[DashboardEvent]:
                 strategy_id=strategy_id,
                 event_time=event_time,
                 payload={
+                    "time": event_time,
                     "time_text": event_time_text(event_time),
                     "overlay_type": "breakeven_move",
                     "price": float(new_stop),

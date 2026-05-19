@@ -20,11 +20,23 @@ def test_live_monitor_javascript_uses_snapshot_sse_and_incremental_candle_update
     assert "LightweightCharts" in script
     assert "/api/live/strategies" in script
     assert "EventSource" in script
-    assert ".update(" in script
+    assert "setCandles(snapshot.candles || [])" in script
+    assert "upsertCandle(candle)" in script
     assert "signal_marker" in script
     assert "risk_overlay" in script
     assert "macd_divergence" in script
     assert "renderSnapshotOverlays(snapshot.overlays || {})" in script
+    assert "const DEFAULT_MAX_CANDLES = 500;" in script
+    assert "function clampRecentCandles(candles)" in script
+    assert "function upsertCandle(candle)" in script
+    assert "state.candleLimit = Math.max(1, Number(snapshot?.history_window?.limit || DEFAULT_MAX_CANDLES));" in script
+    assert "visibleRange" in script
+    assert "subscribeVisibleTimeRangeChange" in script
+    assert "inVisibleRange" in script
+    assert "function rebuildCandleTimes(candles)" in script
+    assert "function upsertCandleTime(candleTime)" in script
+    assert "function snapMarkerTimeToCandle(time)" in script
+    assert "candleTimes" in script
     assert "riskLineStyle" in script
     assert "risk_overlay_invalid_price" in script
 
@@ -44,6 +56,9 @@ def test_live_monitor_javascript_reuses_marker_api_and_filters_noisy_diagnostics
     assert "state.strategyEvents" in script
     assert "strategyEventPayloadToMarkers" in script
     assert "updateOverlayCounts" in script
+    assert "visibleRange" in script
+    assert "subscribeVisibleTimeRangeChange" in script
+    assert "inVisibleRange" in script
     assert "overlay-risk-count" in template
 
 

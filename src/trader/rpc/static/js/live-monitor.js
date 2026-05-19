@@ -1,4 +1,6 @@
 (function () {
+  const DEFAULT_MAX_CANDLES = 500;
+
   const state = {
     strategies: [],
     selectedId: null,
@@ -11,6 +13,9 @@
     strategyEvents: [],
     priceLines: [],
     eventSequence: 0,
+    candles: [],
+    visibleRange: null,
+    candleLimit: DEFAULT_MAX_CANDLES,
     candleTimes: [],
   };
 
@@ -55,6 +60,33 @@
     };
   }
 
+  function clampRecentCandles(candles) {
+    const limit = Math.max(1, Number(state.candleLimit || DEFAULT_MAX_CANDLES));
+    if (!Array.isArray(candles) || candles.length === 0) return [];
+    if (candles.length <= limit) return candles;
+    return candles.slice(-limit);
+  }
+
+  function setCandles(candles) {
+    state.candles = clampRecentCandles(candles);
+    rebuildCandleTimes(state.candles);
+    state.candleSeries.setData(state.candles.map(normalizeCandleForChart));
+  }
+
+  function upsertCandle(candle) {
+    const time = Number(candle?.time);
+    if (!Number.isFinite(time)) return;
+    const candles = state.candles.slice();
+    if (candles.length > 0 && Number(candles[candles.length - 1].time) === time) {
+      candles[candles.length - 1] = candle;
+    } else {
+      candles.push(candle);
+    }
+    state.candles = clampRecentCandles(candles);
+    upsertCandleTime(time);
+    state.candleSeries.update(normalizeCandleForChart(candle));
+  }
+
   function normalizeMarkerForChart(marker) {
     const snappedTime = snapMarkerTimeToCandle(marker.time);
     return {
@@ -62,6 +94,24 @@
       raw_time: marker.time,
       time: toChartTime(snappedTime),
     };
+  }
+
+  function currentVisibleRange() {
+    const range = state.visibleRange;
+    if (!range) return null;
+    const from = Number(range.from);
+    const to = Number(range.to);
+    if (!Number.isFinite(from) || !Number.isFinite(to)) return null;
+    return { from, to };
+  }
+
+  function inVisibleRange(unixTime) {
+    const range = currentVisibleRange();
+    if (!range) return true;
+    const time = Number(unixTime);
+    if (!Number.isFinite(time)) return false;
+    const chartTime = toChartTime(time);
+    return chartTime >= range.from && chartTime <= range.to;
   }
 
   function rebuildCandleTimes(candles) {
@@ -150,6 +200,7 @@
   }
 
   function renderSnapshot(snapshot) {
+    state.candleLimit = Math.max(1, Number(snapshot?.history_window?.limit || DEFAULT_MAX_CANDLES));
     el("active-strategy-title").textContent = `${snapshot.market} ${snapshot.interval}`;
     const paramLabel = snapshot.param_id || snapshot.parameter_fingerprint || "default";
     el("active-strategy-meta").textContent =
@@ -161,8 +212,7 @@
     });
     renderStrategyParameters(snapshot);
     ensureChart();
-    rebuildCandleTimes(snapshot.candles || []);
-    state.candleSeries.setData((snapshot.candles || []).map(normalizeCandleForChart));
+    setCandles(snapshot.candles || []);
     clearPriceLines();
     state.markers = [];
     state.riskOverlays = [];
@@ -209,6 +259,11 @@
     } else {
       state.candleSeries = state.chart.addSeries(LightweightCharts.CandlestickSeries, {});
     }
+    state.chart.timeScale().subscribeVisibleTimeRangeChange((range) => {
+      state.visibleRange = range;
+      applyMarkers();
+      applyRiskOverlays();
+    });
     window.addEventListener("resize", () => {
       if (host.clientWidth > 0) state.chart.applyOptions({ width: host.clientWidth });
     });
@@ -234,8 +289,7 @@
   function handleRealtimeEvent(event) {
     if (event.event_type === "kline_update") {
       const candle = event.payload.candle;
-      upsertCandleTime(candle.time);
-      state.candleSeries.update(normalizeCandleForChart(candle));
+      upsertCandle(candle);
     }
     if (event.event_type === "signal_marker") {
       state.markers.push(signalPayloadToMarker(event.payload));
@@ -272,10 +326,16 @@
 
   function applyMarkers() {
     const markers = [];
-    if (el("overlay-signals")?.checked) markers.push(...state.markers.map(normalizeMarkerForChart));
+    if (el("overlay-signals")?.checked) {
+      markers.push(...state.markers.filter((marker) => inVisibleRange(marker.time)).map(normalizeMarkerForChart));
+    }
     if (el("overlay-macd")?.checked) {
       state.strategyEvents.forEach((payload) => {
-        markers.push(...strategyEventPayloadToMarkers(payload).map(normalizeMarkerForChart));
+        markers.push(
+          ...strategyEventPayloadToMarkers(payload)
+            .filter((marker) => inVisibleRange(marker.time))
+            .map(normalizeMarkerForChart)
+        );
       });
     }
     if (state.candleSeries.setMarkers) {
@@ -340,7 +400,7 @@
   function applyRiskOverlays() {
     clearPriceLines();
     if (!el("overlay-risk")?.checked) return;
-    state.riskOverlays.forEach(renderRiskOverlay);
+    state.riskOverlays.filter((payload) => inVisibleRange(payload.time)).forEach(renderRiskOverlay);
   }
 
   function riskLineStyle() {

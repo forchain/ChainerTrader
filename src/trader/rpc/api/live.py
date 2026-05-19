@@ -44,20 +44,36 @@ async def list_live_strategies(request: Request):
 
 @router.get("/strategies/{strategy_id}/snapshot")
 async def live_strategy_snapshot(strategy_id: int, request: Request):
+    app = request.app.state.app
     user = await current_user(request)
-    task = request.app.state.app.task_manager.get_task(strategy_id)
+    task_manager = app.task_manager
+    if hasattr(task_manager, "get_task"):
+        task = task_manager.get_task(strategy_id)
+    else:
+        task = (getattr(task_manager, "tasks", {}) or {}).get(strategy_id)
     if task is None or not _can_access_task(user, task):
         raise HTTPException(status_code=404, detail="live strategy not found")
-    return await build_initial_snapshot(task, request.app.state.app.db_manager)
+    cfg = getattr(app, "cfg", None)
+    limit = max(1, int(getattr(cfg, "live_warmup_candles", 500) or 500))
+    return await build_initial_snapshot(task, app.db_manager, limit=limit)
 
 
 @router.get("/strategies/{strategy_id}/events")
 async def live_strategy_events(strategy_id: int, request: Request):
+    app = getattr(request.app.state, "app", None) or request.app
     user = await current_user(request)
-    task = request.app.state.app.task_manager.get_task(strategy_id)
-    if task is None or not _can_access_task(user, task):
+    task_manager = getattr(app, "task_manager", None)
+    task = None
+    if task_manager is not None:
+        if hasattr(task_manager, "get_task"):
+            task = task_manager.get_task(strategy_id)
+        else:
+            task = (getattr(task_manager, "tasks", {}) or {}).get(strategy_id)
+        if task is None or not _can_access_task(user, task):
+            raise HTTPException(status_code=404, detail="live strategy not found")
+    bus = getattr(request.app.state, "live_event_bus", None) or getattr(app, "live_event_bus", None)
+    if bus is None:
         raise HTTPException(status_code=404, detail="live strategy not found")
-    bus = request.app.state.live_event_bus
     subscription = await bus.subscribe(strategy_id)
 
     async def event_stream():

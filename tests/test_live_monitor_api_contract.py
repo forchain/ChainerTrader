@@ -12,6 +12,7 @@ from trader.live.monitor import (
     build_live_strategy_summary,
     serialize_dashboard_event,
 )
+from trader.common.config import Config
 from trader.rpc.api.live import (
     dispatch_debug_manual_signal,
     is_local_request,
@@ -156,6 +157,25 @@ def test_build_initial_snapshot_returns_latest_500_chart_candles():
     assert "signals" in snapshot["enabled_overlays"]
 
 
+@pytest.mark.anyio
+async def test_live_strategy_snapshot_api_uses_configured_live_warmup_candles_limit():
+    klines = [_kline(BASE + i * 60, close=100 + i) for i in range(120)]
+    task = FakeTask()
+    manager = SimpleNamespace(tasks={7: task}, get_task=lambda strategy_id: task if strategy_id == 7 else None)
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                app=SimpleNamespace(task_manager=manager, db_manager=FakeDb(klines), cfg=Config(live_warmup_candles=50))
+            )
+        )
+    )
+
+    payload = await live_strategy_snapshot(7, request)
+
+    assert len(payload["candles"]) == 50
+    assert payload["history_window"]["limit"] == 50
+
+
 def test_build_initial_snapshot_returns_historical_operation_overlays_inside_loaded_window():
     visible_op = Operate(OperateType.BUY, BASE + 3 * 60, 103.0)
     visible_op.stop_loss = 99.0
@@ -256,7 +276,7 @@ def test_list_live_strategies_api_returns_sorted_strategy_summaries():
     manager = SimpleNamespace(tasks={2: task_a, 1: task_b})
     request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(app=SimpleNamespace(task_manager=manager))))
 
-    payload = list_live_strategies(request)
+    payload = asyncio.run(list_live_strategies(request))
 
     assert [item["strategy_id"] for item in payload] == [1, 2]
     assert payload[0]["execution_mode"] == "manual_notify"

@@ -251,13 +251,13 @@ async def test_trader_task_realtime_uses_backtrader_live_runner_for_warmup_and_c
 
 
 @pytest.mark.anyio
-async def test_trader_task_realtime_fetches_latest_500_when_local_warmup_window_is_short(monkeypatch):
+async def test_trader_task_realtime_fetches_latest_configured_warmup_when_local_window_is_short(monkeypatch):
     FakeRunner.instances = []
-    fetched = [_kline(BASE + i * 60, close=100 + i) for i in range(500)]
+    fetched = [_kline(BASE + i * 60, close=100 + i) for i in range(400)]
     db = FakeDb()
     db.kline.add_klines("BTCUSDT-1m", fetched[-2:])
     exchange = FakeExchange(fetched)
-    cfg = Config(window=1000)
+    cfg = Config(window=1000, live_warmup_candles=400)
     tcfg = TaskConfig(
         81,
         TaskType.TRADER,
@@ -286,10 +286,10 @@ async def test_trader_task_realtime_fetches_latest_500_when_local_warmup_window_
     await task.start_realtime(asyncio.Queue(), [NoopStrategy])
 
     runner = FakeRunner.instances[0]
-    assert 500 in exchange.latest_requests
-    assert len(runner.started_warmup) == 500
+    assert 400 in exchange.latest_requests
+    assert len(runner.started_warmup) == 400
     assert runner.started_warmup[0].open_time == BASE
-    assert runner.started_warmup[-1].open_time == BASE + 499 * 60
+    assert runner.started_warmup[-1].open_time == BASE + 399 * 60
 
 
 @pytest.mark.anyio
