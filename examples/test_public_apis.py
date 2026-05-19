@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test script to verify public API functionality
+Smoke script to verify public APIs and session-protected pages.
 """
 import os
 import subprocess
@@ -41,32 +41,40 @@ def test_public_apis():
     except requests.exceptions.RequestException as e:
         print(f"  Error: {e}")
 
-    # Test protected endpoint (should fail)
+    # API info remains public.
     try:
         response = requests.get(f"{base_url}/api/info")
-        print(f"GET /api/info (protected): {response.status_code}")
-        if response.status_code == 401:
-            print("  ✓ Correctly protected - requires authentication")
+        print(f"GET /api/info: {response.status_code}")
+        if response.status_code == 200:
+            print(f"  Response: {response.json()}")
         else:
-            print(f"  ✗ Should be protected but returned: {response.status_code}")
+            print(f"  Error: {response.text}")
+    except requests.exceptions.RequestException as e:
+        print(f"  Error: {e}")
+
+    # Admin pages are session-protected when bootstrap credentials are configured.
+    try:
+        response = requests.get(f"{base_url}/admin", allow_redirects=False)
+        print(f"GET /admin: {response.status_code}")
+        if response.status_code == 303:
+            print(f"  Redirected to {response.headers.get('location')}")
+        else:
+            print(f"  Unexpected: {response.text}")
     except requests.exceptions.RequestException as e:
         print(f"  Error: {e}")
 
 
-def start_server_with_protected_paths():
-    """Start server with protected paths configured"""
-    print("Starting server with protected paths...")
+def start_server_with_session_auth():
+    """Start server with bootstrap administrator credentials."""
+    print("Starting server with session authentication...")
 
-    # Set environment variables
     os.environ["TRADER_AUTH_USERNAME"] = "admin"
-    os.environ["TRADER_AUTH_PASSWORD"] = "password123"
-    os.environ["TRADER_PROTECTED_PATHS"] = "/admin"
+    os.environ["TRADER_AUTH_PASSWORD"] = "password123A"
+    os.environ.setdefault("TRADER_SECRET_KEY", "example-service-secret")
 
-    # Start server
     cmd = [sys.executable, "-m", "trader", "--api", "127.0.0.1:8000"]
     process = subprocess.Popen(cmd)
 
-    # Wait for server to start
     print("Waiting for server to start...")
     time.sleep(5)
 
@@ -74,24 +82,19 @@ def start_server_with_protected_paths():
 
 
 def main():
-    print("ChainerTrader Protected Paths Test")
+    print("ChainerTrader Public API Test")
     print("=" * 50)
 
-    # Start server
-    process = start_server_with_protected_paths()
+    process = start_server_with_session_auth()
 
     try:
         # Test public APIs
         test_public_apis()
 
-        print("\n✓ Protected paths test completed")
         print("You can test manually:")
         print("  curl http://localhost:8000/api/health  # Public - should work")
         print("  curl http://localhost:8000/api/info    # Public - should work")
-        print("  curl http://localhost:8000/admin       # Protected - should return 401")
-        print("  curl http://localhost:8000/admin/tasks # Protected - should return 401")
-        print("  curl -u admin:password123 http://localhost:8000/admin  # Should work with auth")
-        print("  curl -u admin:password123 http://localhost:8000/admin/tasks  # Should work with auth")
+        print("  open http://localhost:8000/login       # Login form")
 
         # Keep server running
         print("\nPress Ctrl+C to stop the server...")

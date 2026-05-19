@@ -25,6 +25,8 @@ def test_live_monitor_javascript_uses_snapshot_sse_and_incremental_candle_update
     assert "risk_overlay" in script
     assert "macd_divergence" in script
     assert "renderSnapshotOverlays(snapshot.overlays || {})" in script
+    assert "riskLineStyle" in script
+    assert "risk_overlay_invalid_price" in script
 
 
 def test_live_monitor_javascript_reuses_marker_api_and_filters_noisy_diagnostics():
@@ -32,7 +34,7 @@ def test_live_monitor_javascript_reuses_marker_api_and_filters_noisy_diagnostics
     script = (ROOT / "src/trader/rpc/static/js/live-monitor.js").read_text(encoding="utf-8")
 
     assert "markerApi" in script
-    assert "createSeriesMarkers(state.candleSeries, markers)" in script
+    assert "createSeriesMarkers(state.candleSeries, markers, { zOrder: \"top\" })" in script
     assert "state.markerApi.setMarkers(markers)" in script
     assert "shouldAppendDiagnostic(event)" in script
     assert "event.payload.closed === false" in script
@@ -43,6 +45,14 @@ def test_live_monitor_javascript_reuses_marker_api_and_filters_noisy_diagnostics
     assert "strategyEventPayloadToMarkers" in script
     assert "updateOverlayCounts" in script
     assert "overlay-risk-count" in template
+
+
+def test_live_monitor_risk_overlay_uses_single_visible_price_line_layer():
+    script = (ROOT / "src/trader/rpc/static/js/live-monitor.js").read_text(encoding="utf-8")
+
+    assert "state.candleSeries.createPriceLine({" in script
+    assert "renderRiskOverlaySeries(price, color, overlayType)" not in script
+    assert "state.riskSeries" not in script
 
 
 def test_live_monitor_uses_generic_strategy_event_layer_label_and_email_smoke_control():
@@ -85,6 +95,11 @@ def test_live_monitor_javascript_uses_local_chart_time_and_numbered_events():
     assert "normalizeCandleForChart" in script
     assert "normalizeMarkerForChart" in script
     assert "Date.parse(time)" in script
+    assert "snapMarkerTimeToCandle" in script
+    assert "rebuildCandleTimes" in script
+    assert "upsertCandleTime" in script
+    assert "leg.price_time" in script
+    assert "leg.macd_time" in script
 
 
 def test_live_monitor_javascript_formats_diagnostics_with_collapsible_json():
@@ -96,3 +111,11 @@ def test_live_monitor_javascript_formats_diagnostics_with_collapsible_json():
     assert "JSON.stringify(value, null, 2)" in script
     assert "<details" in script
     assert ".diagnostic-json-details" in style
+
+
+def test_live_monitor_runtime_status_renders_object_values_as_collapsible_details():
+    script = (ROOT / "src/trader/rpc/static/js/live-monitor.js").read_text(encoding="utf-8")
+
+    assert "if (value != null && typeof value === \"object\")" in script
+    assert "查看详情" in script
+    assert "renderStructuredValue(value, key)" in script

@@ -16,8 +16,7 @@ from trader.exchange.exchange_config import MarginMode, parse_exchange_config
 from trader.exchange.exchange_type import ExchangeType
 from trader.notify.notify_manager import NotifyManager
 from trader.statistics.statistics import Statistics
-from trader.task.live_startup_self_check import evaluate_live_startup_self_check
-from trader.task.live_startup_self_check import infer_required_margin_mode
+from trader.task.live_startup_self_check import evaluate_live_startup_self_check, infer_required_margin_mode
 from trader.task.task_config import TaskConfig, parse_task_config
 from trader.task.task_manager import TaskManager
 
@@ -201,10 +200,13 @@ class App:
             except asyncio.QueueFull:
                 self.logger.error("QueueFull")
 
-    def send_add_tasks_msg(self, tasks_cfg: str):
+    def send_add_tasks_msg(self, tasks_cfg: str, user_id: int | None = None):
         taskcs: list[TaskConfig] = []
         if tasks_cfg:
             taskcs = parse_task_config(tasks_cfg)
+        if user_id is not None:
+            for taskc in taskcs:
+                taskc.user_id = user_id
 
         if len(taskcs) <= 0:
             return {

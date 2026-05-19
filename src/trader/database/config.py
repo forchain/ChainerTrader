@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from trader.common import path
@@ -46,4 +47,4 @@ def build_tortoise_config(db_url: str | None) -> dict:
     }
 
 
-TORTOISE_ORM = build_tortoise_config(DEFAULT_DB_URL)
+TORTOISE_ORM = build_tortoise_config(os.environ.get("TRADER_DB", DEFAULT_DB_URL))

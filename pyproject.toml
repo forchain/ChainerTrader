@@ -24,6 +24,7 @@ dependencies = [
     "binance-sdk-spot>=1.0.0",
     "fastapi-auto-router>=0.1.1",
     "binance-sdk-margin-trading>=5.0.0",
+    "argon2-cffi>=25.1.0",
 ]
 
 [dependency-groups]

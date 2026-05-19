@@ -5,13 +5,13 @@ from datetime import datetime
 from trader.common import path
 from trader.common.common import parse_datetime
 from trader.common.config import TRADER_MIN_LIVE_TRADE_NOTIONAL
-from trader.task.optimization import expand_parameter_space, has_parameter_search, make_optimization_run_id, make_param_id
-from trader.task.task_type import TaskType, parse_task_type
 from trader.live.auto_execution import (
     normalize_live_execution_mode,
     normalize_live_short_execution,
     normalize_margin_borrow_block_policy,
 )
+from trader.task.optimization import expand_parameter_space, has_parameter_search, make_optimization_run_id, make_param_id
+from trader.task.task_type import TaskType, parse_task_type
 from trader.utils.symbol_interval import Interval, SymbolInterval
 from trader.utils.symbols_interval import SymbolsInterval
 
@@ -103,6 +103,7 @@ class TaskConfig:
         live_margin_auto_repay_max_per_asset: float = 50.0,
         live_margin_auto_repay_min_amount: float = 0.000001,
         live_margin_auto_repay_excluded_assets: list[str] | None = None,
+        user_id: int | None = None,
     ):
         self.ttype = ttype
         self.csv = csv
@@ -129,6 +130,7 @@ class TaskConfig:
         self.live_margin_auto_repay_max_per_asset = float(live_margin_auto_repay_max_per_asset or 0.0)
         self.live_margin_auto_repay_min_amount = float(live_margin_auto_repay_min_amount or 0.0)
         self.live_margin_auto_repay_excluded_assets = parse_string_list(live_margin_auto_repay_excluded_assets)
+        self.user_id = int(user_id) if user_id is not None else None
         if self.live_margin_borrow_block_policy == "repay_all" and (
             self.live_margin_auto_repay_max_total <= 0 or self.live_margin_auto_repay_max_per_asset <= 0
         ):
@@ -158,6 +160,7 @@ class TaskConfig:
                 "id": self.id,
                 "type": self.ttype,
                 "limit": self.limit,
+                "user_id": self.user_id,
             }
         return {
             "id": self.id,
@@ -186,6 +189,7 @@ class TaskConfig:
             "live_margin_auto_repay_min_amount": self.live_margin_auto_repay_min_amount,
             "live_margin_auto_repay_excluded_assets": list(self.live_margin_auto_repay_excluded_assets),
             "requires_short_capability": self.requires_short_capability,
+            "user_id": self.user_id,
         }
 
     def strategy_name(self):
@@ -225,7 +229,7 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
             limit = tcd["limit"]
 
         if task_type == TaskType.DEBUG:
-            tc = TaskConfig(create_task_id(last_task_id), task_type, None)
+            tc = TaskConfig(create_task_id(last_task_id), task_type, None, user_id=tcd.get("user_id"))
             tc.limit = limit
             ret.append(tc)
             last_task_id = tc.id
@@ -277,6 +281,7 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
         live_margin_auto_repay_max_per_asset = float(tcd.get("live_margin_auto_repay_max_per_asset", 50.0) or 0.0)
         live_margin_auto_repay_min_amount = float(tcd.get("live_margin_auto_repay_min_amount", 0.000001) or 0.0)
         live_margin_auto_repay_excluded_assets = parse_string_list(tcd.get("live_margin_auto_repay_excluded_assets"))
+        user_id = tcd.get("user_id")
 
         csv = None
         if "csv" in tcd:
@@ -348,6 +353,7 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
                     live_margin_auto_repay_max_per_asset=live_margin_auto_repay_max_per_asset,
                     live_margin_auto_repay_min_amount=live_margin_auto_repay_min_amount,
                     live_margin_auto_repay_excluded_assets=live_margin_auto_repay_excluded_assets,
+                    user_id=user_id,
                 )
                 ret.append(tc)
                 last_task_id = tc.id
@@ -381,6 +387,7 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
                             live_margin_auto_repay_max_per_asset=live_margin_auto_repay_max_per_asset,
                             live_margin_auto_repay_min_amount=live_margin_auto_repay_min_amount,
                             live_margin_auto_repay_excluded_assets=live_margin_auto_repay_excluded_assets,
+                            user_id=user_id,
                         )
                         ret.append(tc)
                         last_task_id = tc.id
@@ -410,6 +417,7 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
                         live_margin_auto_repay_max_per_asset=live_margin_auto_repay_max_per_asset,
                         live_margin_auto_repay_min_amount=live_margin_auto_repay_min_amount,
                         live_margin_auto_repay_excluded_assets=live_margin_auto_repay_excluded_assets,
+                        user_id=user_id,
                     )
                     ret.append(tc)
                     last_task_id = tc.id

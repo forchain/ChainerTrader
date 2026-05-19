@@ -58,8 +58,8 @@ trader -h
 # Start web API server (default: 127.0.0.1:8000)
 python -m trader --api
 
-# Start with custom host/port and authentication
-python -m trader --api 0.0.0.0:8080 --auth-username admin --auth-password pass --protected-paths "/admin"
+# Start with custom host/port and bootstrap administrator login
+python -m trader --api 0.0.0.0:8080 --auth-username admin --auth-password password123A --secret-key replace-with-service-secret
 
 # Run with configuration (using @ prefix to load from file)
 python -m trader @configs/tasks/examples/backtrader_strategy.json
@@ -146,9 +146,9 @@ MongoDB integration for:
 
 #### Web API (`src/trader/rpc/`)
 FastAPI-based REST API with automatic routing (`fastapi-auto-router`):
-- **Public Endpoints**: `/api/config`, `/api/info`, `/api/tasks`, `/api/health`
-- **Admin Interface**: `/admin` dashboard, `/admin/tasks`, `/admin/klines`, `/admin/logs`
-- **Authentication**: HTTP Basic Auth with path-based protection
+- **Public Endpoints**: `/api/config`, `/api/info`, `/api/health`
+- **Admin Interface**: `/admin` dashboard, `/admin/tasks`, `/admin/klines`, `/admin/live`, `/admin/logs`, `/admin/users`
+- **Authentication**: database-backed login with HTTP-only session cookies
 
 ### Supporting Systems
 
@@ -207,5 +207,5 @@ FastAPI-based REST API with automatic routing (`fastapi-auto-router`):
 
 - **API Keys**: Never commit to version control. Use environment variables or `.env` file
 - **Configuration**: `example.env` template provided - copy to `.env` and configure
-- **Authentication**: Web API supports path-based HTTP Basic Auth for admin endpoints
-- **Protected Paths**: Configure via `--protected-paths` or `TRADER_PROTECTED_PATHS` env var
+- **Authentication**: Web console uses session login; `TRADER_AUTH_USERNAME` and `TRADER_AUTH_PASSWORD` bootstrap the first admin account
+- **Exchange Credentials**: Per-user exchange API keys are encrypted with `TRADER_SECRET_KEY`; keep it stable and backed up

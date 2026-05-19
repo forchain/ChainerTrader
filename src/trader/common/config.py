@@ -27,6 +27,9 @@ TRADER_AUTH_USERNAME = "TRADER_AUTH_USERNAME"
 TRADER_AUTH_PASSWORD = "TRADER_AUTH_PASSWORD"
 TRADER_PROTECTED_PATHS = "TRADER_PROTECTED_PATHS"
 TRADER_MIN_LIVE_TRADE_NOTIONAL = "TRADER_MIN_LIVE_TRADE_NOTIONAL"
+TRADER_SECRET_KEY = "TRADER_SECRET_KEY"
+TRADER_SESSION_COOKIE_SECURE = "TRADER_SESSION_COOKIE_SECURE"
+TRADER_SESSION_TTL_HOURS = "TRADER_SESSION_TTL_HOURS"
 
 
 def parse_log_file_config(value: Any) -> bool | str:
@@ -64,6 +67,9 @@ class Config:
         auth_username=None,
         auth_password=None,
         protected_paths=None,
+        secret_key=None,
+        session_cookie_secure: bool = False,
+        session_ttl_hours: int = 24,
         optimization_sample_timeout_seconds: float = 60.0,
         optimization_dataset_prepare_timeout_seconds: float = 600.0,
         optimization_dataset_download_request_budget: int = 20,
@@ -94,6 +100,9 @@ class Config:
         self.auth_username = auth_username
         self.auth_password = auth_password
         self.protected_paths = protected_paths or []
+        self.secret_key = secret_key
+        self.session_cookie_secure = bool(session_cookie_secure)
+        self.session_ttl_hours = int(session_ttl_hours)
         self.optimization_sample_timeout_seconds = optimization_sample_timeout_seconds
         self.optimization_dataset_prepare_timeout_seconds = optimization_dataset_prepare_timeout_seconds
         self.optimization_dataset_download_request_budget = optimization_dataset_download_request_budget
@@ -131,6 +140,10 @@ class Config:
             os.environ[TRADER_AUTH_PASSWORD] = self.auth_password
         if self.protected_paths:
             os.environ[TRADER_PROTECTED_PATHS] = ",".join(self.protected_paths)
+        if self.secret_key:
+            os.environ[TRADER_SECRET_KEY] = self.secret_key
+        os.environ[TRADER_SESSION_COOKIE_SECURE] = str(self.session_cookie_secure)
+        os.environ[TRADER_SESSION_TTL_HOURS] = str(self.session_ttl_hours)
         os.environ[TRADER_MIN_LIVE_TRADE_NOTIONAL] = str(self.min_live_trade_notional)
 
     def to_dict(self):
@@ -153,6 +166,9 @@ class Config:
             "auth_username": self.auth_username,
             "auth_password": self.auth_password,
             "protected_paths": self.protected_paths,
+            "secret_key_configured": bool(self.secret_key),
+            "session_cookie_secure": self.session_cookie_secure,
+            "session_ttl_hours": self.session_ttl_hours,
             "optimization_sample_timeout_seconds": self.optimization_sample_timeout_seconds,
             "optimization_dataset_prepare_timeout_seconds": self.optimization_dataset_prepare_timeout_seconds,
             "optimization_dataset_download_request_budget": self.optimization_dataset_download_request_budget,
@@ -180,6 +196,8 @@ class Config:
             "stat": self.stat,
             "api": self.api,
             "protected_paths": self.protected_paths,
+            "session_cookie_secure": self.session_cookie_secure,
+            "session_ttl_hours": self.session_ttl_hours,
             "min_live_trade_notional": self.min_live_trade_notional,
         }
 
@@ -196,6 +214,8 @@ class Config:
             safe_config["auth_username"] = "[MASKED]"
         if self.auth_password:
             safe_config["auth_password"] = "[MASKED]"
+        if self.secret_key:
+            safe_config["secret_key"] = "[MASKED]"
 
         return safe_config
 
@@ -240,6 +260,9 @@ def new_and_env(cli: Namespace | None = None) -> Config:
     auth_username = None
     auth_password = None
     protected_paths: list[str] = []
+    secret_key = None
+    session_cookie_secure = False
+    session_ttl_hours = 24
     min_live_trade_notional = 11.0
 
     commission = float(os.environ.get(TRADER_COMMISSION, commission))
@@ -259,6 +282,9 @@ def new_and_env(cli: Namespace | None = None) -> Config:
     api = os.environ.get(TRADER_API, api)
     auth_username = os.environ.get(TRADER_AUTH_USERNAME, auth_username)
     auth_password = os.environ.get(TRADER_AUTH_PASSWORD, auth_password)
+    secret_key = os.environ.get(TRADER_SECRET_KEY, secret_key)
+    session_cookie_secure = os.environ.get(TRADER_SESSION_COOKIE_SECURE, str(session_cookie_secure)).lower() == "true"
+    session_ttl_hours = int(os.environ.get(TRADER_SESSION_TTL_HOURS, session_ttl_hours))
     min_live_trade_notional = float(os.environ.get(TRADER_MIN_LIVE_TRADE_NOTIONAL, min_live_trade_notional))
 
     protected_paths_env = os.environ.get(TRADER_PROTECTED_PATHS, "")
@@ -305,6 +331,12 @@ def new_and_env(cli: Namespace | None = None) -> Config:
         if "protected_paths" in a:
             raw_pp = a["protected_paths"]
             protected_paths = [p.strip() for p in raw_pp.split(",") if p.strip()] if raw_pp else []
+        if "secret_key" in a:
+            secret_key = a["secret_key"]
+        if "session_cookie_secure" in a:
+            session_cookie_secure = bool(a["session_cookie_secure"])
+        if "session_ttl_hours" in a:
+            session_ttl_hours = int(a["session_ttl_hours"])
         if "min_live_trade_notional" in a:
             min_live_trade_notional = float(a["min_live_trade_notional"])
 
@@ -327,5 +359,8 @@ def new_and_env(cli: Namespace | None = None) -> Config:
         auth_username=auth_username,
         auth_password=auth_password,
         protected_paths=protected_paths,
+        secret_key=secret_key,
+        session_cookie_secure=session_cookie_secure,
+        session_ttl_hours=session_ttl_hours,
         min_live_trade_notional=min_live_trade_notional,
     )

@@ -11,6 +11,7 @@
     strategyEvents: [],
     priceLines: [],
     eventSequence: 0,
+    candleTimes: [],
   };
 
   const el = (id) => document.getElementById(id);
@@ -55,11 +56,54 @@
   }
 
   function normalizeMarkerForChart(marker) {
+    const snappedTime = snapMarkerTimeToCandle(marker.time);
     return {
       ...marker,
       raw_time: marker.time,
-      time: toChartTime(marker.time),
+      time: toChartTime(snappedTime),
     };
+  }
+
+  function rebuildCandleTimes(candles) {
+    const unique = new Set();
+    (candles || []).forEach((candle) => {
+      const t = Number(candle?.time);
+      if (Number.isFinite(t)) unique.add(t);
+    });
+    state.candleTimes = [...unique].sort((a, b) => a - b);
+  }
+
+  function upsertCandleTime(candleTime) {
+    const t = Number(candleTime);
+    if (!Number.isFinite(t)) return;
+    if (state.candleTimes.length === 0) {
+      state.candleTimes = [t];
+      return;
+    }
+    const last = state.candleTimes[state.candleTimes.length - 1];
+    if (t > last) {
+      state.candleTimes.push(t);
+      return;
+    }
+    if (t === last || state.candleTimes.includes(t)) return;
+    state.candleTimes.push(t);
+    state.candleTimes.sort((a, b) => a - b);
+  }
+
+  function snapMarkerTimeToCandle(time) {
+    const raw = Number(time);
+    if (!Number.isFinite(raw) || state.candleTimes.length === 0) return time;
+    let left = 0;
+    let right = state.candleTimes.length - 1;
+    while (left <= right) {
+      const mid = Math.floor((left + right) / 2);
+      const current = state.candleTimes[mid];
+      if (current === raw) return raw;
+      if (current < raw) left = mid + 1;
+      else right = mid - 1;
+    }
+    if (right < 0) return state.candleTimes[0];
+    return state.candleTimes[right];
   }
 
   async function loadStrategies() {
@@ -117,6 +161,7 @@
     });
     renderStrategyParameters(snapshot);
     ensureChart();
+    rebuildCandleTimes(snapshot.candles || []);
     state.candleSeries.setData((snapshot.candles || []).map(normalizeCandleForChart));
     clearPriceLines();
     state.markers = [];
@@ -189,6 +234,7 @@
   function handleRealtimeEvent(event) {
     if (event.event_type === "kline_update") {
       const candle = event.payload.candle;
+      upsertCandleTime(candle.time);
       state.candleSeries.update(normalizeCandleForChart(candle));
     }
     if (event.event_type === "signal_marker") {
@@ -237,7 +283,7 @@
     } else if (state.markerApi) {
       state.markerApi.setMarkers(markers);
     } else if (LightweightCharts.createSeriesMarkers) {
-      state.markerApi = LightweightCharts.createSeriesMarkers(state.candleSeries, markers);
+      state.markerApi = LightweightCharts.createSeriesMarkers(state.candleSeries, markers, { zOrder: "top" });
     }
   }
 
@@ -255,7 +301,7 @@
     const metadata = payload.metadata || payload;
     if (Array.isArray(metadata.chart_markers)) return metadata.chart_markers;
     const direction = String(metadata.direction || payload.direction || "").toUpperCase();
-    const isShort = direction === "SHORT" || metadata.signal_type === "top_divergence";
+    const isShort = direction === "SHORT" || metadata.signal_type === "top_divergence" || metadata.signal_type === "SHORT";
     const priceTimeKey = isShort ? "structure_price_high_kline_time" : "structure_price_low_kline_time";
     const priceValueKey = isShort ? "structure_price_high" : "structure_price_low";
     const macdTimeKey = isShort ? "macd_peak_time" : "macd_trough_time";
@@ -265,22 +311,26 @@
     const shape = isShort ? "arrowDown" : "arrowUp";
     const markers = [];
     (metadata.legs || []).forEach((leg, index) => {
-      if (leg[priceTimeKey]) {
+      const priceTime = leg[priceTimeKey] ?? leg.price_kline_time ?? leg.price_time ?? leg.time;
+      const priceValue = leg[priceValueKey] ?? leg.price_extreme ?? leg.price;
+      const macdTime = leg[macdTimeKey] ?? leg.macd_peak_time ?? leg.macd_trough_time ?? leg.macd_time ?? leg.macd_kline_time;
+      const macdValue = leg[macdValueKey] ?? leg.extreme_val ?? leg.macd;
+      if (priceTime) {
         markers.push({
-          time: leg[priceTimeKey],
+          time: priceTime,
           position,
           color,
           shape,
-          text: `P${index + 1} ${leg[priceValueKey] ?? ""}`.trim(),
+          text: `P${index + 1} ${priceValue != null ? Number(priceValue).toFixed(2) : ""}`.trim(),
         });
       }
-      if (leg[macdTimeKey]) {
+      if (macdTime) {
         markers.push({
-          time: leg[macdTimeKey],
+          time: macdTime,
           position,
           color: "#7c3aed",
           shape: "circle",
-          text: `M${index + 1} ${leg[macdValueKey] ?? ""}`.trim(),
+          text: `M${index + 1} ${macdValue != null ? Number(macdValue).toFixed(6) : ""}`.trim(),
         });
       }
     });
@@ -293,15 +343,29 @@
     state.riskOverlays.forEach(renderRiskOverlay);
   }
 
+  function riskLineStyle() {
+    if (LightweightCharts.LineStyle && LightweightCharts.LineStyle.Dashed != null) {
+      return LightweightCharts.LineStyle.Dashed;
+    }
+    return 2;
+  }
+
   function renderRiskOverlay(payload) {
     if (!state.candleSeries || payload.price == null) return;
+    const price = Number(payload.price);
+    if (!Number.isFinite(price) || price <= 0) {
+      appendDiagnostic("risk_overlay_invalid_price", payload);
+      return;
+    }
+    const overlayType = String(payload.overlay_type || "risk");
+    const color = overlayType === "stop_loss" ? "#dc2626" : "#2563eb";
     const line = state.candleSeries.createPriceLine({
-      price: payload.price,
-      color: payload.overlay_type === "stop_loss" ? "#dc2626" : "#2563eb",
+      price,
+      color,
       lineWidth: 1,
-      lineStyle: LightweightCharts.LineStyle.Dashed,
+      lineStyle: riskLineStyle(),
       axisLabelVisible: true,
-      title: payload.overlay_type,
+      title: overlayType,
     });
     state.priceLines.push(line);
   }
@@ -348,8 +412,18 @@
       dt.className = "col-5";
       dt.textContent = key;
       const dd = document.createElement("dd");
-      dd.className = "col-7 text-end";
-      dd.textContent = String(value);
+      if (value != null && typeof value === "object") {
+        const itemCount = Array.isArray(value) ? value.length : Object.keys(value).length;
+        dd.className = "col-7";
+        dd.innerHTML = `${escapeHtml(itemCount)} items`;
+        const details = document.createElement("details");
+        details.className = "mt-1";
+        details.innerHTML = `<summary>查看详情</summary>${renderStructuredValue(value, key)}`;
+        dd.appendChild(details);
+      } else {
+        dd.className = "col-7 text-end";
+        dd.textContent = String(value);
+      }
       node.appendChild(dt);
       node.appendChild(dd);
     });

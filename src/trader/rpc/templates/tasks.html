@@ -49,6 +49,21 @@
                         </div>
                     {% endif %}
                 </div>
+                {% if tasks_info.total_pages > 1 %}
+                <nav class="mt-3" aria-label="任务列表分页">
+                    <ul class="pagination justify-content-center mb-0">
+                        <li class="page-item {% if tasks_info.page <= 1 %}disabled{% endif %}">
+                            <a class="page-link" href="/admin/tasks?page={{ tasks_info.page - 1 }}">上一页</a>
+                        </li>
+                        <li class="page-item disabled">
+                            <span class="page-link">第 {{ tasks_info.page }} / {{ tasks_info.total_pages }} 页</span>
+                        </li>
+                        <li class="page-item {% if tasks_info.page >= tasks_info.total_pages %}disabled{% endif %}">
+                            <a class="page-link" href="/admin/tasks?page={{ tasks_info.page + 1 }}">下一页</a>
+                        </li>
+                    </ul>
+                </nav>
+                {% endif %}
             </div>
         </div>
     </div>

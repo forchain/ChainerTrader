@@ -5,6 +5,7 @@ from datetime import timedelta
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
+from trader.auth.context import current_user
 from trader.live.dashboard import build_risk_overlay_events, build_signal_marker_event, notification_event, strategy_execution_event
 from trader.live.monitor import build_initial_snapshot, list_live_strategy_summaries, serialize_dashboard_event
 from trader.strategy.trader_result import TraderResult
@@ -20,21 +21,42 @@ def is_local_request(request: Request) -> bool:
     return str(host).lower() in LOCAL_CLIENT_HOSTS
 
 
+def _can_access_task(user, task) -> bool:
+    if user is None or user.is_admin:
+        return True
+    return getattr(getattr(task, "tcfg", None), "user_id", None) == user.id
+
+
 @router.get("/strategies")
-def list_live_strategies(request: Request):
-    return list_live_strategy_summaries(request.app.state.app.task_manager)
+async def list_live_strategies(request: Request):
+    user = await current_user(request)
+    task_manager = request.app.state.app.task_manager
+    summaries = list_live_strategy_summaries(task_manager)
+    if user is None or user.is_admin:
+        return summaries
+    visible = []
+    for summary in summaries:
+        task = task_manager.get_task(summary["strategy_id"])
+        if task is not None and _can_access_task(user, task):
+            visible.append(summary)
+    return visible
 
 
 @router.get("/strategies/{strategy_id}/snapshot")
 async def live_strategy_snapshot(strategy_id: int, request: Request):
+    user = await current_user(request)
     task = request.app.state.app.task_manager.get_task(strategy_id)
-    if task is None:
+    if task is None or not _can_access_task(user, task):
         raise HTTPException(status_code=404, detail="live strategy not found")
     return await build_initial_snapshot(task, request.app.state.app.db_manager)
 
 
 @router.get("/strategies/{strategy_id}/events")
 async def live_strategy_events(strategy_id: int, request: Request):
+    user = await current_user(request)
+    task = request.app.state.app.task_manager.get_task(strategy_id)
+    if task is None or not _can_access_task(user, task):
+        raise HTTPException(status_code=404, detail="live strategy not found")
     bus = request.app.state.live_event_bus
     subscription = await bus.subscribe(strategy_id)
 
@@ -106,8 +128,9 @@ async def dispatch_debug_manual_signal(request: Request, strategy_id: int, side:
     if not is_local_request(request):
         raise HTTPException(status_code=404, detail="debug endpoints are available only from local access")
     app = request.app.state.app
+    user = await current_user(request)
     task = app.task_manager.get_task(strategy_id)
-    if task is None:
+    if task is None or not _can_access_task(user, task):
         raise HTTPException(status_code=404, detail="live strategy not found")
 
     op = _debug_operation(task, _latest_kline_for_task(app, task), side)

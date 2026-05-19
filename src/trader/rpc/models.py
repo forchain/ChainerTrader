@@ -13,6 +13,9 @@ class TasksInfo(BaseModel):
     total: int = 0
     completed: int = 0
     tasks: list[dict[str, Any]]
+    page: int = 1
+    per_page: int = 0
+    total_pages: int = 1
 
 
 class AcctsInfo(BaseModel):
@@ -31,8 +34,9 @@ class KlinesInfo(BaseModel):
     klines: list[dict[str, Any]]
 
 
-async def get_taskinfo(app: "App") -> TasksInfo:
-    tss = await app.task_manager.get_all_task_state()
+async def get_taskinfo(app: "App", user=None, page: int = 1, per_page: int | None = None) -> TasksInfo:
+    user_id = None if user is None or getattr(user, "is_admin", False) else user.id
+    tss = await app.task_manager.get_all_task_state(user_id=user_id)
     completed = 0
     tasks: list[dict[str, Any]] = []
     for ts in tss:
@@ -43,10 +47,28 @@ async def get_taskinfo(app: "App") -> TasksInfo:
     # Sort tasks by start_time in descending order (newest first)
     tasks.sort(key=lambda x: x.get("start_time", ""), reverse=True)
 
-    return TasksInfo(total=len(tss), completed=completed, tasks=tasks)
+    total = len(tss)
+    safe_page = max(1, int(page))
+    if per_page is None:
+        return TasksInfo(total=total, completed=completed, tasks=tasks, page=1, per_page=total, total_pages=1)
+    safe_per_page = max(1, int(per_page))
+    total_pages = max(1, (total + safe_per_page - 1) // safe_per_page)
+    safe_page = min(safe_page, total_pages)
+    start = (safe_page - 1) * safe_per_page
+    end = start + safe_per_page
+    return TasksInfo(
+        total=total,
+        completed=completed,
+        tasks=tasks[start:end],
+        page=safe_page,
+        per_page=safe_per_page,
+        total_pages=total_pages,
+    )
 
 
 def get_accounts_info(app: "App") -> AcctsInfo:
+    if app.exchange is None:
+        return AcctsInfo(total=0, balances=[])
     balances = app.exchange.get_account_balances()
 
     return AcctsInfo(total=len(balances), balances=balances)

@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block title %}注册{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-5 col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">注册</h5>
+            </div>
+            <div class="card-body">
+                {% if error %}
+                <div class="alert alert-danger">{{ error }}</div>
+                {% endif %}
+                <form method="post" action="/register">
+                    <div class="mb-3">
+                        <label class="form-label" for="username">用户名</label>
+                        <input class="form-control" id="username" name="username" autocomplete="username" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="password">密码</label>
+                        <input class="form-control" id="password" name="password" type="password" autocomplete="new-password" required>
+                        <div class="form-text">至少 10 位，包含字母和数字。</div>
+                    </div>
+                    <button class="btn btn-primary w-100" type="submit">创建账户</button>
+                </form>
+                <div class="mt-3 text-center">
+                    <a href="/login">返回登录</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
