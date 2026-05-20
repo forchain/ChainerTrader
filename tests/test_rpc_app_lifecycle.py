@@ -1,8 +1,10 @@
 import asyncio
+from contextlib import asynccontextmanager
 
 import pytest
 
 from trader.common.config import Config
+from trader.rpc import app as rpc_module
 from trader.rpc.rpc_app import RpcApp
 
 
@@ -76,3 +78,44 @@ async def test_rpc_app_waits_until_handler_ready(monkeypatch):
 
     unblock.set()
     await app.main_task
+
+
+@pytest.mark.anyio
+async def test_rpc_lifespan_bootstraps_database_before_exchange_start(monkeypatch):
+    events = []
+
+    class FakeRpcApp:
+        def __init__(self, cfg):
+            self.cfg = cfg
+
+        async def bootstrap_database_for_startup(self):
+            events.append("db.bootstrap")
+
+        def start(self):
+            events.append("app.start")
+
+        async def wait_until_handler_ready(self):
+            events.append("handler.ready")
+
+        def raise_main_task_error(self):
+            events.append("error.check")
+
+        async def stop(self):
+            events.append("app.stop")
+
+    monkeypatch.setattr(rpc_module, "RpcApp", FakeRpcApp)
+
+    class State:
+        cfg = Config(tasks="[]")
+
+    @asynccontextmanager
+    async def run_lifespan():
+        async with rpc_module.lifespan(type("App", (), {"state": State()})()):
+            events.append("yielded")
+            yield
+
+    async with run_lifespan():
+        pass
+
+    assert events[:4] == ["db.bootstrap", "app.start", "handler.ready", "error.check"]
+    assert events[-1] == "app.stop"

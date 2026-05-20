@@ -45,7 +45,6 @@ class CcxtExchangeDriver:
         return "ccxt"
 
     def start(self):
-        self._ensure_markets_loaded()
         return True
 
     def stop(self):
@@ -469,6 +468,9 @@ class CcxtExchangeDriver:
             # Some ccxt versions probe delivery/futures markets during load_markets
             # unless fetch types are explicitly constrained.
             "fetchMarkets": {"types": ["spot"]},
+            # Binance currencies are fetched through a private wallet endpoint when
+            # API keys are present; market-data startup should not depend on it.
+            "fetchCurrencies": False,
             # Reduce Binance -1021 timestamp drift failures in live/cleanup paths.
             "adjustForTimeDifference": True,
             "recvWindow": int(os.getenv("CHAINERTRADER_BINANCE_RECV_WINDOW", "20000") or 20000),

@@ -27,3 +27,11 @@ def test_trader_db_migrate_initializes_required_schema_for_new_sqlite_db(tmp_pat
             )
         }
     assert {"klines", "tasks", "availability", "execution_states", "users", "sessions", "exchange_credentials", "strategy_configs"} <= tables
+    with sqlite3.connect(db_path) as connection:
+        execution_state_columns = {
+            row[1]
+            for row in connection.execute(
+                'PRAGMA table_info("execution_states")'
+            )
+        }
+    assert "task_id" in execution_state_columns

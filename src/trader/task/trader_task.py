@@ -429,7 +429,11 @@ class TraderTask(BaseTask):
         if store is None:
             self.ts.execution_reconcile = []
             return []
-        records = await _maybe_await(store.list_open_by_symbol(self.tcfg.symbol_interval.symbol()))
+        list_open_by_task = getattr(store, "list_open_by_task", None)
+        if callable(list_open_by_task):
+            records = await _maybe_await(list_open_by_task(self.tcfg.id))
+        else:
+            records = await _maybe_await(store.list_open_by_symbol(self.tcfg.symbol_interval.symbol()))
         payload = [self._execution_state_record_payload(record) for record in records]
         self.ts.execution_reconcile = payload
         return payload

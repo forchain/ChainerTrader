@@ -127,6 +127,7 @@ class AvailabilityModel(Model):
 
 class ExecutionStateModel(Model):
     id = fields.IntField(primary_key=True)
+    task_id = fields.IntField(null=True)
     idempotency_key = fields.CharField(max_length=255, unique=True)
     intent_id = fields.CharField(max_length=128)
     operation_id = fields.CharField(max_length=128)
@@ -148,4 +149,4 @@ class ExecutionStateModel(Model):
 
     class Meta:
         table = "execution_states"
-        indexes = (("symbol", "trade_id"), ("gateway", "staged_execution_mode"), ("intent_id", "operation_id"))
+        indexes = (("task_id", "symbol", "trade_id"), ("gateway", "staged_execution_mode"), ("intent_id", "operation_id"))

@@ -35,7 +35,7 @@ class KlinesInfo(BaseModel):
 
 
 async def get_taskinfo(app: "App", user=None, page: int = 1, per_page: int | None = None) -> TasksInfo:
-    user_id = None if user is None or getattr(user, "is_admin", False) else user.id
+    user_id = None if user is None else user.id
     tss = await app.task_manager.get_all_task_state(user_id=user_id)
     completed = 0
     tasks: list[dict[str, Any]] = []

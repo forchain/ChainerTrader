@@ -13,15 +13,20 @@ async def add_tasks(request: Request):
     raw_bytes = await request.body()
     cfg = raw_bytes.decode("utf-8")
     user = await current_user(request)
+    if user is None:
+        raise HTTPException(status_code=401, detail="authentication required")
     taskcs = parse_task_config(cfg) if cfg else []
+    await _preflight_single_running_task_per_user(request, user)
     await _preflight_user_live_tasks(request, user, taskcs)
-    return request.app.state.app.send_add_tasks_msg(cfg, user_id=None if user is None else user.id)
+    return request.app.state.app.send_add_tasks_msg(cfg, user_id=user.id)
 
 
 @router.get("")
 async def get_tasks(request: Request):
     user = await current_user(request)
-    user_id = None if user is None or user.is_admin else user.id
+    if user is None:
+        raise HTTPException(status_code=401, detail="authentication required")
+    user_id = user.id
     tss = await request.app.state.app.task_manager.get_all_task_state(user_id=user_id)
     ret = []
     for ts in tss:
@@ -45,3 +50,15 @@ async def _preflight_user_live_tasks(request: Request, user, taskcs) -> None:
     credential = await credential_repo.get_default(user.id, "BINANCE")
     if credential is None:
         raise HTTPException(status_code=400, detail=f"missing BINANCE API credential for user_id={user.id}")
+
+
+async def _preflight_single_running_task_per_user(request: Request, user) -> None:
+    if user is None:
+        return
+    rpc_app = getattr(request.app.state, "app", None)
+    task_manager = getattr(rpc_app, "task_manager", None)
+    if task_manager is None:
+        return
+    task_states = await task_manager.get_all_task_state(user_id=user.id)
+    if any(getattr(getattr(ts, "state", None), "name", None) == "RUNNING" for ts in task_states):
+        raise HTTPException(status_code=409, detail=f"user_id={user.id} already has a running task")

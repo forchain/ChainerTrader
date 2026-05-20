@@ -73,6 +73,7 @@ class App:
                 self.logger.warning("No tasks can be executed")
                 return False
 
+        self._bootstrap_database_for_startup_sync()
         self.notify_mgr.start()
 
         if self.exchange:
@@ -98,6 +99,27 @@ class App:
 
         self.process(msgs)
         return True
+
+    def _bootstrap_database_for_startup_sync(self):
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(self.bootstrap_database_for_startup())
+        return None
+
+    async def bootstrap_database_for_startup(self):
+        if not self.db_manager:
+            return None
+        if not getattr(self.db_manager, "started", False):
+            await self.db_manager.start()
+        if not self.tasks_cfg:
+            return None
+        startup_admin = await self.db_manager.get_startup_admin()
+        if startup_admin is None:
+            raise RuntimeError("startup tasks require an administrator account")
+        for taskc in self.tasks_cfg:
+            taskc.user_id = startup_admin.id
+        return startup_admin.id
 
     def stop(self):
         self.stat.report()
@@ -154,13 +176,25 @@ class App:
         self.exit_handle(quit)
 
     async def handler(self, msgs: list[Message], quit: Event):
+        startup_admin_id = None
         if self.db_manager:
-            await self.db_manager.start()
+            if not getattr(self.db_manager, "started", False):
+                await self.db_manager.start()
+            if self.tasks_cfg or any(msg.is_add_tasks() for msg in msgs):
+                startup_admin = await self.db_manager.get_startup_admin()
+                if startup_admin is None:
+                    raise RuntimeError("startup tasks require an administrator account")
+                startup_admin_id = startup_admin.id
+                for taskc in self.tasks_cfg:
+                    taskc.user_id = startup_admin_id
 
         queue = asyncio.Queue()
         self.queue = queue
 
         for msg in msgs:
+            if startup_admin_id is not None and msg.is_add_tasks():
+                for taskc in msg.get_data():
+                    taskc.user_id = startup_admin_id
             await queue.put(msg)
 
         self.logger.info(f"{self.name()} enter handler: init messages={len(msgs)}")

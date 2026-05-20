@@ -11,8 +11,10 @@ from trader.utils.task_state import TaskStateType
 class _FakeTaskManager:
     def __init__(self, states):
         self._states = states
+        self.seen_user_ids = []
 
     async def get_all_task_state(self, user_id=None):
+        self.seen_user_ids.append(user_id)
         return self._states
 
 
@@ -50,6 +52,17 @@ async def test_get_taskinfo_applies_pagination_slice_after_sorting():
     assert page_1.total_pages == 2
     assert [task["task_id"] for task in page_1.tasks] == [3, 2]
     assert [task["task_id"] for task in page_2.tasks] == [1]
+
+
+@pytest.mark.anyio
+async def test_get_taskinfo_scopes_admin_to_admin_owned_tasks():
+    manager = _FakeTaskManager([_state(11, "2026-05-15 10:00:00")])
+    rpc_app = SimpleNamespace(task_manager=manager)
+    admin = SimpleNamespace(id=99, is_admin=True)
+
+    await get_taskinfo(rpc_app, user=admin)
+
+    assert manager.seen_user_ids == [99]
 
 
 def test_admin_tasks_page_shows_pagination_controls_when_multiple_pages(monkeypatch):

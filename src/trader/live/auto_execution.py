@@ -1088,6 +1088,7 @@ class AutoExecutionRouter:
     def _state_record_for_order(self, intent: OrderIntent, result, op) -> ExecutionStateRecord:
         return ExecutionStateRecord.from_order_intent(
             intent,
+            task_id=int(getattr(self.tcfg, "id", 0) or 0) or None,
             gateway=GatewayMode.BINANCE_LIVE,
             staged_execution_mode=self.mode,
             status=result.status,
@@ -1098,6 +1099,7 @@ class AutoExecutionRouter:
     def _state_record_for_risk(self, intent, result, op) -> ExecutionStateRecord:
         return ExecutionStateRecord.from_risk_intent(
             intent,
+            task_id=int(getattr(self.tcfg, "id", 0) or 0) or None,
             gateway=GatewayMode.BINANCE_LIVE,
             staged_execution_mode=self.mode,
             status=result.status,

@@ -34,6 +34,7 @@ def model_to_execution_state(row: ExecutionStateModel) -> ExecutionStateRecord:
         raw_payload=dict(row.raw_payload or {}),
         created_at=row.created_at,
         updated_at=row.updated_at,
+        task_id=row.task_id,
     )
 
 
@@ -69,6 +70,7 @@ class ExecutionStateCol:
                 "raw_payload": dict(record.raw_payload),
                 "created_at": record.created_at,
                 "updated_at": record.updated_at,
+                "task_id": record.task_id,
             },
         )
         saved = await self.get_by_idempotency_key(record.idempotency_key)
@@ -84,4 +86,12 @@ class ExecutionStateCol:
 
     async def list_open_by_symbol(self, symbol: str) -> list[ExecutionStateRecord]:
         rows = await ExecutionStateModel.filter(symbol=symbol).exclude(status__in=TERMINAL_STATUSES).order_by("created_at", "id")
+        return [model_to_execution_state(row) for row in rows]
+
+    async def list_open_by_task(self, task_id: int) -> list[ExecutionStateRecord]:
+        rows = (
+            await ExecutionStateModel.filter(task_id=task_id)
+            .exclude(status__in=TERMINAL_STATUSES)
+            .order_by("created_at", "id")
+        )
         return [model_to_execution_state(row) for row in rows]

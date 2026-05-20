@@ -36,6 +36,9 @@ class UserCol:
     async def count_admins(self) -> int:
         return await UserModel.filter(role="admin").count()
 
+    async def get_first_admin(self) -> UserModel | None:
+        return await UserModel.filter(role="admin", status="active").order_by("id").first()
+
     async def list_users(self) -> list[UserModel]:
         return await UserModel.all().order_by("id")
 

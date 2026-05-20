@@ -5,6 +5,7 @@ import inspect
 from tortoise import Tortoise
 from tortoise.exceptions import OperationalError
 
+from trader.auth.credentials import encrypt_secret, mask_api_key, service_key_available
 from trader.auth.passwords import hash_password, validate_password, validate_username
 from trader.common.logger import Logger
 from trader.database.availability import AvailabilityCol
@@ -15,6 +16,7 @@ from trader.database.kline import DEFAULT_EXCHANGE, KlineCol
 from trader.database.strategy_config import StrategyConfigCol
 from trader.database.task import TaskCol
 from trader.database.user import UserCol
+from trader.exchange.exchange_config import parse_exchange_config
 
 REQUIRED_TABLES = ("klines", "tasks", "availability", "execution_states", "users", "sessions", "exchange_credentials", "strategy_configs")
 
@@ -69,18 +71,46 @@ class DatabaseManager:
         if not self.user or not getattr(self.cfg, "auth_username", None) or not getattr(self.cfg, "auth_password", None):
             return
         if await self.user.count_admins() > 0:
+            admin = await self.user.get_first_admin()
+        else:
+            try:
+                validate_username(self.cfg.auth_username)
+                validate_password(self.cfg.auth_username, self.cfg.auth_password)
+            except Exception as exc:
+                raise DatabaseSchemaError(f"invalid bootstrap administrator credentials: {exc}") from exc
+            admin = await self.user.create_user(
+                self.cfg.auth_username,
+                hash_password(self.cfg.auth_password),
+                role="admin",
+            )
+            self.log.info("Bootstrapped administrator account from configuration")
+        if admin is not None:
+            await self._bootstrap_admin_exchange_credential(admin.id)
+
+    async def _bootstrap_admin_exchange_credential(self, admin_id: int) -> None:
+        if not self.exchange_credential or not getattr(self.cfg, "exchange", None):
             return
-        try:
-            validate_username(self.cfg.auth_username)
-            validate_password(self.cfg.auth_username, self.cfg.auth_password)
-        except Exception as exc:
-            raise DatabaseSchemaError(f"invalid bootstrap administrator credentials: {exc}") from exc
-        await self.user.create_user(
-            self.cfg.auth_username,
-            hash_password(self.cfg.auth_password),
-            role="admin",
+        if await self.exchange_credential.get_default(admin_id, "BINANCE") is not None:
+            return
+        if not service_key_available(getattr(self.cfg, "secret_key", None)):
+            self.log.warning("Skipping administrator exchange credential bootstrap: TRADER_SECRET_KEY is not configured")
+            return
+        exchange_cfg = parse_exchange_config(self.cfg.exchange)
+        if exchange_cfg is None or not exchange_cfg.api_key or not exchange_cfg.api_secret:
+            return
+        await self.exchange_credential.upsert_default(
+            admin_id,
+            exchange="BINANCE",
+            encrypted_api_key=encrypt_secret(self.cfg.secret_key, exchange_cfg.api_key),
+            encrypted_api_secret=encrypt_secret(self.cfg.secret_key, exchange_cfg.api_secret),
+            masked_api_key=mask_api_key(exchange_cfg.api_key),
         )
-        self.log.info("Bootstrapped administrator account from configuration")
+        self.log.info("Bootstrapped administrator default exchange credential from configuration")
+
+    async def get_startup_admin(self):
+        if not self.user:
+            return None
+        return await self.user.get_first_admin()
 
     async def _ensure_schema_ready(self) -> None:
         connection = Tortoise.get_connection("default")

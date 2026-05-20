@@ -67,6 +67,19 @@ def test_task_repository_filters_by_user():
     asyncio.run(_with_db(run))
 
 
+def test_ownerless_legacy_tasks_are_hidden_from_user_queries():
+    async def run():
+        store = TaskCol(_Log())
+        ownerless = TaskState(1, "legacy", datetime(2026, 1, 1), user_id=None)
+        owned = TaskState(2, "owned", datetime(2026, 1, 1), user_id=10)
+        await store.add_tasks([ownerless, owned])
+
+        assert [task.id for task in await store.get_all_tasks_for_user(10)] == [2]
+        assert await store.get_task_for_user(1, 10) is None
+
+    asyncio.run(_with_db(run))
+
+
 def test_task_manager_filters_running_tasks_by_user():
     cfg = Config(tasks="[]")
     manager = TaskManager(cfg, Logger(cfg), None, None)

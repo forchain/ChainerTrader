@@ -82,6 +82,7 @@ class Config:
         optimization_worker_cpu_efficiency_threshold: float = 0.1,
         min_live_trade_notional: float = 11.0,
         live_warmup_candles: int = 500,
+        **kwargs,
     ):
         self.commission = commission
         self.period = period
