@@ -99,9 +99,31 @@ def test_parse_task_config_accepts_manual_notify_mode_and_start_position():
 
     assert len(tasks) == 1
     assert tasks[0].live_execution_mode == "manual_notify"
+    assert tasks[0].live_data_mode == "realtime"
     assert tasks[0].manual_start_position == 0.125
     assert tasks[0].to_dict()["live_execution_mode"] == "manual_notify"
+    assert tasks[0].to_dict()["live_data_mode"] == "realtime"
     assert tasks[0].to_dict()["manual_start_position"] == 0.125
+
+
+def test_parse_task_config_preserves_explicit_manual_notify_polling_mode():
+    tasks = parse_task_config(
+        json.dumps(
+            [
+                {
+                    "task_type": "TRADER",
+                    "symbol": "BTC-USDT",
+                    "interval": "1m",
+                    "strategy": "macd_triple_divergence",
+                    "live_execution_mode": "manual_notify",
+                    "live_data_mode": "polling",
+                }
+            ]
+        )
+    )
+
+    assert len(tasks) == 1
+    assert tasks[0].live_data_mode == "polling"
 
 
 def test_parse_task_config_accepts_staged_auto_trade_options():

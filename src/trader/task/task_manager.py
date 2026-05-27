@@ -15,6 +15,7 @@ from trader.common.message import new_add_tasks_msg, new_exit_msg, new_stat_msg
 from trader.database.manager import DatabaseManager
 from trader.exchange.binance.exchange import BinanceExchange
 from trader.exchange.exchange_config import MarginMode
+from trader.live.auto_execution import is_real_auto_mode
 from trader.statistics.stat import BackTraderStat
 from trader.strategy.trader_result import parse_trader_result
 from trader.task.backtrader_task import BacktestSampleResult, BackTraderTask, build_backtest_sample_spec, run_backtest_sample
@@ -173,6 +174,8 @@ class TaskManager:
     async def _exchange_for_task(self, cfg: TaskConfig) -> BinanceExchange:
         if cfg.ttype != TaskType.TRADER:
             return self.exchange
+        if not is_real_auto_mode(getattr(cfg, "live_execution_mode", None)):
+            return self.exchange
         target_mode = MarginMode.CROSS_MARGIN if task_requires_short_capability(cfg) else MarginMode.SPOT
         if getattr(cfg, "user_id", None) is not None:
             return await self._exchange_for_user_mode(cfg.user_id, target_mode)
@@ -218,6 +221,8 @@ class TaskManager:
     async def _ensure_routed_exchanges(self, taskcs: list[TaskConfig]) -> None:
         for tc in taskcs:
             if tc.ttype != TaskType.TRADER:
+                continue
+            if not is_real_auto_mode(getattr(tc, "live_execution_mode", None)):
                 continue
             target_mode = MarginMode.CROSS_MARGIN if task_requires_short_capability(tc) else MarginMode.SPOT
             if getattr(tc, "user_id", None) is not None:

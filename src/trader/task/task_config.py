@@ -260,7 +260,8 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
 
         live_execution_mode = normalize_live_execution_mode(tcd.get("live_execution_mode", "auto_trade"))
         manual_start_position = float(tcd.get("manual_start_position", 0.0) or 0.0)
-        live_data_mode = str(tcd.get("live_data_mode", "polling")).strip().lower()
+        default_live_data_mode = "realtime" if live_execution_mode == "manual_notify" else "polling"
+        live_data_mode = str(tcd.get("live_data_mode", default_live_data_mode)).strip().lower()
         global_min_notional = _global_min_live_trade_notional()
         configured_notional = "live_trade_max_notional" in tcd and tcd.get("live_trade_max_notional") not in (None, "")
         if configured_notional:

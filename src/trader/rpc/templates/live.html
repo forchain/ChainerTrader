@@ -16,7 +16,44 @@
         <aside class="col-lg-3">
             <div class="live-panel">
                 <div class="live-panel-title">策略</div>
+                <div class="mb-2">
+                    <label class="form-label small mb-1" for="live-task-filter-state">状态</label>
+                    <select id="live-task-filter-state" class="form-select form-select-sm">
+                        <option value="">全部</option>
+                        <option value="RUNNING">RUNNING</option>
+                        <option value="READY">READY</option>
+                        <option value="DONE">DONE</option>
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small mb-1" for="live-task-filter-type">任务类型</label>
+                    <select id="live-task-filter-type" class="form-select form-select-sm">
+                        <option value="">全部</option>
+                        <option value="TRADER">TRADER</option>
+                        <option value="BACK_TRADER">BACK_TRADER</option>
+                        <option value="DEBUG">DEBUG</option>
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small mb-1" for="live-task-filter-mode">任务模式</label>
+                    <select id="live-task-filter-mode" class="form-select form-select-sm">
+                        <option value="">全部</option>
+                        <option value="live">运行中视图</option>
+                        <option value="historical">历史视图</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small mb-1" for="live-task-filter-search">搜索</label>
+                    <input id="live-task-filter-search" class="form-control form-control-sm" type="text" placeholder="任务ID/名称">
+                </div>
                 <div id="live-strategy-list" class="list-group live-strategy-list"></div>
+            </div>
+            <div class="live-panel mt-3">
+                <div class="live-panel-title">任务操作</div>
+                <div class="d-grid gap-2">
+                    <button id="live-task-stop" type="button" class="btn btn-outline-danger btn-sm" disabled>停止任务</button>
+                    <button id="live-task-rerun" type="button" class="btn btn-outline-primary btn-sm" disabled>重跑任务</button>
+                </div>
             </div>
             <div class="live-panel mt-3">
                 <div class="live-panel-title">图层</div>

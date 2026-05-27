@@ -14,11 +14,14 @@ from trader.live.monitor import (
 )
 from trader.common.config import Config
 from trader.rpc.api.live import (
+    _normalize_rerun_config_json,
     dispatch_debug_manual_signal,
     is_local_request,
     list_live_strategies,
+    list_monitor_tasks,
     live_debug_manual_entry,
     live_debug_manual_exit,
+    live_monitor_task_rerun,
     live_strategy_events,
     live_strategy_snapshot,
 )
@@ -116,6 +119,18 @@ class FakeLiveTask:
 class FakeNotifyManager:
     def send_manual_trade_notification(self, event):
         return [{"ok": True, "provider": "fake"}]
+
+
+class _Logger:
+    def __init__(self):
+        self.infos = []
+        self.errors = []
+
+    def info(self, message):
+        self.infos.append(message)
+
+    def error(self, message):
+        self.errors.append(message)
 
 
 def _kline(open_time, close=100):
@@ -219,6 +234,14 @@ def test_serialize_dashboard_event_returns_stable_json_shape():
     }
 
 
+def test_normalize_rerun_config_json_rewrites_user_id_and_symbol_format():
+    raw = '[{"task_type":"BACK_TRADER","symbol":"ETHUSDT","interval":"1h","user_id":99}]'
+    normalized = _normalize_rerun_config_json(raw, user_id=2)
+    payload = __import__("json").loads(normalized)
+    assert payload[0]["user_id"] == 2
+    assert payload[0]["symbol"] == "ETH-USDT"
+
+
 @pytest.mark.anyio
 async def test_live_event_bus_filters_updates_by_strategy_id():
     bus = LiveEventBus()
@@ -280,6 +303,173 @@ def test_list_live_strategies_api_returns_sorted_strategy_summaries():
 
     assert [item["strategy_id"] for item in payload] == [1, 2]
     assert payload[0]["execution_mode"] == "manual_notify"
+
+
+@pytest.mark.anyio
+async def test_list_monitor_tasks_returns_task_type_state_and_config_json():
+    running_task = FakeTask(task_id=7, state=TaskStateType.RUNNING)
+    done_state = SimpleNamespace(
+        id=8,
+        state=TaskStateType.DONE,
+        name="8.DEBUG",
+        config_json='[{"task_type":"DEBUG","user_id":5}]',
+        user_id=5,
+        to_dict=lambda: {
+            "task_id": 8,
+            "state": "DONE",
+            "name": "8.DEBUG",
+            "config_json": '[{"task_type":"DEBUG","user_id":5}]',
+            "user_id": 5,
+        },
+    )
+
+    async def get_all_task_state(user_id=None):
+        return [running_task.ts, done_state]
+
+    async def fake_current_user(_request):
+        return SimpleNamespace(id=5, is_admin=False)
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr("trader.rpc.api.live.current_user", fake_current_user)
+    logger = _Logger()
+    manager = SimpleNamespace(tasks={7: running_task}, get_all_task_state=get_all_task_state)
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(app=SimpleNamespace(task_manager=manager, logger=logger))))
+    try:
+        payload = await list_monitor_tasks(request)
+        assert [item["task_id"] for item in payload] == [7, 8]
+        assert payload[0]["task_type"] == "TRADER"
+        assert payload[0]["monitor_mode"] == "live"
+        assert payload[0]["state"] == "RUNNING"
+        assert payload[1]["task_type"] == "DEBUG"
+        assert payload[1]["monitor_mode"] == "historical"
+        assert payload[1]["can_rerun"] is True
+        assert "user_id=5" in logger.infos[0]
+        assert "count=2" in logger.infos[0]
+    finally:
+        monkeypatch.undo()
+
+
+@pytest.mark.anyio
+async def test_live_monitor_task_rerun_reuses_finished_task_config_for_current_user():
+    send_add_tasks_msg = lambda cfg, user_id=None: {"result": "success", "cfg": cfg, "user_id": user_id}
+    done_state = SimpleNamespace(
+        id=8,
+        state=TaskStateType.DONE,
+        config_json='[{"task_type":"DEBUG","symbol":"ETHUSDT","user_id":5}]',
+    )
+
+    async def fake_current_user(_request):
+        return SimpleNamespace(id=5, is_admin=False)
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr("trader.rpc.api.live.current_user", fake_current_user)
+
+    async def get_task_state(task_id, user_id=None):
+        assert user_id == 5
+        return done_state if task_id == 8 else None
+
+    logger = _Logger()
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                app=SimpleNamespace(
+                    task_manager=SimpleNamespace(get_task_state=get_task_state),
+                    send_add_tasks_msg=send_add_tasks_msg,
+                    logger=logger,
+                )
+            )
+        )
+    )
+
+    try:
+        payload = await live_monitor_task_rerun(8, request=request)
+
+        assert payload["result"] == "success"
+        assert payload["user_id"] == 5
+        cfg_payload = __import__("json").loads(payload["cfg"])
+        assert cfg_payload[0]["task_type"] == "DEBUG"
+        assert cfg_payload[0]["symbol"] == "ETH-USDT"
+        assert cfg_payload[0]["user_id"] == 5
+        assert "user_id=5" in logger.infos[0]
+        assert "task_id=8" in logger.infos[0]
+    finally:
+        monkeypatch.undo()
+
+
+@pytest.mark.anyio
+async def test_live_monitor_task_rerun_returns_http_400_when_enqueue_rejected():
+    done_state = SimpleNamespace(
+        id=8,
+        state=TaskStateType.DONE,
+        config_json='[{"task_type":"DEBUG","user_id":5}]',
+    )
+
+    async def fake_current_user(_request):
+        return SimpleNamespace(id=5, is_admin=False)
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr("trader.rpc.api.live.current_user", fake_current_user)
+
+    async def get_task_state(task_id, user_id=None):
+        assert task_id == 8
+        assert user_id == 5
+        return done_state
+
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                app=SimpleNamespace(
+                    task_manager=SimpleNamespace(get_task_state=get_task_state),
+                    send_add_tasks_msg=lambda *_args, **_kwargs: {"result": "fail", "error": "queue rejected"},
+                    logger=_Logger(),
+                )
+            )
+        )
+    )
+
+    try:
+        with pytest.raises(Exception) as exc:
+            await live_monitor_task_rerun(8, request=request)
+        assert getattr(exc.value, "status_code", None) == 400
+        assert "queue rejected" in str(getattr(exc.value, "detail", ""))
+    finally:
+        monkeypatch.undo()
+
+
+@pytest.mark.anyio
+async def test_live_monitor_task_rerun_failure_logs_user_id():
+    logger = _Logger()
+
+    async def fake_current_user(_request):
+        return SimpleNamespace(id=5, is_admin=False)
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr("trader.rpc.api.live.current_user", fake_current_user)
+
+    async def get_task_state(task_id, user_id=None):
+        assert task_id == 9
+        assert user_id == 5
+        return None
+
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                app=SimpleNamespace(
+                    task_manager=SimpleNamespace(get_task_state=get_task_state),
+                    logger=logger,
+                )
+            )
+        )
+    )
+
+    try:
+        with pytest.raises(Exception) as exc:
+            await live_monitor_task_rerun(9, request=request)
+        assert getattr(exc.value, "status_code", None) == 404
+        assert "user_id=5" in logger.errors[0]
+        assert "task_id=9" in logger.errors[0]
+    finally:
+        monkeypatch.undo()
 
 
 @pytest.mark.anyio

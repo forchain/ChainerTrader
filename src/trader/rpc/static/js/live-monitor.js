@@ -3,6 +3,9 @@
 
   const state = {
     strategies: [],
+    taskFilters: { state: "", taskType: "", monitorMode: "", search: "" },
+    monitorTasks: [],
+    selectedTaskMeta: null,
     selectedId: null,
     chart: null,
     candleSeries: null,
@@ -157,8 +160,11 @@
   }
 
   async function loadStrategies() {
-    const response = await fetch("/api/live/strategies");
-    state.strategies = response.ok ? await response.json() : [];
+    const [strategiesResp, monitorResp] = await Promise.all([fetch("/api/live/strategies"), fetch("/api/live/tasks")]);
+    state.strategies = strategiesResp.ok ? await strategiesResp.json() : [];
+    state.monitorTasks = monitorResp.ok ? await monitorResp.json() : [];
+    const monitorById = new Map(state.monitorTasks.map((item) => [Number(item.task_id), item]));
+    state.strategies = state.strategies.map((item) => ({ ...item, ...(monitorById.get(Number(item.task_id)) || {}) }));
     renderStrategyList();
     if (state.strategies.length > 0) {
       await selectStrategy(state.strategies[0].strategy_id);
@@ -171,7 +177,8 @@
     const list = el("live-strategy-list");
     if (!list) return;
     list.innerHTML = "";
-    state.strategies.forEach((strategy) => {
+    const filtered = applyTaskFilters(state.strategies);
+    filtered.forEach((strategy) => {
       const button = document.createElement("button");
       button.type = "button";
       button.className = `list-group-item list-group-item-action ${strategy.strategy_id === state.selectedId ? "active" : ""}`;
@@ -182,6 +189,20 @@
         <div class="small opacity-75">任务 #${escapeHtml(strategy.task_id)}</div>`;
       button.addEventListener("click", () => selectStrategy(strategy.strategy_id));
       list.appendChild(button);
+    });
+    if (filtered.length === 0) {
+      list.innerHTML = '<div class="text-muted small p-3">当前筛选条件无任务</div>';
+    }
+  }
+
+  function applyTaskFilters(items) {
+    return (items || []).filter((item) => {
+      if (state.taskFilters.state && String(item.state || "").toUpperCase() !== state.taskFilters.state) return false;
+      if (state.taskFilters.taskType && String(item.task_type || "").toUpperCase() !== state.taskFilters.taskType) return false;
+      if (state.taskFilters.monitorMode && String(item.monitor_mode || "") !== state.taskFilters.monitorMode) return false;
+      if (!state.taskFilters.search) return true;
+      const text = `${item.task_id || ""} ${item.name || ""} ${item.strategy_name || ""}`.toLowerCase();
+      return text.includes(state.taskFilters.search);
     });
   }
 
@@ -197,6 +218,30 @@
     const snapshot = await response.json();
     renderSnapshot(snapshot);
     openEventSource(strategyId);
+  }
+
+  function updateTaskActionButtons() {
+    const stopBtn = el("live-task-stop");
+    const rerunBtn = el("live-task-rerun");
+    if (!stopBtn || !rerunBtn) return;
+    stopBtn.disabled = !(state.selectedTaskMeta && state.selectedTaskMeta.can_stop);
+    rerunBtn.disabled = !(state.selectedTaskMeta && state.selectedTaskMeta.can_rerun);
+  }
+
+  async function stopSelectedTask() {
+    if (!state.selectedId) return;
+    const response = await fetch(`/api/task?id=${state.selectedId}`, { method: "POST" });
+    const payload = await response.json();
+    appendDiagnostic("task_stop", payload);
+    await loadStrategies();
+  }
+
+  async function rerunSelectedTask() {
+    if (!state.selectedId) return;
+    const response = await fetch(`/api/live/tasks/${state.selectedId}/rerun`, { method: "POST" });
+    const payload = await response.json();
+    appendDiagnostic("task_rerun", payload);
+    await loadStrategies();
   }
 
   function renderSnapshot(snapshot) {
@@ -562,9 +607,29 @@
     }
     el("live-debug-entry")?.addEventListener("click", () => sendDebugManualSignal("entry"));
     el("live-debug-exit")?.addEventListener("click", () => sendDebugManualSignal("exit"));
+    el("live-task-filter-state")?.addEventListener("change", (event) => {
+      state.taskFilters.state = String(event.target.value || "").toUpperCase();
+      renderStrategyList();
+    });
+    el("live-task-filter-type")?.addEventListener("change", (event) => {
+      state.taskFilters.taskType = String(event.target.value || "").toUpperCase();
+      renderStrategyList();
+    });
+    el("live-task-filter-mode")?.addEventListener("change", (event) => {
+      state.taskFilters.monitorMode = String(event.target.value || "");
+      renderStrategyList();
+    });
+    el("live-task-filter-search")?.addEventListener("input", (event) => {
+      state.taskFilters.search = String(event.target.value || "").trim().toLowerCase();
+      renderStrategyList();
+    });
+    el("live-task-stop")?.addEventListener("click", () => stopSelectedTask().catch((error) => appendDiagnostic("task_stop", { error: error.message })));
+    el("live-task-rerun")?.addEventListener("click", () => rerunSelectedTask().catch((error) => appendDiagnostic("task_rerun", { error: error.message })));
     loadStrategies().catch((error) => {
       setConnection("error", "danger");
       appendDiagnostic("error", { message: error.message });
     });
   });
 })();
+    state.selectedTaskMeta = state.strategies.find((item) => Number(item.strategy_id) === Number(strategyId)) || null;
+    updateTaskActionButtons();

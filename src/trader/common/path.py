@@ -46,5 +46,10 @@ def get_file_path(file_path):
 
     if is_filename_only(file_path):
         return os.path.join(GetDataDir(), file_path)
+    if not os.path.isabs(file_path):
+        project_path = os.path.join(GetProjectDir(), file_path)
+        if os.path.exists(project_path):
+            return project_path
     else:
         return file_path
+    return file_path

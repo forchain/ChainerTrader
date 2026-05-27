@@ -8,6 +8,12 @@ def test_live_monitor_template_loads_tradingview_lightweight_charts_and_workspac
 
     assert "lightweight-charts" in template
     assert "live-strategy-list" in template
+    assert "live-task-filter-state" in template
+    assert "live-task-filter-type" in template
+    assert "live-task-filter-mode" in template
+    assert "live-task-filter-search" in template
+    assert "live-task-stop" in template
+    assert "live-task-rerun" in template
     assert "live-chart" in template
     assert "overlay-signals" in template
     assert "strategy-parameters" in template
@@ -39,6 +45,22 @@ def test_live_monitor_javascript_uses_snapshot_sse_and_incremental_candle_update
     assert "candleTimes" in script
     assert "riskLineStyle" in script
     assert "risk_overlay_invalid_price" in script
+
+
+def test_live_monitor_javascript_filters_task_list_and_controls_task_lifecycle():
+    script = (ROOT / "src/trader/rpc/static/js/live-monitor.js").read_text(encoding="utf-8")
+
+    assert "taskFilters" in script
+    assert "applyTaskFilters" in script
+    assert "live-task-filter-state" in script
+    assert "live-task-filter-type" in script
+    assert "live-task-filter-mode" in script
+    assert "live-task-filter-search" in script
+    assert "updateTaskActionButtons" in script
+    assert "stopSelectedTask" in script
+    assert "rerunSelectedTask" in script
+    assert "fetch(`/api/task?id=${state.selectedId}`" in script
+    assert "fetch(`/api/live/tasks/${state.selectedId}/rerun`" in script
 
 
 def test_live_monitor_javascript_reuses_marker_api_and_filters_noisy_diagnostics():
