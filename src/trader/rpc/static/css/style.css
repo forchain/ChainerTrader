@@ -90,9 +90,9 @@ footer {
 }
 
 @media (max-width: 768px) {
-    .jumbotron {
-        padding: 2rem 1rem !important;
-    }
+.jumbotron {
+    padding: 2rem 1rem !important;
+}
     
     .jumbotron h1 {
         font-size: 2rem;
@@ -186,6 +186,27 @@ footer {
 
 .gradient-bg {
     background: linear-gradient(135deg, var(--primary-color), var(--info-color));
+}
+
+.hero-panel {
+    background: linear-gradient(135deg, #0b5ed7 0%, #1677ff 56%, #0ea5e9 100%);
+    box-shadow: 0 1rem 2rem rgba(13, 110, 253, 0.18);
+}
+
+.hero-description {
+    max-width: 42rem;
+    font-size: 1.05rem;
+    line-height: 1.7;
+    opacity: 0.95;
+}
+
+.hero-panel .form-check-label {
+    cursor: pointer;
+    user-select: none;
+}
+
+.hero-panel .form-check-input {
+    cursor: pointer;
 }
 
 .text-gradient {

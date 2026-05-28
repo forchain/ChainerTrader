@@ -19,6 +19,50 @@
                 <a class="btn btn-outline-primary mt-3" href="/change-password">修改密码</a>
             </div>
         </div>
+
+        <div class="card mt-4">
+            <div class="card-header">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+                    <h5 class="card-title mb-0">账户余额</h5>
+                    <div class="form-check form-switch m-0">
+                        <input class="form-check-input" type="checkbox" id="toggle-all-assets">
+                        <label class="form-check-label" for="toggle-all-assets">显示全部资产</label>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped table-bordered align-middle mb-0 bg-white text-dark" id="accounts-table">
+                        <thead class="table-light">
+                            <tr>
+                                <th scope="col">资产</th>
+                                <th scope="col">可用</th>
+                                <th scope="col">冻结</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if accts_info and accts_info.balances %}
+                                {% for b in accts_info.balances %}
+                                {% set has_free = (b.free | float) > 0 %}
+                                <tr class="account-row {% if not has_free %}d-none{% endif %}" data-has-free="{{ 'true' if has_free else 'false' }}">
+                                    <td>{{ b.asset }}</td>
+                                    <td>{{ b.free | round(8) }}</td>
+                                    <td>{{ b.locked | round(8) }}</td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="3" class="text-center text-muted">暂无账户余额数据</td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+                {% if accts_info and accts_info.balances %}
+                <p class="text-muted small mb-0 mt-3">默认仅展示可用资金大于 0 的资产，打开开关可查看全部资产。</p>
+                {% endif %}
+            </div>
+        </div>
     </div>
     <div class="col-lg-7">
         <div class="card">
@@ -32,38 +76,73 @@
                 {% if not secret_key_ready %}
                 <div class="alert alert-warning">TRADER_SECRET_KEY 未配置，当前不能保存 API key 或启动实盘交易。</div>
                 {% endif %}
-                <form method="post" action="/account/exchange-credentials">
-                    <div class="mb-3">
-                        <label class="form-label" for="exchange">交易所</label>
-                        <input class="form-control" id="exchange" name="exchange" value="BINANCE" required>
-                    </div>
+                {% if credentials %}
+                {% set active_credential = credentials[0] %}
+                <div class="table-responsive mb-3">
+                    <table class="table table-sm table-bordered align-middle mb-0 bg-white text-dark">
+                        <tbody>
+                            <tr>
+                                <th scope="row" class="w-25">类型</th>
+                                <td class="fw-semibold">默认</td>
+                            </tr>
+                            <tr>
+                                <th scope="row">API Key</th>
+                                <td class="font-monospace">{{ active_credential.masked_api_key }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <button
+                    class="btn btn-outline-primary"
+                    type="button"
+                    data-bs-toggle="modal"
+                    data-bs-target="#apiKeyModal"
+                    {% if not secret_key_ready %}disabled{% endif %}
+                >
+                    重置 API Key
+                </button>
+                {% else %}
+                <p class="text-muted">暂无 API key。</p>
+                <button
+                    class="btn btn-primary"
+                    type="button"
+                    data-bs-toggle="modal"
+                    data-bs-target="#apiKeyModal"
+                    {% if not secret_key_ready %}disabled{% endif %}
+                >
+                    创建 API Key
+                </button>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="apiKeyModal" tabindex="-1" aria-labelledby="apiKeyModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="post" action="/account/exchange-credentials">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="apiKeyModalLabel">
+                        {% if credentials %}重置 API Key{% else %}创建 API Key{% endif %}
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="关闭"></button>
+                </div>
+                <div class="modal-body">
                     <div class="mb-3">
                         <label class="form-label" for="api_key">API Key</label>
                         <input class="form-control" id="api_key" name="api_key" autocomplete="off" required>
                     </div>
-                    <div class="mb-3">
+                    <div class="mb-0">
                         <label class="form-label" for="api_secret">API Secret</label>
                         <input class="form-control" id="api_secret" name="api_secret" type="password" autocomplete="off" required>
                     </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">取消</button>
                     <button class="btn btn-primary" type="submit" {% if not secret_key_ready %}disabled{% endif %}>保存</button>
-                </form>
-
-                <hr>
-
-                <h6>已保存凭证</h6>
-                {% if credentials %}
-                <ul class="list-group">
-                    {% for credential in credentials %}
-                    <li class="list-group-item d-flex justify-content-between">
-                        <span>{{ credential.exchange }}</span>
-                        <span class="font-monospace">{{ credential.masked_api_key }}</span>
-                    </li>
-                    {% endfor %}
-                </ul>
-                {% else %}
-                <p class="text-muted mb-0">暂无 API key。</p>
-                {% endif %}
-            </div>
+                </div>
+            </form>
         </div>
     </div>
 </div>

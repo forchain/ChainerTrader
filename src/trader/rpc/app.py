@@ -156,8 +156,15 @@ def start(cfg: Config):
 
 
 @app.get("/")
-async def read_root():
-    return RedirectResponse(url="/admin")
+async def read_root(request: Request):
+    return templates.TemplateResponse(
+        request,
+        "index.html",
+        {
+            "version": version(),
+            "user": await current_user(request),
+        },
+    )
 
 
 @app.get("/name")
@@ -273,6 +280,7 @@ async def account_page(request: Request):
             "credentials": credentials,
             "credential_error": None,
             "secret_key_ready": service_key_available(getattr(request.app.state.cfg, "secret_key", None)),
+            "accts_info": get_accounts_info(rpc_app),
         },
     )
 
@@ -295,11 +303,12 @@ async def account_exchange_credentials_submit(request: Request):
                 "credentials": credentials,
                 "credential_error": "TRADER_SECRET_KEY 未配置，不能保存交易所 API key。",
                 "secret_key_ready": False,
+                "accts_info": get_accounts_info(rpc_app),
             },
             status_code=503,
         )
     form = await request.form()
-    exchange = str(form.get("exchange", "BINANCE")).strip().upper() or "BINANCE"
+    exchange = "BINANCE"
     api_key = str(form.get("api_key", "")).strip()
     api_secret = str(form.get("api_secret", "")).strip()
     validation_error = _validate_exchange_credential_connectivity(request.app.state.cfg, exchange, api_key, api_secret)
@@ -317,6 +326,7 @@ async def account_exchange_credentials_submit(request: Request):
                 "credentials": credentials,
                 "credential_error": validation_error,
                 "secret_key_ready": True,
+                "accts_info": get_accounts_info(rpc_app),
             },
             status_code=400,
         )
@@ -357,7 +367,6 @@ async def admin_dashboard(request: Request):
         "index.html",
         {
             "tasks_info": await get_taskinfo(rpc_app, user),
-            "accts_info": get_accounts_info(rpc_app),
             "version": rpc_app.version(),
             "user": user,
         },

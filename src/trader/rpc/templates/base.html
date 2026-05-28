@@ -12,7 +12,7 @@
 <body>
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
         <div class="container">
-            <a class="navbar-brand" href="/admin">
+            <a class="navbar-brand" href="/">
                 <i class="fas fa-rocket me-2"></i>ChainerTrader
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
@@ -21,23 +21,19 @@
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav ms-auto">
                     <li class="nav-item">
-                        <a class="nav-link" href="/admin">
+                        <a class="nav-link" href="/">
                             <i class="fas fa-home me-1"></i>首页
+                        </a>
+                    </li>
+                    {% if user %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="/admin/live">
+                            <i class="fas fa-chart-line me-1"></i>实盘监控
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="/admin/tasks">
-                            <i class="fas fa-tasks me-1"></i>任务
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/admin/klines">
-                            <i class="fas fa-info-circle me-1"></i>K线
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/admin/live">
-                            <i class="fas fa-chart-line me-1"></i>实盘监控
+                            <i class="fas fa-tasks me-1"></i>任务列表
                         </a>
                     </li>
                     <li class="nav-item">
@@ -45,25 +41,37 @@
                             <i class="fas fa-envelope me-1"></i>日志
                         </a>
                     </li>
-                    {% if user and user.is_admin %}
-                    <li class="nav-item">
-                        <a class="nav-link" href="/admin/users">
-                            <i class="fas fa-users me-1"></i>用户
-                        </a>
-                    </li>
-                    {% endif %}
-                    {% if user %}
                     <li class="nav-item">
                         <a class="nav-link" href="/account">
                             <i class="fas fa-user me-1"></i>我的账户
                         </a>
                     </li>
+                    {% if user.is_admin %}
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="adminNavDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-shield-halved me-1"></i>管理员
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="adminNavDropdown">
+                            <li>
+                                <a class="dropdown-item" href="/admin/users">
+                                    <i class="fas fa-users me-2"></i>用户
+                                </a>
+                            </li>
+                        </ul>
+                    </li>
+                    {% endif %}
                     <li class="nav-item">
                         <form method="post" action="/logout" class="d-inline">
                             <button class="btn btn-link nav-link" type="submit">
                                 <i class="fas fa-right-from-bracket me-1"></i>退出
                             </button>
                         </form>
+                    </li>
+                    {% else %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="/login">
+                            <i class="fas fa-right-to-bracket me-1"></i>登录
+                        </a>
                     </li>
                     {% endif %}
                 </ul>
