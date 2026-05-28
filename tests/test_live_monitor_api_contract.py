@@ -1,4 +1,5 @@
 import asyncio
+from datetime import timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -14,20 +15,21 @@ from trader.live.monitor import (
 )
 from trader.common.config import Config
 from trader.rpc.api.live import (
-    _normalize_rerun_config_json,
+    current_task_workspace,
     dispatch_debug_manual_signal,
     is_local_request,
     list_live_strategies,
-    list_monitor_tasks,
     live_debug_manual_entry,
     live_debug_manual_exit,
-    live_monitor_task_rerun,
     live_strategy_events,
     live_strategy_snapshot,
+    rerun_task,
 )
 from trader.rpc.api.live import (
     router as live_router,
 )
+from trader.rpc.app import app as rpc_app
+from trader.strategy.trader_result import TraderResult
 from trader.task.task_config import TaskConfig
 from trader.task.task_type import TaskType
 from trader.utils.kline import Kline
@@ -68,6 +70,13 @@ class FakeKlineStore:
     def get_latest_klines(self, name, limit):
         return self.klines[-limit:]
 
+    def get_klines(self, name, start_time=0, end_time=0):
+        return [
+            kline
+            for kline in self.klines
+            if (not start_time or kline.open_time >= start_time) and (not end_time or kline.open_time <= end_time)
+        ]
+
 
 class FakeDb:
     def __init__(self, klines):
@@ -91,6 +100,14 @@ class RecordingNotice:
     def send(self, content, title="Trader"):
         self.sent.append((title, content))
         return None
+
+
+class RecordingQueue:
+    def __init__(self):
+        self.messages = []
+
+    def put_nowait(self, message):
+        self.messages.append(message)
 
 
 class FakeLiveTask:
@@ -119,18 +136,6 @@ class FakeLiveTask:
 class FakeNotifyManager:
     def send_manual_trade_notification(self, event):
         return [{"ok": True, "provider": "fake"}]
-
-
-class _Logger:
-    def __init__(self):
-        self.infos = []
-        self.errors = []
-
-    def info(self, message):
-        self.infos.append(message)
-
-    def error(self, message):
-        self.errors.append(message)
 
 
 def _kline(open_time, close=100):
@@ -234,14 +239,6 @@ def test_serialize_dashboard_event_returns_stable_json_shape():
     }
 
 
-def test_normalize_rerun_config_json_rewrites_user_id_and_symbol_format():
-    raw = '[{"task_type":"BACK_TRADER","symbol":"ETHUSDT","interval":"1h","user_id":99}]'
-    normalized = _normalize_rerun_config_json(raw, user_id=2)
-    payload = __import__("json").loads(normalized)
-    assert payload[0]["user_id"] == 2
-    assert payload[0]["symbol"] == "ETH-USDT"
-
-
 @pytest.mark.anyio
 async def test_live_event_bus_filters_updates_by_strategy_id():
     bus = LiveEventBus()
@@ -303,173 +300,6 @@ def test_list_live_strategies_api_returns_sorted_strategy_summaries():
 
     assert [item["strategy_id"] for item in payload] == [1, 2]
     assert payload[0]["execution_mode"] == "manual_notify"
-
-
-@pytest.mark.anyio
-async def test_list_monitor_tasks_returns_task_type_state_and_config_json():
-    running_task = FakeTask(task_id=7, state=TaskStateType.RUNNING)
-    done_state = SimpleNamespace(
-        id=8,
-        state=TaskStateType.DONE,
-        name="8.DEBUG",
-        config_json='[{"task_type":"DEBUG","user_id":5}]',
-        user_id=5,
-        to_dict=lambda: {
-            "task_id": 8,
-            "state": "DONE",
-            "name": "8.DEBUG",
-            "config_json": '[{"task_type":"DEBUG","user_id":5}]',
-            "user_id": 5,
-        },
-    )
-
-    async def get_all_task_state(user_id=None):
-        return [running_task.ts, done_state]
-
-    async def fake_current_user(_request):
-        return SimpleNamespace(id=5, is_admin=False)
-
-    monkeypatch = pytest.MonkeyPatch()
-    monkeypatch.setattr("trader.rpc.api.live.current_user", fake_current_user)
-    logger = _Logger()
-    manager = SimpleNamespace(tasks={7: running_task}, get_all_task_state=get_all_task_state)
-    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(app=SimpleNamespace(task_manager=manager, logger=logger))))
-    try:
-        payload = await list_monitor_tasks(request)
-        assert [item["task_id"] for item in payload] == [7, 8]
-        assert payload[0]["task_type"] == "TRADER"
-        assert payload[0]["monitor_mode"] == "live"
-        assert payload[0]["state"] == "RUNNING"
-        assert payload[1]["task_type"] == "DEBUG"
-        assert payload[1]["monitor_mode"] == "historical"
-        assert payload[1]["can_rerun"] is True
-        assert "user_id=5" in logger.infos[0]
-        assert "count=2" in logger.infos[0]
-    finally:
-        monkeypatch.undo()
-
-
-@pytest.mark.anyio
-async def test_live_monitor_task_rerun_reuses_finished_task_config_for_current_user():
-    send_add_tasks_msg = lambda cfg, user_id=None: {"result": "success", "cfg": cfg, "user_id": user_id}
-    done_state = SimpleNamespace(
-        id=8,
-        state=TaskStateType.DONE,
-        config_json='[{"task_type":"DEBUG","symbol":"ETHUSDT","user_id":5}]',
-    )
-
-    async def fake_current_user(_request):
-        return SimpleNamespace(id=5, is_admin=False)
-
-    monkeypatch = pytest.MonkeyPatch()
-    monkeypatch.setattr("trader.rpc.api.live.current_user", fake_current_user)
-
-    async def get_task_state(task_id, user_id=None):
-        assert user_id == 5
-        return done_state if task_id == 8 else None
-
-    logger = _Logger()
-    request = SimpleNamespace(
-        app=SimpleNamespace(
-            state=SimpleNamespace(
-                app=SimpleNamespace(
-                    task_manager=SimpleNamespace(get_task_state=get_task_state),
-                    send_add_tasks_msg=send_add_tasks_msg,
-                    logger=logger,
-                )
-            )
-        )
-    )
-
-    try:
-        payload = await live_monitor_task_rerun(8, request=request)
-
-        assert payload["result"] == "success"
-        assert payload["user_id"] == 5
-        cfg_payload = __import__("json").loads(payload["cfg"])
-        assert cfg_payload[0]["task_type"] == "DEBUG"
-        assert cfg_payload[0]["symbol"] == "ETH-USDT"
-        assert cfg_payload[0]["user_id"] == 5
-        assert "user_id=5" in logger.infos[0]
-        assert "task_id=8" in logger.infos[0]
-    finally:
-        monkeypatch.undo()
-
-
-@pytest.mark.anyio
-async def test_live_monitor_task_rerun_returns_http_400_when_enqueue_rejected():
-    done_state = SimpleNamespace(
-        id=8,
-        state=TaskStateType.DONE,
-        config_json='[{"task_type":"DEBUG","user_id":5}]',
-    )
-
-    async def fake_current_user(_request):
-        return SimpleNamespace(id=5, is_admin=False)
-
-    monkeypatch = pytest.MonkeyPatch()
-    monkeypatch.setattr("trader.rpc.api.live.current_user", fake_current_user)
-
-    async def get_task_state(task_id, user_id=None):
-        assert task_id == 8
-        assert user_id == 5
-        return done_state
-
-    request = SimpleNamespace(
-        app=SimpleNamespace(
-            state=SimpleNamespace(
-                app=SimpleNamespace(
-                    task_manager=SimpleNamespace(get_task_state=get_task_state),
-                    send_add_tasks_msg=lambda *_args, **_kwargs: {"result": "fail", "error": "queue rejected"},
-                    logger=_Logger(),
-                )
-            )
-        )
-    )
-
-    try:
-        with pytest.raises(Exception) as exc:
-            await live_monitor_task_rerun(8, request=request)
-        assert getattr(exc.value, "status_code", None) == 400
-        assert "queue rejected" in str(getattr(exc.value, "detail", ""))
-    finally:
-        monkeypatch.undo()
-
-
-@pytest.mark.anyio
-async def test_live_monitor_task_rerun_failure_logs_user_id():
-    logger = _Logger()
-
-    async def fake_current_user(_request):
-        return SimpleNamespace(id=5, is_admin=False)
-
-    monkeypatch = pytest.MonkeyPatch()
-    monkeypatch.setattr("trader.rpc.api.live.current_user", fake_current_user)
-
-    async def get_task_state(task_id, user_id=None):
-        assert task_id == 9
-        assert user_id == 5
-        return None
-
-    request = SimpleNamespace(
-        app=SimpleNamespace(
-            state=SimpleNamespace(
-                app=SimpleNamespace(
-                    task_manager=SimpleNamespace(get_task_state=get_task_state),
-                    logger=logger,
-                )
-            )
-        )
-    )
-
-    try:
-        with pytest.raises(Exception) as exc:
-            await live_monitor_task_rerun(9, request=request)
-        assert getattr(exc.value, "status_code", None) == 404
-        assert "user_id=5" in logger.errors[0]
-        assert "task_id=9" in logger.errors[0]
-    finally:
-        monkeypatch.undo()
 
 
 @pytest.mark.anyio
@@ -536,6 +366,504 @@ def test_live_api_http_smoke_lists_strategies_and_loads_snapshot():
     assert strategies.json()[0]["strategy_id"] == 7
     assert snapshot.status_code == 200
     assert snapshot.json()["candles"][-1]["close"] == 102.0
+
+
+def test_admin_live_route_returns_monitor_layout():
+    import trader.rpc.rpc_app as rpc_app_module
+
+    rpc_app_module.os.kill = lambda pid, sig: None
+
+    async def _sleep(logger, seconds, desc):
+        await asyncio.sleep(0)
+
+    rpc_app_module.sleep = _sleep
+    rpc_app.state.app = SimpleNamespace(
+        task_manager=SimpleNamespace(
+            tasks={7: FakeTask()},
+            get_all_task_state=lambda user_id=None: [],
+            get_task=lambda task_id: FakeTask() if task_id == 7 else None,
+        ),
+        db_manager=FakeDb([_kline(BASE)]),
+        cfg=Config(live_warmup_candles=20),
+    )
+    rpc_app.state.cfg = Config(api="127.0.0.1:0", tasks="[]")
+
+    with TestClient(rpc_app) as client:
+        response = client.get("/admin/live")
+
+    assert response.status_code == 200
+    assert "任务监控" in response.text
+    assert "live-chart" in response.text
+    assert "runtime-status" in response.text
+    assert "diagnostic-events" in response.text
+
+
+def test_admin_dashboard_renders_task_monitor_navigation_without_klines_entry():
+    import trader.rpc.rpc_app as rpc_app_module
+
+    rpc_app_module.os.kill = lambda pid, sig: None
+
+    async def _sleep(logger, seconds, desc):
+        await asyncio.sleep(0)
+
+    rpc_app_module.sleep = _sleep
+    rpc_app.state.app = SimpleNamespace(
+        task_manager=SimpleNamespace(
+            tasks={7: FakeTask()},
+            get_all_task_state=lambda user_id=None: [],
+            get_task=lambda task_id: FakeTask() if task_id == 7 else None,
+        ),
+        db_manager=FakeDb([_kline(BASE)]),
+        cfg=Config(live_warmup_candles=20),
+    )
+    rpc_app.state.cfg = Config(api="127.0.0.1:0", tasks="[]")
+
+    with TestClient(rpc_app) as client:
+        response = client.get("/admin")
+
+    assert response.status_code == 200
+    assert "任务监控" in response.text
+    assert "K线" not in response.text
+
+
+@pytest.mark.anyio
+async def test_current_task_workspace_prefers_running_task_and_uses_live_renderer():
+    task = FakeTask(task_id=7, state=TaskStateType.RUNNING)
+    running_state = SimpleNamespace(
+        id=7,
+        state=TaskStateType.RUNNING,
+        name="7.TRADER.BTCUSDT-1m",
+        start_time="2026-05-23 10:00:00",
+        config_json='[{"task_type":"TRADER"}]',
+    )
+    async def all_states(user_id=None):
+        return [running_state]
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                app=SimpleNamespace(
+                    cfg=Config(live_warmup_candles=20),
+                    task_manager=SimpleNamespace(
+                        get_all_task_state=all_states,
+                        get_task=lambda task_id: task if task_id == 7 else None,
+                    ),
+                    db_manager=FakeDb([_kline(BASE)]),
+                )
+            )
+        )
+    )
+
+    payload = await current_task_workspace(request=request)
+
+    assert payload["selected_task_id"] == 7
+    assert payload["display_context"] == "active_running_task"
+    assert payload["renderer"] == "live"
+    assert payload["snapshot"]["task_id"] == 7
+
+
+@pytest.mark.anyio
+async def test_current_task_workspace_falls_back_to_latest_done_and_historical_selection():
+    done_1 = SimpleNamespace(
+        id=4,
+        state=TaskStateType.DONE,
+        name="4.BACK_TRADER.BTCUSDT-1h",
+        start_time="2026-05-21 10:00:00",
+        config_json='[{"task_type":"BACK_TRADER"}]',
+    )
+    done_2 = SimpleNamespace(
+        id=9,
+        state=TaskStateType.DONE,
+        name="9.UPDATE_KLINES.BTCUSDT-1m",
+        start_time="2026-05-22 10:00:00",
+        config_json='[{"task_type":"UPDATE_KLINES"}]',
+    )
+    async def all_states(user_id=None):
+        return [done_1, done_2]
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                app=SimpleNamespace(
+                    task_manager=SimpleNamespace(
+                        get_all_task_state=all_states,
+                        get_task=lambda task_id: None,
+                    ),
+                    db_manager=FakeDb([]),
+                )
+            )
+        )
+    )
+
+    fallback = await current_task_workspace(request=request)
+    selected = await current_task_workspace(request=request, task_id=4)
+
+    assert fallback["selected_task_id"] == 9
+    assert fallback["display_context"] == "latest_finished_task"
+    assert fallback["renderer"] == "data"
+    assert selected["selected_task_id"] == 4
+    assert selected["display_context"] == "historical_selection"
+    assert selected["renderer"] == "backtest"
+
+
+@pytest.mark.anyio
+async def test_current_task_workspace_done_fallback_prefers_latest_finish_time():
+    done_early_start_late_finish = SimpleNamespace(
+        id=4,
+        state=TaskStateType.DONE,
+        name="4.BACK_TRADER.BTCUSDT-1h",
+        start_time="2026-05-21 10:00:00",
+        strategy_end_time="2026-05-23 09:00:00",
+        config_json='[{"task_type":"BACK_TRADER"}]',
+    )
+    done_late_start_early_finish = SimpleNamespace(
+        id=9,
+        state=TaskStateType.DONE,
+        name="9.UPDATE_KLINES.BTCUSDT-1m",
+        start_time="2026-05-22 10:00:00",
+        strategy_end_time="2026-05-22 11:00:00",
+        config_json='[{"task_type":"UPDATE_KLINES"}]',
+    )
+
+    async def all_states(user_id=None):
+        return [done_early_start_late_finish, done_late_start_early_finish]
+
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                app=SimpleNamespace(
+                    task_manager=SimpleNamespace(
+                        get_all_task_state=all_states,
+                        get_task=lambda task_id: None,
+                    ),
+                    db_manager=FakeDb([]),
+                )
+            )
+        )
+    )
+
+    payload = await current_task_workspace(request=request)
+
+    assert payload["selected_task_id"] == 4
+    assert payload["display_context"] == "latest_finished_task"
+    assert payload["renderer"] == "backtest"
+
+
+@pytest.mark.anyio
+async def test_current_task_workspace_latest_done_backtest_run_returns_batch_chart_snapshot():
+    btc_config = (
+        '[{"task_type":"BACK_TRADER","symbol":"BTC-USDT","interval":"1m",'
+        '"strategy":"macd_triple_divergence","run_id":"run-backtest"}]'
+    )
+    eth_config = (
+        '[{"task_type":"BACK_TRADER","symbol":"ETH-USDT","interval":"1m",'
+        '"strategy":"macd_triple_divergence","run_id":"run-backtest"}]'
+    )
+    backtest_btc = SimpleNamespace(
+        id=30,
+        state=TaskStateType.DONE,
+        name="30.BACK_TRADER.BTCUSDT-1m",
+        start_time="2026-05-23 10:00:00",
+        strategy_start_time=BASE,
+        strategy_end_time=BASE + 4 * 60,
+        config_json=btc_config,
+        tret=TraderResult(0.12, 0.02, timedelta(seconds=60), 0.1, 0.5, 1.2, 2.0, -1.0, 1, 0, [Operate(OperateType.BUY, BASE + 2 * 60, 102.0)], 0.3, 5),
+    )
+    backtest_eth = SimpleNamespace(
+        id=31,
+        state=TaskStateType.DONE,
+        name="31.BACK_TRADER.ETHUSDT-1m",
+        start_time="2026-05-23 10:00:01",
+        strategy_start_time=BASE,
+        strategy_end_time=BASE + 4 * 60,
+        config_json=eth_config,
+        tret=TraderResult(0.08, 0.01, timedelta(seconds=30), 0.1, 0.4, 1.1, 1.0, -1.0, 1, 0, [], 0.2, 5),
+    )
+
+    async def all_states(user_id=None):
+        return [backtest_btc, backtest_eth]
+
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                app=SimpleNamespace(
+                    cfg=Config(live_warmup_candles=20),
+                    task_manager=SimpleNamespace(
+                        get_all_task_state=all_states,
+                        get_task=lambda task_id: None,
+                    ),
+                    db_manager=FakeDb([_kline(BASE + i * 60, close=100 + i) for i in range(5)]),
+                )
+            )
+        )
+    )
+
+    payload = await current_task_workspace(request=request)
+
+    assert payload["selected_task_id"] == 31
+    assert payload["display_context"] == "latest_finished_task"
+    assert payload["renderer"] == "backtest"
+    assert [item["task_id"] for item in payload["tasks"]] == [31, 30]
+    assert {item["run_id"] for item in payload["tasks"]} == {"run-backtest"}
+    assert payload["snapshot"]["market"] == "ETHUSDT"
+    assert payload["snapshot"]["interval"] == "1m"
+    assert len(payload["snapshot"]["candles"]) == 5
+    assert payload["snapshot"]["history_window"]["loaded"] == 5
+    assert payload["snapshot"]["runtime_status"]["state"] == "DONE"
+
+    selected_btc = await current_task_workspace(request=request, task_id=30)
+
+    assert selected_btc["selected_task_id"] == 30
+    assert [item["task_id"] for item in selected_btc["tasks"]] == [31, 30]
+    assert selected_btc["snapshot"]["market"] == "BTCUSDT"
+    assert selected_btc["snapshot"]["overlays"]["signals"][0]["price"] == 102.0
+    assert selected_btc["snapshot"]["result_summary"]["total_return_rate"] == 0.12
+
+
+@pytest.mark.anyio
+async def test_current_task_workspace_lists_only_latest_running_batch_members():
+    old_debug = SimpleNamespace(
+        id=1,
+        state=TaskStateType.DONE,
+        name="1.DEBUG",
+        start_time="2026-05-23 09:00:00",
+        strategy_end_time="2026-05-23 09:01:00",
+        config_json='[{"task_type":"DEBUG","run_id":"run-debug"}]',
+    )
+    live_btc = SimpleNamespace(
+        id=10,
+        state=TaskStateType.RUNNING,
+        name="10.TRADER.BTCUSDT-1m",
+        start_time="2026-05-23 10:00:00",
+        config_json='[{"task_type":"TRADER","run_id":"run-live"}]',
+    )
+    live_eth = SimpleNamespace(
+        id=11,
+        state=TaskStateType.RUNNING,
+        name="11.TRADER.ETHUSDT-1m",
+        start_time="2026-05-23 10:00:01",
+        config_json='[{"task_type":"TRADER","run_id":"run-live"}]',
+    )
+
+    async def all_states(user_id=None):
+        return [old_debug, live_btc, live_eth]
+
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                app=SimpleNamespace(
+                    cfg=Config(live_warmup_candles=20),
+                    task_manager=SimpleNamespace(
+                        get_all_task_state=all_states,
+                        get_task=lambda task_id: FakeTask(task_id=task_id, state=TaskStateType.RUNNING),
+                    ),
+                    db_manager=FakeDb([_kline(BASE)]),
+                )
+            )
+        )
+    )
+
+    payload = await current_task_workspace(request=request)
+
+    assert payload["selected_task_id"] == 11
+    assert [item["task_id"] for item in payload["tasks"]] == [11, 10]
+    assert {item["run_id"] for item in payload["tasks"]} == {"run-live"}
+
+
+@pytest.mark.anyio
+async def test_current_task_workspace_treats_legacy_latest_done_without_batch_as_single_task():
+    latest_legacy = SimpleNamespace(
+        id=20,
+        state=TaskStateType.DONE,
+        name="20.DEBUG",
+        start_time="2026-05-23 11:00:00",
+        strategy_end_time="2026-05-23 11:01:00",
+        config_json='[{"task_type":"DEBUG"}]',
+    )
+    previous_batch_member = SimpleNamespace(
+        id=19,
+        state=TaskStateType.DONE,
+        name="19.TRADER.BTCUSDT-1m",
+        start_time="2026-05-23 10:00:00",
+        strategy_end_time="2026-05-23 10:01:00",
+        config_json='[{"task_type":"TRADER","run_id":"run-live"}]',
+    )
+
+    async def all_states(user_id=None):
+        return [previous_batch_member, latest_legacy]
+
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                app=SimpleNamespace(
+                    task_manager=SimpleNamespace(
+                        get_all_task_state=all_states,
+                        get_task=lambda task_id: None,
+                    ),
+                    db_manager=FakeDb([]),
+                )
+            )
+        )
+    )
+
+    payload = await current_task_workspace(request=request)
+
+    assert payload["selected_task_id"] == 20
+    assert [item["task_id"] for item in payload["tasks"]] == [20]
+
+
+@pytest.mark.anyio
+async def test_current_task_workspace_returns_explicit_empty_payload_when_no_tasks():
+    async def all_states(user_id=None):
+        return []
+
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                app=SimpleNamespace(
+                    task_manager=SimpleNamespace(
+                        get_all_task_state=all_states,
+                        get_task=lambda task_id: None,
+                    ),
+                    db_manager=FakeDb([]),
+                )
+            )
+        )
+    )
+
+    payload = await current_task_workspace(request=request)
+
+    assert payload["selected_task_id"] is None
+    assert payload["display_context"] == "empty"
+    assert payload["running_task_id"] is None
+    assert payload["tasks"] == []
+    assert payload["renderer"] == "generic"
+    assert payload["snapshot"] is None
+
+
+@pytest.mark.anyio
+async def test_rerun_task_creates_new_task_from_saved_debug_config():
+    saved = SimpleNamespace(
+        id=42,
+        state=TaskStateType.DONE,
+        name="42.DEBUG",
+        start_time="2026-05-23 10:00:00",
+        config_json='[{"task_type":"DEBUG","limit":1}]',
+    )
+    queue = RecordingQueue()
+
+    async def all_states(user_id=None):
+        return [saved]
+
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                app=SimpleNamespace(
+                    task_manager=SimpleNamespace(get_all_task_state=all_states),
+                    queue=queue,
+                ),
+                cfg=Config(),
+            )
+        )
+    )
+
+    payload = await rerun_task(request=request, task_id=42)
+
+    assert payload["result"] == "success"
+    assert len(payload["tasks"]) == 1
+    assert payload["tasks"][0]["id"] != 42
+    assert payload["tasks"][0]["type"] == TaskType.DEBUG
+    assert len(queue.messages) == 1
+    assert queue.messages[0].is_add_tasks()
+    taskcs = queue.messages[0].get_data()
+    assert len(taskcs) == 1
+    assert taskcs[0].id != 42
+    assert taskcs[0].limit == 1
+
+
+@pytest.mark.anyio
+async def test_rerun_task_normalizes_legacy_compact_symbol_and_assigns_new_run():
+    saved = SimpleNamespace(
+        id=42,
+        state=TaskStateType.DONE,
+        name="42.TRADER.BTCUSDT-1m",
+        start_time="2026-05-23 10:00:00",
+        config_json=(
+            '[{"task_type":"TRADER","symbol":"BTCUSDT","interval":"1m",'
+            '"start_time":"2026-05-23 10:00:00","end_time":"2099-01-01 00:00:00",'
+            '"strategy":"macd_triple_divergence","free":100,'
+            '"live_execution_mode":"manual_notify","live_data_mode":"realtime",'
+            '"live_trade_max_notional":20,"run_id":"run-old"}]'
+        ),
+    )
+    queue = RecordingQueue()
+
+    async def all_states(user_id=None):
+        return [saved]
+
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                app=SimpleNamespace(
+                    task_manager=SimpleNamespace(get_all_task_state=all_states),
+                    queue=queue,
+                ),
+                cfg=Config(),
+            )
+        )
+    )
+
+    payload = await rerun_task(request=request, task_id=42)
+
+    assert payload["result"] == "success"
+    assert len(queue.messages) == 1
+    taskcs = queue.messages[0].get_data()
+    assert len(taskcs) == 1
+    rerun_config = taskcs[0]
+    assert rerun_config.id != 42
+    assert rerun_config.symbol_interval.name() == "BTCUSDT-1m"
+    assert rerun_config.strategies == ["macd_triple_divergence"]
+    assert rerun_config.run_id
+    assert rerun_config.run_id != "run-old"
+    assert payload["tasks"][0]["id"] == rerun_config.id
+    assert payload["tasks"][0]["run_id"] == rerun_config.run_id
+
+
+@pytest.mark.anyio
+async def test_rerun_task_assigns_new_run_for_already_parseable_saved_config():
+    saved = SimpleNamespace(
+        id=42,
+        state=TaskStateType.DONE,
+        name="42.TRADER.BTCUSDT-1m",
+        start_time="2026-05-23 10:00:00",
+        config_json=(
+            '[{"task_type":"TRADER","symbol":"BTC-USDT","interval":"1m",'
+            '"strategy":"macd_triple_divergence","free":100,'
+            '"live_trade_max_notional":20,"run_id":"run-old"}]'
+        ),
+    )
+    queue = RecordingQueue()
+
+    async def all_states(user_id=None):
+        return [saved]
+
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                app=SimpleNamespace(
+                    task_manager=SimpleNamespace(get_all_task_state=all_states),
+                    queue=queue,
+                ),
+                cfg=Config(),
+            )
+        )
+    )
+
+    await rerun_task(request=request, task_id=42)
+
+    taskcs = queue.messages[0].get_data()
+    assert len(taskcs) == 1
+    assert taskcs[0].id != 42
+    assert taskcs[0].run_id
+    assert taskcs[0].run_id != "run-old"
 
 
 @pytest.mark.anyio

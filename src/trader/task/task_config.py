@@ -104,6 +104,7 @@ class TaskConfig:
         live_margin_auto_repay_min_amount: float = 0.000001,
         live_margin_auto_repay_excluded_assets: list[str] | None = None,
         user_id: int | None = None,
+        run_id: str | None = None,
     ):
         self.ttype = ttype
         self.csv = csv
@@ -131,6 +132,7 @@ class TaskConfig:
         self.live_margin_auto_repay_min_amount = float(live_margin_auto_repay_min_amount or 0.0)
         self.live_margin_auto_repay_excluded_assets = parse_string_list(live_margin_auto_repay_excluded_assets)
         self.user_id = int(user_id) if user_id is not None else None
+        self.run_id = run_id
         if self.live_margin_borrow_block_policy == "repay_all" and (
             self.live_margin_auto_repay_max_total <= 0 or self.live_margin_auto_repay_max_per_asset <= 0
         ):
@@ -141,6 +143,11 @@ class TaskConfig:
         self.requires_short_capability = infer_strategy_requires_short(self.strategy_params, self.live_short_execution)
 
         self.id = id
+
+    @property
+    def task_batch_id(self) -> str | None:
+        # Backward compatibility for legacy code paths/tests.
+        return self.run_id
 
     def to_dict(self):
         s_time = "not speicifed"
@@ -161,6 +168,7 @@ class TaskConfig:
                 "type": self.ttype,
                 "limit": self.limit,
                 "user_id": self.user_id,
+                "run_id": self.run_id,
             }
         return {
             "id": self.id,
@@ -190,6 +198,7 @@ class TaskConfig:
             "live_margin_auto_repay_excluded_assets": list(self.live_margin_auto_repay_excluded_assets),
             "requires_short_capability": self.requires_short_capability,
             "user_id": self.user_id,
+            "run_id": self.run_id,
         }
 
     def strategy_name(self):
@@ -221,6 +230,16 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
 
     ret = []
     optimization_run_id = None
+    run_id = None
+
+    def next_task_id() -> int:
+        nonlocal last_task_id, run_id
+        task_id = create_task_id(last_task_id)
+        if run_id is None:
+            run_id = f"run-{task_id}"
+        last_task_id = task_id
+        return task_id
+
     for tcd in parsed_list:
         task_type = parse_task_type(tcd["task_type"])
 
@@ -229,10 +248,10 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
             limit = tcd["limit"]
 
         if task_type == TaskType.DEBUG:
-            tc = TaskConfig(create_task_id(last_task_id), task_type, None, user_id=tcd.get("user_id"))
+            task_id = next_task_id()
+            tc = TaskConfig(task_id, task_type, None, user_id=tcd.get("user_id"), run_id=run_id)
             tc.limit = limit
             ret.append(tc)
-            last_task_id = tc.id
             continue
 
         if "symbols" in tcd:
@@ -331,7 +350,7 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
                 or task_type == TaskType.UPDATE_KLINES
             ):
                 tc = TaskConfig(
-                    create_task_id(last_task_id),
+                    next_task_id(),
                     task_type,
                     si,
                     csv,
@@ -355,15 +374,15 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
                     live_margin_auto_repay_min_amount=live_margin_auto_repay_min_amount,
                     live_margin_auto_repay_excluded_assets=live_margin_auto_repay_excluded_assets,
                     user_id=user_id,
+                    run_id=run_id,
                 )
                 ret.append(tc)
-                last_task_id = tc.id
             else:
                 for strategy in strategies:
                     for strategy_params in parameter_sets:
                         normalized_params = normalize_strategy_params(strategy_params)
                         tc = TaskConfig(
-                            create_task_id(last_task_id),
+                            next_task_id(),
                             task_type,
                             si,
                             csv,
@@ -389,13 +408,13 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
                             live_margin_auto_repay_min_amount=live_margin_auto_repay_min_amount,
                             live_margin_auto_repay_excluded_assets=live_margin_auto_repay_excluded_assets,
                             user_id=user_id,
+                            run_id=run_id,
                         )
                         ret.append(tc)
-                        last_task_id = tc.id
 
                 if len(strategies_bunch) > 0:
                     tc = TaskConfig(
-                        create_task_id(last_task_id),
+                        next_task_id(),
                         task_type,
                         si,
                         csv,
@@ -419,9 +438,9 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
                         live_margin_auto_repay_min_amount=live_margin_auto_repay_min_amount,
                         live_margin_auto_repay_excluded_assets=live_margin_auto_repay_excluded_assets,
                         user_id=user_id,
+                        run_id=run_id,
                     )
                     ret.append(tc)
-                    last_task_id = tc.id
 
     return ret
 

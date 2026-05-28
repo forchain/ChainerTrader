@@ -1,4 +1,5 @@
 from typing import TYPE_CHECKING, Any
+import json
 
 from pydantic import BaseModel
 
@@ -42,7 +43,32 @@ async def get_taskinfo(app: "App", user=None, page: int = 1, per_page: int | Non
     for ts in tss:
         if ts.state == TaskStateType.DONE:
             completed += 1
-        tasks.append(ts.to_dict())
+        item = ts.to_dict()
+        try:
+            payload = json.loads(item.get("config_json") or "[]")
+            cfg = payload[0] if isinstance(payload, list) and payload and isinstance(payload[0], dict) else {}
+        except Exception:
+            cfg = {}
+        run_id = str(cfg.get("run_id") or "").strip() or str(cfg.get("task_batch_id") or "").strip() or None
+        item["run_id"] = run_id
+        item["symbol"] = str(cfg.get("symbol") or "").strip()
+        item["interval"] = str(cfg.get("interval") or "").strip()
+        item["strategy"] = str(cfg.get("strategy") or cfg.get("strategies") or "").strip()
+        tasks.append(item)
+
+    # Assign ordinal labels for grouped runs.
+    run_groups: dict[str, list[dict[str, Any]]] = {}
+    for item in tasks:
+        run_id = item.get("run_id")
+        if not run_id:
+            continue
+        run_groups.setdefault(str(run_id), []).append(item)
+    for _run_id, items in run_groups.items():
+        ordered = sorted(items, key=lambda x: int(x.get("task_id") or 0))
+        total = len(ordered)
+        for idx, item in enumerate(ordered, start=1):
+            item["run_index"] = idx
+            item["run_total"] = total
 
     # Sort tasks by start_time in descending order (newest first)
     tasks.sort(key=lambda x: x.get("start_time", ""), reverse=True)

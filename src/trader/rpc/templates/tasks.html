@@ -13,27 +13,33 @@
             </div>
             <div class="card-body">
                 <div class="row g-2 mb-3">
-                    <div class="col-6 col-lg-3">
+                    <div class="col-6 col-lg-2">
                         <label for="taskListFilterType" class="form-label small mb-1">任务类型</label>
                         <select class="form-select form-select-sm" id="taskListFilterType">
                             <option value="">全部</option>
                         </select>
                     </div>
-                    <div class="col-6 col-lg-3">
+                    <div class="col-6 col-lg-2">
                         <label for="taskListFilterSymbol" class="form-label small mb-1">币种</label>
                         <select class="form-select form-select-sm" id="taskListFilterSymbol">
                             <option value="">全部</option>
                         </select>
                     </div>
-                    <div class="col-6 col-lg-3">
+                    <div class="col-6 col-lg-2">
                         <label for="taskListFilterInterval" class="form-label small mb-1">周期</label>
                         <select class="form-select form-select-sm" id="taskListFilterInterval">
                             <option value="">全部</option>
                         </select>
                     </div>
-                    <div class="col-6 col-lg-3">
+                    <div class="col-6 col-lg-2">
                         <label for="taskListFilterStrategy" class="form-label small mb-1">策略</label>
                         <select class="form-select form-select-sm" id="taskListFilterStrategy">
+                            <option value="">全部</option>
+                        </select>
+                    </div>
+                    <div class="col-6 col-lg-2">
+                        <label for="taskListFilterState" class="form-label small mb-1">任务状态</label>
+                        <select class="form-select form-select-sm" id="taskListFilterState">
                             <option value="">全部</option>
                         </select>
                     </div>
@@ -41,12 +47,29 @@
                 <div id="tasksList">
                     {% if tasks_info.tasks %}
                         {% for task in tasks_info.tasks %}
-                        <div class="task-item border rounded p-3 mb-3" data-task-id="{{ task.task_id }}" data-task-name="{{ task.name or '' }}" data-task-config='{{ task.config_json or "" }}'>
+                        <div class="task-item border rounded p-3 mb-3"
+                             data-task-id="{{ task.task_id }}"
+                             data-task-name="{{ task.name or '' }}"
+                             data-task-config='{{ task.config_json or "" }}'
+                             data-task-type="{{ task.name.split('.')[1] if task.name and task.name.split('.')|length > 1 else '' }}"
+                             data-task-symbol="{{ task.symbol or '' }}"
+                             data-task-interval="{{ task.interval or '' }}"
+                             data-task-strategy="{{ task.strategy or '' }}"
+                             data-task-state="{{ task.state or '' }}"
+                             data-task-run-id="{{ task.run_id or '' }}"
+                             data-task-run-index="{{ task.run_index or '' }}"
+                             data-task-run-total="{{ task.run_total or '' }}">
                             <div class="d-flex align-items-start justify-content-between">
                                 <div class="flex-grow-1">
                                     {% if task.name %}
                                     <p class="text-muted mb-2 small">{{ task.name }}</p>
                                     {% endif %}
+                                    <div class="small mb-1">
+                                        {% if task.run_id %}
+                                        <span class="badge text-bg-light border">Run {{ task.run_id }}{% if task.run_index %} · {{ task.run_index }}/{{ task.run_total }}{% endif %}</span>
+                                        {% endif %}
+                                    </div>
+                                    <div class="small text-muted mb-2">币种 {{ task.symbol or '-' }} · 周期 {{ task.interval or '-' }} · 策略 {{ task.strategy or '-' }}</div>
                                     <small class="text-muted">
                                         <i class="fas fa-calendar me-1"></i>
                                         {{ task.start_time if task.start_time else '未知时间' }}
@@ -143,19 +166,30 @@
                     </div>
                     <div class="d-flex gap-2 mb-3">
                         <button type="button" class="btn btn-outline-primary w-50" id="appendDraftBtn">
-                            <i class="fas fa-layer-group me-1"></i>加入批量列表
+                            <i class="fas fa-layer-group me-1"></i>加入任务集
                         </button>
                         <button type="button" class="btn btn-outline-secondary w-50" id="clearDraftsBtn">
                             <i class="fas fa-trash-alt me-1"></i>清空列表
                         </button>
                     </div>
                     <div class="mb-3">
-                        <label for="taskBatchPreview" class="form-label">批量列表(JSON数组)</label>
+                        <label for="taskBatchPreview" class="form-label">任务集(JSON数组)</label>
                         <textarea class="form-control" id="taskBatchPreview" rows="8" readonly></textarea>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">批量任务明细</label>
+                        <label class="form-label">任务集明细</label>
                         <div id="taskDraftList"></div>
+                    </div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-12 col-md-8">
+                            <label for="taskSetFileName" class="form-label">保存任务集</label>
+                            <input type="text" class="form-control" id="taskSetFileName" placeholder="文件名自动生成, 可手动修改">
+                        </div>
+                        <div class="col-12 col-md-4 d-flex align-items-end">
+                            <button type="button" class="btn btn-outline-success w-100" id="saveTaskSetBtn">
+                                <i class="fas fa-floppy-disk me-1"></i>保存
+                            </button>
+                        </div>
                     </div>
                     </div>
                     <div id="taskConfigFileSection" style="display:none;">
@@ -203,7 +237,7 @@
                         </div>
                     </div>
                     <button type="submit" class="btn btn-primary w-100">
-                        <i class="fas fa-plus me-1"></i>添加任务
+                        <i class="fas fa-plus me-1"></i>执行任务集
                     </button>
                 </form>
             </div>
@@ -258,7 +292,59 @@
             </div>
         </div>
     </div>
+</div>
+
+<!-- 重跑确认模态框 -->
+<div class="modal fade" id="rerunConfirmModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-rotate-right me-2"></i>确认重跑</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        重跑会先停止你当前所有运行中的任务，然后重新启动该任务。是否继续？
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+        <button type="button" class="btn btn-primary" id="confirmRerunBtn">继续重跑</button>
+      </div>
     </div>
+  </div>
+</div>
+
+<!-- 停止确认模态框 -->
+<div class="modal fade" id="stopConfirmModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-stop me-2"></i>确认停止</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="stopConfirmBody">确认停止该任务吗？</div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+        <button type="button" class="btn btn-danger" id="confirmStopBtn">确认停止</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 通知模态框 -->
+<div class="modal fade" id="taskNoticeModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="taskNoticeTitle">提示</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="taskNoticeBody"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary" data-bs-dismiss="modal">确定</button>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -441,6 +527,8 @@
 <script>
 const taskDrafts = [];
 let editingDraftIndex = null;
+let pendingRerunTaskId = null;
+let pendingStopTaskId = null;
 const STRATEGY_OPTIONS = {{ strategy_options | tojson }};
 const DEFAULT_STRATEGY = STRATEGY_OPTIONS.length > 0 ? STRATEGY_OPTIONS[0] : 'ShihunRSI2';
 const TASK_CONFIG_OPTIONS = {{ task_config_options | tojson }};
@@ -451,7 +539,15 @@ const taskConfigFilterState = {
     strategy: '',
 };
 const taskConfigMetaCache = new Map();
-const taskListFilterState = { type: '', symbol: '', interval: '', strategy: '' };
+const taskListFilterState = { type: '', symbol: '', interval: '', strategy: '', state: '' };
+const CHAINER_PARAM_PRESETS = [
+    { key: 'chainer_mode', type: 'select', value: 'LONG_ONLY', options: ['LONG_ONLY', 'SHORT_ONLY', 'BOTH'] },
+    { key: 'chainer_need_confirm', type: 'bool', value: true },
+    { key: 'chainer_stoploss_atr_mult', type: 'number', value: 1.0 },
+    { key: 'chainer_enable_breakeven', type: 'bool', value: true },
+    { key: 'chainer_risk_reward_ratio', type: 'number', value: 2.0 },
+    { key: 'chainer_min_equity_percent', type: 'number', value: 0.0 },
+];
 
 function toDatetimeLocalValue(value) {
     const raw = String(value || '').trim();
@@ -593,6 +689,21 @@ function renderTaskFields(taskType) {
                 </div>
             `;
         }
+        if (field.type === 'json' && field.key === 'strategy_params') {
+            const initial = String(field.default || '{}').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            return `
+                <div class="mb-3">
+                    <label class="form-label" for="taskField_${field.key}">${field.label}</label>
+                    <textarea class="form-control task-input" id="taskField_${field.key}" data-key="${field.key}" rows="3">${initial}</textarea>
+                    <div class="d-flex gap-2 mt-2">
+                        <button type="button" class="btn btn-sm btn-outline-success" id="strategyParamsLoadStrategyBtn">加载当前策略参数</button>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="strategyParamsPresetBtn">应用 Chainer 常用参数</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="strategyParamsAddRowBtn">新增参数项</button>
+                    </div>
+                    <div id="strategyParamsEditor" class="mt-2"></div>
+                </div>
+            `;
+        }
         return `
             <div class="mb-3">
                 <label class="form-label" for="taskField_${field.key}">${field.label}</label>
@@ -600,6 +711,177 @@ function renderTaskFields(taskType) {
             </div>
         `;
     }).join('');
+    initStrategyParamsEditor();
+}
+
+function strategyParamsParseLoose(value) {
+    try {
+        const parsed = JSON.parse(String(value || '{}').trim() || '{}');
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch (_err) {
+        return {};
+    }
+}
+
+function strategyParamsRowsFromObject(obj) {
+    return Object.entries(obj || {}).map(([key, value]) => ({ key, value }));
+}
+
+function strategyParamsValueType(value) {
+    if (typeof value === 'boolean') return 'bool';
+    if (typeof value === 'number') return 'number';
+    return 'text';
+}
+
+function strategyParamsRowHtml(row, index) {
+    const type = strategyParamsValueType(row.value);
+    const key = escapeHtml(String(row.key || ''));
+    const valueText = escapeHtml(String(row.value ?? ''));
+    const boolValue = row.value ? 'true' : 'false';
+    return `
+        <div class="row g-2 mb-2 strategy-param-row" data-row-index="${index}">
+            <div class="col-4">
+                <input type="text" class="form-control form-control-sm strategy-param-key" value="${key}" placeholder="参数名">
+            </div>
+            <div class="col-3">
+                <select class="form-select form-select-sm strategy-param-type">
+                    <option value="text" ${type === 'text' ? 'selected' : ''}>文本</option>
+                    <option value="number" ${type === 'number' ? 'selected' : ''}>数字</option>
+                    <option value="bool" ${type === 'bool' ? 'selected' : ''}>布尔</option>
+                </select>
+            </div>
+            <div class="col-4 strategy-param-value-cell">
+                ${type === 'bool'
+                    ? `<select class="form-select form-select-sm strategy-param-value"><option value="true" ${boolValue === 'true' ? 'selected' : ''}>true</option><option value="false" ${boolValue === 'false' ? 'selected' : ''}>false</option></select>`
+                    : `<input type="${type === 'number' ? 'number' : 'text'}" class="form-control form-control-sm strategy-param-value" value="${valueText}" placeholder="参数值">`
+                }
+            </div>
+            <div class="col-1">
+                <button type="button" class="btn btn-sm btn-outline-danger strategy-param-remove">&times;</button>
+            </div>
+        </div>
+    `;
+}
+
+function strategyParamsObjectFromEditor() {
+    const editor = document.getElementById('strategyParamsEditor');
+    if (!editor) return {};
+    const rows = Array.from(editor.querySelectorAll('.strategy-param-row'));
+    const result = {};
+    rows.forEach((row) => {
+        const keyEl = row.querySelector('.strategy-param-key');
+        const typeEl = row.querySelector('.strategy-param-type');
+        const valueEl = row.querySelector('.strategy-param-value');
+        const key = String(keyEl?.value || '').trim();
+        if (!key) return;
+        const type = String(typeEl?.value || 'text');
+        let value = valueEl?.value ?? '';
+        if (type === 'number') {
+            const parsed = Number(value);
+            if (!Number.isNaN(parsed)) value = parsed;
+        } else if (type === 'bool') {
+            value = String(value) === 'true';
+        }
+        result[key] = value;
+    });
+    return result;
+}
+
+function strategyParamsSyncTextarea() {
+    const textarea = document.getElementById('taskField_strategy_params');
+    if (!textarea) return;
+    textarea.value = JSON.stringify(strategyParamsObjectFromEditor(), null, 2);
+    updateTaskJsonPreview();
+}
+
+function strategyParamsRenderEditorFromObject(obj) {
+    const editor = document.getElementById('strategyParamsEditor');
+    if (!editor) return;
+    const rows = strategyParamsRowsFromObject(obj);
+    editor.innerHTML = rows.length > 0
+        ? rows.map((row, index) => strategyParamsRowHtml(row, index)).join('')
+        : '<div class="text-muted small">暂无参数项</div>';
+}
+
+function strategyParamsAddRow(row = { key: '', value: '' }) {
+    const editor = document.getElementById('strategyParamsEditor');
+    if (!editor) return;
+    const placeholder = editor.querySelector('.text-muted.small');
+    if (placeholder) placeholder.remove();
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = strategyParamsRowHtml(row, Date.now());
+    editor.appendChild(wrapper.firstElementChild);
+}
+
+function initStrategyParamsEditor() {
+    const textarea = document.getElementById('taskField_strategy_params');
+    const editor = document.getElementById('strategyParamsEditor');
+    if (!textarea || !editor) return;
+    strategyParamsRenderEditorFromObject(strategyParamsParseLoose(textarea.value));
+
+    document.getElementById('strategyParamsPresetBtn')?.addEventListener('click', function() {
+        const presetObj = {};
+        CHAINER_PARAM_PRESETS.forEach((item) => {
+            presetObj[item.key] = item.value;
+        });
+        strategyParamsRenderEditorFromObject(presetObj);
+        strategyParamsSyncTextarea();
+    });
+    document.getElementById('strategyParamsLoadStrategyBtn')?.addEventListener('click', async function() {
+        const strategyEl = document.getElementById('taskField_strategy');
+        const strategyName = String(strategyEl?.value || '').trim();
+        if (!strategyName) {
+            showTaskNotice('提示', '请先选择策略名');
+            return;
+        }
+        try {
+            const response = await fetch(`/api/tasks/strategy-param-presets?strategy=${encodeURIComponent(strategyName)}`);
+            if (!response.ok) {
+                let msg = `加载策略参数失败：HTTP ${response.status}`;
+                try {
+                    const payload = await response.json();
+                    if (payload?.detail) msg = `加载策略参数失败：${payload.detail}`;
+                } catch (_err) {}
+                throw new Error(msg);
+            }
+            const payload = await response.json();
+            const params = payload?.params && typeof payload.params === 'object' ? payload.params : {};
+            strategyParamsRenderEditorFromObject(params);
+            strategyParamsSyncTextarea();
+        } catch (err) {
+            showTaskNotice('加载策略参数失败', (err && err.message) || '加载策略参数失败');
+        }
+    });
+
+    document.getElementById('strategyParamsAddRowBtn')?.addEventListener('click', function() {
+        strategyParamsAddRow();
+    });
+
+    editor.addEventListener('change', function(e) {
+        const row = e.target.closest('.strategy-param-row');
+        if (!row) return;
+        if (e.target.classList.contains('strategy-param-type')) {
+            const type = e.target.value;
+            const cell = row.querySelector('.strategy-param-value-cell');
+            const current = row.querySelector('.strategy-param-value')?.value || '';
+            if (type === 'bool') {
+                cell.innerHTML = `<select class="form-select form-select-sm strategy-param-value"><option value="true">true</option><option value="false">false</option></select>`;
+            } else {
+                cell.innerHTML = `<input type="${type === 'number' ? 'number' : 'text'}" class="form-control form-control-sm strategy-param-value" value="${escapeHtml(current)}" placeholder="参数值">`;
+            }
+        }
+        strategyParamsSyncTextarea();
+    });
+    editor.addEventListener('input', strategyParamsSyncTextarea);
+    editor.addEventListener('click', function(e) {
+        const removeBtn = e.target.closest('.strategy-param-remove');
+        if (!removeBtn) return;
+        removeBtn.closest('.strategy-param-row')?.remove();
+        if (editor.querySelectorAll('.strategy-param-row').length === 0) {
+            editor.innerHTML = '<div class="text-muted small">暂无参数项</div>';
+        }
+        strategyParamsSyncTextarea();
+    });
 }
 
 function parseFieldValue(field, element) {
@@ -729,15 +1011,111 @@ function fillFormFromTask(task) {
 
 function updateTaskBatchPreview() {
     const batchPreview = document.getElementById('taskBatchPreview');
-    batchPreview.value = JSON.stringify(taskDrafts, null, 2);
+    try {
+        const current = buildTaskConfigFromForm()[0];
+        validateTaskConfig(current);
+        const effectiveTaskSet = taskDrafts.length > 0 ? taskDrafts.slice() : [current];
+        batchPreview.value = JSON.stringify(effectiveTaskSet, null, 2);
+    } catch (_err) {
+        batchPreview.value = JSON.stringify(taskDrafts, null, 2);
+    }
+    updateTaskSetFileName();
     renderTaskDraftList();
+}
+
+function slugForFileName(value) {
+    return String(value || '')
+        .trim()
+        .toLowerCase()
+        .replaceAll('/', '-')
+        .replaceAll(' ', '-')
+        .replace(/[^a-z0-9_-]+/g, '-')
+        .replace(/-{2,}/g, '-')
+        .replace(/^[-_]+|[-_]+$/g, '');
+}
+
+function buildDefaultTaskSetFileName() {
+    let effectiveTaskSet = taskDrafts.slice();
+    if (effectiveTaskSet.length === 0) {
+        try {
+            const current = buildTaskConfigFromForm()[0];
+            validateTaskConfig(current);
+            effectiveTaskSet = [current];
+        } catch (_err) {
+            effectiveTaskSet = [];
+        }
+    }
+    const count = Math.max(1, effectiveTaskSet.length || 1);
+    const summarize = (extractor) => {
+        const values = Array.from(new Set(
+            effectiveTaskSet
+                .map((task) => slugForFileName(extractor(task)))
+                .filter((item) => item)
+        )).sort();
+        if (values.length === 0) return 'mixed';
+        if (values.length === 1) return values[0];
+        return `mixed${values.length}`;
+    };
+    const taskType = summarize((task) => task.task_type || '');
+    const interval = summarize((task) => task.interval || '');
+    const strategy = summarize((task) => task.strategy || task.strategies || '');
+    const d = new Date();
+    const p = (n) => String(n).padStart(2, '0');
+    const ts = `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+    return `${taskType}_${interval}_${strategy}_n${count}_${ts}.json`;
+}
+
+function updateTaskSetFileName() {
+    const input = document.getElementById('taskSetFileName');
+    if (!input) return;
+    if (taskDrafts.length === 0) {
+        input.value = '';
+        return;
+    }
+    if (input.dataset.manualEdit === '1' && input.value.trim() !== '') {
+        return;
+    }
+    input.value = buildDefaultTaskSetFileName();
+}
+
+async function saveTaskSet() {
+    let effectiveTaskSet = taskDrafts.slice();
+    if (effectiveTaskSet.length === 0) {
+        try {
+            const current = buildTaskConfigFromForm()[0];
+            validateTaskConfig(current);
+            effectiveTaskSet = [current];
+        } catch (_err) {
+            showTaskNotice('提示', '任务集为空，无法保存');
+            return null;
+        }
+    }
+    const input = document.getElementById('taskSetFileName');
+    const fileName = (input?.value || '').trim();
+    const response = await fetch('/api/tasks/config-template/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            file_name: fileName,
+            tasks: effectiveTaskSet,
+        }),
+    });
+    if (!response.ok) {
+        let msg = `保存失败：HTTP ${response.status}`;
+        try {
+            const payload = await response.json();
+            if (payload?.detail) msg = `保存失败：${payload.detail}`;
+        } catch (_err) {}
+        throw new Error(msg);
+    }
+    return await response.json();
 }
 
 function updateDraftModeState() {
     const appendBtn = document.getElementById('appendDraftBtn');
     if (!appendBtn) return;
     if (editingDraftIndex === null) {
-        appendBtn.innerHTML = '<i class="fas fa-layer-group me-1"></i>加入批量列表';
+        appendBtn.innerHTML = '<i class="fas fa-layer-group me-1"></i>加入任务集';
         appendBtn.classList.remove('btn-warning');
         appendBtn.classList.add('btn-outline-primary');
     } else {
@@ -750,27 +1128,38 @@ function updateDraftModeState() {
 function renderTaskDraftList() {
     const listContainer = document.getElementById('taskDraftList');
     if (!listContainer) return;
-    if (taskDrafts.length === 0) {
-        listContainer.innerHTML = '<div class="text-muted small">批量列表为空</div>';
-        return;
+    let effectiveTaskSet = taskDrafts.slice();
+    if (effectiveTaskSet.length === 0) {
+        try {
+            const current = buildTaskConfigFromForm()[0];
+            validateTaskConfig(current);
+            effectiveTaskSet = [current];
+        } catch (_err) {
+            listContainer.innerHTML = '<div class="text-muted small">任务集为空</div>';
+            return;
+        }
     }
-    listContainer.innerHTML = taskDrafts.map((task, index) => {
+    const hasDrafts = taskDrafts.length > 0;
+    listContainer.innerHTML = effectiveTaskSet.map((task, index) => {
         const title = `${index + 1}. ${task.task_type}`;
         const detail = task.symbol ? `${task.symbol} ${task.interval || ''}`.trim() : '';
-        return `
-            <div class="d-flex justify-content-between align-items-start border rounded p-2 mb-2">
-                <div>
-                    <div class="fw-semibold">${escapeHtml(title)}</div>
-                    <div class="small text-muted">${escapeHtml(detail)}</div>
-                </div>
-                <div class="d-flex gap-1">
+        const actions = hasDrafts
+            ? `<div class="d-flex gap-1">
                     <button type="button" class="btn btn-sm btn-outline-primary draft-edit-btn" data-draft-index="${index}">
                         <i class="fas fa-pen"></i>
                     </button>
                     <button type="button" class="btn btn-sm btn-outline-danger draft-remove-btn" data-draft-index="${index}">
                         <i class="fas fa-times"></i>
                     </button>
+               </div>`
+            : '<span class="badge text-bg-light border">当前任务</span>';
+        return `
+            <div class="d-flex justify-content-between align-items-start border rounded p-2 mb-2">
+                <div>
+                    <div class="fw-semibold">${escapeHtml(title)}</div>
+                    <div class="small text-muted">${escapeHtml(detail)}</div>
                 </div>
+                ${actions}
             </div>
         `;
     }).join('');
@@ -779,7 +1168,7 @@ function renderTaskDraftList() {
 function updateTaskJsonPreview() {
     const preview = document.getElementById('taskJsonPreview');
     try {
-        preview.value = JSON.stringify(buildTaskConfigFromForm(), null, 2);
+        preview.value = JSON.stringify(buildTaskConfigFromForm()[0], null, 2);
     } catch (err) {
         preview.value = `配置错误: ${(err && err.message) || '未知错误'}`;
     }
@@ -793,6 +1182,22 @@ function updateTaskInputModeState() {
     const isBuilder = mode === 'builder';
     builder.style.display = isBuilder ? '' : 'none';
     configFile.style.display = isBuilder ? 'none' : '';
+}
+
+const TASK_INPUT_MODE_STORAGE_KEY = 'tasks_page_input_mode';
+
+function readTaskInputMode() {
+    try {
+        return localStorage.getItem(TASK_INPUT_MODE_STORAGE_KEY);
+    } catch (_err) {
+        return null;
+    }
+}
+
+function writeTaskInputMode(mode) {
+    try {
+        localStorage.setItem(TASK_INPUT_MODE_STORAGE_KEY, mode);
+    } catch (_err) {}
 }
 
 function parseTaskConfigPathMeta(pathValue) {
@@ -902,26 +1307,29 @@ function fillSimpleFilterOptions(selectId, values) {
 }
 
 function parseTaskItemMeta(itemEl) {
-    const rawName = String(itemEl?.dataset?.taskName || '');
-    const configRaw = String(itemEl?.dataset?.taskConfig || '');
-    const nameParts = rawName.split('.');
-    const pairPart = nameParts.length >= 3 ? nameParts[2] : '';
-    const pairSplit = pairPart.split('-');
-    const symbol = (pairSplit[0] || '').trim().toUpperCase();
-    const interval = (pairSplit[1] || '').trim().toLowerCase();
-    let strategy = '';
-    try {
-        const payload = JSON.parse(configRaw);
-        if (Array.isArray(payload) && payload[0] && typeof payload[0] === 'object') {
-            strategy = String(payload[0].strategy || '').trim().toLowerCase();
-        }
-    } catch (_err) {}
+    const type = String(itemEl?.dataset?.taskType || '').trim().toUpperCase();
+    const symbol = String(itemEl?.dataset?.taskSymbol || '').trim().toUpperCase();
+    const interval = String(itemEl?.dataset?.taskInterval || '').trim().toLowerCase();
+    const strategy = String(itemEl?.dataset?.taskStrategy || '').trim().toLowerCase();
+    const state = String(itemEl?.dataset?.taskState || '').trim().toUpperCase();
     return {
-        type: (nameParts[1] || '').trim().toUpperCase(),
+        type,
         symbol,
         interval,
         strategy,
+        state,
     };
+}
+
+function showTaskNotice(title, message) {
+    const titleEl = document.getElementById('taskNoticeTitle');
+    const bodyEl = document.getElementById('taskNoticeBody');
+    if (titleEl) titleEl.textContent = title || '提示';
+    if (bodyEl) bodyEl.textContent = message || '';
+    const modalEl = document.getElementById('taskNoticeModal');
+    if (!modalEl) return;
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    modal.show();
 }
 
 function applyTaskListFilters() {
@@ -932,7 +1340,8 @@ function applyTaskListFilters() {
             (!taskListFilterState.type || meta.type === taskListFilterState.type) &&
             (!taskListFilterState.symbol || meta.symbol === taskListFilterState.symbol) &&
             (!taskListFilterState.interval || meta.interval === taskListFilterState.interval) &&
-            (!taskListFilterState.strategy || meta.strategy === taskListFilterState.strategy);
+            (!taskListFilterState.strategy || meta.strategy === taskListFilterState.strategy) &&
+            (!taskListFilterState.state || meta.state === taskListFilterState.state);
         itemEl.style.display = visible ? '' : 'none';
     });
 }
@@ -944,6 +1353,7 @@ function initTaskListFilters() {
     fillSimpleFilterOptions('taskListFilterSymbol', metas.map((m) => m.symbol));
     fillSimpleFilterOptions('taskListFilterInterval', metas.map((m) => m.interval));
     fillSimpleFilterOptions('taskListFilterStrategy', metas.map((m) => m.strategy));
+    fillSimpleFilterOptions('taskListFilterState', metas.map((m) => m.state));
     applyTaskListFilters();
 }
 
@@ -1004,14 +1414,19 @@ async function loadSelectedTaskConfigTemplate() {
         editor.value = payload.content || '';
     } catch (err) {
         editor.value = '';
-        alert((err && err.message) || '加载模板失败');
+        showTaskNotice('加载模板失败', (err && err.message) || '加载模板失败');
     }
 }
 
 function enforceDefaultTaskInputMode() {
     const taskInputMode = document.getElementById('taskInputMode');
     if (!taskInputMode) return;
-    taskInputMode.value = 'config_file';
+    const saved = readTaskInputMode();
+    if (saved === 'builder' || saved === 'config_file') {
+        taskInputMode.value = saved;
+    } else {
+        taskInputMode.value = 'config_file';
+    }
     updateTaskInputModeState();
 }
 
@@ -1026,6 +1441,7 @@ document.addEventListener('DOMContentLoaded', function() {
     updateTaskInputModeState();
 
     taskInputMode.addEventListener('change', function() {
+        writeTaskInputMode(this.value);
         updateTaskInputModeState();
         if (this.value === 'config_file') {
             loadSelectedTaskConfigTemplate();
@@ -1064,6 +1480,10 @@ document.addEventListener('DOMContentLoaded', function() {
         taskListFilterState.strategy = (event.target.value || '').toLowerCase();
         applyTaskListFilters();
     });
+    document.getElementById('taskListFilterState')?.addEventListener('change', function(event) {
+        taskListFilterState.state = (event.target.value || '').toUpperCase();
+        applyTaskListFilters();
+    });
 
     taskTypeSelect.addEventListener('change', function() {
         renderTaskFields(this.value);
@@ -1082,7 +1502,7 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             const oneTaskArray = buildTaskConfigFromForm();
             if (!oneTaskArray || oneTaskArray.length === 0) {
-                alert('当前表单没有可加入的任务配置');
+                showTaskNotice('提示', '当前表单没有可加入的任务配置');
                 return;
             }
             validateTaskConfig(oneTaskArray[0]);
@@ -1099,14 +1519,31 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             updateTaskBatchPreview();
         } catch (err) {
-            alert((err && err.message) || '配置解析失败');
+            showTaskNotice('配置解析失败', (err && err.message) || '配置解析失败');
         }
     });
     document.getElementById('clearDraftsBtn').addEventListener('click', function() {
         taskDrafts.length = 0;
         editingDraftIndex = null;
+        const nameInput = document.getElementById('taskSetFileName');
+        if (nameInput) {
+            nameInput.value = '';
+            nameInput.dataset.manualEdit = '';
+        }
         updateDraftModeState();
         updateTaskBatchPreview();
+    });
+    document.getElementById('taskSetFileName')?.addEventListener('input', function() {
+        this.dataset.manualEdit = this.value.trim() ? '1' : '';
+    });
+    document.getElementById('saveTaskSetBtn')?.addEventListener('click', async function() {
+        try {
+            const saved = await saveTaskSet();
+            if (!saved) return;
+            showTaskNotice('保存成功', `任务集已保存：${saved.path}`);
+        } catch (err) {
+            showTaskNotice('保存失败', (err && err.message) || '保存任务集失败');
+        }
     });
     document.getElementById('taskDraftList').addEventListener('click', function(e) {
         const editBtn = e.target.closest('.draft-edit-btn');
@@ -1140,12 +1577,12 @@ document.addEventListener('DOMContentLoaded', function() {
         const mode = document.getElementById('taskInputMode').value;
         if (mode === 'config_file') {
             if (!TASK_CONFIG_OPTIONS || TASK_CONFIG_OPTIONS.length === 0) {
-                alert('当前没有可用的任务配置文件');
+                showTaskNotice('提示', '当前没有可用的任务配置文件');
                 return;
             }
             const editorValue = (document.getElementById('taskConfigEditor').value || '').trim();
             if (!editorValue) {
-                alert('请先选择配置文件并确认配置内容');
+                showTaskNotice('提示', '请先选择配置文件并确认配置内容');
                 return;
             }
             addTask(editorValue);
@@ -1156,10 +1593,10 @@ document.addEventListener('DOMContentLoaded', function() {
             const current = buildTaskConfigFromForm();
             validateTaskConfig(current[0]);
             taskDrafts.forEach((item) => validateTaskConfig(item));
-            const combined = taskDrafts.concat(current);
-            payload = JSON.stringify(combined.length > 0 ? combined : current);
+            const effectiveTaskSet = taskDrafts.length > 0 ? taskDrafts.slice() : current;
+            payload = JSON.stringify(effectiveTaskSet);
         } catch (err) {
-            alert((err && err.message) || '配置解析失败');
+            showTaskNotice('配置解析失败', (err && err.message) || '配置解析失败');
             return;
         }
         addTask(payload);
@@ -1173,24 +1610,21 @@ document.addEventListener('DOMContentLoaded', function() {
             if (stopBtn) {
                 const taskId = stopBtn.getAttribute('data-task-id');
                 if (!taskId) return;
-                if (!confirm(`确认停止任务 ${taskId} 吗？`)) return;
-                try {
-                    await stopTask(taskId);
-                    location.reload();
-                } catch (err) {
-                    alert((err && err.message) || '停止任务失败');
-                }
+                pendingStopTaskId = taskId;
+                const body = document.getElementById('stopConfirmBody');
+                if (body) body.textContent = `确认停止任务 ${taskId} 吗？`;
+                const modalEl = document.getElementById('stopConfirmModal');
+                if (modalEl) bootstrap.Modal.getOrCreateInstance(modalEl).show();
                 return;
             }
             const rerunBtn = e.target.closest('.task-rerun-btn');
             if (rerunBtn) {
                 const taskId = rerunBtn.getAttribute('data-task-id');
                 if (!taskId) return;
-                try {
-                    await rerunTask(taskId);
-                    location.reload();
-                } catch (err) {
-                    alert((err && err.message) || '重跑任务失败');
+                pendingRerunTaskId = taskId;
+                const modalEl = document.getElementById('rerunConfirmModal');
+                if (modalEl) {
+                    bootstrap.Modal.getOrCreateInstance(modalEl).show();
                 }
                 return;
             }
@@ -1208,18 +1642,43 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     initTaskListFilters();
+
+    document.getElementById('confirmRerunBtn')?.addEventListener('click', async function() {
+        if (!pendingRerunTaskId) return;
+        const taskId = pendingRerunTaskId;
+        pendingRerunTaskId = null;
+        const modalEl = document.getElementById('rerunConfirmModal');
+        if (modalEl) bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+        try {
+            await rerunTask(taskId);
+            location.reload();
+        } catch (err) {
+            showTaskNotice('重跑失败', (err && err.message) || '重跑任务失败');
+        }
+    });
+    document.getElementById('confirmStopBtn')?.addEventListener('click', async function() {
+        if (!pendingStopTaskId) return;
+        const taskId = pendingStopTaskId;
+        pendingStopTaskId = null;
+        const modalEl = document.getElementById('stopConfirmModal');
+        if (modalEl) bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+        try {
+            await stopTask(taskId);
+            location.reload();
+        } catch (err) {
+            showTaskNotice('停止任务失败', (err && err.message) || '停止任务失败');
+        }
+    });
 });
 
 window.addEventListener('pageshow', function() {
     enforceDefaultTaskInputMode();
-    setTimeout(enforceDefaultTaskInputMode, 0);
-    setTimeout(enforceDefaultTaskInputMode, 300);
 });
 
 async function addTask(json_str) {
     // 空值检测：为空或仅空白则提示并退出
     if (!json_str || json_str.trim() === '') {
-        alert('请输入JSON配置后再提交');
+        showTaskNotice('提示', '请输入JSON配置后再提交');
         return;
     }
     try {
@@ -1246,11 +1705,11 @@ async function addTask(json_str) {
             } catch (_err) {
                 message = `添加任务失败：HTTP ${response.status}`;
             }
-            alert(message);
+            showTaskNotice('添加任务失败', message);
         }
     } catch (error) {
         console.error('Error:', error);
-        alert('添加任务失败');
+        showTaskNotice('添加任务失败', '添加任务失败');
     }
 }
 
@@ -1549,7 +2008,7 @@ function copyConfigJson() {
             btn.classList.add('btn-outline-primary');
         }, 2000);
     }).catch(err => {
-        alert('复制失败，请手动复制');
+        showTaskNotice('复制失败', '复制失败，请手动复制');
         console.error('Copy failed:', err);
     });
 }

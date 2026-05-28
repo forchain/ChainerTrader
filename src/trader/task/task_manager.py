@@ -636,7 +636,9 @@ class TaskManager:
         if task:
             if user_id is not None and getattr(task.ts, "user_id", None) != user_id:
                 return False
-            task.close()
+            # Keep task-state semantics consistent with UI/API expectations:
+            # stopping a running task should immediately transition RUNNING -> DONE.
+            task.stop()
             return True
         return False
 

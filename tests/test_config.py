@@ -50,6 +50,12 @@ def test_parse_symbols_trims_whitespace_after_commas():
     assert [tcfg.symbol_interval.symbol() for tcfg in tcfgs] == ["BTCUSDT", "ZECUSDT", "XLMUSDT"]
 
 
+def test_parse_task_config_rejects_compact_symbol_without_rerun_normalization():
+    cfg = '[{"task_type":"TRADER","symbol":"BTCUSDT","interval":"1m","strategy":"macd_triple_divergence"}]'
+
+    assert parse_task_config(cfg) == []
+
+
 def test_parse_task_config_accepts_margin_borrow_controls():
     cfg = (
         '[{"task_type":"TRADER","symbol":"BTC-USDT","interval":"1m","strategy":"macd_triple_divergence",'

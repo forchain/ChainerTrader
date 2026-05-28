@@ -1,4 +1,5 @@
 import asyncio
+import uuid
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -27,9 +28,13 @@ class _CredentialRepo:
 class _TaskManager:
     def __init__(self, states=None):
         self._states = states or []
+        self.closed_ids = []
 
     async def get_all_task_state(self, user_id=None):
         return list(self._states)
+
+    def close_task(self, task_id, user_id=None):
+        self.closed_ids.append((task_id, user_id))
 
 
 class _Logger:
@@ -122,7 +127,7 @@ def test_task_manager_uses_default_exchange_for_user_owned_manual_notify_task():
 def test_task_creation_requires_authenticated_user():
     app = FastAPI()
     app.include_router(router, prefix="/api/tasks")
-    send_add_tasks_msg = Mock(return_value={"result": "should-not-start"})
+    send_add_tasks_msg = Mock(return_value={"result": "success"})
     app.state.app = SimpleNamespace(send_add_tasks_msg=send_add_tasks_msg, logger=_Logger())
 
     client = TestClient(app)
@@ -158,16 +163,17 @@ def test_user_owned_live_task_requires_service_key():
     assert "TRADER_SECRET_KEY" in response.json()["detail"]
 
 
-def test_task_creation_rejected_when_user_has_running_task():
+def test_task_creation_stops_running_tasks_before_submitting_new_one():
     app = FastAPI()
     app.add_middleware(SessionAuthMiddleware)
     app.include_router(router, prefix="/api/tasks")
-    send_add_tasks_msg = Mock(return_value={"result": "should-not-start"})
-    running = SimpleNamespace(state=SimpleNamespace(name="RUNNING"))
+    send_add_tasks_msg = Mock(return_value={"result": "success"})
+    running = SimpleNamespace(id=99, state=SimpleNamespace(name="RUNNING"))
+    task_manager = _TaskManager([running])
     app.state.cfg = Config(auth_username="admin", auth_password="AdminPass123")
     app.state.app = SimpleNamespace(
         db_manager=SimpleNamespace(user=_UserRepo()),
-        task_manager=_TaskManager([running]),
+        task_manager=task_manager,
         send_add_tasks_msg=send_add_tasks_msg,
         logger=_Logger(),
     )
@@ -180,9 +186,9 @@ def test_task_creation_rejected_when_user_has_running_task():
     client = TestClient(app)
     response = client.post("/api/tasks", content='[{"task_type":"DEBUG","limit":1}]')
 
-    assert response.status_code == 409
-    assert "already has a running task" in response.json()["detail"]
-    assert send_add_tasks_msg.call_count == 0
+    assert response.status_code == 200
+    assert send_add_tasks_msg.call_count == 1
+    assert task_manager.closed_ids == [(99, 5)]
 
 
 def test_task_creation_allowed_when_only_other_user_has_running_task():
@@ -311,3 +317,95 @@ def test_task_config_template_api_rejects_paths_outside_configs_tasks():
     response = client.get("/api/tasks/config-template", params={"path": "../example.env"})
 
     assert response.status_code == 400
+
+
+def test_save_taskset_api_uses_default_name_and_writes_file():
+    app = FastAPI()
+    app.add_middleware(SessionAuthMiddleware)
+    app.include_router(router, prefix="/api/tasks")
+    app.state.cfg = Config(auth_username="admin", auth_password="AdminPass123")
+    app.state.app = SimpleNamespace(db_manager=SimpleNamespace(user=_UserRepo()))
+
+    @app.middleware("http")
+    async def inject_user(request, call_next):
+        request.state.user = SimpleNamespace(id=5, username="alice", role="user", status="active", must_change_password=False, is_admin=False)
+        return await call_next(request)
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/tasks/config-template/save",
+        json={
+            "tasks": [{"task_type": "TRADER", "interval": "1m", "strategy": "macd_triple_divergence"}],
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["path"].startswith("configs/tasks/saved/")
+    assert payload["file_name"].startswith("trader_1m_macd_triple_divergence_n1_")
+
+
+def test_save_taskset_api_accepts_custom_file_name():
+    app = FastAPI()
+    app.add_middleware(SessionAuthMiddleware)
+    app.include_router(router, prefix="/api/tasks")
+    app.state.cfg = Config(auth_username="admin", auth_password="AdminPass123")
+    app.state.app = SimpleNamespace(db_manager=SimpleNamespace(user=_UserRepo()))
+
+    @app.middleware("http")
+    async def inject_user(request, call_next):
+        request.state.user = SimpleNamespace(id=5, username="alice", role="user", status="active", must_change_password=False, is_admin=False)
+        return await call_next(request)
+
+    client = TestClient(app)
+    custom_name = f"my_live_tasks_{uuid.uuid4().hex[:8]}"
+    response = client.post(
+        "/api/tasks/config-template/save",
+        json={
+            "file_name": custom_name,
+            "tasks": [{"task_type": "DEBUG", "limit": 10}],
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["file_name"] == f"{custom_name}.json"
+    assert payload["path"] == f"configs/tasks/saved/{custom_name}.json"
+
+
+def test_admin_task_creation_stops_only_current_user_running_tasks_before_submit():
+    app = FastAPI()
+    app.add_middleware(SessionAuthMiddleware)
+    app.include_router(router, prefix="/api/tasks")
+    send_add_tasks_msg = Mock(return_value={"result": "success"})
+    user_running = SimpleNamespace(id=99, state=SimpleNamespace(name="RUNNING"))
+    system_running = SimpleNamespace(id=100, state=SimpleNamespace(name="RUNNING"))
+
+    class _AdminTaskManager:
+        def __init__(self):
+            self.closed_ids = []
+
+        async def get_all_task_state(self, user_id=None):
+            return [user_running]
+
+        def close_task(self, task_id, user_id=None):
+            self.closed_ids.append((task_id, user_id))
+
+    task_manager = _AdminTaskManager()
+    app.state.cfg = Config(auth_username="admin", auth_password="AdminPass123")
+    app.state.app = SimpleNamespace(
+        db_manager=SimpleNamespace(user=_UserRepo()),
+        task_manager=task_manager,
+        send_add_tasks_msg=send_add_tasks_msg,
+        logger=_Logger(),
+    )
+
+    @app.middleware("http")
+    async def inject_user(request, call_next):
+        request.state.user = SimpleNamespace(id=1, username="admin", role="admin", status="active", must_change_password=False, is_admin=True)
+        return await call_next(request)
+
+    client = TestClient(app)
+    response = client.post("/api/tasks", content='[{"task_type":"DEBUG","limit":1}]')
+
+    assert response.status_code == 200
+    assert send_add_tasks_msg.call_count == 1
+    assert set(task_manager.closed_ids) == {(99, 1)}

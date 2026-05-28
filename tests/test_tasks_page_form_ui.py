@@ -43,6 +43,8 @@ def test_admin_tasks_page_renders_visual_task_form_with_strategy_options(monkeyp
     assert "id=\"taskConfigFilterSymbol\"" in html
     assert "id=\"taskConfigFilterInterval\"" in html
     assert "id=\"taskConfigFilterStrategy\"" in html
+    assert "保存任务集" in html
+    assert "id=\"saveTaskSetBtn\"" in html
     assert "configs/tasks/live/binance_smoke_test.json" in html
     assert "TASK_CONFIG_OPTIONS = [\"configs/tasks/live/binance_smoke_test.json\", \"configs/tasks/downloads/update_klines.json\"]" in html
     assert "parseTaskConfigPathMeta" in html
@@ -60,7 +62,13 @@ def test_admin_tasks_page_renders_visual_task_form_with_strategy_options(monkeyp
     assert "loadSelectedTaskConfigTemplate" in html
     assert "enforceDefaultTaskInputMode" in html
     assert "window.addEventListener('pageshow'" in html
-    assert "setTimeout(enforceDefaultTaskInputMode, 300);" in html
+    assert "TASK_INPUT_MODE_STORAGE_KEY" in html
+    assert "readTaskInputMode" in html
+    assert "writeTaskInputMode" in html
+    assert "setTimeout(enforceDefaultTaskInputMode, 300);" not in html
+    assert "当前任务" in html
+    assert "JSON.stringify(buildTaskConfigFromForm()[0], null, 2)" in html
+    assert "const effectiveTaskSet = taskDrafts.length > 0 ? taskDrafts.slice() : [current];" in html
     assert "stopTask(taskId)" in html
     assert "rerunTask(taskId)" in html
     assert "task-stop-btn" in html

@@ -3,14 +3,34 @@
 {% block title %}首页 - ChainerTrader{% endblock %}
 
 {% block content %}
-<div class="hero-panel text-white rounded p-5 mb-4">
-    <h3 class="display-10">欢迎使用 ChainerTrader</h3>
-    <p class="lead mb-3">面向高并发并行优化的量化平台</p>
-    <p class="hero-description mb-4">
-        通过并行计算大规模验证策略与参数组合，快速筛选更优的投资组合方案。
-    </p>
-    <hr class="my-4 border-light opacity-50">
-    <p class="mb-1">基本信息：ChainerTrader</p>
-    <p class="mb-0">版本: {{ version }}</p>
-</div>
+<section class="card mb-4">
+    <div class="card-body p-4 p-lg-5">
+        <h1 class="h3 mb-3">欢迎使用 ChainerTrader</h1>
+        <p class="lead mb-3">面向高并发并行优化的量化平台</p>
+        <p class="mb-4">
+            通过并行计算大规模验证策略与参数组合，快速筛选更优的投资组合方案。
+        </p>
+        <div class="small text-muted">版本: {{ version }}</div>
+    </div>
+</section>
+
+<section class="card mb-4">
+    <div class="card-body p-4">
+        <h2 class="h5 mb-3">项目简介</h2>
+        <p class="mb-0">
+            ChainerTrader 提供任务集配置、运行监控、结果分析等能力，支持以运行（Run）为单位管理一次任务集执行过程。
+        </p>
+    </div>
+</section>
+
+<section class="card">
+    <div class="card-body p-4">
+        <h2 class="h5 mb-3">核心能力</h2>
+        <ul class="mb-0">
+            <li>任务集配置与复用</li>
+            <li>运行态监控与图表分析</li>
+            <li>回测与实盘统一管理</li>
+        </ul>
+    </div>
+</section>
 {% endblock %}

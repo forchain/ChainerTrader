@@ -11,7 +11,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi_auto_router import AutoRouter
 
 from trader.app.app import version
-from trader.auth.context import SESSION_COOKIE, SessionAuthMiddleware, current_user, require_admin, require_user
+from trader.auth.context import AuthUser, SESSION_COOKIE, SessionAuthMiddleware, auth_enabled, current_user, require_admin, require_user
 from trader.auth.credentials import decrypt_secret, encrypt_secret, mask_api_key, service_key_available
 from trader.auth.passwords import (
     PasswordPolicyError,
@@ -106,6 +106,16 @@ app = FastAPI(lifespan=lifespan, title="ChainerTrader", description="ChainerTrad
 app.mount("/static", StaticFiles(directory=get_directory("static")), name="static")
 
 templates = Jinja2Templates(directory=get_directory("templates"))
+
+
+async def _template_user(request: Request):
+    user = await current_user(request)
+    if user is not None:
+        return user
+    if not auth_enabled(request):
+        # No-auth mode: keep admin pages navigable in local/dev and tests.
+        return AuthUser(id=0, username="local-admin", role="admin", status="active", must_change_password=False)
+    return None
 
 
 def _require_rpc_app(request: Request) -> RpcApp:
@@ -361,7 +371,7 @@ def _validate_exchange_credential_connectivity(cfg: Config, exchange: str, api_k
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_dashboard(request: Request):
     rpc_app = _require_rpc_app(request)
-    user = await current_user(request)
+    user = await _template_user(request)
     return templates.TemplateResponse(
         request,
         "index.html",
@@ -376,7 +386,7 @@ async def admin_dashboard(request: Request):
 @app.get("/admin/tasks", response_class=HTMLResponse)
 async def admin_tasks_page(request: Request):
     rpc_app = _require_rpc_app(request)
-    user = await current_user(request)
+    user = await _template_user(request)
     raw_page = request.query_params.get("page", "1")
     try:
         page = max(1, int(raw_page))
@@ -398,19 +408,19 @@ async def admin_tasks_page(request: Request):
 @app.get("/admin/klines", response_class=HTMLResponse)
 async def admin_klines_page(request: Request):
     rpc_app = _require_rpc_app(request)
-    return templates.TemplateResponse(request, "klines.html", {"klines_info": await get_klines_info(rpc_app), "user": await current_user(request)})
+    return templates.TemplateResponse(request, "klines.html", {"klines_info": await get_klines_info(rpc_app), "user": await _template_user(request)})
 
 
 @app.get("/admin/live", response_class=HTMLResponse)
 async def admin_live_page(request: Request):
     _require_rpc_app(request)
-    return templates.TemplateResponse(request, "live.html", {"user": await current_user(request)})
+    return templates.TemplateResponse(request, "live.html", {"user": await _template_user(request)})
 
 
 @app.get("/admin/logs", response_class=HTMLResponse)
 async def admin_logs_page(request: Request):
     rpc_app = _require_rpc_app(request)
-    return templates.TemplateResponse(request, "logs.html", {"logs_info": get_logs_info(rpc_app), "user": await current_user(request)})
+    return templates.TemplateResponse(request, "logs.html", {"logs_info": get_logs_info(rpc_app), "user": await _template_user(request)})
 
 
 @app.get("/admin/users", response_class=HTMLResponse)
