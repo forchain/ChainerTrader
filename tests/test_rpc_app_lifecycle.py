@@ -6,6 +6,9 @@ import pytest
 from trader.common.config import Config
 from trader.rpc import app as rpc_module
 from trader.rpc.rpc_app import RpcApp
+from trader.task.task_config import TaskConfig
+from trader.task.task_type import TaskType
+from trader.utils.symbol_interval import Interval, SymbolInterval
 
 
 @pytest.fixture
@@ -91,8 +94,8 @@ async def test_rpc_lifespan_bootstraps_database_before_exchange_start(monkeypatc
         async def bootstrap_database_for_startup(self):
             events.append("db.bootstrap")
 
-        def start(self):
-            events.append("app.start")
+        async def start_async(self):
+            events.append("app.start_async")
 
         async def wait_until_handler_ready(self):
             events.append("handler.ready")
@@ -117,5 +120,144 @@ async def test_rpc_lifespan_bootstraps_database_before_exchange_start(monkeypatc
     async with run_lifespan():
         pass
 
-    assert events[:4] == ["db.bootstrap", "app.start", "handler.ready", "error.check"]
+    assert events[:4] == ["db.bootstrap", "app.start_async", "handler.ready", "error.check"]
     assert events[-1] == "app.stop"
+
+
+@pytest.mark.anyio
+async def test_rpc_app_async_start_schedules_recovery_without_waiting_for_scan(monkeypatch):
+    app = RpcApp(Config(tasks="[]", api="0.0.0.0:8000"))
+    recovered = TaskConfig(
+        id=11,
+        ttype=TaskType.DEBUG,
+        symbol_interval=SymbolInterval("BTC-USDT", Interval("1h")),
+        strategies=[],
+    )
+    running_state = type(
+        "State",
+        (),
+        {
+            "id": 11,
+            "state": type("TaskState", (), {"name": "RUNNING"})(),
+            "config_json": '[{"task_type":"DEBUG","limit":1,"user_id":7,"run_id":"run-11"}]',
+            "user_id": 7,
+        },
+    )()
+    process_seen = []
+    scan_release = asyncio.Event()
+    recovered_started = asyncio.Event()
+    release_recover = asyncio.Event()
+
+    class FakeTaskRepo:
+        async def get_all_tasks(self):
+            await scan_release.wait()
+            return [running_state]
+
+    class FakeDbManager:
+        started = True
+        task = FakeTaskRepo()
+
+    monkeypatch.setattr(app.notify_mgr, "start", lambda: None)
+    monkeypatch.setattr(
+        app,
+        "process",
+        lambda msgs: (
+            process_seen.extend(msgs),
+            setattr(app, "queue", asyncio.Queue()),
+            app._mark_handler_ready(),
+            app._schedule_recovery_tasks(),
+        ),
+    )
+    monkeypatch.setattr(app.task_manager, "start", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        app.task_manager,
+        "recover_task",
+        lambda taskc, queue: _recover_task(taskc, queue, recovered_started, release_recover),
+    )
+    monkeypatch.setattr("trader.app.app.parse_task_config", lambda _cfg: [recovered])
+    app.db_manager = FakeDbManager()
+
+    result = await app.start_async()
+
+    assert result is True
+    assert process_seen == []
+    assert not recovered_started.is_set()
+
+    scan_release.set()
+    await asyncio.wait_for(recovered_started.wait(), timeout=1)
+    assert app.recovery_task is not None
+
+    release_recover.set()
+    await asyncio.wait_for(app.recovery_task, timeout=1)
+
+
+@pytest.mark.anyio
+async def test_rpc_app_recovery_limits_concurrent_task_starts(monkeypatch):
+    app = RpcApp(Config(tasks="[]", api="0.0.0.0:8000"))
+    states = [
+        type(
+            "State",
+            (),
+            {
+                "id": idx,
+                "state": type("TaskState", (), {"name": "RUNNING"})(),
+                "config_json": f'[{{"task_type":"DEBUG","limit":1,"run_id":"run-{idx}"}}]',
+                "user_id": 7,
+            },
+        )()
+        for idx in range(1, 6)
+    ]
+    active = 0
+    max_active = 0
+    started_ids = []
+    release_recover = asyncio.Event()
+
+    class FakeTaskRepo:
+        async def get_all_tasks(self):
+            return states
+
+    class FakeDbManager:
+        started = True
+        task = FakeTaskRepo()
+
+    async def fake_recover_task(taskc, queue):
+        nonlocal active, max_active
+        started_ids.append(taskc.id)
+        active += 1
+        max_active = max(max_active, active)
+        await release_recover.wait()
+        active -= 1
+
+    monkeypatch.setattr(app.notify_mgr, "start", lambda: None)
+    monkeypatch.setattr(
+        app,
+        "process",
+        lambda msgs: (
+            setattr(app, "queue", asyncio.Queue()),
+            app._mark_handler_ready(),
+            app._schedule_recovery_tasks(),
+        ),
+    )
+    monkeypatch.setattr(app.task_manager, "start", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(app.task_manager, "recover_task", fake_recover_task)
+    monkeypatch.setattr("trader.app.app.parse_task_config", lambda cfg: [TaskConfig(id=1, ttype=TaskType.DEBUG, symbol_interval=SymbolInterval("BTC-USDT", Interval("1h")), strategies=[])])
+    monkeypatch.setattr("trader.app.app.RECOVERY_TASK_CONCURRENCY", 2)
+    app.db_manager = FakeDbManager()
+
+    result = await app.start_async()
+
+    assert result is True
+
+    for _ in range(5):
+        await asyncio.sleep(0)
+
+    assert max_active == 2
+    assert started_ids == [1, 2]
+
+    release_recover.set()
+    await asyncio.wait_for(app.recovery_task, timeout=1)
+
+
+async def _recover_task(taskc, queue, started_event: asyncio.Event, release_event: asyncio.Event):
+    started_event.set()
+    await release_event.wait()

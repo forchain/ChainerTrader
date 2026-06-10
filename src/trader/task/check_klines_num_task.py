@@ -25,7 +25,7 @@ class CheckKlinesNumTask(BaseTask):
             self.log.error(f"No config db_uri for {self.tcfg.to_dict()}")
             return
 
-        super().start(queue)
+        await super().start(queue)
 
         self.log.info(f"Start {self.name()}")
 

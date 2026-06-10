@@ -19,7 +19,12 @@ async def get_task(id: int, request: Request):
 async def close_task(id: int, request: Request):
     user = await current_user(request)
     user_id = None if user is None or user.is_admin else user.id
-    ret = request.app.state.app.task_manager.close_task(id, user_id=user_id)
+    task_manager = request.app.state.app.task_manager
+    close_task_state = getattr(task_manager, "close_task_state", None)
+    if callable(close_task_state):
+        ret = await close_task_state(id, user_id=user_id)
+    else:
+        ret = task_manager.close_task(id, user_id=user_id)
     if ret:
         return {"id": id, "result": ret}
     else:

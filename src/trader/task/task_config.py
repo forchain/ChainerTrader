@@ -241,6 +241,8 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
         return task_id
 
     for tcd in parsed_list:
+        if tcd.get("run_id"):
+            run_id = tcd["run_id"]
         task_type = parse_task_type(tcd["task_type"])
 
         limit = 0

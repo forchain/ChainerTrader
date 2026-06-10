@@ -7,6 +7,7 @@ from trader.common.logger import Logger
 from trader.common.path import GetConfigsDir
 from trader.exchange.exchange_config import ExchangeConfig, parse_exchange_config
 from trader.exchange.exchange_type import parse_ex_type
+from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig, get_symbols, parse_task_config
 from trader.task.task_type import TaskType
 from trader.utils.symbol_interval import Interval, SymbolInterval
@@ -72,6 +73,46 @@ def test_parse_task_config_accepts_margin_borrow_controls():
     assert task.live_margin_auto_repay_max_total == 100.0
     assert task.live_margin_auto_repay_max_per_asset == 50.0
     assert task.live_margin_auto_repay_excluded_assets == ["BNB"]
+
+
+def test_base_task_config_json_preserves_live_runtime_controls():
+    original = TaskConfig(
+        1,
+        TaskType.TRADER,
+        SymbolInterval("BTC-USDT", Interval.INTERVAL_1m),
+        strategies=["macd_triple_divergence"],
+        free=10000,
+        strategy_params={"chainer_mode": "BOTH"},
+        live_execution_mode="small_live_auto",
+        live_data_mode="realtime",
+        live_trade_max_notional=12.0,
+        live_short_execution="margin_cross",
+        live_margin_borrow_block_policy="repay_all",
+        live_margin_borrow_precheck=False,
+        live_margin_auto_repay_max_total=100.0,
+        live_margin_auto_repay_max_per_asset=50.0,
+        live_margin_auto_repay_min_amount=0.000001,
+        live_margin_auto_repay_excluded_assets=["BNB"],
+        user_id=7,
+        run_id="run-live",
+    )
+    persisted = BaseTask(original, Config(tasks="[]"), Logger(Config(tasks="[]"))).ts.config_json
+
+    restored = parse_task_config(persisted, last_task_id=original.id)[0]
+
+    assert restored.live_execution_mode == original.live_execution_mode
+    assert restored.live_data_mode == original.live_data_mode
+    assert restored.live_trade_max_notional == original.live_trade_max_notional
+    assert restored.live_short_execution == original.live_short_execution
+    assert restored.live_margin_borrow_block_policy == original.live_margin_borrow_block_policy
+    assert restored.live_margin_borrow_precheck is original.live_margin_borrow_precheck
+    assert restored.live_margin_auto_repay_max_total == original.live_margin_auto_repay_max_total
+    assert restored.live_margin_auto_repay_max_per_asset == original.live_margin_auto_repay_max_per_asset
+    assert restored.live_margin_auto_repay_min_amount == original.live_margin_auto_repay_min_amount
+    assert restored.live_margin_auto_repay_excluded_assets == original.live_margin_auto_repay_excluded_assets
+    assert restored.strategy_params == original.strategy_params
+    assert restored.user_id == original.user_id
+    assert restored.run_id == original.run_id
 
 
 def test_parse_task_config_keeps_legacy_margin_borrow_policy_aliases():

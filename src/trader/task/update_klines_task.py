@@ -44,7 +44,7 @@ class UpdateKlinesTask(BaseTask):
             self.log.error(f"No config db_uri for {self.tcfg.to_dict()}")
             return
 
-        super().start(queue)
+        await super().start(queue)
 
         collection_name = self.tcfg.symbol_interval.name()
 

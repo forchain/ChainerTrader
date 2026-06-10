@@ -96,7 +96,7 @@ class TraderTask(BaseTask):
             self.log.error(f"No config db_uri for {self.tcfg.to_dict()}")
             return
 
-        super().start(queue)
+        await _maybe_await(super().start(queue))
 
         strategy = parse_strategies(self.tcfg.strategies)
         if strategy is None:
