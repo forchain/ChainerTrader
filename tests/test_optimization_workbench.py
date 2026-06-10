@@ -158,6 +158,11 @@ def test_workbench_artifacts_include_parameter_observability_and_dynamic_entry(t
     assert workbench["items"][0]["trades"][0]["qty"] == 12.5
     assert workbench["items"][0]["trades"][-1]["status"] == "open"
     static_html = (run_dir / "workbench" / "index.html").read_text(encoding="utf-8")
+    assert (run_dir / "workbench" / "app.js").exists()
+    assert (run_dir / "workbench" / "style.css").exists()
+    assert 'src="./app.js"' in static_html
+    assert 'href="./style.css"' in static_html
+    assert "file:///" not in static_html
     assert "window.__WORKBENCH_DATA__" in static_html
     assert "Optimization Validation Workbench" in static_html
 
