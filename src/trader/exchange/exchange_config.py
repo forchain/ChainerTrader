@@ -1,4 +1,5 @@
 from enum import Enum
+
 from pydantic import BaseModel
 
 from trader.exchange.driver import ExchangeDriverType
@@ -21,6 +22,8 @@ class ExchangeConfig(BaseModel):
     # Optional explicit endpoints per trading path.
     spot_base_path: str = ""
     margin_base_path: str = ""
+    # Optional CCXT REST HTTP proxy, e.g. http://127.0.0.1:7890.
+    http_proxy: str = ""
     margin_mode: MarginMode = MarginMode.SPOT
 
     def with_margin_mode(self, margin_mode: MarginMode) -> "ExchangeConfig":

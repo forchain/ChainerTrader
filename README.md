@@ -320,6 +320,12 @@ TRADER_API="127.0.0.1:8000"
 TRADER_NOTICE="./configs/notices/notice.json"
 ```
 
+For CCXT REST requests through an HTTP proxy, add `http_proxy` to `TRADER_EXCHANGE`:
+
+```env
+TRADER_EXCHANGE='{"ty":"BINANCE","driver":"ccxt","api_key":"","api_secret":"","http_proxy":"http://127.0.0.1:7890"}'
+```
+
 ### Runtime Modes
 
 - CLI mode

@@ -299,6 +299,38 @@ def test_ccxt_build_client_disables_private_currency_fetch_during_market_loading
     assert options["fetchMarkets"] == {"types": ["spot"]}
 
 
+def test_ccxt_build_client_applies_rest_http_proxy(monkeypatch):
+    created_clients = []
+    created_payloads = []
+
+    class FakeExchange:
+        def __init__(self, payload):
+            self.payload = payload
+            created_payloads.append(payload)
+            self.httpProxy = payload.get("httpProxy")
+            self.http_proxy = payload.get("http_proxy")
+            self.proxies = payload.get("proxies")
+            created_clients.append(self)
+
+    class FakeCcxtModule:
+        binance = FakeExchange
+
+    monkeypatch.setattr("trader.exchange.ccxt_driver.ccxt", FakeCcxtModule)
+
+    CcxtExchangeDriver(ExchangeConfig(ty=ExchangeType.BINANCE, http_proxy="http://127.0.0.1:7890"))
+
+    assert created_payloads[0]["proxies"] == {
+        "http": "http://127.0.0.1:7890",
+        "https": "http://127.0.0.1:7890",
+    }
+    assert created_clients[0].proxies == {
+        "http": "http://127.0.0.1:7890",
+        "https": "http://127.0.0.1:7890",
+    }
+    assert created_clients[0].httpProxy is None
+    assert created_clients[0].http_proxy is None
+
+
 def test_ccxt_repay_single_for_borrow_block_uses_margin_repay_endpoint():
     client = FakeCcxtClient()
     driver = CcxtExchangeDriver(

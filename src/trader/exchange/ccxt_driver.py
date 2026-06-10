@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import os
 from datetime import datetime
 from decimal import ROUND_DOWN, Decimal
-import os
 from typing import Any
 
 try:
@@ -475,15 +475,20 @@ class CcxtExchangeDriver:
             "adjustForTimeDifference": True,
             "recvWindow": int(os.getenv("CHAINERTRADER_BINANCE_RECV_WINDOW", "20000") or 20000),
         }
-        return exchange_cls(
-            {
-                "apiKey": self.cfg.api_key,
-                "secret": self.cfg.api_secret,
-                "enableRateLimit": True,
-                "timeout": 10000,
-                "options": options,
+        client_config = {
+            "apiKey": self.cfg.api_key,
+            "secret": self.cfg.api_secret,
+            "enableRateLimit": True,
+            "timeout": 10000,
+            "options": options,
+        }
+        if self.cfg.http_proxy:
+            client_config["proxies"] = {
+                "http": self.cfg.http_proxy,
+                "https": self.cfg.http_proxy,
             }
-        )
+        client = exchange_cls(client_config)
+        return client
 
     def _default_type(self) -> str:
         # Binance cross/isolated margin should use spot market type with margin params.
