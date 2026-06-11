@@ -139,6 +139,23 @@ def _reusable_task_config_dict(ts) -> dict[str, Any]:
     return cfg
 
 
+def _rerun_config_json(config_json: str) -> str:
+    parsed = json.loads(config_json)
+    if not isinstance(parsed, list):
+        return config_json
+    sanitized = []
+    for item in parsed:
+        if not isinstance(item, dict):
+            sanitized.append(item)
+            continue
+        cfg = dict(item)
+        cfg.pop("run_id", None)
+        cfg.pop("task_batch_id", None)
+        cfg.pop("id", None)
+        sanitized.append(cfg)
+    return json.dumps(sanitized, ensure_ascii=False)
+
+
 def _run_id_from_state(ts) -> str | None:
     raw = _task_config_value(ts, "run_id")
     if raw in (None, ""):
@@ -496,7 +513,7 @@ async def rerun_task(request: Request, task_id: int):
     if not config_json:
         raise HTTPException(status_code=400, detail=f"task({task_id}) has no reusable config")
     try:
-        taskcs = parse_task_config(config_json)
+        taskcs = parse_task_config(_rerun_config_json(config_json))
         if not taskcs:
             # Fallback for legacy/atypical saved config_json payloads: rebuild from task state config.
             fallback_cfg = _reusable_task_config_dict(selected)
@@ -519,7 +536,11 @@ async def rerun_task(request: Request, task_id: int):
             user_states = await rpc_app.task_manager.get_all_task_state(user_id=user.id)
             running_ids = [int(getattr(ts, "id", 0) or 0) for ts in user_states if getattr(getattr(ts, "state", None), "name", None) == "RUNNING"]
             for running_id in running_ids:
-                rpc_app.task_manager.close_task(running_id, user_id=user.id)
+                close_task_state = getattr(rpc_app.task_manager, "close_task_state", None)
+                if callable(close_task_state):
+                    await close_task_state(running_id, user_id=user.id)
+                else:
+                    rpc_app.task_manager.close_task(running_id, user_id=user.id)
             await _preflight_user_live_tasks(request, user, taskcs)
         # Avoid immediate auto-finish on rerun caused by historical end_time persisted in saved config_json.
         now_ts = int(datetime.now().timestamp())

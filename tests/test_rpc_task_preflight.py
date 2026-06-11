@@ -36,6 +36,10 @@ class _TaskManager:
     def close_task(self, task_id, user_id=None):
         self.closed_ids.append((task_id, user_id))
 
+    async def close_task_state(self, task_id, user_id=None):
+        self.closed_ids.append((task_id, user_id))
+        return True
+
 
 class _Logger:
     def __init__(self):
