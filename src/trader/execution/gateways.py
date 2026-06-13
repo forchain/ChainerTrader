@@ -398,7 +398,32 @@ class BinanceLiveExecutionGateway(ExecutionGateway):
         return ReconcileResult(request=request, positions=list(positions), protections=list(protections))
 
     def _submit_market(self, intent: OrderIntent, op: OperateType) -> ExecutionResult:
-        payload = self.exchange.new_order(_symbol_arg(intent.symbol), op, intent.quantity)
+        try:
+            payload = self.exchange.new_order(_symbol_arg(intent.symbol), op, intent.quantity)
+        except Exception as exc:
+            error_text = str(exc)
+            event = ExecutionEvent(
+                event_type=ExecutionEventType.ORDER_REJECTED,
+                gateway=GatewayMode.BINANCE_LIVE,
+                staged_execution_mode=self.staged_execution_mode,
+                intent_id=intent.intent_id,
+                operation_id=intent.operation_id,
+                symbol=intent.symbol,
+                trade_id=intent.trade_id,
+                status=ExecutionStatus.FAILED,
+                reason=ExecutionReason.GATEWAY_REJECTED,
+                quantity=intent.quantity,
+                price=intent.price,
+                metadata={**dict(intent.metadata), "exception": error_text},
+            )
+            return ExecutionResult(
+                intent_id=intent.intent_id,
+                operation_id=intent.operation_id,
+                status=ExecutionStatus.FAILED,
+                reason=ExecutionReason.GATEWAY_REJECTED,
+                events=[event],
+                metadata={"exception": error_text},
+            )
         ids = _order_ids(payload)
         if not ids:
             event = ExecutionEvent(
