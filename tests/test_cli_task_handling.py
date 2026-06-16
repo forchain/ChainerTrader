@@ -289,6 +289,79 @@ def test_task_manager_recover_task_keeps_running_state_persisted():
     asyncio.run(_test())
 
 
+def test_task_manager_close_preserves_running_live_tasks_for_restart_recovery():
+    cfg = Config(tasks="[]")
+    logger = Logger(cfg)
+
+    async def _test():
+        saved_batches = []
+
+        async def add_tasks(states):
+            saved_batches.append([state.to_dict() for state in states])
+            return len(states)
+
+        db_manager = SimpleNamespace(task=SimpleNamespace(add_tasks=add_tasks))
+        task_manager = TaskManager(cfg, logger, db_manager, None)
+        task_config = TaskConfig(
+            id=9,
+            ttype=TaskType.TRADER,
+            symbol_interval=SymbolInterval("BTC-USDT", Interval("1h")),
+            strategies=["macd_triple_divergence"],
+            live_data_mode="realtime",
+        )
+        task = BaseTask(task_config, cfg, logger, db_manager)
+        await task.start(asyncio.Queue())
+        task_manager.tasks[task.id()] = task
+        saved_batches.clear()
+
+        await task_manager.close()
+
+        assert task.ts.state == TaskStateType.RUNNING
+        assert saved_batches[-1][0]["state"] == "RUNNING"
+
+    asyncio.run(_test())
+
+
+def test_task_manager_dispatch_shutdown_preserves_running_live_tasks_for_restart_recovery():
+    cfg = Config(tasks="[]")
+    logger = Logger(cfg)
+
+    async def _test():
+        saved_batches = []
+
+        async def add_tasks(states):
+            saved_batches.append([state.to_dict() for state in states])
+            return len(states)
+
+        class _FakeLiveTraderTask(BaseTask):
+            async def start(self, queue):
+                await super().start(queue)
+                await self.quit.wait()
+
+        db_manager = SimpleNamespace(task=SimpleNamespace(add_tasks=add_tasks))
+        task_manager = TaskManager(cfg, logger, db_manager, None)
+        task_config = TaskConfig(
+            id=10,
+            ttype=TaskType.TRADER,
+            symbol_interval=SymbolInterval("BTC-USDT", Interval("1h")),
+            strategies=["macd_triple_divergence"],
+            live_data_mode="realtime",
+        )
+        task_manager._build_task = lambda task_cfg, exchange: _FakeLiveTraderTask(task_cfg, cfg, logger, db_manager, exchange)
+
+        task_manager.add_tasks([task_config], asyncio.Queue())
+        while task_config.id not in task_manager.tasks:
+            await asyncio.sleep(0)
+
+        await task_manager.close()
+
+        assert task_config.id in task_manager.tasks
+        assert task_manager.tasks[task_config.id].ts.state == TaskStateType.RUNNING
+        assert [batch[0]["state"] for batch in saved_batches] == ["RUNNING", "RUNNING"]
+
+    asyncio.run(_test())
+
+
 def test_task_manager_closes_persisted_running_task_not_loaded_in_memory():
     cfg = Config(tasks="[]")
     logger = Logger(cfg)

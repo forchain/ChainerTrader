@@ -55,6 +55,7 @@ class TaskManager:
         self.tasks: dict[int, BaseTask] = {}
         self.async_tasks = []
         self.latest_si: SymbolInterval | None = None
+        self._closing = False
 
     def _build_task(self, cfg: TaskConfig, exchange: BinanceExchange) -> BaseTask | None:
         if cfg.ttype == TaskType.TRADER:
@@ -94,6 +95,7 @@ class TaskManager:
         pass
 
     async def close(self):
+        self._closing = True
         closing_states = []
         for task in self.tasks.values():
             task.close()
@@ -147,6 +149,8 @@ class TaskManager:
         for tc in taskcs:
             task = self.get_task(tc.id)
             if task:
+                if self._closing:
+                    continue
                 task.stop()
                 completed_states.append(task.ts)
                 self.tasks.pop(tc.id)
