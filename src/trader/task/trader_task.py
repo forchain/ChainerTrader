@@ -7,6 +7,7 @@ from trader.common.common import MIN_RECORDS_NUM, sleep, sleep_loop
 from trader.common.config import Config
 from trader.common.logger import Logger
 from trader.common.message import new_stat_msg
+from trader.database.execution_state import execution_state_record_context
 from trader.database.manager import DatabaseManager
 from trader.exchange.binance.data import BinanceData
 from trader.exchange.binance.exchange import BinanceExchange
@@ -442,8 +443,21 @@ class TraderTask(BaseTask):
         store = getattr(self.db_manager, "execution_state", None)
         if store is None:
             return
-        for record in list(getattr(outcome, "execution_state_records", []) or []):
-            await _maybe_await(store.save(record))
+        records = list(getattr(outcome, "execution_state_records", []) or [])
+        for index, record in enumerate(records, start=1):
+            try:
+                await _maybe_await(store.save(record))
+            except Exception as exc:
+                self.log.error(
+                    "Realtime execution state persist failed: "
+                    f"runtime_task_id={self.tcfg.id} record={index}/{len(records)} "
+                    f"operation_id={getattr(outcome, 'operation_id', None)} "
+                    f"operation_type={getattr(outcome, 'operation_type', None)} "
+                    f"status={getattr(outcome, 'status', None)} "
+                    f"reason={getattr(outcome, 'reason', None)} "
+                    f"{execution_state_record_context(record)} error={exc!r}"
+                )
+                raise
 
     def _execution_state_record_payload(self, record) -> dict:
         gateway = getattr(record, "gateway", None)
