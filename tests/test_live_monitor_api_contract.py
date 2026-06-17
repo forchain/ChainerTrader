@@ -1,6 +1,7 @@
 import asyncio
 from datetime import timedelta
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import FastAPI
@@ -25,6 +26,7 @@ from trader.rpc.api.live import (
     live_strategy_snapshot,
     rerun_task,
 )
+from trader.rpc.api.task import get_task_operations
 from trader.rpc.api.live import (
     router as live_router,
 )
@@ -210,6 +212,28 @@ def test_build_initial_snapshot_returns_historical_operation_overlays_inside_loa
     assert snapshot["overlays"]["signals"][0]["signal_event_id"] == "sig-1"
     assert [item["overlay_type"] for item in snapshot["overlays"]["risk"]] == ["stop_loss", "take_profit"]
     assert snapshot["overlays"]["strategy_events"][0]["event_type"] == "macd_divergence"
+
+
+@pytest.mark.anyio
+async def test_task_operations_api_returns_paginated_operations_with_known_type_labels():
+    operations = [
+        Operate(OperateType.LONG, BASE, 100.0),
+        Operate(OperateType.SHORT, BASE + 60, 101.0),
+        Operate(OperateType.CLOSE, BASE + 120, 102.0),
+        Operate(OperateType.RISK_UPDATE, BASE + 180, 99.0),
+    ]
+    manager = SimpleNamespace(get_task_state=AsyncMock(return_value=SimpleNamespace(tret=SimpleNamespace(opts=operations))))
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(app=SimpleNamespace(task_manager=manager))))
+
+    payload = await get_task_operations(7, request, page=2, per_page=2)
+
+    assert payload["task_id"] == 7
+    assert payload["total"] == 4
+    assert payload["page"] == 2
+    assert payload["per_page"] == 2
+    assert payload["total_pages"] == 2
+    assert [item["type"] for item in payload["operations"]] == ["CLOSE", "RISK_UPDATE"]
+    assert [item["type_label"] for item in payload["operations"]] == ["平仓", "风控更新"]
 
 
 def test_build_initial_snapshot_marks_history_window_insufficient():
