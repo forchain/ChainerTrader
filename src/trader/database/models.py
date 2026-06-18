@@ -115,7 +115,9 @@ class AvailabilityModel(Model):
     exchange = fields.CharField(max_length=32)
     symbol = fields.CharField(max_length=32)
     interval = fields.CharField(max_length=16)
-    earliest_known_open_time = fields.IntField()
+    earliest_known_open_time = fields.IntField(null=True)
+    cached_start_open_time = fields.IntField(null=True)
+    cached_end_open_time = fields.IntField(null=True)
     updated_at = fields.IntField()
     source = fields.CharField(max_length=64)
 

@@ -5,7 +5,7 @@ from trader.common.common import sleep
 from trader.common.config import Config
 from trader.common.logger import Logger
 from trader.database.manager import DatabaseManager
-from trader.exchange.binance.exchange import BinanceExchange, KLINE_LIMIT_MAX, get_oldest_time
+from trader.exchange.binance.exchange import KLINE_LIMIT_MAX, BinanceExchange, get_oldest_time
 from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig
 from trader.utils.symbol_interval import SymbolInterval, add_time_duration, get_time_duration
@@ -51,7 +51,8 @@ class UpdateKlinesTask(BaseTask):
         start_time, end_time = self._determine_time_range()
 
         self.log.info(
-            f"{self.name()} time range: start={datetime.fromtimestamp(start_time)}, end={datetime.fromtimestamp(end_time)}, force_update={self.tcfg.force_update}"
+            f"{self.name()} time range: start={datetime.fromtimestamp(start_time)}, "
+            f"end={datetime.fromtimestamp(end_time)}, force_update={self.tcfg.force_update}"
         )
 
         if self.tcfg.force_update:
@@ -278,6 +279,14 @@ async def download_range(
         current_start = next_start
         await sleep(log, 0.1)
 
+    await _update_cached_open_time_range(
+        db_manager,
+        exchange,
+        symbol_interval,
+        start_time,
+        end_time,
+        source="download_range",
+    )
     log.info(f"{name} download_range completed. total={total_records}")
     return True
 
@@ -367,7 +376,8 @@ async def download_range_backward(
     if confirmed_boundary and earliest_seen_open_time is not None and availability is not None:
         exchange_name = exchange.name() if hasattr(exchange, "name") else "UNKNOWN"
         log.info(
-            f"{name} detected earliest available kline: exchange={exchange_name} symbol_interval={symbol_interval.name()} earliest={datetime.fromtimestamp(earliest_seen_open_time)}"
+            f"{name} detected earliest available kline: exchange={exchange_name} "
+            f"symbol_interval={symbol_interval.name()} earliest={datetime.fromtimestamp(earliest_seen_open_time)}"
         )
         await availability.update_earliest_known_open_time(
             exchange_name,
@@ -377,5 +387,35 @@ async def download_range_backward(
             source="backward_fill",
         )
 
+    await _update_cached_open_time_range(
+        db_manager,
+        exchange,
+        symbol_interval,
+        start_time,
+        end_time,
+        source="download_range_backward",
+    )
     log.info(f"{name} download_range_backward completed. total={total_records}")
     return True
+
+
+async def _update_cached_open_time_range(
+    db_manager: DatabaseManager,
+    exchange: BinanceExchange,
+    symbol_interval: SymbolInterval,
+    start_time: int,
+    end_time: int,
+    source: str,
+) -> None:
+    availability = getattr(db_manager, "availability", None)
+    if availability is None or not hasattr(availability, "update_cached_open_time_range"):
+        return
+    exchange_name = exchange.name() if hasattr(exchange, "name") else "UNKNOWN"
+    await availability.update_cached_open_time_range(
+        exchange_name,
+        symbol_interval.symbol(),
+        symbol_interval.interval.value,
+        start_time,
+        end_time,
+        source=source,
+    )

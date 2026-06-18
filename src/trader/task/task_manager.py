@@ -18,7 +18,7 @@ from trader.exchange.exchange_config import MarginMode
 from trader.live.auto_execution import is_real_auto_mode
 from trader.statistics.stat import BackTraderStat
 from trader.strategy.trader_result import parse_trader_result
-from trader.task.backtrader_task import BacktestSampleResult, BackTraderTask, build_backtest_sample_spec, run_backtest_sample
+from trader.task.backtrader_task import BacktestSampleResult, BackTraderTask, build_backtest_sample_spec, process_backtrader, run_backtest_sample
 from trader.task.base_task import BaseTask
 from trader.task.check_klines_num_task import CheckKlinesNumTask
 from trader.task.check_klines_task import CheckKlinesTask
@@ -300,6 +300,7 @@ class TaskManager:
                 }
             )
         sample_specs = []
+        regular_results = []
         task_by_id = {}
         for cfg in cfgs:
             if cfg.id in failed_task_ids:
@@ -308,12 +309,33 @@ class TaskManager:
                 continue
             task = BackTraderTask(cfg, self.cfg, self.log, self.db_manager, self.exchange)
             self.tasks[task.id()] = task
-            BaseTask.start(task, queue)
             task_by_id[task.id()] = task
-            sample_specs.append(build_backtest_sample_spec(self.cfg, cfg))
+            if cfg.optimization_run_id:
+                persist_result = BaseTask.start(task, queue)
+                if inspect.isawaitable(persist_result):
+                    await persist_result
+                sample_specs.append(build_backtest_sample_spec(self.cfg, cfg))
+                continue
+
+            task_params = await task.start(queue)
+            if task_params is None:
+                continue
+            result = []
+            await asyncio.to_thread(
+                process_backtrader,
+                [self.cfg, task_params[1], task_params[0], cfg, task.ts],
+                result,
+            )
+            regular_results.extend(result)
 
         sample_records = []
         execution_failures = []
+        for msg, logs, _report_record in regular_results:
+            for log_str in logs:
+                self.log.add_log_buffer(log_str, LogTag.STRATEGY)
+            self.log.info(f"Relay process queue message:{msg.name()}", LogTag.STRATEGY)
+            await queue.put(msg)
+
         for sample_spec in sample_specs:
             runtime = runtimes.get(sample_spec.optimization_run_id)
             if runtime:
