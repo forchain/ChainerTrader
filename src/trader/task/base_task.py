@@ -113,6 +113,12 @@ class BaseTask:
             config_dict["user_id"] = self.tcfg.user_id
         if getattr(self.tcfg, "run_id", None):
             config_dict["run_id"] = self.tcfg.run_id
+        if getattr(self.tcfg, "fund_reservation_asset", None):
+            config_dict["fund_reservation_asset"] = self.tcfg.fund_reservation_asset
+        if getattr(self.tcfg, "fund_reservation_amount", None) is not None:
+            config_dict["fund_reservation_amount"] = self.tcfg.fund_reservation_amount
+        if getattr(self.tcfg, "fund_reservation_remaining", None) is not None:
+            config_dict["fund_reservation_remaining"] = self.tcfg.fund_reservation_remaining
 
         return json.dumps([config_dict], indent=2, ensure_ascii=False)
 

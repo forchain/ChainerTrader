@@ -8,6 +8,7 @@ from tortoise.exceptions import OperationalError
 from trader.auth.credentials import encrypt_secret, mask_api_key, service_key_available
 from trader.auth.passwords import hash_password, validate_password, validate_username
 from trader.common.logger import Logger
+from trader.database.account_fund_reservation import AccountFundReservationCol
 from trader.database.availability import AvailabilityCol
 from trader.database.config import build_tortoise_config, normalize_db_url
 from trader.database.exchange_credential import ExchangeCredentialCol
@@ -18,7 +19,17 @@ from trader.database.task import TaskCol
 from trader.database.user import UserCol
 from trader.exchange.exchange_config import parse_exchange_config
 
-REQUIRED_TABLES = ("klines", "tasks", "availability", "execution_states", "users", "sessions", "exchange_credentials", "strategy_configs")
+REQUIRED_TABLES = (
+    "klines",
+    "tasks",
+    "availability",
+    "execution_states",
+    "users",
+    "sessions",
+    "exchange_credentials",
+    "strategy_configs",
+    "account_fund_reservations",
+)
 
 
 class DatabaseSchemaError(RuntimeError):
@@ -40,6 +51,7 @@ class DatabaseManager:
         self.user = None
         self.exchange_credential = None
         self.strategy_config = None
+        self.account_fund_reservation = None
 
     async def start(self):
         init_kwargs = {"config": build_tortoise_config(self.db_url)}
@@ -55,6 +67,7 @@ class DatabaseManager:
         self.user = UserCol(self.log)
         self.exchange_credential = ExchangeCredentialCol(self.log)
         self.strategy_config = StrategyConfigCol(self.log)
+        self.account_fund_reservation = AccountFundReservationCol(self.log)
         await self._bootstrap_admin()
         self.started = True
 
