@@ -248,8 +248,9 @@ class TraderTask(BaseTask):
 
         async def handle_live_operation(op):
             ret = self._trader_result_for_live_operation(op)
-            await self.process_result(ret)
             feed_phase = str(getattr(op, "feed_phase", "") or "").lower()
+            if feed_phase != "warmup":
+                await self.process_result(ret)
             notifications = []
             auto_execution_outcomes = []
             if self.is_manual_notify_mode():

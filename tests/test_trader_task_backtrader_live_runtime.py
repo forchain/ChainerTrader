@@ -668,6 +668,66 @@ async def test_trader_task_realtime_warmup_operations_do_not_route_auto_executio
 
 
 @pytest.mark.anyio
+async def test_trader_task_realtime_warmup_operations_are_not_persisted(monkeypatch):
+    class WarmupOperationRunner(FakeRunner):
+        def start(self, warmup=None):
+            super().start(warmup=warmup)
+            operation_handler = self.kwargs["operation_handler"]
+            first = self.started_warmup[0]
+            op = SimpleNamespace(
+                otype=OperateType.CLOSE,
+                dtime=first.open_time,
+                price=first.close,
+                feed_phase="warmup",
+                signal_event_id="warmup-close-sig-1",
+                to_dict=lambda: {"type": "CLOSE", "datetime": first.open_time, "price": first.close},
+            )
+            operation_handler(op)
+
+    class RecordingTaskStore:
+        def __init__(self):
+            self.saved = []
+
+        async def get_task(self, task_id):
+            return None
+
+        async def add_tasks(self, tasks):
+            self.saved.extend(tasks)
+            return len(tasks)
+
+    class QuitOnSubscribeHub(FakeHub):
+        async def subscribe(self, key, reconnect_callback=None):
+            subscription = await super().subscribe(key, reconnect_callback=reconnect_callback)
+            self.quit_event.set()
+            return subscription
+
+    FakeRunner.instances = []
+    fetched = [_kline(BASE + i * 60, close=100 + i) for i in range(2)]
+    db = FakeDb()
+    db.task = RecordingTaskStore()
+    cfg = Config(window=500)
+    tcfg = TaskConfig(
+        802,
+        TaskType.TRADER,
+        SymbolInterval("BTC-USDT", Interval.INTERVAL_1m),
+        strategies=["macd_triple_divergence"],
+        free=1000,
+        live_execution_mode="small_live_auto",
+        live_trade_max_notional=11,
+        live_data_mode="realtime",
+    )
+    task = TraderTask(tcfg, cfg, Logger(cfg), db, FakeExchange(fetched))
+    hub = QuitOnSubscribeHub([], task.quit)
+
+    monkeypatch.setattr("trader.task.trader_task.BacktraderLiveRunner", WarmupOperationRunner)
+    monkeypatch.setattr("trader.task.trader_task.GLOBAL_MARKET_STREAM_HUB", hub)
+
+    await task.start_realtime(asyncio.Queue(), [NoopStrategy])
+
+    assert db.task.saved == []
+
+
+@pytest.mark.anyio
 async def test_trader_task_realtime_does_not_disconnect_on_business_message_idle(monkeypatch):
     class IdleSubscription:
         def __init__(self, quit_event):
