@@ -323,6 +323,50 @@ async def test_ccxt_polling_scheduler_prioritizes_minute_stream_after_daily_base
 
 
 @pytest.mark.anyio
+async def test_ccxt_polling_scheduler_survives_failed_disconnect_callback():
+    class FakeExchange:
+        def __init__(self):
+            self.calls = []
+            self.second_stream_called = asyncio.Event()
+
+        def get_latest_klines(self, symbol_interval, limit):
+            stream_name = symbol_interval.name()
+            self.calls.append(stream_name)
+            if stream_name == "BTCUSDT-1m":
+                raise TimeoutError("exchange timeout")
+            if stream_name == "ETHUSDT-1m":
+                self.second_stream_called.set()
+            return [_kline(BASE)]
+
+    clock = FakeClock(BASE + 30)
+    exchange = FakeExchange()
+    adapter = CcxtPollingMarketStreamAdapter(
+        exchange=exchange,
+        min_request_spacing_seconds=0.0,
+        closed_kline_delay_seconds=5.0,
+        startup_stagger_seconds=0.0,
+        now_func=clock.time,
+        sleep_func=clock.sleep,
+    )
+    failing_key = MarketStreamKey("BINANCE", "BTCUSDT", "1m")
+    continuing_key = MarketStreamKey("BINANCE", "ETHUSDT", "1m")
+
+    async def on_update(update):
+        return None
+
+    async def failing_disconnect_callback():
+        raise TimeoutError("catch-up timeout")
+
+    await adapter.start(failing_key, on_update, failing_disconnect_callback)
+    await adapter.start(continuing_key, on_update)
+    await asyncio.wait_for(exchange.second_stream_called.wait(), timeout=1.0)
+
+    assert exchange.calls[:2] == ["BTCUSDT-1m", "ETHUSDT-1m"]
+    await adapter.stop(failing_key, reason="test cleanup")
+    await adapter.stop(continuing_key, reason="test cleanup")
+
+
+@pytest.mark.anyio
 async def test_ccxt_polling_scheduler_wakes_when_shorter_stream_registers_during_long_sleep():
     class BlockingSleep:
         def __init__(self, clock):
