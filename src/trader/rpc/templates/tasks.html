@@ -1238,6 +1238,7 @@ function updateTaskInputModeState() {
 }
 
 const TASK_INPUT_MODE_STORAGE_KEY = 'tasks_page_input_mode';
+const TASK_CONFIG_FORM_STATE_STORAGE_KEY = 'tasks_page_config_form_state';
 
 function readTaskInputMode() {
     try {
@@ -1251,6 +1252,48 @@ function writeTaskInputMode(mode) {
     try {
         localStorage.setItem(TASK_INPUT_MODE_STORAGE_KEY, mode);
     } catch (_err) {}
+}
+
+function readTaskConfigFormState() {
+    try {
+        const raw = localStorage.getItem(TASK_CONFIG_FORM_STATE_STORAGE_KEY);
+        return raw ? JSON.parse(raw) : null;
+    } catch (_err) {
+        return null;
+    }
+}
+
+function writeTaskConfigFormState() {
+    const editor = document.getElementById('taskConfigEditor');
+    const selectedPath = document.getElementById('taskConfigPath')?.value || '';
+    try {
+        localStorage.setItem(TASK_CONFIG_FORM_STATE_STORAGE_KEY, JSON.stringify({
+            inputMode: document.getElementById('taskInputMode')?.value || 'config_file',
+            selectedPath,
+            editorValue: editor?.value || '',
+            filters: {
+                type: taskConfigFilterState.type,
+                symbol: taskConfigFilterState.symbol,
+                interval: taskConfigFilterState.interval,
+                strategy: taskConfigFilterState.strategy,
+            },
+        }));
+    } catch (_err) {}
+}
+
+function restoreTaskConfigFormState() {
+    const savedState = readTaskConfigFormState();
+    if (!savedState || typeof savedState !== 'object') return null;
+    taskConfigFilterState.type = savedState.filters?.type || '';
+    taskConfigFilterState.symbol = savedState.filters?.symbol || '';
+    taskConfigFilterState.interval = savedState.filters?.interval || '';
+    taskConfigFilterState.strategy = savedState.filters?.strategy || '';
+    ['Type', 'Symbol', 'Interval', 'Strategy'].forEach((suffix) => {
+        const key = suffix.toLowerCase();
+        const select = document.getElementById(`taskConfigFilter${suffix}`);
+        if (select) select.value = taskConfigFilterState[key] || '';
+    });
+    return savedState;
 }
 
 function parseTaskConfigPathMeta(pathValue) {
@@ -1413,6 +1456,7 @@ function initTaskListFilters() {
 function applyTaskConfigPathFilters() {
     const select = document.getElementById('taskConfigPath');
     if (!select) return;
+    const savedState = readTaskConfigFormState();
     const all = Array.isArray(TASK_CONFIG_OPTIONS) ? TASK_CONFIG_OPTIONS : [];
     const meta = all.map((path) => taskConfigMetaCache.get(path) || parseTaskConfigPathMeta(path));
     const filtered = meta.filter((item) => {
@@ -1428,20 +1472,26 @@ function applyTaskConfigPathFilters() {
         : ['<option value="">无匹配配置文件</option>'];
     select.innerHTML = options.join('');
     const filteredPaths = filtered.map((item) => item.path);
-    if (filteredPaths.includes(selectedBefore)) {
+    if (savedState) {
+        if (savedState.selectedPath && filteredPaths.includes(savedState.selectedPath)) {
+            select.value = savedState.selectedPath;
+        }
+    } else if (filteredPaths.includes(selectedBefore)) {
         select.value = selectedBefore;
     }
-    loadSelectedTaskConfigTemplate();
+    loadSelectedTaskConfigTemplate().then(writeTaskConfigFormState);
 }
 
 async function initTaskConfigPathFilters() {
     await ensureTaskConfigMetaLoaded();
+    restoreTaskConfigFormState();
     const all = Array.isArray(TASK_CONFIG_OPTIONS) ? TASK_CONFIG_OPTIONS : [];
     const meta = all.map((path) => taskConfigMetaCache.get(path) || parseTaskConfigPathMeta(path));
     fillTaskConfigFilterOptions('taskConfigFilterType', meta.map((item) => item.type));
     fillTaskConfigFilterOptions('taskConfigFilterSymbol', meta.map((item) => item.symbol));
     fillTaskConfigFilterOptions('taskConfigFilterInterval', meta.map((item) => item.interval));
     fillTaskConfigFilterOptions('taskConfigFilterStrategy', meta.map((item) => item.strategy));
+    restoreTaskConfigFormState();
     applyTaskConfigPathFilters();
 }
 
@@ -1449,6 +1499,11 @@ async function loadSelectedTaskConfigTemplate() {
     const selected = (document.getElementById('taskConfigPath').value || '').trim();
     const editor = document.getElementById('taskConfigEditor');
     if (!editor) return;
+    const savedState = readTaskConfigFormState();
+    if (savedState?.selectedPath === selected && savedState.editorValue !== undefined) {
+        editor.value = savedState.editorValue || '';
+        return;
+    }
     if (!selected) {
         editor.value = '';
         return;
@@ -1495,26 +1550,34 @@ document.addEventListener('DOMContentLoaded', function() {
 
     taskInputMode.addEventListener('change', function() {
         writeTaskInputMode(this.value);
+        writeTaskConfigFormState();
         updateTaskInputModeState();
         if (this.value === 'config_file') {
             loadSelectedTaskConfigTemplate();
         }
     });
-    document.getElementById('taskConfigPath')?.addEventListener('change', loadSelectedTaskConfigTemplate);
+    document.getElementById('taskConfigPath')?.addEventListener('change', function() {
+        loadSelectedTaskConfigTemplate().then(writeTaskConfigFormState);
+    });
+    document.getElementById('taskConfigEditor')?.addEventListener('input', writeTaskConfigFormState);
     document.getElementById('taskConfigFilterType')?.addEventListener('change', function(event) {
         taskConfigFilterState.type = (event.target.value || '').toUpperCase();
+        writeTaskConfigFormState();
         applyTaskConfigPathFilters();
     });
     document.getElementById('taskConfigFilterSymbol')?.addEventListener('change', function(event) {
         taskConfigFilterState.symbol = (event.target.value || '').toUpperCase();
+        writeTaskConfigFormState();
         applyTaskConfigPathFilters();
     });
     document.getElementById('taskConfigFilterInterval')?.addEventListener('change', function(event) {
         taskConfigFilterState.interval = (event.target.value || '').toLowerCase();
+        writeTaskConfigFormState();
         applyTaskConfigPathFilters();
     });
     document.getElementById('taskConfigFilterStrategy')?.addEventListener('change', function(event) {
         taskConfigFilterState.strategy = (event.target.value || '').toLowerCase();
+        writeTaskConfigFormState();
         applyTaskConfigPathFilters();
     });
     document.getElementById('taskListFilterType')?.addEventListener('change', function(event) {
@@ -1638,6 +1701,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 showTaskNotice('提示', '请先选择配置文件并确认配置内容');
                 return;
             }
+            writeTaskConfigFormState();
             addTask(editorValue);
             return;
         }
@@ -1706,7 +1770,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     initTaskConfigPathFilters().then(() => {
         if (taskInputMode.value === 'config_file') {
-            loadSelectedTaskConfigTemplate();
+            loadSelectedTaskConfigTemplate().then(writeTaskConfigFormState);
         }
     });
     initTaskListFilters();
