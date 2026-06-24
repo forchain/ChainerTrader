@@ -297,20 +297,48 @@ class TaskManager:
         if not is_real_auto_mode(getattr(cfg, "live_execution_mode", None)):
             return self.exchange
         target_mode = MarginMode.CROSS_MARGIN if task_requires_short_capability(cfg) else MarginMode.SPOT
+        chainer_mode = str((getattr(cfg, "strategy_params", {}) or {}).get("chainer_mode", "LONG_ONLY")).strip().upper()
+        requires_short_capability = task_requires_short_capability(cfg)
         if getattr(cfg, "user_id", None) is not None:
-            return await self._exchange_for_user_mode(cfg.user_id, target_mode)
+            routed = await self._exchange_for_user_mode(cfg.user_id, target_mode)
+            self.log.info(
+                "TaskManager selected execution exchange "
+                f"task_id={cfg.id} user_id={cfg.user_id} strategy={cfg.strategy_name()} "
+                f"chainer_mode={chainer_mode} requires_short_capability={requires_short_capability} "
+                f"target_margin_mode={target_mode.value} actual_margin_mode={getattr(getattr(routed, 'margin_mode', None), 'value', 'unknown')}"
+            )
+            return routed
         cached = self._exchange_by_mode.get(target_mode.value)
         if cached is not None:
+            self.log.info(
+                "TaskManager selected execution exchange "
+                f"task_id={cfg.id} user_id={getattr(cfg, 'user_id', None)} strategy={cfg.strategy_name()} "
+                f"chainer_mode={chainer_mode} requires_short_capability={requires_short_capability} "
+                f"target_margin_mode={target_mode.value} actual_margin_mode={getattr(getattr(cached, 'margin_mode', None), 'value', 'unknown')}"
+            )
             return cached
         try:
             routed = self._exchange_for_mode(target_mode)
             self.log.info(
                 f"TaskManager created routed exchange for mode={target_mode.value} task_id={cfg.id} strategy={cfg.strategy_name()}"
             )
+            self.log.info(
+                "TaskManager selected execution exchange "
+                f"task_id={cfg.id} user_id={getattr(cfg, 'user_id', None)} strategy={cfg.strategy_name()} "
+                f"chainer_mode={chainer_mode} requires_short_capability={requires_short_capability} "
+                f"target_margin_mode={target_mode.value} actual_margin_mode={getattr(getattr(routed, 'margin_mode', None), 'value', 'unknown')}"
+            )
             return routed
         except Exception as exc:
             self.log.warning(
                 f"TaskManager failed to create routed exchange for mode={target_mode.value}, falling back to default exchange: {exc}"
+            )
+            self.log.info(
+                "TaskManager selected execution exchange "
+                f"task_id={cfg.id} user_id={getattr(cfg, 'user_id', None)} strategy={cfg.strategy_name()} "
+                f"chainer_mode={chainer_mode} requires_short_capability={requires_short_capability} "
+                f"target_margin_mode={target_mode.value} actual_margin_mode={getattr(getattr(self.exchange, 'margin_mode', None), 'value', 'unknown')} "
+                "fallback=true"
             )
             return self.exchange
 

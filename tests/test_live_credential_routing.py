@@ -19,12 +19,21 @@ class _FakeExchange:
         self.margin_mode = cfg.margin_mode
 
 
-def _live_task(user_id: int = 7) -> TaskConfig:
+class _CaptureLog:
+    def __init__(self):
+        self.messages = []
+
+    def info(self, message):
+        self.messages.append(str(message))
+
+
+def _live_task(user_id: int = 7, *, chainer_mode: str | None = None) -> TaskConfig:
     return TaskConfig(
         id=1,
         ttype=TaskType.TRADER,
         symbol_interval=SymbolInterval("BTC-USDT", Interval("1h")),
         strategies=["macd_triple_divergence"],
+        strategy_params={"chainer_mode": chainer_mode} if chainer_mode else {},
         user_id=user_id,
     )
 
@@ -68,6 +77,47 @@ def test_user_live_exchange_routing_decrypts_async_user_credentials(monkeypatch)
         assert routed.cfg.api_secret == "user-api-secret"
         assert routed.cfg.margin_mode == MarginMode.SPOT
         assert len(created_configs) == 1
+
+    asyncio.run(run())
+
+
+def test_user_live_exchange_routing_logs_target_and_actual_margin_mode(monkeypatch):
+    async def run():
+        class FakeBinanceExchange(_FakeExchange):
+            def __init__(self, cfg: ExchangeConfig, _log):
+                super().__init__(cfg)
+
+        service_key = "dev-service-secret"
+        credential = SimpleNamespace(
+            encrypted_api_key=encrypt_secret(service_key, "user-api-key"),
+            encrypted_api_secret=encrypt_secret(service_key, "user-api-secret"),
+        )
+
+        async def get_default(user_id, exchange):
+            await asyncio.sleep(0)
+            return credential
+
+        monkeypatch.setattr("trader.task.task_manager.BinanceExchange", FakeBinanceExchange)
+        cfg = Config(tasks="[]", secret_key=service_key)
+        log = _CaptureLog()
+        manager = TaskManager(
+            cfg,
+            log,
+            SimpleNamespace(exchange_credential=SimpleNamespace(get_default=get_default)),
+            _FakeExchange(ExchangeConfig(api_key="base-key", api_secret="base-secret")),
+        )
+
+        routed = await manager._exchange_for_task(_live_task(chainer_mode="BOTH"))
+
+        assert routed.cfg.margin_mode == MarginMode.CROSS_MARGIN
+        assert any(
+            "TaskManager selected execution exchange" in message
+            and "target_margin_mode=cross_margin" in message
+            and "actual_margin_mode=cross_margin" in message
+            and "chainer_mode=BOTH" in message
+            and "requires_short_capability=True" in message
+            for message in log.messages
+        )
 
     asyncio.run(run())
 

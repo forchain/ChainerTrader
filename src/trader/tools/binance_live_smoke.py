@@ -461,7 +461,7 @@ def _run_margin_short_flow(
 ) -> None:
     price = _latest_price(exchange, symbol)
     _quantity_for_notional(exchange, symbol, notional, price)
-    tcfg = _task_config(symbol, notional, chainer_mode="BOTH", live_short_execution="margin_cross")
+    tcfg = _task_config(symbol, notional, chainer_mode="BOTH")
     router = AutoExecutionRouter(tcfg, exchange=exchange, cfg=cfg)
     trace_id = _trace_id("margin-short")
     entry = _operation(OperateType.SHORT, price)
@@ -555,7 +555,7 @@ def _run_margin_short_flow(
     )
 
 
-def _task_config(symbol: Symbol, notional: Decimal, *, chainer_mode: str, live_short_execution: str = "disabled") -> TaskConfig:
+def _task_config(symbol: Symbol, notional: Decimal, *, chainer_mode: str) -> TaskConfig:
     return TaskConfig(
         0,
         TaskType.TRADER,
@@ -564,7 +564,6 @@ def _task_config(symbol: Symbol, notional: Decimal, *, chainer_mode: str, live_s
         free=float(notional),
         live_execution_mode="small_live_auto",
         live_trade_max_notional=float(notional),
-        live_short_execution=live_short_execution,
         strategy_params={"chainer_mode": chainer_mode},
     )
 

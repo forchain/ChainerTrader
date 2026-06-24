@@ -7,7 +7,6 @@ from trader.live.auto_execution import (
     AutoExecutionRouter,
     AutoExecutionStatus,
     LiveExecutionMode,
-    LiveShortExecution,
     execution_outcome_event,
     operation_identity,
 )
@@ -113,8 +112,8 @@ def _tcfg(
     free=1000.0,
     manual_start_position=0.0,
     live_trade_max_notional=0.0,
-    live_short_execution="disabled",
     live_margin_borrow_block_policy="skip_continue",
+    chainer_mode="LONG_ONLY",
 ):
     return TaskConfig(
         id=9,
@@ -125,9 +124,13 @@ def _tcfg(
         manual_start_position=manual_start_position,
         live_execution_mode=mode,
         live_trade_max_notional=live_trade_max_notional,
-        live_short_execution=live_short_execution,
         live_margin_borrow_block_policy=live_margin_borrow_block_policy,
+        strategy_params={"chainer_mode": chainer_mode},
     )
+
+
+def _short_tcfg(mode, **kwargs):
+    return _tcfg(mode, chainer_mode="BOTH", **kwargs)
 
 
 def _op(otype, price=100.0, dtime=BASE):
@@ -294,24 +297,23 @@ def test_real_auto_entry_marks_reserved_budget_spent_after_successful_submit():
     assert router._reserved_budget_remaining == 0.0
 
 
-def test_real_short_is_skipped_by_default_and_cross_margin_short_uses_margin_path():
+def test_real_short_is_skipped_for_long_only_and_both_mode_short_uses_margin_path():
     disabled_exchange = RecordingExchange()
     disabled = AutoExecutionRouter(
-        _tcfg(LiveExecutionMode.SMALL_LIVE_AUTO, live_trade_max_notional=10.0),
+        _tcfg(LiveExecutionMode.SMALL_LIVE_AUTO, live_trade_max_notional=10.0, chainer_mode="LONG_ONLY"),
         exchange=disabled_exchange,
         cfg=SimpleNamespace(cash=10000.0),
     ).route(_op(OperateType.SHORT, 100.0))
     assert disabled.status == AutoExecutionStatus.SKIPPED
-    assert disabled.reason == "real_short_execution_disabled"
+    assert disabled.reason == "short_capability_not_required"
     assert disabled_exchange.new_order_calls == []
     assert disabled_exchange.margin_order_calls == []
 
     margin_exchange = RecordingExchange(margin_ready=True)
     submitted = AutoExecutionRouter(
-        _tcfg(
+        _short_tcfg(
             LiveExecutionMode.SMALL_LIVE_AUTO,
             live_trade_max_notional=10.0,
-            live_short_execution=LiveShortExecution.MARGIN_CROSS,
         ),
         exchange=margin_exchange,
         cfg=SimpleNamespace(cash=10000.0),
@@ -325,10 +327,9 @@ def test_real_short_is_skipped_by_default_and_cross_margin_short_uses_margin_pat
 def test_cross_margin_short_places_native_buy_side_protection_when_configured():
     exchange = RecordingExchange(margin_ready=True)
     router = AutoExecutionRouter(
-        _tcfg(
+        _short_tcfg(
             LiveExecutionMode.SMALL_LIVE_AUTO,
             live_trade_max_notional=10.0,
-            live_short_execution=LiveShortExecution.MARGIN_CROSS,
         ),
         exchange=exchange,
         cfg=SimpleNamespace(cash=10000.0),
@@ -349,10 +350,9 @@ def test_cross_margin_short_places_native_buy_side_protection_when_configured():
 def test_cross_margin_short_risk_update_replaces_buy_side_stop_with_short_exposure():
     exchange = RecordingExchange(margin_ready=True)
     router = AutoExecutionRouter(
-        _tcfg(
+        _short_tcfg(
             LiveExecutionMode.SMALL_LIVE_AUTO,
             live_trade_max_notional=10.0,
-            live_short_execution=LiveShortExecution.MARGIN_CROSS,
         ),
         exchange=exchange,
         cfg=SimpleNamespace(cash=10000.0),
@@ -428,10 +428,9 @@ def test_live_auto_submits_fail_safe_close_when_protection_order_is_rejected_by_
 def test_cross_margin_short_close_requires_known_short_exposure():
     unknown_exchange = RecordingExchange(margin_ready=True)
     unknown = AutoExecutionRouter(
-        _tcfg(
+        _short_tcfg(
             LiveExecutionMode.SMALL_LIVE_AUTO,
             live_trade_max_notional=10.0,
-            live_short_execution=LiveShortExecution.MARGIN_CROSS,
         ),
         exchange=unknown_exchange,
         cfg=SimpleNamespace(cash=10000.0),
@@ -442,10 +441,9 @@ def test_cross_margin_short_close_requires_known_short_exposure():
 
     exchange = RecordingExchange(margin_ready=True)
     router = AutoExecutionRouter(
-        _tcfg(
+        _short_tcfg(
             LiveExecutionMode.SMALL_LIVE_AUTO,
             live_trade_max_notional=10.0,
-            live_short_execution=LiveShortExecution.MARGIN_CROSS,
         ),
         exchange=exchange,
         cfg=SimpleNamespace(cash=10000.0),
@@ -466,10 +464,9 @@ def test_cross_margin_short_close_requires_known_short_exposure():
 def test_short_capable_tasks_use_margin_for_long_and_exit_when_margin_is_ready():
     exchange = RecordingExchange(margin_ready=True)
     router = AutoExecutionRouter(
-        _tcfg(
+        _short_tcfg(
             LiveExecutionMode.SMALL_LIVE_AUTO,
             live_trade_max_notional=10.0,
-            live_short_execution=LiveShortExecution.MARGIN_CROSS,
         ),
         exchange=exchange,
         cfg=SimpleNamespace(cash=10000.0),
@@ -501,10 +498,9 @@ def test_margin_borrow_block_skip_policy_skips_short_and_continues():
 
     exchange = BorrowBlockedExchange()
     router = AutoExecutionRouter(
-        _tcfg(
+        _short_tcfg(
             LiveExecutionMode.SMALL_LIVE_AUTO,
             live_trade_max_notional=10.0,
-            live_short_execution=LiveShortExecution.MARGIN_CROSS,
             live_margin_borrow_block_policy="skip_continue",
         ),
         exchange=exchange,
@@ -533,10 +529,9 @@ def test_margin_borrow_block_stop_task_policy_fails_short():
 
     exchange = BorrowBlockedExchange()
     router = AutoExecutionRouter(
-        _tcfg(
+        _short_tcfg(
             LiveExecutionMode.SMALL_LIVE_AUTO,
             live_trade_max_notional=10.0,
-            live_short_execution=LiveShortExecution.MARGIN_CROSS,
             live_margin_borrow_block_policy="stop_task",
         ),
         exchange=exchange,
@@ -570,10 +565,9 @@ def test_margin_borrow_block_repay_single_policy_retries_once_and_submits():
 
     exchange = BorrowBlockedThenPassExchange()
     router = AutoExecutionRouter(
-        _tcfg(
+        _short_tcfg(
             LiveExecutionMode.SMALL_LIVE_AUTO,
             live_trade_max_notional=10.0,
-            live_short_execution=LiveShortExecution.MARGIN_CROSS,
             live_margin_borrow_block_policy="repay_single",
         ),
         exchange=exchange,
@@ -622,10 +616,9 @@ def test_margin_borrow_block_exception_triggers_auto_repay_retry_with_capacity_c
 
     exchange = BorrowBlockedExceptionThenPassExchange()
     router = AutoExecutionRouter(
-        _tcfg(
+        _short_tcfg(
             LiveExecutionMode.SMALL_LIVE_AUTO,
             live_trade_max_notional=10.0,
-            live_short_execution=LiveShortExecution.MARGIN_CROSS,
             live_margin_borrow_block_policy="repay_single",
         ),
         exchange=exchange,
@@ -654,10 +647,9 @@ def test_margin_borrow_precheck_skips_margin_long_when_quote_borrow_capacity_is_
 
     exchange = LowBorrowCapacityExchange(quote_balance=5.0, margin_ready=True)
     router = AutoExecutionRouter(
-        _tcfg(
+        _short_tcfg(
             LiveExecutionMode.SMALL_LIVE_AUTO,
             live_trade_max_notional=10.0,
-            live_short_execution=LiveShortExecution.MARGIN_CROSS,
         ),
         exchange=exchange,
         cfg=SimpleNamespace(cash=10000.0),
@@ -680,10 +672,9 @@ def test_margin_borrow_precheck_skips_margin_short_when_base_borrow_capacity_is_
 
     exchange = LowBorrowCapacityExchange(base_balance=0.02, margin_ready=True)
     router = AutoExecutionRouter(
-        _tcfg(
+        _short_tcfg(
             LiveExecutionMode.SMALL_LIVE_AUTO,
             live_trade_max_notional=10.0,
-            live_short_execution=LiveShortExecution.MARGIN_CROSS,
         ),
         exchange=exchange,
         cfg=SimpleNamespace(cash=10000.0),
@@ -720,10 +711,9 @@ def test_margin_borrow_block_repay_single_policy_handles_margin_long_orders():
 
     exchange = LongBorrowBlockedThenPassExchange()
     router = AutoExecutionRouter(
-        _tcfg(
+        _short_tcfg(
             LiveExecutionMode.SMALL_LIVE_AUTO,
             live_trade_max_notional=10.0,
-            live_short_execution=LiveShortExecution.MARGIN_CROSS,
             live_margin_borrow_block_policy="repay_single",
         ),
         exchange=exchange,
@@ -758,10 +748,9 @@ def test_margin_borrow_block_repay_single_policy_retries_once_then_skips():
 
     exchange = BorrowBlockedAlwaysExchange()
     router = AutoExecutionRouter(
-        _tcfg(
+        _short_tcfg(
             LiveExecutionMode.SMALL_LIVE_AUTO,
             live_trade_max_notional=10.0,
-            live_short_execution=LiveShortExecution.MARGIN_CROSS,
             live_margin_borrow_block_policy="repay_single",
         ),
         exchange=exchange,
@@ -810,10 +799,9 @@ def test_margin_borrow_block_repay_all_policy_uses_account_level_repay_report():
             }
 
     exchange = BorrowBlockedThenPassExchange()
-    tcfg = _tcfg(
+    tcfg = _short_tcfg(
         LiveExecutionMode.SMALL_LIVE_AUTO,
         live_trade_max_notional=10.0,
-        live_short_execution=LiveShortExecution.MARGIN_CROSS,
         live_margin_borrow_block_policy="repay_all",
     )
     tcfg.live_margin_auto_repay_max_total = 100.0

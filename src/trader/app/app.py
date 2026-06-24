@@ -215,7 +215,6 @@ class App:
             getattr(taskc, "manual_start_position", 0.0),
             getattr(taskc, "live_data_mode", "polling"),
             getattr(taskc, "live_trade_max_notional", 0.0),
-            getattr(taskc, "live_short_execution", "disabled"),
             getattr(taskc, "live_margin_borrow_block_policy", "skip_continue"),
             getattr(taskc, "live_margin_borrow_precheck", True),
             getattr(taskc, "live_margin_auto_repay_max_total", 100.0),

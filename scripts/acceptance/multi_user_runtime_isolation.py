@@ -50,7 +50,6 @@ REAL_ORDER_LIVE_TASK = [
         "manual_start_position": 0,
         "live_execution_mode": "small_live_auto",
         "live_trade_max_notional": 11.0,
-        "live_short_execution": "margin_cross",
         "live_data_mode": "realtime",
         "strategy_params": {
             "chainer_mode": "BOTH",
