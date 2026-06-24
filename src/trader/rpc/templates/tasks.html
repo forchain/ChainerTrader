@@ -83,19 +83,26 @@
                                             <i class="fas fa-play me-1"></i>运行中
                                         {% elif task.state == 'DONE' %}
                                             <i class="fas fa-check me-1"></i>已完成
+                                        {% elif task.state == 'FAILED' %}
+                                            <i class="fas fa-triangle-exclamation me-1"></i>启动失败
                                         {% else %}
                                             <i class="fas fa-question me-1"></i>{{ task.state }}
                                         {% endif %}
                                     </span>
                                 </div>
                             </div>
+                            {% if task.error_message %}
+                            <div class="alert alert-danger py-2 px-3 mt-3 mb-0 small">
+                                {{ task.error_message }}
+                            </div>
+                            {% endif %}
                             <div class="mt-3 d-flex gap-2">
                                 {% if task.state == 'RUNNING' %}
                                 <button type="button" class="btn btn-sm btn-outline-danger task-stop-btn" data-task-id="{{ task.task_id }}">
                                     <i class="fas fa-stop me-1"></i>停止
                                 </button>
                                 {% endif %}
-                                {% if task.state == 'DONE' %}
+                                {% if task.state == 'DONE' or task.state == 'FAILED' %}
                                 <button type="button" class="btn btn-sm btn-outline-primary task-rerun-btn" data-task-id="{{ task.task_id }}">
                                     <i class="fas fa-rotate-right me-1"></i>重跑
                                 </button>
@@ -561,6 +568,11 @@
 
 .task-status-badge[data-state="DONE"] {
     background-color: var(--bs-success);
+    color: white;
+}
+
+.task-status-badge[data-state="FAILED"] {
+    background-color: var(--bs-danger);
     color: white;
 }
 
@@ -1427,6 +1439,50 @@ function showTaskNotice(title, message) {
     modal.show();
 }
 
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function extractSubmittedTaskIds(payload) {
+    if (!payload || !Array.isArray(payload.tasks)) return [];
+    return payload.tasks
+        .map((task) => {
+            if (typeof task === 'number' || typeof task === 'string') return String(task);
+            if (task && task.task_id !== undefined) return String(task.task_id);
+            if (task && task.id !== undefined) return String(task.id);
+            return '';
+        })
+        .filter(Boolean);
+}
+
+async function waitForSubmittedTaskFailures(taskIds) {
+    const ids = new Set((taskIds || []).map(String));
+    if (ids.size === 0) return null;
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+        if (attempt > 0) await sleep(1000);
+        let tasks = [];
+        try {
+            const response = await fetch('/api/tasks');
+            if (!response.ok) continue;
+            tasks = await response.json();
+        } catch (_err) {
+            continue;
+        }
+        if (!Array.isArray(tasks)) continue;
+        const failed = tasks.find((task) => {
+            const taskId = task && (task.task_id !== undefined ? task.task_id : task.id);
+            return ids.has(String(taskId)) && String(task.state || '').toUpperCase() === 'FAILED';
+        });
+        if (failed) {
+            return {
+                taskId: failed.task_id || failed.id,
+                message: failed.error_message || '任务启动失败',
+            };
+        }
+    }
+    return null;
+}
+
 function applyTaskListFilters() {
     const items = Array.from(document.querySelectorAll('#tasksList .task-item'));
     items.forEach((itemEl) => {
@@ -1822,8 +1878,16 @@ async function addTask(json_str) {
         });
         
         if (response.ok) {
+            const payload = await response.json();
+            const taskIds = extractSubmittedTaskIds(payload);
             taskDrafts.length = 0;
             updateTaskBatchPreview();
+            const failure = await waitForSubmittedTaskFailures(taskIds);
+            if (failure) {
+                showTaskNotice('添加任务失败', failure.message || '任务启动失败');
+                setTimeout(() => location.reload(), 1200);
+                return;
+            }
             location.reload();
         } else {
             let message = '添加任务失败';
@@ -2154,6 +2218,7 @@ function getStateBadge(state) {
         'READY': { class: 'badge-secondary', text: '就绪' },
         'RUNNING': { class: 'badge-info', text: '运行中' },
         'DONE': { class: 'badge-success', text: '已完成' },
+        'FAILED': { class: 'badge-danger', text: '启动失败' },
         'ERROR': { class: 'badge-danger', text: '错误' },
         'CANCELLED': { class: 'badge-warning', text: '已取消' }
     };

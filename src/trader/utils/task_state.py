@@ -1,4 +1,5 @@
 import json
+import math
 from datetime import datetime
 from enum import Enum
 from typing import Any
@@ -10,6 +11,7 @@ class TaskStateType(Enum):
     READY = "READY"
     RUNNING = "RUNNING"
     DONE = "DONE"
+    FAILED = "FAILED"
 
 
 def parse_task_state_type(name):
@@ -22,6 +24,8 @@ def parse_task_state_type(name):
         return TaskStateType.RUNNING
     elif name == TaskStateType.DONE.name:
         return TaskStateType.DONE
+    elif name == TaskStateType.FAILED.name:
+        return TaskStateType.FAILED
 
     return TaskStateType.READY  # Default to READY for unknown states
 
@@ -29,6 +33,18 @@ def parse_task_state_type(name):
 PRIMARY_KEY = "task_id"
 
 DATETIME_FORMART = "%Y-%m-%d %H:%M:%S"
+
+
+def _json_safe_value(value):
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, dict):
+        return {key: _json_safe_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_json_safe_value(item) for item in value]
+    if isinstance(value, tuple):
+        return [_json_safe_value(item) for item in value]
+    return value
 
 
 class TaskState:
@@ -44,6 +60,7 @@ class TaskState:
         initial_cash: float = 0,
         config_json: str = None,
         user_id: int | None = None,
+        error_message: str | None = None,
     ):
         self.id = id
         self.state = TaskStateType.READY
@@ -56,6 +73,7 @@ class TaskState:
         self.initial_cash = initial_cash
         self.config_json = config_json
         self.user_id = user_id
+        self.error_message = error_message
 
     def to_dict(self) -> dict[str, Any]:
         ret: dict[str, Any] = {
@@ -76,11 +94,13 @@ class TaskState:
             ret["config_json"] = self.config_json
         if self.user_id is not None:
             ret["user_id"] = self.user_id
+        if self.error_message:
+            ret["error_message"] = self.error_message
 
         if self.tret:
             ret["tret"] = self.tret.to_dict()
 
-        return ret
+        return _json_safe_value(ret)
 
     def to_json(self):
         return json.dumps(self.to_dict(), indent=4)
@@ -125,6 +145,7 @@ def parse_task_state(data) -> TaskState:
         initial_cash=float(data.get("initial_cash", 0)),
         config_json=data.get("config_json"),
         user_id=data.get("user_id"),
+        error_message=data.get("error_message"),
     )
 
     # Safely handle state field

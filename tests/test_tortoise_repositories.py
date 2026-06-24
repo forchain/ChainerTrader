@@ -1,5 +1,6 @@
 import asyncio
-from datetime import datetime
+import warnings
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 from tortoise import Tortoise
@@ -89,9 +90,172 @@ def test_task_repository_upserts_and_reads_task_state():
         assert saved.name == "second"
         assert saved.state == TaskStateType.DONE
         assert saved.commission == 0.002
-        assert [task.id for task in await store.get_all_tasks()] == [7]
+        failed = TaskState(8, "failed", datetime(2026, 1, 3), error_message="startup failed")
+        failed.state = TaskStateType.FAILED
+        assert await store.add_tasks([failed]) == 1
+        saved_failed = await store.get_task(8)
+        assert saved_failed.state == TaskStateType.FAILED
+        assert saved_failed.error_message == "startup failed"
+        assert [task.id for task in await store.get_all_tasks()] == [7, 8]
         assert await store.del_task(7) is True
+        assert await store.del_task(8) is True
         assert await store.get_task(7) is None
+        assert await store.get_task(8) is None
+
+    asyncio.run(_with_db(run))
+
+
+def test_task_repository_normalizes_naive_start_time_before_write():
+    async def run():
+        store = TaskCol(_Log())
+        state = TaskState(13, "timezone-safe", datetime(2026, 1, 8))
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            assert await store.add_tasks([state]) == 1
+
+        messages = [str(item.message) for item in caught]
+        assert not any("DateTimeField start_time received a naive datetime" in message for message in messages)
+
+    asyncio.run(_with_db(run))
+
+
+def test_model_to_task_state_tolerates_rows_without_error_message_field():
+    row = type(
+        "LegacyTaskStateRow",
+        (),
+        {
+            "task_id": 9,
+            "state": "RUNNING",
+            "name": "legacy",
+            "start_time": datetime(2026, 1, 4),
+            "commission": 0.001,
+            "initial_cash": 1000,
+            "config_json": None,
+            "tret": None,
+            "user_id": None,
+            "strategy_start_time": 0,
+            "strategy_end_time": 0,
+        },
+    )()
+
+    from trader.database.task import model_to_task_state
+
+    state = model_to_task_state(row)
+
+    assert state.id == 9
+    assert state.error_message is None
+
+
+def test_task_repository_upsert_avoids_partial_model_save(monkeypatch):
+    calls = []
+
+    class _Query:
+        async def update(self, **defaults):
+            calls.append(("update", defaults))
+            return 1
+
+    class _Model:
+        @classmethod
+        def filter(cls, **kwargs):
+            calls.append(("filter", kwargs))
+            return _Query()
+
+        @classmethod
+        async def create(cls, **_kwargs):
+            raise AssertionError("create should not run when update succeeds")
+
+        @classmethod
+        async def update_or_create(cls, **_kwargs):
+            raise AssertionError("update_or_create would save partial models")
+
+    monkeypatch.setattr("trader.database.task.TaskStateModel", _Model)
+    state = TaskState(10, "partial-safe", datetime(2026, 1, 5))
+
+    assert asyncio.run(TaskCol(_Log()).add_tasks([state])) == 1
+    assert calls[0] == ("filter", {"task_id": 10})
+    assert calls[1][0] == "update"
+    assert calls[1][1]["state"] == "READY"
+
+
+def test_task_repository_retries_without_error_message_for_legacy_schema(monkeypatch):
+    calls = []
+
+    class _Query:
+        async def update(self, **defaults):
+            calls.append(("update", defaults))
+            if "error_message" in defaults:
+                raise Exception("no such column: error_message")
+            return 1
+
+    class _Model:
+        _meta = SimpleNamespace(fields_map={"error_message": object()})
+
+        @classmethod
+        def filter(cls, **kwargs):
+            calls.append(("filter", kwargs))
+            return _Query()
+
+        @classmethod
+        async def create(cls, **_kwargs):
+            raise AssertionError("create should not run when update retry succeeds")
+
+    state = TaskState(11, "legacy-schema", datetime(2026, 1, 6), error_message="startup failed")
+    state.state = TaskStateType.FAILED
+    monkeypatch.setattr("trader.database.task.TaskStateModel", _Model)
+
+    assert asyncio.run(TaskCol(_Log()).add_tasks([state])) == 1
+    assert calls[1] == (
+        "update",
+        {
+            "state": "FAILED",
+            "user_id": None,
+            "name": "legacy-schema",
+            "start_time": datetime(2026, 1, 6, tzinfo=UTC),
+            "commission": 0,
+            "strategy_start_time": 0,
+            "strategy_end_time": 0,
+            "initial_cash": 0,
+            "config_json": None,
+            "tret": None,
+            "error_message": "startup failed",
+        },
+    )
+    assert calls[3][0] == "update"
+    assert "error_message" not in calls[3][1]
+
+
+def test_task_repository_creates_failed_state_without_error_message_for_legacy_schema():
+    async def run():
+        from tortoise import connections
+
+        connection = connections.get("default")
+        await connection.execute_script(
+            """
+            DROP TABLE "tasks";
+            CREATE TABLE "tasks" (
+                "task_id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                "user_id" INT,
+                "state" VARCHAR(32) NOT NULL,
+                "name" VARCHAR(255),
+                "start_time" TIMESTAMP NOT NULL,
+                "commission" REAL NOT NULL,
+                "strategy_start_time" INT NOT NULL,
+                "strategy_end_time" INT NOT NULL,
+                "initial_cash" REAL NOT NULL,
+                "config_json" TEXT,
+                "tret" JSON
+            );
+            """
+        )
+        store = TaskCol(_Log())
+        failed = TaskState(12, "legacy-create", datetime(2026, 1, 7), error_message="startup failed")
+        failed.state = TaskStateType.FAILED
+
+        assert await store.add_tasks([failed]) == 1
+        _, rows = await connection.execute_query('SELECT task_id, state, name FROM "tasks" WHERE task_id = ?', [12])
+        assert rows[0]["state"] == "FAILED"
+        assert rows[0]["name"] == "legacy-create"
 
     asyncio.run(_with_db(run))
 

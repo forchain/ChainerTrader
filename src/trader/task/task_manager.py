@@ -4,6 +4,7 @@ import os
 from asyncio import Queue
 from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeoutError
+from datetime import datetime
 from pathlib import Path
 
 from trader.auth.credentials import decrypt_secret, service_key_available
@@ -163,9 +164,16 @@ class TaskManager:
             await self._persist_task_states(completed_states)
             for task_id in releasable_task_ids:
                 await self._release_task_funds(task_id, reason="task_done")
-        except Exception:
+        except Exception as exc:
+            persist_exc = None
+            try:
+                await self._persist_failed_task_states(taskcs, exc)
+            except Exception as failed_state_exc:
+                persist_exc = failed_state_exc
             for tc in taskcs:
                 await self._release_task_funds(tc.id, reason="task_failed")
+            if persist_exc is not None:
+                raise persist_exc
             raise
         finally:
             if not self.cfg.is_server():
@@ -177,6 +185,40 @@ class TaskManager:
             return
         if states:
             await self.db_manager.task.add_tasks(states)
+
+    async def _persist_failed_task_states(self, taskcs: list[TaskConfig], exc: Exception) -> None:
+        if not taskcs:
+            return
+        error_message = str(exc)
+        failed_states = []
+        for tc in taskcs:
+            task = self.get_task(tc.id)
+            if task is not None:
+                state = task.ts
+            else:
+                state = TaskState(
+                    tc.id,
+                    self._task_state_name(tc),
+                    datetime.now(),
+                    commission=getattr(self.cfg, "commission", 0),
+                    strategy_start_time=getattr(tc, "start_time", 0),
+                    strategy_end_time=getattr(tc, "end_time", 0),
+                    initial_cash=getattr(tc, "free", 0) if getattr(tc, "free", -1) >= 0 else getattr(self.cfg, "cash", 0),
+                    config_json=self._task_config_json(tc),
+                    user_id=getattr(tc, "user_id", None),
+                )
+            state.state = TaskStateType.FAILED
+            state.error_message = error_message
+            failed_states.append(state)
+        await self._persist_task_states(failed_states)
+
+    def _task_state_name(self, cfg: TaskConfig) -> str:
+        symbol_interval = getattr(cfg, "symbol_interval", None)
+        symbol_name = symbol_interval.name() if symbol_interval is not None else ""
+        return f"{cfg.id}.{cfg.ttype.name}.{symbol_name}"
+
+    def _task_config_json(self, cfg: TaskConfig) -> str:
+        return BaseTask(cfg, self.cfg, self.log, self.db_manager).ts.config_json
 
     async def add_task(self, cfg, queue: Queue):
         task_exchange = await self._exchange_for_task(cfg)

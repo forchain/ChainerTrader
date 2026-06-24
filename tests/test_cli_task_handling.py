@@ -248,6 +248,46 @@ def test_task_manager_awaits_completed_task_state_persistence():
     asyncio.run(_test())
 
 
+def test_task_manager_persists_failed_state_when_task_startup_raises():
+    async def _test():
+        cfg = Config(tasks="[]")
+        saved_batches = []
+
+        async def add_tasks(states):
+            saved_batches.append([state.to_dict() for state in states])
+            return len(states)
+
+        db_manager = SimpleNamespace(task=SimpleNamespace(add_tasks=add_tasks))
+        task_manager = TaskManager(cfg, Logger(cfg), db_manager, None)
+        task_config = TaskConfig(
+            id=4,
+            ttype=TaskType.TRADER,
+            symbol_interval=SymbolInterval("BTC-USDT", Interval("1m")),
+            strategies=["macd_triple_divergence"],
+            live_execution_mode="auto_trade",
+            user_id=2,
+        )
+
+        async def fail_exchange_setup(_taskcs):
+            raise RuntimeError('binance {"code":-1022,"msg":"Signature for this request is not valid."}')
+
+        task_manager._ensure_routed_exchanges = fail_exchange_setup
+
+        try:
+            await task_manager.do_add_tasks([task_config], asyncio.Queue())
+        except RuntimeError:
+            pass
+
+        assert saved_batches
+        failed = saved_batches[-1][0]
+        assert failed["task_id"] == task_config.id
+        assert failed["state"] == "FAILED"
+        assert failed["user_id"] == 2
+        assert "Signature for this request is not valid" in failed["error_message"]
+
+    asyncio.run(_test())
+
+
 def test_task_manager_recover_task_keeps_running_state_persisted():
     cfg = Config(tasks="[]")
     logger = Logger(cfg)

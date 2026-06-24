@@ -428,3 +428,37 @@ def test_task_manager_shutdown_preserves_running_live_task_reservation_for_recov
         assert await reservation_store.active_reserved_amount("BINANCE:default", "USDT") == 40.0
 
     asyncio.run(_with_db(run))
+
+
+def test_task_manager_releases_live_reservation_when_failed_state_persistence_fails():
+    async def run():
+        cfg = Config(tasks="[]", cash=1000.0)
+        logger = Logger(cfg)
+        reservation_store = AccountFundReservationCol(_Log())
+
+        class _FailingTaskRepo:
+            async def add_tasks(self, _states):
+                raise RuntimeError("task state write failed")
+
+        db_manager = SimpleNamespace(task=_FailingTaskRepo(), account_fund_reservation=reservation_store)
+        manager = TaskManager(cfg, logger, db_manager, _Exchange(quote_balance=100.0))
+        task_config = TaskConfig(
+            id=502,
+            ttype=TaskType.TRADER,
+            symbol_interval=SymbolInterval("BTC-USDT", Interval("1m")),
+            strategies=["macd_triple_divergence"],
+            free=40.0,
+            live_execution_mode="full_live_auto",
+        )
+
+        async def fail_add_task(_taskc, _queue):
+            raise RuntimeError("task startup failed")
+
+        manager.add_task = fail_add_task
+
+        with pytest.raises(RuntimeError, match="task state write failed"):
+            await manager.do_add_tasks([task_config], asyncio.Queue())
+
+        assert await reservation_store.active_reserved_amount("BINANCE:default", "USDT") == 0.0
+
+    asyncio.run(_with_db(run))

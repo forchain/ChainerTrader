@@ -42,6 +42,7 @@ class TaskStateModel(Model):
     strategy_end_time = fields.IntField(default=0)
     initial_cash = fields.FloatField(default=0)
     config_json = fields.TextField(null=True)
+    error_message = fields.TextField(null=True)
     tret = fields.JSONField(null=True)
 
     class Meta:
