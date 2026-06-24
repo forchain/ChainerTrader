@@ -31,13 +31,19 @@ class _Log:
 
 
 class _Exchange:
-    def __init__(self, quote_balance=100.0):
+    def __init__(self, quote_balance=100.0, quote_borrowable=0.0):
         self.quote_balance = quote_balance
+        self.quote_borrowable = quote_borrowable
 
     def get_account_balance(self, asset):
         if asset == "USDT":
             return self.quote_balance
         return 0.0
+
+    def get_max_borrowable(self, asset, symbol=None):
+        if asset == "USDT":
+            return {"amount": self.quote_borrowable, "symbol": symbol}
+        return {"amount": 0.0, "symbol": symbol}
 
 
 async def _with_db(fn):
@@ -190,6 +196,153 @@ def test_task_manager_rejects_batch_when_reserved_budget_exceeds_exchange_balanc
         assert await reservation_store.active_reserved_amount("BINANCE:default", "USDT") == 0.0
 
     asyncio.run(_with_db(run))
+
+
+def test_task_manager_rejects_live_task_budget_without_reservation_store():
+    async def run():
+        cfg = Config(tasks="[]", cash=1000.0)
+        logger = Logger(cfg)
+        db_manager = SimpleNamespace(task=None, account_fund_reservation=None)
+        manager = TaskManager(cfg, logger, db_manager, _Exchange(quote_balance=50.0))
+        task_config = TaskConfig(
+            id=351,
+            ttype=TaskType.TRADER,
+            symbol_interval=SymbolInterval("BTC-USDT", Interval("1m")),
+            strategies=["macd_triple_divergence"],
+            free=10000.0,
+            live_execution_mode="full_live_auto",
+        )
+        manager.add_task = lambda _taskc, _queue: asyncio.sleep(0)
+
+        with pytest.raises(FundReservationError, match="insufficient reserved capacity"):
+            await manager.do_add_tasks([task_config], asyncio.Queue())
+
+    asyncio.run(run())
+
+
+def test_task_manager_accepts_cross_margin_budget_when_borrowable_capacity_covers_shortfall():
+    async def run():
+        cfg = Config(tasks="[]", cash=1000.0)
+        logger = Logger(cfg)
+        db_manager = SimpleNamespace(task=None, account_fund_reservation=None)
+        manager = TaskManager(cfg, logger, db_manager, _Exchange(quote_balance=0.08, quote_borrowable=12000.0))
+        task_config = TaskConfig(
+            id=355,
+            ttype=TaskType.TRADER,
+            symbol_interval=SymbolInterval("BTC-USDT", Interval("1m")),
+            strategies=["macd_triple_divergence"],
+            strategy_params={"chainer_mode": "BOTH"},
+            free=10000.0,
+            live_execution_mode="full_live_auto",
+        )
+        manager.add_task = lambda _taskc, _queue: asyncio.sleep(0)
+
+        await manager.do_add_tasks([task_config], asyncio.Queue())
+
+        assert task_config.fund_reservation_amount == 10000.0
+        assert task_config.fund_reservation_remaining == 10000.0
+
+    asyncio.run(run())
+
+
+def test_task_manager_rejects_cross_margin_budget_when_balance_plus_borrowable_is_insufficient():
+    async def run():
+        cfg = Config(tasks="[]", cash=1000.0)
+        logger = Logger(cfg)
+        db_manager = SimpleNamespace(task=None, account_fund_reservation=None)
+        manager = TaskManager(cfg, logger, db_manager, _Exchange(quote_balance=0.08, quote_borrowable=5000.0))
+        task_config = TaskConfig(
+            id=356,
+            ttype=TaskType.TRADER,
+            symbol_interval=SymbolInterval("BTC-USDT", Interval("1m")),
+            strategies=["macd_triple_divergence"],
+            strategy_params={"chainer_mode": "BOTH"},
+            free=10000.0,
+            live_execution_mode="full_live_auto",
+        )
+        manager.add_task = lambda _taskc, _queue: asyncio.sleep(0)
+
+        with pytest.raises(FundReservationError) as exc_info:
+            await manager.do_add_tasks([task_config], asyncio.Queue())
+
+        assert "insufficient reserved capacity" in str(exc_info.value)
+        assert "capacity=5000.08" in str(exc_info.value)
+        assert "requested=10000.0" in str(exc_info.value)
+
+    asyncio.run(run())
+
+
+def test_task_manager_rejects_recovered_live_task_budget_without_reservation_store():
+    async def run():
+        cfg = Config(tasks="[]", cash=1000.0)
+        logger = Logger(cfg)
+        db_manager = SimpleNamespace(task=None, account_fund_reservation=None)
+        manager = TaskManager(cfg, logger, db_manager, _Exchange(quote_balance=50.0))
+        task_config = TaskConfig(
+            id=352,
+            ttype=TaskType.TRADER,
+            symbol_interval=SymbolInterval("BTC-USDT", Interval("1m")),
+            strategies=["macd_triple_divergence"],
+            free=10000.0,
+            live_execution_mode="full_live_auto",
+        )
+        manager._build_task = lambda task_cfg, exchange: BaseTask(task_cfg, cfg, logger, db_manager, exchange)
+
+        with pytest.raises(FundReservationError, match="insufficient reserved capacity"):
+            await manager.recover_task(task_config, asyncio.Queue())
+
+        assert task_config.id not in manager.tasks
+
+    asyncio.run(run())
+
+
+def test_task_manager_releases_recovered_live_reservation_when_build_fails():
+    async def run():
+        cfg = Config(tasks="[]", cash=1000.0)
+        logger = Logger(cfg)
+        reservation_store = AccountFundReservationCol(_Log())
+        db_manager = SimpleNamespace(task=None, account_fund_reservation=reservation_store)
+        manager = TaskManager(cfg, logger, db_manager, _Exchange(quote_balance=100.0))
+        task_config = TaskConfig(
+            id=353,
+            ttype=TaskType.TRADER,
+            symbol_interval=SymbolInterval("BTC-USDT", Interval("1m")),
+            strategies=["macd_triple_divergence"],
+            free=40.0,
+            live_execution_mode="full_live_auto",
+        )
+        manager._build_task = lambda _task_cfg, _exchange: None
+
+        await manager.recover_task(task_config, asyncio.Queue())
+
+        assert await reservation_store.active_reserved_amount("BINANCE:default", "USDT") == 0.0
+
+    asyncio.run(_with_db(run))
+
+
+def test_task_manager_exits_cli_when_live_task_budget_preflight_fails():
+    async def run():
+        cfg = Config(tasks="[]", cash=1000.0)
+        logger = Logger(cfg)
+        db_manager = SimpleNamespace(task=None, account_fund_reservation=None)
+        manager = TaskManager(cfg, logger, db_manager, _Exchange(quote_balance=50.0))
+        task_config = TaskConfig(
+            id=354,
+            ttype=TaskType.TRADER,
+            symbol_interval=SymbolInterval("BTC-USDT", Interval("1m")),
+            strategies=["macd_triple_divergence"],
+            free=10000.0,
+            live_execution_mode="full_live_auto",
+        )
+        queue = asyncio.Queue()
+
+        manager.add_tasks([task_config], queue)
+        msg = await asyncio.wait_for(queue.get(), timeout=1)
+
+        assert msg.is_exit()
+        assert task_config.id not in manager.tasks
+
+    asyncio.run(run())
 
 
 def test_trader_task_persists_auto_execution_spent_budget():

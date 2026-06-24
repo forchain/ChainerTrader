@@ -307,6 +307,7 @@ def test_task_manager_close_preserves_running_live_tasks_for_restart_recovery():
             ttype=TaskType.TRADER,
             symbol_interval=SymbolInterval("BTC-USDT", Interval("1h")),
             strategies=["macd_triple_divergence"],
+            live_execution_mode="manual_notify",
             live_data_mode="realtime",
         )
         task = BaseTask(task_config, cfg, logger, db_manager)
@@ -345,6 +346,7 @@ def test_task_manager_dispatch_shutdown_preserves_running_live_tasks_for_restart
             ttype=TaskType.TRADER,
             symbol_interval=SymbolInterval("BTC-USDT", Interval("1h")),
             strategies=["macd_triple_divergence"],
+            live_execution_mode="manual_notify",
             live_data_mode="realtime",
         )
         task_manager._build_task = lambda task_cfg, exchange: _FakeLiveTraderTask(task_cfg, cfg, logger, db_manager, exchange)

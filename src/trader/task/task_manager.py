@@ -122,12 +122,12 @@ class TaskManager:
             return
 
         self.log.info(f"Try to add tasks:{len(taskcs)}")
-        await self._ensure_routed_exchanges(taskcs)
-        await self._reserve_task_funds(taskcs)
-
-        async_tasks = []
-        bttaskcs = []
         try:
+            await self._ensure_routed_exchanges(taskcs)
+            await self._reserve_task_funds(taskcs)
+
+            async_tasks = []
+            bttaskcs = []
             for taskc in taskcs:
                 if taskc.free < 0:
                     taskc.free = self.cfg.cash
@@ -167,10 +167,10 @@ class TaskManager:
             for tc in taskcs:
                 await self._release_task_funds(tc.id, reason="task_failed")
             raise
-
-        if not self.cfg.is_server():
-            self.log.info("Try to actively exit")
-            await queue.put(new_exit_msg())
+        finally:
+            if not self.cfg.is_server():
+                self.log.info("Try to actively exit")
+                await queue.put(new_exit_msg())
 
     async def _persist_task_states(self, states: list[TaskState]) -> None:
         if not self.db_manager or not getattr(self.db_manager, "task", None):
@@ -190,11 +190,13 @@ class TaskManager:
         await task.start(queue)
 
     async def recover_task(self, cfg: TaskConfig, queue: Queue):
+        await self._reserve_task_funds([cfg])
         task_exchange = await self._exchange_for_task(cfg)
         task = self._build_task(cfg, task_exchange)
 
         if task is None:
             self.log.error(f"Can't recover task:{cfg.to_dict()}")
+            await self._release_task_funds(cfg.id, reason="recovery_build_failed")
             return
 
         self.tasks[task.id()] = task
@@ -203,7 +205,12 @@ class TaskManager:
 
         while True:
             if runtime.done():
-                await runtime
+                try:
+                    await runtime
+                except Exception:
+                    await self._release_task_funds(cfg.id, reason="recovery_failed")
+                    raise
+                await self._release_task_funds(cfg.id, reason="recovery_done")
                 return
             if task.ts.is_running():
                 return
@@ -211,13 +218,15 @@ class TaskManager:
 
     async def _reserve_task_funds(self, taskcs: list[TaskConfig]) -> None:
         store = getattr(self.db_manager, "account_fund_reservation", None)
-        if store is None:
-            return
         reserved_task_ids: list[int] = []
+        ephemeral_reserved: dict[tuple[str, str], float] = {}
         try:
             for cfg in taskcs:
                 requirement = await self._reservation_requirement(cfg)
                 if requirement is None:
+                    continue
+                if store is None:
+                    self._reserve_task_funds_in_memory(cfg, requirement, ephemeral_reserved)
                     continue
                 result = await store.reserve(**requirement)
                 cfg.fund_reservation_account_key = requirement["account_key"]
@@ -229,6 +238,30 @@ class TaskManager:
             for task_id in reserved_task_ids:
                 await self._release_task_funds(task_id, reason="reservation_rollback")
             raise
+
+    def _reserve_task_funds_in_memory(
+        self,
+        cfg: TaskConfig,
+        requirement: dict,
+        reserved: dict[tuple[str, str], float],
+    ) -> None:
+        account_key = str(requirement["account_key"])
+        asset = str(requirement["asset"]).upper()
+        amount = float(requirement["amount"])
+        capacity = float(requirement["capacity"])
+        active_reserved = float(reserved.get((account_key, asset), 0.0))
+        if active_reserved + amount > capacity + 1e-12:
+            raise FundReservationError(
+                "insufficient reserved capacity: "
+                f"account_key={account_key} asset={asset} capacity={capacity} "
+                f"active_reserved={active_reserved} requested={amount}"
+            )
+
+        reserved[(account_key, asset)] = active_reserved + amount
+        cfg.fund_reservation_account_key = account_key
+        cfg.fund_reservation_asset = asset
+        cfg.fund_reservation_amount = amount
+        cfg.fund_reservation_remaining = amount
 
     async def _reservation_requirement(self, cfg: TaskConfig) -> dict | None:
         if cfg.ttype != TaskType.TRADER:
@@ -242,10 +275,7 @@ class TaskManager:
             return None
         exchange = await self._exchange_for_task(cfg)
         asset = str(cfg.symbol_interval.sy.quote).upper()
-        balance_reader = getattr(exchange, "get_account_balance", None)
-        if not callable(balance_reader):
-            raise FundReservationError(f"cannot read exchange balance for reservation: task_id={cfg.id} asset={asset}")
-        capacity = float(balance_reader(asset) or 0.0)
+        capacity = self._reservation_capacity(cfg, exchange, asset)
         return {
             "account_key": await self._reservation_account_key(cfg),
             "exchange": getattr(exchange, "name", lambda: "BINANCE")() if callable(getattr(exchange, "name", None)) else "BINANCE",
@@ -264,6 +294,29 @@ class TaskManager:
         if getattr(cfg, "free", -1) >= 0:
             return float(cfg.free)
         return float(getattr(self.cfg, "cash", 0.0) or 0.0)
+
+    def _reservation_capacity(self, cfg: TaskConfig, exchange: BinanceExchange, asset: str) -> float:
+        balance_reader = getattr(exchange, "get_account_balance", None)
+        if not callable(balance_reader):
+            raise FundReservationError(f"cannot read exchange balance for reservation: task_id={cfg.id} asset={asset}")
+        balance = float(balance_reader(asset) or 0.0)
+        if not task_requires_short_capability(cfg):
+            return balance
+        if not bool(getattr(cfg, "live_margin_borrow_precheck", True)):
+            return balance
+        borrow_reader = getattr(exchange, "get_max_borrowable", None)
+        if not callable(borrow_reader):
+            return balance
+        payload = borrow_reader(asset, symbol=cfg.symbol_interval.symbol())
+        borrowable = self._numeric_payload_value(payload, "amount")
+        return balance + float(borrowable or 0.0)
+
+    def _numeric_payload_value(self, payload, key: str) -> float | None:
+        value = payload.get(key) if isinstance(payload, dict) else getattr(payload, key, None)
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
 
     async def _reservation_account_key(self, cfg: TaskConfig) -> str:
         credential_id = await self._reservation_credential_id(cfg)
