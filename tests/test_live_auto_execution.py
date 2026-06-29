@@ -689,6 +689,31 @@ def test_margin_borrow_precheck_skips_margin_short_when_base_borrow_capacity_is_
     assert exchange.new_order_calls == []
 
 
+def test_margin_borrow_precheck_skips_margin_long_when_quote_balance_is_insufficient():
+    class ZeroBorrowExchange(RecordingExchange):
+        def get_max_borrowable(self, asset, symbol=None):
+            self.max_borrowable_reads.append((asset, symbol))
+            return {"asset": asset, "amount": "0.0", "borrowLimit": "0.0"}
+
+    exchange = ZeroBorrowExchange(quote_balance=5.0, margin_ready=True)
+    router = AutoExecutionRouter(
+        _short_tcfg(
+            LiveExecutionMode.SMALL_LIVE_AUTO,
+            live_trade_max_notional=10.0,
+        ),
+        exchange=exchange,
+        cfg=SimpleNamespace(cash=10000.0),
+    )
+
+    outcome = router.route(_op(OperateType.BUY, 100.0))
+
+    assert outcome.status == AutoExecutionStatus.SKIPPED
+    assert str(outcome.reason).startswith("margin_borrow_precheck_insufficient_capacity")
+    assert "asset=USDT" in str(outcome.reason)
+    assert exchange.max_borrowable_reads == [("USDT", "BTCUSDT")]
+    assert exchange.new_order_calls == []
+
+
 def test_margin_borrow_block_repay_single_policy_handles_margin_long_orders():
     class LongBorrowBlockedThenPassExchange(RecordingExchange):
         def __init__(self):

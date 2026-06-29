@@ -416,9 +416,10 @@ class AutoExecutionRouter:
                     effective_quantity=quantity,
                 )
             )
-        if self.requires_short_capability and self._margin_ready():
+        if self._margin_ready():
             precheck = self._margin_borrow_precheck(op, OperateType.BUY, notional, quantity)
             if precheck is not None:
+                self._log_margin_borrow_rejection(op, precheck)
                 return self._record(
                     self._outcome(
                         op,
@@ -470,7 +471,7 @@ class AutoExecutionRouter:
                     effective_quantity=base_balance,
                 )
             )
-        if self.requires_short_capability and self._margin_ready():
+        if self._margin_ready():
             return self._submit_margin(op, notional, base_balance, OperateType.SELL)
         outcome = self._submit_spot(op, notional, base_balance, OperateType.SELL)
         if outcome.status == AutoExecutionStatus.SUBMITTED and self.real_long_position > 0:
@@ -514,6 +515,7 @@ class AutoExecutionRouter:
             )
         precheck = self._margin_borrow_precheck(op, OperateType.SHORT, notional, quantity)
         if precheck is not None:
+            self._log_margin_borrow_rejection(op, precheck)
             return self._record(
                 self._outcome(
                     op,
@@ -697,6 +699,22 @@ class AutoExecutionRouter:
             f"shortfall={precheck.get('estimated_shortfall')} "
             f"max_borrowable={precheck.get('max_borrowable')} "
             f"borrow_limit={precheck.get('borrow_limit')}"
+        )
+
+    def _log_margin_borrow_rejection(self, op, precheck: dict[str, Any]) -> None:
+        if self.log is None:
+            return
+        self.log.warning(
+            "margin borrow check rejected execution: "
+            f"task_id={getattr(self.tcfg, 'id', None)} "
+            f"operation={getattr(getattr(op, 'otype', None), 'name', None)} "
+            f"asset={precheck.get('asset')} "
+            f"shortfall={precheck.get('estimated_shortfall')} "
+            f"balance={precheck.get('balance')} "
+            f"max_borrowable={precheck.get('max_borrowable')} "
+            f"borrow_limit={precheck.get('borrow_limit')} "
+            f"symbol={precheck.get('symbol')} "
+            f"policy={precheck.get('policy')}"
         )
 
     def _submit_spot(self, op, notional: float, quantity: float, order_type: OperateType) -> AutoExecutionOutcome:

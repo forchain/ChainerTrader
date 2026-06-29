@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime
 from types import SimpleNamespace
 
 import pytest
@@ -11,6 +12,7 @@ from trader.task.task_config import TaskConfig
 from trader.task.task_manager import TaskManager
 from trader.task.task_type import TaskType
 from trader.utils.symbol_interval import Interval, SymbolInterval
+from trader.utils.task_state import TaskState
 
 
 class _FakeExchange:
@@ -76,7 +78,9 @@ def test_user_live_exchange_routing_decrypts_async_user_credentials(monkeypatch)
         assert routed.cfg.api_key == "user-api-key"
         assert routed.cfg.api_secret == "user-api-secret"
         assert routed.cfg.margin_mode == MarginMode.SPOT
-        assert len(created_configs) == 1
+        assert created_configs
+        assert all(created.api_key == "user-api-key" for created in created_configs)
+        assert all(created.api_secret == "user-api-secret" for created in created_configs)
 
     asyncio.run(run())
 
@@ -155,5 +159,168 @@ def test_user_live_exchange_routing_requires_user_credential():
 
         with pytest.raises(RuntimeError, match="missing BINANCE API credential"):
             await manager._ensure_routed_exchanges([_live_task()])
+
+    asyncio.run(run())
+
+
+def test_user_owned_real_auto_task_builds_task_with_user_exchange(monkeypatch):
+    async def run():
+        created_configs = []
+        built_task_exchange_configs = []
+
+        class FakeBinanceExchange(_FakeExchange):
+            def __init__(self, cfg: ExchangeConfig, _log):
+                super().__init__(cfg)
+                self.quote_balance = 100.0
+                created_configs.append(cfg)
+
+            def get_account_balance(self, asset):
+                return self.quote_balance if asset == "USDT" else 0.0
+
+            def get_max_borrowable(self, asset, symbol=None):
+                return {"amount": 0.0, "asset": asset, "symbol": symbol}
+
+        class FakeTask:
+            def __init__(self, cfg, exchange):
+                self._id = cfg.id
+                self.ts = TaskState(cfg.id, "fake-task", datetime.now())
+                self.exchange = exchange
+
+            def id(self):
+                return self._id
+
+            async def start(self, _queue):
+                return None
+
+            def stop(self):
+                pass
+
+        service_key = "dev-service-secret"
+        credential = SimpleNamespace(
+            id=12,
+            encrypted_api_key=encrypt_secret(service_key, "user-api-key"),
+            encrypted_api_secret=encrypt_secret(service_key, "user-api-secret"),
+        )
+
+        async def get_default(user_id, exchange):
+            await asyncio.sleep(0)
+            assert user_id == 7
+            assert exchange == "BINANCE"
+            return credential
+
+        monkeypatch.setattr("trader.task.task_manager.BinanceExchange", FakeBinanceExchange)
+        cfg = Config(tasks="[]", secret_key=service_key, cash=1000.0)
+        base_exchange = _FakeExchange(ExchangeConfig(api_key="system-key", api_secret="system-secret"))
+        base_exchange.get_account_balance = lambda asset: 999.0
+        manager = TaskManager(
+            cfg,
+            Logger(cfg),
+            SimpleNamespace(exchange_credential=SimpleNamespace(get_default=get_default)),
+            base_exchange,
+        )
+
+        def build_task(task_cfg, exchange):
+            built_task_exchange_configs.append(exchange.cfg)
+            return FakeTask(task_cfg, exchange)
+
+        manager._build_task = build_task
+        task = _live_task(user_id=7)
+        task.live_execution_mode = "full_live_auto"
+        task.free = 20.0
+
+        await manager.do_add_tasks([task], asyncio.Queue())
+
+        assert created_configs
+        assert all(created.api_key == "user-api-key" for created in created_configs)
+        assert all(created.api_secret == "user-api-secret" for created in created_configs)
+        assert built_task_exchange_configs
+        assert built_task_exchange_configs[0].api_key == "user-api-key"
+        assert built_task_exchange_configs[0].api_secret == "user-api-secret"
+
+    asyncio.run(run())
+
+
+def test_user_exchange_routing_logs_credential_source(monkeypatch):
+    async def run():
+        class FakeBinanceExchange(_FakeExchange):
+            def __init__(self, cfg: ExchangeConfig, _log):
+                super().__init__(cfg)
+
+        service_key = "dev-service-secret"
+        credential = SimpleNamespace(
+            id=12,
+            encrypted_api_key=encrypt_secret(service_key, "user-api-key"),
+            encrypted_api_secret=encrypt_secret(service_key, "user-api-secret"),
+            masked_api_key="user***ikey",
+        )
+
+        async def get_default(_user_id, _exchange):
+            await asyncio.sleep(0)
+            return credential
+
+        monkeypatch.setattr("trader.task.task_manager.BinanceExchange", FakeBinanceExchange)
+        cfg = Config(tasks="[]", secret_key=service_key)
+        log = _CaptureLog()
+        manager = TaskManager(
+            cfg,
+            log,
+            SimpleNamespace(exchange_credential=SimpleNamespace(get_default=get_default)),
+            _FakeExchange(ExchangeConfig(api_key="system-key", api_secret="system-secret")),
+        )
+
+        routed = await manager._exchange_for_task(_live_task(user_id=7, chainer_mode="BOTH"))
+
+        assert routed.cfg.api_key == "user-api-key"
+        assert any(
+            "TaskManager selected execution exchange" in message
+            and "user_id=7" in message
+            and "credential_id=12" in message
+            and "api_key=user***ikey" in message
+            for message in log.messages
+        )
+
+    asyncio.run(run())
+
+
+def test_user_exchange_routing_refreshes_when_user_credential_changes(monkeypatch):
+    async def run():
+        class FakeBinanceExchange(_FakeExchange):
+            def __init__(self, cfg: ExchangeConfig, _log):
+                super().__init__(cfg)
+
+        service_key = "dev-service-secret"
+        credentials = [
+            SimpleNamespace(
+                id=12,
+                encrypted_api_key=encrypt_secret(service_key, "first-user-api-key"),
+                encrypted_api_secret=encrypt_secret(service_key, "first-user-api-secret"),
+                masked_api_key="firs***-key",
+            ),
+            SimpleNamespace(
+                id=12,
+                encrypted_api_key=encrypt_secret(service_key, "second-user-api-key"),
+                encrypted_api_secret=encrypt_secret(service_key, "second-user-api-secret"),
+                masked_api_key="seco***-key",
+            ),
+        ]
+
+        async def get_default(_user_id, _exchange):
+            await asyncio.sleep(0)
+            return credentials.pop(0)
+
+        monkeypatch.setattr("trader.task.task_manager.BinanceExchange", FakeBinanceExchange)
+        cfg = Config(tasks="[]", secret_key=service_key)
+        manager = TaskManager(
+            cfg,
+            _CaptureLog(),
+            SimpleNamespace(exchange_credential=SimpleNamespace(get_default=get_default)),
+            _FakeExchange(ExchangeConfig(api_key="system-key", api_secret="system-secret")),
+        )
+
+        first = await manager._exchange_for_task(_live_task(user_id=7))
+        second = await manager._exchange_for_task(_live_task(user_id=7))
+
+        assert first.cfg.api_key == "first-user-api-key"
+        assert second.cfg.api_key == "second-user-api-key"
 
     asyncio.run(run())

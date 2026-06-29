@@ -1,8 +1,11 @@
 from fastapi import APIRouter, Request
 
+from trader.rpc.user_exchange import request_user_exchange
+
 router = APIRouter()
 
 
 @router.get("")
-def account_commission(request: Request, symbol: str = None):
-    return request.app.state.app.exchange.account_commission(symbol)
+async def account_commission(request: Request, symbol: str = None):
+    exchange = await request_user_exchange(request)
+    return exchange.account_commission(symbol)

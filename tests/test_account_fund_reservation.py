@@ -46,6 +46,25 @@ class _Exchange:
         return {"amount": 0.0, "symbol": symbol}
 
 
+class _CaptureLogger:
+    def __init__(self):
+        self.errors = []
+        self.infos = []
+        self.warnings = []
+
+    def debug(self, *_args, **_kwargs):
+        pass
+
+    def info(self, message, *_args, **_kwargs):
+        self.infos.append(str(message))
+
+    def warning(self, message, *_args, **_kwargs):
+        self.warnings.append(str(message))
+
+    def error(self, message, *_args, **_kwargs):
+        self.errors.append(str(message))
+
+
 async def _with_db(fn):
     await Tortoise.init(config=build_tortoise_config("sqlite://:memory:"))
     await Tortoise.generate_schemas()
@@ -267,7 +286,75 @@ def test_task_manager_rejects_cross_margin_budget_when_balance_plus_borrowable_i
 
         assert "insufficient reserved capacity" in str(exc_info.value)
         assert "capacity=5000.08" in str(exc_info.value)
+        assert "balance=0.08" in str(exc_info.value)
+        assert "max_borrowable=5000.0" in str(exc_info.value)
+        assert "operable_capacity=5000.08" in str(exc_info.value)
         assert "requested=10000.0" in str(exc_info.value)
+
+    asyncio.run(run())
+
+
+def test_task_manager_logs_balance_plus_borrowable_rejection_reason():
+    async def run():
+        cfg = Config(tasks="[]", cash=1000.0)
+        logger = _CaptureLogger()
+        db_manager = SimpleNamespace(task=None, account_fund_reservation=None)
+        manager = TaskManager(cfg, logger, db_manager, _Exchange(quote_balance=0.08, quote_borrowable=5000.0))
+        task_config = TaskConfig(
+            id=358,
+            ttype=TaskType.TRADER,
+            symbol_interval=SymbolInterval("BTC-USDT", Interval("1m")),
+            strategies=["macd_triple_divergence"],
+            strategy_params={"chainer_mode": "BOTH"},
+            free=10000.0,
+            live_execution_mode="full_live_auto",
+        )
+        manager.add_task = lambda _taskc, _queue: asyncio.sleep(0)
+
+        with pytest.raises(FundReservationError):
+            await manager.do_add_tasks([task_config], asyncio.Queue())
+
+        rejection_log = "\n".join(logger.errors)
+        assert "strategy rejected before execution" in rejection_log
+        assert "rule=requested <= balance + max_borrowable - active_reserved" in rejection_log
+        assert "symbol=BTCUSDT" in rejection_log
+        assert "required=10000.0" in rejection_log
+        assert "balance=0.08" in rejection_log
+        assert "max_borrowable=5000.0" in rejection_log
+        assert "operable_capacity=5000.08" in rejection_log
+        assert "insufficient reserved capacity" in rejection_log
+
+    asyncio.run(run())
+
+
+def test_task_manager_uses_current_max_borrowable_amount_not_account_borrow_limit_for_margin_capacity():
+    class _ExchangeWithLargeBorrowLimit(_Exchange):
+        def get_max_borrowable(self, asset, symbol=None):
+            if asset == "USDT":
+                return {"amount": "22.89384497", "borrowLimit": "100000", "symbol": symbol}
+            return {"amount": "0", "borrowLimit": "0", "symbol": symbol}
+
+    async def run():
+        cfg = Config(tasks="[]", cash=1000.0)
+        logger = Logger(cfg)
+        db_manager = SimpleNamespace(task=None, account_fund_reservation=None)
+        manager = TaskManager(cfg, logger, db_manager, _ExchangeWithLargeBorrowLimit(quote_balance=5.81213216))
+        task_config = TaskConfig(
+            id=357,
+            ttype=TaskType.TRADER,
+            symbol_interval=SymbolInterval("BTC-USDT", Interval("1m")),
+            strategies=["macd_triple_divergence"],
+            strategy_params={"chainer_mode": "BOTH"},
+            free=30.0,
+            live_execution_mode="full_live_auto",
+        )
+        manager.add_task = lambda _taskc, _queue: asyncio.sleep(0)
+
+        with pytest.raises(FundReservationError) as exc_info:
+            await manager.do_add_tasks([task_config], asyncio.Queue())
+
+        assert "capacity=28.70597713" in str(exc_info.value)
+        assert "requested=30.0" in str(exc_info.value)
 
     asyncio.run(run())
 

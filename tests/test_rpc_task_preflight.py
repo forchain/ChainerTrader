@@ -9,7 +9,9 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from trader.auth.context import SessionAuthMiddleware
+from trader.auth.credentials import encrypt_secret
 from trader.common.config import Config
+from trader.exchange.exchange_config import ExchangeConfig
 from trader.rpc.api.tasks import router
 from trader.strategy.trader_result import TraderResult
 from trader.task.task_config import TaskConfig
@@ -86,7 +88,7 @@ def test_user_owned_live_task_requires_saved_exchange_credential():
     assert "missing BINANCE API credential" in logger.errors[0]
 
 
-def test_user_owned_manual_notify_live_task_does_not_require_saved_exchange_credential():
+def test_user_owned_manual_notify_live_task_requires_saved_exchange_credential():
     app = FastAPI()
     app.add_middleware(SessionAuthMiddleware)
     app.include_router(router, prefix="/api/tasks")
@@ -118,18 +120,55 @@ def test_user_owned_manual_notify_live_task_does_not_require_saved_exchange_cred
     assert send_add_tasks_msg.call_count == 0
 
 
-def test_task_manager_uses_default_exchange_for_user_owned_manual_notify_task():
-    manager = TaskManager(Config(tasks="[]"), SimpleNamespace(info=lambda *_args, **_kwargs: None), SimpleNamespace(), "default-exchange")
-    cfg = TaskConfig(
-        1,
-        TaskType.TRADER,
-        SymbolInterval("BTC-USDT", Interval("1m")),
-        strategies=["macd_triple_divergence"],
-        live_execution_mode="manual_notify",
-        user_id=5,
-    )
+def test_task_manager_uses_user_exchange_for_user_owned_manual_notify_task(monkeypatch):
+    async def run():
+        created_configs = []
 
-    assert asyncio.run(manager._exchange_for_task(cfg)) == "default-exchange"
+        class _BaseExchange:
+            cfg = ExchangeConfig(api_key="system-key", api_secret="system-secret")
+
+        class _UserExchange:
+            def __init__(self, cfg, _log):
+                self.cfg = cfg
+                self.margin_mode = cfg.margin_mode
+                created_configs.append(cfg)
+
+        service_key = "service-secret"
+        credential = SimpleNamespace(
+            id=9,
+            encrypted_api_key=encrypt_secret(service_key, "user-key"),
+            encrypted_api_secret=encrypt_secret(service_key, "user-secret"),
+            masked_api_key="user***-key",
+        )
+
+        async def get_default(user_id, exchange):
+            assert user_id == 5
+            assert exchange == "BINANCE"
+            return credential
+
+        monkeypatch.setattr("trader.task.task_manager.BinanceExchange", _UserExchange)
+        manager = TaskManager(
+            Config(tasks="[]", secret_key=service_key),
+            SimpleNamespace(info=lambda *_args, **_kwargs: None),
+            SimpleNamespace(exchange_credential=SimpleNamespace(get_default=get_default)),
+            _BaseExchange(),
+        )
+        cfg = TaskConfig(
+            1,
+            TaskType.TRADER,
+            SymbolInterval("BTC-USDT", Interval("1m")),
+            strategies=["macd_triple_divergence"],
+            live_execution_mode="manual_notify",
+            user_id=5,
+        )
+
+        routed = await manager._exchange_for_task(cfg)
+
+        assert routed.cfg.api_key == "user-key"
+        assert routed.cfg.api_secret == "user-secret"
+        assert created_configs[0].api_key == "user-key"
+
+    asyncio.run(run())
 
 
 def test_task_creation_requires_authenticated_user():
@@ -432,7 +471,6 @@ def test_admin_task_creation_stops_only_current_user_running_tasks_before_submit
     app.include_router(router, prefix="/api/tasks")
     send_add_tasks_msg = Mock(return_value={"result": "success"})
     user_running = SimpleNamespace(id=99, state=SimpleNamespace(name="RUNNING"))
-    system_running = SimpleNamespace(id=100, state=SimpleNamespace(name="RUNNING"))
 
     class _AdminTaskManager:
         def __init__(self):

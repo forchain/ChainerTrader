@@ -35,7 +35,7 @@ class Logger:
         return self.logger
 
     def enableConsole(self):
-        formatter = get_formatter()
+        formatter = get_console_formatter()
         console_handler = logging.StreamHandler()
         console_handler.setFormatter(formatter)
         # console_handler.setLevel(level)
@@ -58,15 +58,19 @@ class Logger:
         return self.name + ".log"
 
     def initRoot(self):
-        handlers = [logging.StreamHandler()]
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(get_console_formatter())
+        handlers = [console_handler]
 
         if self.cfg.log_file:
             log_path = Path(self.file_name())
             if log_path.parent != Path("."):
                 log_path.parent.mkdir(parents=True, exist_ok=True)
-            handlers.append(logging.FileHandler(str(log_path), mode="a"))
+            file_handler = logging.FileHandler(str(log_path), mode="a")
+            file_handler.setFormatter(get_formatter())
+            handlers.append(file_handler)
 
-        logging.basicConfig(level=self.cfg.log_level, format=formatter_str(), handlers=handlers)
+        logging.basicConfig(level=self.cfg.log_level, handlers=handlers)
 
         for noisy_logger in ("ccxt", "urllib3", "httpcore", "httpx", "asyncio"):
             logging.getLogger(noisy_logger).setLevel(logging.INFO)
@@ -88,25 +92,25 @@ class Logger:
 
     def info(self, msg: str, tag: LogTag = LogTag.GENERAl):
         if self.enable_log_buffer and self.log_buffer and tag != LogTag.PRIVATE and self.logger.isEnabledFor(logging.INFO):
-            self.log_buffer.add(msg)
+            self.log_buffer.add(_buffer_log_line("INFO", msg))
 
         self.logger.info(msg)
 
     def debug(self, msg: str, tag: LogTag = LogTag.GENERAl):
         if self.enable_log_buffer and self.log_buffer and tag != LogTag.PRIVATE and self.logger.isEnabledFor(logging.DEBUG):
-            self.log_buffer.add(msg)
+            self.log_buffer.add(_buffer_log_line("DEBUG", msg))
 
         self.logger.debug(msg)
 
     def error(self, msg: str, tag: LogTag = LogTag.GENERAl):
         if self.enable_log_buffer and self.log_buffer and tag != LogTag.PRIVATE and self.logger.isEnabledFor(logging.ERROR):
-            self.log_buffer.add(msg)
+            self.log_buffer.add(_buffer_log_line("ERROR", msg))
 
         self.logger.error(msg)
 
     def warning(self, msg: str, tag: LogTag = LogTag.GENERAl):
         if self.enable_log_buffer and self.log_buffer and tag != LogTag.PRIVATE and self.logger.isEnabledFor(logging.WARNING):
-            self.log_buffer.add(msg)
+            self.log_buffer.add(_buffer_log_line("WARNING", msg))
 
         self.logger.warning(msg)
 
@@ -119,9 +123,33 @@ def get_formatter():
     return logging.Formatter(formatter_str())
 
 
+def get_console_formatter():
+    return _TerminalColorFormatter(formatter_str())
+
+
 def formatter_str():
     return "%(asctime)s[%(levelname)s:%(name)s] %(message)s"
 
 
 def default() -> logging.Logger:
     return logging.getLogger("root")
+
+
+def _buffer_log_line(level: str, msg: str) -> str:
+    return f"{level}: {msg}"
+
+
+class _TerminalColorFormatter(logging.Formatter):
+    _COLORS = {
+        logging.WARNING: "\x1b[1;33m",
+        logging.ERROR: "\x1b[1;31m",
+        logging.CRITICAL: "\x1b[1;37;41m",
+    }
+    _RESET = "\x1b[0m"
+
+    def format(self, record: logging.LogRecord) -> str:
+        line = super().format(record)
+        color = self._COLORS.get(record.levelno)
+        if not color:
+            return line
+        return f"{color}{line}{self._RESET}"

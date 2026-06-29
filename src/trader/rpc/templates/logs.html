@@ -51,11 +51,11 @@
                         {% if logs_info and logs_info.logs %}
                             {% for log in logs_info.logs %}
                                 {% set upper_log = log|upper %}
-                                {% if '[CRITICAL:' in upper_log or ' CRITICAL ' in upper_log %}
+                                {% if upper_log.startswith('CRITICAL:') or '[CRITICAL:' in upper_log or ' CRITICAL ' in upper_log %}
                                     {% set level_class = 'log-line-critical' %}
-                                {% elif '[ERROR:' in upper_log or ' ERROR ' in upper_log %}
+                                {% elif upper_log.startswith('ERROR:') or '[ERROR:' in upper_log or ' ERROR ' in upper_log %}
                                     {% set level_class = 'log-line-error' %}
-                                {% elif '[WARNING:' in upper_log or ' WARNING ' in upper_log or '[WARN:' in upper_log or ' WARN ' in upper_log %}
+                                {% elif upper_log.startswith('WARNING:') or upper_log.startswith('WARN:') or '[WARNING:' in upper_log or ' WARNING ' in upper_log or '[WARN:' in upper_log or ' WARN ' in upper_log %}
                                     {% set level_class = 'log-line-warning' %}
                                 {% else %}
                                     {% set level_class = '' %}

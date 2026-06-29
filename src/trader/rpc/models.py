@@ -1,9 +1,10 @@
 from typing import TYPE_CHECKING, Any
 import json
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from trader.exchange.balance import Balance
+from trader.utils.symbol_interval import Symbol
 from trader.utils.task_state import TaskStateType
 
 if TYPE_CHECKING:
@@ -22,6 +23,11 @@ class TasksInfo(BaseModel):
 class AcctsInfo(BaseModel):
     total: int = 0
     balances: list[Balance]
+    locked_reasons: list[dict[str, Any]] = Field(default_factory=list)
+    borrow_asset: str = ""
+    borrowable_amount: float = 0
+    operable_amount: float = 0
+    account_error: str = ""
 
 
 class LogsInfo(BaseModel):
@@ -95,9 +101,108 @@ async def get_taskinfo(app: "App", user=None, page: int = 1, per_page: int | Non
 def get_accounts_info(app: "App") -> AcctsInfo:
     if app.exchange is None:
         return AcctsInfo(total=0, balances=[])
-    balances = app.exchange.get_account_balances()
+    errors: list[str] = []
+    try:
+        balances = list(app.exchange.get_account_balances())
+    except Exception as exc:
+        message = f"交易所账户读取失败: {exc}"
+        _log_account_info_error(app, "exchange balance", exc)
+        return AcctsInfo(total=0, balances=[], account_error=message)
+    borrow_asset = _borrow_asset_from_exchange(app.exchange, balances, getattr(getattr(app, "task_manager", None), "latest_si", None))
+    try:
+        borrowable_amount = _get_max_borrowable_amount(app.exchange, borrow_asset)
+    except Exception as exc:
+        borrowable_amount = 0.0
+        errors.append(f"最大可借额度读取失败: {exc}")
+        _log_account_info_error(app, "max borrowable", exc)
+    try:
+        locked_reasons = _locked_reasons_from_exchange(app.exchange, getattr(getattr(app, "task_manager", None), "latest_si", None))
+    except Exception as exc:
+        locked_reasons = []
+        errors.append(f"锁定来源读取失败: {exc}")
+        _log_account_info_error(app, "locked orders", exc)
+    operable_amount = _operable_amount(balances, borrow_asset, borrowable_amount)
+    for balance in balances:
+        if balance.asset == borrow_asset:
+            balance.max_borrowable = borrowable_amount
+            balance.operable = operable_amount
+            break
 
-    return AcctsInfo(total=len(balances), balances=balances)
+    return AcctsInfo(
+        total=len(balances),
+        balances=balances,
+        locked_reasons=locked_reasons,
+        borrow_asset=borrow_asset,
+        borrowable_amount=borrowable_amount,
+        operable_amount=operable_amount,
+        account_error="；".join(errors),
+    )
+
+
+def _log_account_info_error(app: "App", operation: str, exc: Exception) -> None:
+    logger = getattr(app, "logger", None)
+    if logger is not None and hasattr(logger, "error"):
+        logger.error(f"account page {operation} read failed: {exc}")
+
+
+def _borrow_asset_from_exchange(exchange: Any, balances: list[Balance], symbol: Any = None) -> str:
+    if symbol is not None:
+        quote = getattr(getattr(symbol, "sy", None), "quote", None)
+        if quote:
+            return str(quote).upper()
+    margin_mode = getattr(exchange, "margin_mode", None)
+    if margin_mode is not None and getattr(margin_mode, "value", "") != "spot":
+        return str(getattr(exchange, "borrow_asset", None) or "USDT").upper()
+    if balances:
+        for balance in balances:
+            if balance.asset == "USDT":
+                return "USDT"
+        return balances[0].asset
+    return "USDT"
+
+
+def _get_max_borrowable_amount(exchange: Any, asset: str) -> float:
+    reader = getattr(exchange, "get_max_borrowable", None)
+    if not callable(reader):
+        return 0.0
+    payload = reader(asset)
+    if isinstance(payload, dict):
+        return float(payload.get("amount", 0.0) or 0.0)
+    return float(getattr(payload, "amount", 0.0) or 0.0)
+
+
+def _locked_reasons_from_exchange(exchange: Any, symbol: Any = None) -> list[dict[str, Any]]:
+    reader = getattr(exchange, "get_open_orders", None)
+    if not callable(reader):
+        return []
+    if symbol is None:
+        return []
+    order_symbol = Symbol(f"{symbol.sy.base}-{symbol.sy.quote}") if hasattr(symbol, "sy") else symbol
+    rows = reader(order_symbol)
+    reasons: list[dict[str, Any]] = []
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        reasons.append(
+            {
+                "symbol": str(row.get("symbol") or ""),
+                "side": str(row.get("side") or ""),
+                "quantity": float(row.get("origQty") or row.get("amount") or row.get("quantity") or 0.0),
+                "order_id": str(row.get("orderId") or row.get("id") or ""),
+                "order_type": str(row.get("type") or ""),
+                "price": float(row.get("price") or 0.0),
+            }
+        )
+    return reasons
+
+
+def _operable_amount(balances: list[Balance], borrow_asset: str, borrowable_amount: float) -> float:
+    free_balance = 0.0
+    for balance in balances:
+        if balance.asset == borrow_asset:
+            free_balance = float(balance.free or 0.0)
+            break
+    return free_balance + float(borrowable_amount or 0.0)
 
 
 def get_logs_info(app: "App") -> LogsInfo:

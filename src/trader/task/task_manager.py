@@ -7,7 +7,7 @@ from concurrent.futures import TimeoutError as FutureTimeoutError
 from datetime import datetime
 from pathlib import Path
 
-from trader.auth.credentials import decrypt_secret, service_key_available
+from trader.auth.credentials import service_key_available
 from trader.common.common import sleep
 from trader.common.config import Config
 from trader.common.log_tag import LogTag
@@ -17,6 +17,11 @@ from trader.database.account_fund_reservation import FundReservationError
 from trader.database.manager import DatabaseManager
 from trader.exchange.binance.exchange import BinanceExchange
 from trader.exchange.exchange_config import MarginMode
+from trader.exchange.user_credentials import (
+    attach_user_exchange_context,
+    base_exchange_config,
+    build_user_exchange_context,
+)
 from trader.live.auto_execution import is_real_auto_mode
 from trader.statistics.stat import BackTraderStat
 from trader.strategy.trader_result import parse_trader_result
@@ -267,10 +272,14 @@ class TaskManager:
                 requirement = await self._reservation_requirement(cfg)
                 if requirement is None:
                     continue
-                if store is None:
-                    self._reserve_task_funds_in_memory(cfg, requirement, ephemeral_reserved)
-                    continue
-                result = await store.reserve(**requirement)
+                try:
+                    if store is None:
+                        self._reserve_task_funds_in_memory(cfg, requirement, ephemeral_reserved)
+                        continue
+                    result = await store.reserve(**requirement)
+                except FundReservationError as exc:
+                    self.log.error(self._format_reservation_rejection_log(cfg, requirement, exc))
+                    raise
                 cfg.fund_reservation_account_key = requirement["account_key"]
                 cfg.fund_reservation_asset = requirement["asset"]
                 cfg.fund_reservation_amount = float(result.reservation.reserved_amount)
@@ -296,6 +305,8 @@ class TaskManager:
             raise FundReservationError(
                 "insufficient reserved capacity: "
                 f"account_key={account_key} asset={asset} capacity={capacity} "
+                f"balance={requirement.get('balance')} max_borrowable={requirement.get('max_borrowable')} "
+                f"borrow_limit={requirement.get('borrow_limit')} operable_capacity={requirement.get('operable_capacity')} "
                 f"active_reserved={active_reserved} requested={amount}"
             )
 
@@ -304,6 +315,23 @@ class TaskManager:
         cfg.fund_reservation_asset = asset
         cfg.fund_reservation_amount = amount
         cfg.fund_reservation_remaining = amount
+
+    def _format_reservation_rejection_log(self, cfg: TaskConfig, requirement: dict, exc: FundReservationError) -> str:
+        symbol_interval = getattr(cfg, "symbol_interval", None)
+        symbol = symbol_interval.symbol() if symbol_interval is not None else ""
+        return (
+            "strategy rejected before execution: "
+            "rule=requested <= balance + max_borrowable - active_reserved "
+            f"task_id={getattr(cfg, 'id', None)} "
+            f"symbol={symbol} "
+            f"asset={requirement.get('asset')} "
+            f"required={requirement.get('amount')} "
+            f"balance={requirement.get('balance')} "
+            f"max_borrowable={requirement.get('max_borrowable')} "
+            f"borrow_limit={requirement.get('borrow_limit')} "
+            f"operable_capacity={requirement.get('operable_capacity')} "
+            f"reason={exc}"
+        )
 
     async def _reservation_requirement(self, cfg: TaskConfig) -> dict | None:
         if cfg.ttype != TaskType.TRADER:
@@ -317,7 +345,8 @@ class TaskManager:
             return None
         exchange = await self._exchange_for_task(cfg)
         asset = str(cfg.symbol_interval.sy.quote).upper()
-        capacity = self._reservation_capacity(cfg, exchange, asset)
+        capacity_snapshot = self._reservation_capacity_snapshot(cfg, exchange, asset)
+        capacity = capacity_snapshot["operable_capacity"]
         return {
             "account_key": await self._reservation_account_key(cfg),
             "exchange": getattr(exchange, "name", lambda: "BINANCE")() if callable(getattr(exchange, "name", None)) else "BINANCE",
@@ -327,6 +356,10 @@ class TaskManager:
             "asset": asset,
             "amount": amount,
             "capacity": capacity,
+            "balance": capacity_snapshot["balance"],
+            "max_borrowable": capacity_snapshot["max_borrowable"],
+            "borrow_limit": capacity_snapshot["borrow_limit"],
+            "operable_capacity": capacity_snapshot["operable_capacity"],
             "reason": "live_task_start",
         }
 
@@ -338,20 +371,32 @@ class TaskManager:
         return float(getattr(self.cfg, "cash", 0.0) or 0.0)
 
     def _reservation_capacity(self, cfg: TaskConfig, exchange: BinanceExchange, asset: str) -> float:
+        return float(self._reservation_capacity_snapshot(cfg, exchange, asset)["operable_capacity"])
+
+    def _reservation_capacity_snapshot(self, cfg: TaskConfig, exchange: BinanceExchange, asset: str) -> dict[str, float | None]:
         balance_reader = getattr(exchange, "get_account_balance", None)
         if not callable(balance_reader):
             raise FundReservationError(f"cannot read exchange balance for reservation: task_id={cfg.id} asset={asset}")
         balance = float(balance_reader(asset) or 0.0)
+        snapshot = {
+            "balance": balance,
+            "max_borrowable": 0.0,
+            "borrow_limit": None,
+            "operable_capacity": balance,
+        }
         if not task_requires_short_capability(cfg):
-            return balance
+            return snapshot
         if not bool(getattr(cfg, "live_margin_borrow_precheck", True)):
-            return balance
+            return snapshot
         borrow_reader = getattr(exchange, "get_max_borrowable", None)
         if not callable(borrow_reader):
-            return balance
+            return snapshot
         payload = borrow_reader(asset, symbol=cfg.symbol_interval.symbol())
         borrowable = self._numeric_payload_value(payload, "amount")
-        return balance + float(borrowable or 0.0)
+        snapshot["max_borrowable"] = float(borrowable or 0.0)
+        snapshot["borrow_limit"] = self._numeric_payload_value(payload, "borrowLimit")
+        snapshot["operable_capacity"] = balance + snapshot["max_borrowable"]
+        return snapshot
 
     def _numeric_payload_value(self, payload, key: str) -> float | None:
         value = payload.get(key) if isinstance(payload, dict) else getattr(payload, key, None)
@@ -389,8 +434,6 @@ class TaskManager:
     async def _exchange_for_task(self, cfg: TaskConfig) -> BinanceExchange:
         if cfg.ttype != TaskType.TRADER:
             return self.exchange
-        if not is_real_auto_mode(getattr(cfg, "live_execution_mode", None)):
-            return self.exchange
         target_mode = MarginMode.CROSS_MARGIN if task_requires_short_capability(cfg) else MarginMode.SPOT
         chainer_mode = str((getattr(cfg, "strategy_params", {}) or {}).get("chainer_mode", "LONG_ONLY")).strip().upper()
         requires_short_capability = task_requires_short_capability(cfg)
@@ -400,9 +443,12 @@ class TaskManager:
                 "TaskManager selected execution exchange "
                 f"task_id={cfg.id} user_id={cfg.user_id} strategy={cfg.strategy_name()} "
                 f"chainer_mode={chainer_mode} requires_short_capability={requires_short_capability} "
-                f"target_margin_mode={target_mode.value} actual_margin_mode={getattr(getattr(routed, 'margin_mode', None), 'value', 'unknown')}"
+                f"target_margin_mode={target_mode.value} actual_margin_mode={getattr(getattr(routed, 'margin_mode', None), 'value', 'unknown')} "
+                f"credential_id={getattr(routed, 'credential_id', None)} api_key={getattr(routed, 'masked_api_key', '')}"
             )
             return routed
+        if not is_real_auto_mode(getattr(cfg, "live_execution_mode", None)):
+            return self.exchange
         cached = self._exchange_by_mode.get(target_mode.value)
         if cached is not None:
             self.log.info(
@@ -432,44 +478,39 @@ class TaskManager:
                 "TaskManager selected execution exchange "
                 f"task_id={cfg.id} user_id={getattr(cfg, 'user_id', None)} strategy={cfg.strategy_name()} "
                 f"chainer_mode={chainer_mode} requires_short_capability={requires_short_capability} "
-                f"target_margin_mode={target_mode.value} actual_margin_mode={getattr(getattr(self.exchange, 'margin_mode', None), 'value', 'unknown')} "
+                f"target_margin_mode={target_mode.value} "
+                f"actual_margin_mode={getattr(getattr(self.exchange, 'margin_mode', None), 'value', 'unknown')} "
                 "fallback=true"
             )
             return self.exchange
 
     async def _exchange_for_user_mode(self, user_id: int, mode: MarginMode) -> BinanceExchange:
-        cache_key = f"user:{user_id}:{mode.value}"
-        cached = self._exchange_by_mode.get(cache_key)
-        if cached is not None:
-            return cached
         if not self.db_manager or not getattr(self.db_manager, "exchange_credential", None):
             raise RuntimeError("live trading requires a user exchange credential store")
         service_key = getattr(self.cfg, "secret_key", None)
         if not service_key_available(service_key):
             raise RuntimeError("TRADER_SECRET_KEY is required to start user-owned live trading tasks")
-        credential = await self.db_manager.exchange_credential.get_default(user_id, "BINANCE")
-        if credential is None:
-            raise RuntimeError(f"missing BINANCE API credential for user_id={user_id}")
-        base_cfg = getattr(self.exchange, "cfg", None)
-        if base_cfg is None:
-            raise RuntimeError("default exchange config is required to derive user exchange config")
-        payload = base_cfg.model_dump()
-        payload["api_key"] = decrypt_secret(service_key, credential.encrypted_api_key)
-        payload["api_secret"] = decrypt_secret(service_key, credential.encrypted_api_secret)
-        payload["margin_mode"] = mode
-        routed = BinanceExchange(type(base_cfg)(**payload), self.log)
-        self._exchange_by_mode[cache_key] = routed
-        return routed
+        credential = self.db_manager.exchange_credential.get_default(user_id, "BINANCE")
+        if inspect.isawaitable(credential):
+            credential = await credential
+        context = build_user_exchange_context(
+            base_cfg=base_exchange_config(self.exchange, self.cfg),
+            service_key=service_key,
+            credential=credential,
+            user_id=user_id,
+            margin_mode=mode,
+        )
+        return attach_user_exchange_context(BinanceExchange(context.cfg, self.log), context)
 
     async def _ensure_routed_exchanges(self, taskcs: list[TaskConfig]) -> None:
         for tc in taskcs:
             if tc.ttype != TaskType.TRADER:
                 continue
-            if not is_real_auto_mode(getattr(tc, "live_execution_mode", None)):
-                continue
             target_mode = MarginMode.CROSS_MARGIN if task_requires_short_capability(tc) else MarginMode.SPOT
             if getattr(tc, "user_id", None) is not None:
                 await self._exchange_for_user_mode(tc.user_id, target_mode)
+                continue
+            if not is_real_auto_mode(getattr(tc, "live_execution_mode", None)):
                 continue
             _ = self._exchange_by_mode.get(target_mode.value) or self._exchange_for_mode(target_mode)
 

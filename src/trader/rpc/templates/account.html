@@ -22,6 +22,27 @@
 
         <div class="card mt-4">
             <div class="card-header">
+                <h5 class="card-title mb-0">策略可操作资金</h5>
+            </div>
+            <div class="card-body">
+                {% if accts_info and accts_info.account_error %}
+                <div class="alert alert-danger" role="alert">
+                    {{ accts_info.account_error }}
+                </div>
+                {% endif %}
+                <dl class="row mb-0">
+                    <dt class="col-5">借贷资产</dt>
+                    <dd class="col-7">{{ accts_info.borrow_asset }}</dd>
+                    <dt class="col-5">当前最大可借</dt>
+                    <dd class="col-7">{{ accts_info.borrowable_amount | round(8) }}</dd>
+                    <dt class="col-5">当前可操作</dt>
+                    <dd class="col-7">{{ accts_info.operable_amount | round(8) }}</dd>
+                </dl>
+            </div>
+        </div>
+
+        <div class="card mt-4">
+            <div class="card-header">
                 <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
                     <h5 class="card-title mb-0">账户余额</h5>
                     <div class="form-check form-switch m-0">
@@ -38,6 +59,8 @@
                                 <th scope="col">资产</th>
                                 <th scope="col">可用</th>
                                 <th scope="col">冻结</th>
+                                <th scope="col">可借</th>
+                                <th scope="col">可操作</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -48,11 +71,13 @@
                                     <td>{{ b.asset }}</td>
                                     <td>{{ b.free | round(8) }}</td>
                                     <td>{{ b.locked | round(8) }}</td>
+                                    <td>{{ b.max_borrowable | round(8) }}</td>
+                                    <td>{{ b.operable | round(8) }}</td>
                                 </tr>
                                 {% endfor %}
                             {% else %}
                                 <tr>
-                                    <td colspan="3" class="text-center text-muted">暂无账户余额数据</td>
+                                    <td colspan="5" class="text-center text-muted">暂无账户余额数据</td>
                                 </tr>
                             {% endif %}
                         </tbody>
@@ -60,6 +85,42 @@
                 </div>
                 {% if accts_info and accts_info.balances %}
                 <p class="text-muted small mb-0 mt-3">默认仅展示可用资金大于 0 的资产，打开开关可查看全部资产。</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">锁定来源</h5>
+            </div>
+            <div class="card-body">
+                {% if accts_info and accts_info.locked_reasons %}
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped table-bordered align-middle mb-0 bg-white text-dark">
+                        <thead class="table-light">
+                            <tr>
+                                <th scope="col">交易对</th>
+                                <th scope="col">方向</th>
+                                <th scope="col">数量</th>
+                                <th scope="col">订单号</th>
+                                <th scope="col">类型</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for r in accts_info.locked_reasons %}
+                            <tr>
+                                <td>{{ r.symbol }}</td>
+                                <td>{{ r.side }}</td>
+                                <td>{{ r.quantity | round(8) }}</td>
+                                <td>{{ r.order_id }}</td>
+                                <td>{{ r.order_type }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted mb-0">暂无可展示的锁定来源。</p>
                 {% endif %}
             </div>
         </div>

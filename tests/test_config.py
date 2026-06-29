@@ -253,6 +253,36 @@ def test_logger_writes_to_configured_log_file_path(tmp_path, capsys):
     assert "configured file path smoke" in captured.err
 
 
+def test_logger_highlights_terminal_errors_without_coloring_file_logs(tmp_path, capsys):
+    log_path = tmp_path / "logs" / "trader.log"
+    cfg = Config(log_file=str(log_path), log_level="INFO")
+
+    root_logger = logging.getLogger()
+    original_handlers = list(root_logger.handlers)
+    for handler in original_handlers:
+        root_logger.removeHandler(handler)
+    try:
+        logger = Logger(cfg)
+        logger.error("insufficient reserved capacity")
+        for handler in logging.getLogger().handlers:
+            handler.flush()
+    finally:
+        for handler in list(logging.getLogger().handlers):
+            handler.close()
+            logging.getLogger().removeHandler(handler)
+        for handler in original_handlers:
+            logging.getLogger().addHandler(handler)
+
+    captured = capsys.readouterr()
+    file_text = log_path.read_text(encoding="utf-8")
+
+    assert "\x1b[1;31m" in captured.err
+    assert "\x1b[0m" in captured.err
+    assert "[ERROR:trader] insufficient reserved capacity" in captured.err
+    assert "\x1b[" not in file_text
+    assert "[ERROR:trader] insufficient reserved capacity" in file_text
+
+
 def test_logger_keeps_noisy_third_party_debug_logs_quiet(tmp_path):
     log_path = tmp_path / "logs" / "trader.log"
     cfg = Config(log_file=str(log_path), log_level="DEBUG")
