@@ -45,7 +45,9 @@ class SuperTrendQQEMODStrategy(BaseStrategy):
         ("qqe_rsi_length_secondary", 10),
         # Risk management
         ("risk_reward_ratio", 2.0),
-        ("position_percent", 100),  # Position size as percentage of available cash (30% default)
+        # Override the shared Chainer sizing ratio for this strategy template.
+        # 100 means the strategy may size up to the full available cash budget.
+        ("chainer_position_percent", 100),
         # Debug mode
         ("debug", True),
     )

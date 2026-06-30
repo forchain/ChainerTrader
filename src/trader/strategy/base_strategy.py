@@ -40,22 +40,37 @@ class BaseStrategy(bt.Strategy):
         ("log", None),
         ("position", 0),
         ("trader", False),
-        ("position_percent", 100),  # Position size as percentage of available cash (100 = full position)
-        ("position_price_buffer", _DEFAULT_POSITION_PRICE_BUFFER),  # Safety buffer for sizing (next-open gap)
-        # Chainer Framework v3: mode-based signal processing
-        # - LONG_ONLY: long signal opens long, short signal closes long
-        # - SHORT_ONLY: short signal opens short, long signal closes short
-        # - BOTH: long signal opens long, short signal opens short, exit via stop/breakeven/TP
-        ("chainer_mode", "LONG_ONLY"),  # LONG_ONLY, SHORT_ONLY, BOTH
-        # Entry/Exit engine defaults (can be overridden per call)
+        # Max sizing ratio for this strategy instance.
+        # 100 means use all available cash, 50 means use half, and so on.
+        ("chainer_position_percent", 100),
+        # Sizing guard used when no explicit order price is available.
+        # The current close is inflated by this buffer so next-open gap risk
+        # does not make the calculated size too aggressive.
+        ("chainer_position_price_buffer", _DEFAULT_POSITION_PRICE_BUFFER),
+        # Chainer signal routing mode.
+        # LONG_ONLY: long opens long, short closes long.
+        # SHORT_ONLY: short opens short, long closes short.
+        # BOTH: long opens long and short opens short independently.
+        ("chainer_mode", "LONG_ONLY"),
+        # ATR lookback used when the strategy derives stop prices from ATR.
         ("chainer_atr_period", 14),
+        # ATR multiplier used by the framework stop-loss engine.
+        # 0 disables ATR-based stop placement.
         ("chainer_stoploss_atr_mult", 0.0),
-        ("chainer_need_confirm", True),  # Require confirmation for both entry and exit
+        # Require confirmation before sending entry and exit orders.
+        # When enabled, the strategy waits for the configured confirmation bar logic.
+        ("chainer_need_confirm", True),
+        # Enable breakeven stop movement after the trade has enough room.
         ("chainer_enable_breakeven", True),
+        # Risk/reward multiple used when the strategy places take-profit orders.
+        # 0 disables take-profit targeting.
         ("chainer_risk_reward_ratio", 0.0),
+        # Sink for live operation events emitted by the framework.
         ("live_operation_sink", None),
-        # When equity falls below this percentage of initial account value, new entries are disabled.
-        # Existing positions continue to be managed (stoploss/breakeven/take-profit).
+        # Minimum equity threshold, expressed as a percentage of the initial
+        # equity captured at strategy start. When current equity falls below
+        # this threshold, new entries are blocked; existing positions keep
+        # being managed for exit/risk control.
         ("chainer_min_equity_percent", 0.0),
     )
 
@@ -1009,7 +1024,7 @@ class BaseStrategy(bt.Strategy):
 
     def _calculate_position_size(self, price=None):
         """
-        Calculate position size based on position_percent parameter.
+        Calculate position size based on chainer_position_percent parameter.
         
         Args:
             price: Price to use for calculation. If None, uses current close price.
@@ -1030,8 +1045,9 @@ class BaseStrategy(bt.Strategy):
         commission_info = self.broker.getcommissioninfo(self.data)
         commission_rate = commission_info.p.commission
         
-        # Calculate available cash based on position_percent
-        available_cash = cash * (self.params.position_percent / 100.0)
+        # Convert the configured position percentage into the cash budget
+        # used for sizing this order.
+        available_cash = cash * (self.params.chainer_position_percent / 100.0)
         
         # Calculate position size considering commission
         # Formula: size = available_cash / (price * (1 + commission_rate))
@@ -1084,14 +1100,16 @@ class BaseStrategy(bt.Strategy):
         **kwargs,
     ):
         """
-        Override buy method to automatically apply position_percent when size is not specified.
+        Override buy method to automatically apply chainer_position_percent when size is not specified.
         
         If size is provided, uses it directly (maintains backward compatibility).
-        If size is None, calculates it based on position_percent parameter.
+        If size is None, calculates it based on chainer_position_percent parameter.
         """
         if size is None:
             if price is None:
-                buffer_pct = float(getattr(self.params, "position_price_buffer", _DEFAULT_POSITION_PRICE_BUFFER))
+                buffer_pct = float(
+                    getattr(self.params, "chainer_position_price_buffer", _DEFAULT_POSITION_PRICE_BUFFER)
+                )
                 est_price = float(self.data.close[0]) * (1.0 + max(0.0, buffer_pct))
                 size = self._calculate_position_size(price=est_price)
             else:
@@ -1133,14 +1151,16 @@ class BaseStrategy(bt.Strategy):
         **kwargs,
     ):
         """
-        Override sell method to automatically apply position_percent when size is not specified.
+        Override sell method to automatically apply chainer_position_percent when size is not specified.
         
         If size is provided, uses it directly (maintains backward compatibility).
-        If size is None, calculates it based on position_percent parameter.
+        If size is None, calculates it based on chainer_position_percent parameter.
         """
         if size is None:
             if price is None:
-                buffer_pct = float(getattr(self.params, "position_price_buffer", _DEFAULT_POSITION_PRICE_BUFFER))
+                buffer_pct = float(
+                    getattr(self.params, "chainer_position_price_buffer", _DEFAULT_POSITION_PRICE_BUFFER)
+                )
                 est_price = float(self.data.close[0]) * (1.0 + max(0.0, buffer_pct))
                 size = self._calculate_position_size(price=est_price)
             else:

@@ -24,7 +24,12 @@ def build_strategy_kwargs(cfg: Config, log: Logger, position: float, trader: boo
         "trader": trader,
     }
     if strategy_params:
-        kwargs.update(strategy_params)
+        normalized = dict(strategy_params)
+        if "position_percent" in normalized and "chainer_position_percent" not in normalized:
+            normalized["chainer_position_percent"] = normalized.pop("position_percent")
+        if "position_price_buffer" in normalized and "chainer_position_price_buffer" not in normalized:
+            normalized["chainer_position_price_buffer"] = normalized.pop("position_price_buffer")
+        kwargs.update(normalized)
     return kwargs
 
 
