@@ -39,7 +39,7 @@ from trader.task.task_config import TaskConfig, parse_task_config
 from trader.task.task_type import TaskType
 from trader.task.trader_task import TraderTask
 from trader.task.update_klines_task import UpdateKlinesTask
-from trader.utils.symbol_interval import SymbolInterval
+from trader.utils.symbol_interval import Symbol, SymbolInterval
 from trader.utils.task_state import TaskState, TaskStateType
 
 
@@ -130,6 +130,7 @@ class TaskManager:
         self.log.info(f"Try to add tasks:{len(taskcs)}")
         try:
             await self._ensure_routed_exchanges(taskcs)
+            await self._cancel_startup_open_orders(taskcs)
             await self._reserve_task_funds(taskcs)
 
             async_tasks = []
@@ -149,7 +150,7 @@ class TaskManager:
             for taskc in taskcs:
                 if taskc.ttype == TaskType.BACK_TRADER:
                     continue
-                async_tasks.append(asyncio.create_task(self.add_task(taskc, queue)))
+                async_tasks.append(asyncio.create_task(self._call_add_task_after_startup_cleanup(taskc, queue)))
 
             self.log.info(f"All tasks are created to running:{len(async_tasks)}")
             await asyncio.gather(*async_tasks)
@@ -225,15 +226,27 @@ class TaskManager:
     def _task_config_json(self, cfg: TaskConfig) -> str:
         return BaseTask(cfg, self.cfg, self.log, self.db_manager).ts.config_json
 
-    async def add_task(self, cfg, queue: Queue):
+    def _call_add_task_after_startup_cleanup(self, cfg, queue: Queue):
+        add_task = self.add_task
+        try:
+            params = inspect.signature(add_task).parameters
+        except (TypeError, ValueError):
+            return add_task(cfg, queue, cancel_startup_orders=False)
+        if "cancel_startup_orders" in params or any(param.kind == param.VAR_KEYWORD for param in params.values()):
+            return add_task(cfg, queue, cancel_startup_orders=False)
+        return add_task(cfg, queue)
+
+    async def add_task(self, cfg, queue: Queue, *, cancel_startup_orders: bool = True):
         task_exchange = await self._exchange_for_task(cfg)
         task = self._build_task(cfg, task_exchange)
 
         if task is None:
             self.log.error(f"Can't add task:{cfg.to_dict()}")
             return
+        if cancel_startup_orders:
+            self._cancel_task_start_open_orders(cfg, task_exchange, reason="task_start")
         self.tasks[task.id()] = task
-
+        self._bind_order_context(cfg, task_exchange)
         await task.start(queue)
 
     async def recover_task(self, cfg: TaskConfig, queue: Queue):
@@ -247,6 +260,9 @@ class TaskManager:
             return
 
         self.tasks[task.id()] = task
+        # Recovery path: the task's exchange orders are already live and valid.
+        # Do NOT cancel them — just rebind the order context for new orders.
+        self._bind_order_context(cfg, task_exchange)
         runtime = asyncio.create_task(task.start(queue))
         self.async_tasks.append(runtime)
 
@@ -954,6 +970,16 @@ class TaskManager:
             if user_id is not None and getattr(task.ts, "user_id", None) != user_id:
                 return False
             task.stop()
+            close_symbols = self._configured_cleanup_symbols()
+            si = getattr(task.tcfg, "symbol_interval", None)
+            if si is not None:
+                close_symbols.append(si.sy)
+            self._cancel_open_orders_for_symbols(
+                close_symbols,
+                getattr(task, "exchange", None),
+                reason="task_closed",
+                task_id=getattr(task.tcfg, "id", id),
+            )
             await self._persist_task_states([task.ts])
             await self._release_task_funds(id, reason="task_closed")
             return True
@@ -1011,3 +1037,162 @@ class TaskManager:
                 ret.append(ts)
 
         return ret
+
+    async def _cancel_startup_open_orders(self, taskcs: list[TaskConfig]) -> None:
+        seen: set[tuple[int, str]] = set()
+        for cfg in taskcs:
+            if getattr(cfg, "ttype", None) != TaskType.TRADER:
+                continue
+            task_exchange = await self._exchange_for_task(cfg)
+            self._cancel_task_start_open_orders(cfg, task_exchange, reason="task_start", seen=seen)
+
+    def _cancel_task_start_open_orders(
+        self,
+        cfg,
+        exchange,
+        *,
+        reason: str,
+        seen: set[tuple[int, str]] | None = None,
+    ) -> None:
+        self._cancel_open_orders_for_symbols(
+            self._configured_cleanup_symbols(),
+            exchange,
+            reason=reason,
+            task_id=getattr(cfg, "id", None),
+            seen=seen,
+        )
+        for task in self._running_tasks_for_cleanup(cfg):
+            si = getattr(getattr(task, "tcfg", None), "symbol_interval", None)
+            if si is None:
+                continue
+            task_exchange = getattr(task, "exchange", None) or exchange
+            self._cancel_open_orders_for_symbols(
+                [si.sy],
+                task_exchange,
+                reason=reason,
+                task_id=getattr(cfg, "id", None),
+                seen=seen,
+            )
+
+    def _running_tasks_for_cleanup(self, cfg) -> list[BaseTask]:
+        tasks: list[BaseTask] = []
+        for task in self.tasks.values():
+            if not self._task_is_running(task):
+                continue
+            if not self._same_cleanup_account(cfg, task):
+                continue
+            tasks.append(task)
+        return tasks
+
+    def _task_is_running(self, task) -> bool:
+        state = getattr(task, "ts", None)
+        is_running = getattr(state, "is_running", None)
+        if callable(is_running):
+            return bool(is_running())
+        return True
+
+    def _same_cleanup_account(self, cfg, task) -> bool:
+        running_cfg = getattr(task, "tcfg", None)
+        cfg_user_id = getattr(cfg, "user_id", None)
+        running_user_id = getattr(running_cfg, "user_id", None)
+        if cfg_user_id is not None or running_user_id is not None:
+            return cfg_user_id == running_user_id
+        return True
+
+    def _cancel_all_open_orders(self, cfg, exchange, *, reason: str) -> None:
+        """Cancel all open orders for the task's symbol on the exchange.
+
+        One live task runs per account at any time, so every open order on the
+        exchange belongs to this task. Failures are logged but never propagated.
+        """
+        si = getattr(cfg, "symbol_interval", None)
+        if si is None:
+            return
+        self._cancel_open_orders_for_symbols([si.sy], exchange, reason=reason, task_id=getattr(cfg, "id", None))
+
+    def _cancel_open_orders_for_symbols(
+        self,
+        symbols,
+        exchange,
+        *,
+        reason: str,
+        task_id=None,
+        seen: set[tuple[int, str]] | None = None,
+    ) -> None:
+        cancel = getattr(exchange, "cancel_all_open_orders", None)
+        if not callable(cancel):
+            return
+        for symbol in self._dedupe_symbols(symbols):
+            symbol_name = symbol.name()
+            if not symbol_name:
+                continue
+            key = (id(exchange), symbol_name)
+            if seen is not None:
+                if key in seen:
+                    continue
+                seen.add(key)
+            try:
+                self.log.info(f"cancel_all_open_orders: reason={reason} task_id={task_id} symbol={symbol_name}")
+                cancel(symbol)
+            except Exception as exc:
+                self.log.error(f"cancel_all_open_orders failed: reason={reason} task_id={task_id} symbol={symbol_name} error={exc}")
+
+    def _configured_cleanup_symbols(self) -> list[Symbol]:
+        raw = getattr(self.cfg, "live_order_cleanup_symbols", None)
+        if raw is None:
+            return []
+        if isinstance(raw, str):
+            values = [item for item in raw.split(",")]
+        elif isinstance(raw, (list, tuple, set)):
+            values = list(raw)
+        else:
+            return []
+        return self._symbols_from_values(values)
+
+    def _symbols_from_values(self, values) -> list[Symbol]:
+        return self._dedupe_symbols(self._symbol_from_value(value) for value in values)
+
+    def _dedupe_symbols(self, symbols) -> list[Symbol]:
+        ret: list[Symbol] = []
+        seen: set[str] = set()
+        for symbol in symbols or []:
+            if symbol is None:
+                continue
+            normalized = self._symbol_from_value(symbol)
+            if normalized is None or normalized.is_empty():
+                continue
+            name = normalized.name()
+            if name in seen:
+                continue
+            seen.add(name)
+            ret.append(normalized)
+        return ret
+
+    def _symbol_from_value(self, value) -> Symbol | None:
+        if isinstance(value, Symbol):
+            return value
+        sy = getattr(value, "sy", None)
+        if isinstance(sy, Symbol):
+            return sy
+        text = str(value or "").strip().upper()
+        if not text:
+            return None
+        text = text.replace("/", "-").replace("_", "-")
+        if "-" in text:
+            return Symbol(text)
+        for quote in ("FDUSD", "USDT", "USDC", "BUSD", "TUSD", "USDP", "DAI", "BTC", "ETH", "BNB", "EUR", "TRY", "USD"):
+            if text.endswith(quote) and len(text) > len(quote):
+                return Symbol(f"{text[:-len(quote)]}-{quote}")
+        return None
+
+    def _bind_order_context(self, cfg, exchange) -> None:
+        """Propagate task_id / strategy_name to the ccxt driver so orders carry clientOrderId."""
+        bind = getattr(exchange, "bind_order_context", None)
+        if callable(bind):
+            bind(task_id=getattr(cfg, "id", None), strategy_name=cfg.strategy_name() if callable(getattr(cfg, "strategy_name", None)) else None)
+            return
+        # Reach into the nested ccxt_driver if the exchange itself doesn't expose the method.
+        driver = getattr(exchange, "ccxt_driver", None)
+        bind = getattr(driver, "bind_order_context", None)
+        if callable(bind):
+            bind(task_id=getattr(cfg, "id", None), strategy_name=cfg.strategy_name() if callable(getattr(cfg, "strategy_name", None)) else None)

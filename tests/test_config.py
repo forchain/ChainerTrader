@@ -189,6 +189,28 @@ def test_live_warmup_candles_defaults_to_500():
     assert cfg.live_warmup_candles == 500
 
 
+def test_live_order_cleanup_symbols_default_empty():
+    cfg = Config()
+    assert cfg.live_order_cleanup_symbols == []
+
+
+def test_new_and_env_reads_live_order_cleanup_symbols_from_env(monkeypatch):
+    monkeypatch.setenv("TRADER_LIVE_ORDER_CLEANUP_SYMBOLS", "btc-usdt, ethusdt, SOL/USDT")
+
+    cfg = new_and_env()
+
+    assert cfg.live_order_cleanup_symbols == ["BTC-USDT", "ETHUSDT", "SOL/USDT"]
+
+
+def test_new_and_env_cli_live_order_cleanup_symbols_overrides_env(monkeypatch):
+    monkeypatch.setenv("TRADER_LIVE_ORDER_CLEANUP_SYMBOLS", "BTC-USDT")
+    ns = argparse.Namespace(live_order_cleanup_symbols="sol-usdt,bnbusdt")
+
+    cfg = new_and_env(ns)
+
+    assert cfg.live_order_cleanup_symbols == ["SOL-USDT", "BNBUSDT"]
+
+
 def test_new_and_env_reads_live_warmup_candles_from_env(monkeypatch):
     monkeypatch.setenv("TRADER_LIVE_WARMUP_CANDLES", "321")
     cfg = new_and_env()

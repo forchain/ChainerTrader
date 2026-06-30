@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import itertools
 import os
 from datetime import datetime
 from decimal import ROUND_DOWN, Decimal
@@ -37,6 +38,31 @@ class CcxtExchangeDriver:
         self._client_factory = client_factory
         self.client = client or self._build_client()
         self._server_time: float | None = None
+        self._order_seq = itertools.count(1)
+        self._order_context: dict[str, Any] = {}
+
+    def bind_order_context(self, task_id: int | None = None, strategy_name: str | None = None) -> None:
+        """Attach task/strategy metadata so that subsequent orders carry a clientOrderId.
+
+        The id is encoded as ``ct{task_id}s{abbr}_{seq}`` (≤ 36 chars, Binance limit).
+        ``abbr`` is the first 8 non-space characters of the strategy name.
+        """
+        self._order_context = {
+            "task_id": task_id,
+            "strategy_name": strategy_name,
+        }
+        self.log.info(
+            f"bind_order_context: task_id={task_id} strategy_name={strategy_name}"
+        )
+
+    def _next_client_order_id(self) -> str | None:
+        task_id = self._order_context.get("task_id")
+        strategy_name = self._order_context.get("strategy_name") or ""
+        if task_id is None:
+            return None
+        abbr = "".join(c for c in strategy_name if not c.isspace())[:8]
+        seq = next(self._order_seq)
+        return f"ct{task_id}s{abbr}_{seq:04d}"
 
     def name(self) -> str:
         return self.cfg.ty.name if hasattr(self.cfg.ty, "name") else ExchangeType.BINANCE.name
@@ -203,13 +229,22 @@ class CcxtExchangeDriver:
         return None
 
     def new_order(self, symbol: Symbol, op: OperateType, quantity: float = 0):
+        extra: dict[str, Any] = {}
+        if op == OperateType.CLOSE:
+            extra["sideEffectType"] = "AUTO_REPAY"
+        client_order_id = self._next_client_order_id()
+        if client_order_id is not None:
+            extra["clientOrderId"] = client_order_id
+            self.log.info(
+                f"new_order: clientOrderId={client_order_id} symbol={symbol.name()} op={op.name}"
+            )
         return self.client.create_order(
             self._ccxt_symbol(symbol.name()),
             "market",
             self._order_side(op),
             self._normalize_amount(symbol, quantity),
             None,
-            self._order_params({"sideEffectType": "AUTO_REPAY"} if op == OperateType.CLOSE else None),
+            self._order_params(extra or None),
         )
 
     def new_stop_order(self, symbol: Symbol, op: OperateType, quantity: float, stop_price: float):
@@ -573,13 +608,20 @@ class CcxtExchangeDriver:
         return normalized
 
     def _create_trigger_order(self, symbol: Symbol, op: OperateType, quantity: float, trigger_param: str, trigger_price: float):
+        extra: dict[str, Any] = {trigger_param: self._normalize_price(symbol, trigger_price)}
+        client_order_id = self._next_client_order_id()
+        if client_order_id is not None:
+            extra["clientOrderId"] = client_order_id
+            self.log.info(
+                f"_create_trigger_order: clientOrderId={client_order_id} symbol={symbol.name()} op={op.name} trigger_param={trigger_param}"
+            )
         return self.client.create_order(
             self._ccxt_symbol(symbol.name()),
             "market",
             self._order_side(op),
             self._normalize_amount(symbol, quantity),
             None,
-            self._order_params({trigger_param: self._normalize_price(symbol, trigger_price)}),
+            self._order_params(extra),
         )
 
     def _market_for_symbol(self, symbol: Symbol):

@@ -28,6 +28,7 @@ TRADER_AUTH_PASSWORD = "TRADER_AUTH_PASSWORD"
 TRADER_PROTECTED_PATHS = "TRADER_PROTECTED_PATHS"
 TRADER_MIN_LIVE_TRADE_NOTIONAL = "TRADER_MIN_LIVE_TRADE_NOTIONAL"
 TRADER_LIVE_WARMUP_CANDLES = "TRADER_LIVE_WARMUP_CANDLES"
+TRADER_LIVE_ORDER_CLEANUP_SYMBOLS = "TRADER_LIVE_ORDER_CLEANUP_SYMBOLS"
 TRADER_SECRET_KEY = "TRADER_SECRET_KEY"
 TRADER_SESSION_COOKIE_SECURE = "TRADER_SESSION_COOKIE_SECURE"
 TRADER_SESSION_TTL_HOURS = "TRADER_SESSION_TTL_HOURS"
@@ -45,6 +46,14 @@ def parse_log_file_config(value: Any) -> bool | str:
     if normalized in {"false", "0", "no", "off", "none", "null"}:
         return False
     return raw
+
+
+def parse_string_list_config(value: Any) -> list[str]:
+    if value is None or value == "":
+        return []
+    if isinstance(value, str):
+        return [item.strip().upper() for item in value.split(",") if item.strip()]
+    return [str(item).strip().upper() for item in value if str(item).strip()]
 
 
 class Config:
@@ -82,6 +91,7 @@ class Config:
         optimization_worker_cpu_efficiency_threshold: float = 0.1,
         min_live_trade_notional: float = 11.0,
         live_warmup_candles: int = 500,
+        live_order_cleanup_symbols=None,
         **kwargs,
     ):
         self.commission = commission
@@ -117,6 +127,7 @@ class Config:
         self.optimization_worker_cpu_efficiency_threshold = optimization_worker_cpu_efficiency_threshold
         self.min_live_trade_notional = float(min_live_trade_notional)
         self.live_warmup_candles = int(live_warmup_candles)
+        self.live_order_cleanup_symbols = parse_string_list_config(live_order_cleanup_symbols)
 
     def export_env(self):
         os.environ[TRADER_COMMISSION] = str(self.commission)
@@ -150,6 +161,8 @@ class Config:
         os.environ[TRADER_SESSION_TTL_HOURS] = str(self.session_ttl_hours)
         os.environ[TRADER_MIN_LIVE_TRADE_NOTIONAL] = str(self.min_live_trade_notional)
         os.environ[TRADER_LIVE_WARMUP_CANDLES] = str(self.live_warmup_candles)
+        if self.live_order_cleanup_symbols:
+            os.environ[TRADER_LIVE_ORDER_CLEANUP_SYMBOLS] = ",".join(self.live_order_cleanup_symbols)
 
     def to_dict(self):
         return {
@@ -185,6 +198,7 @@ class Config:
             "optimization_worker_cpu_efficiency_threshold": self.optimization_worker_cpu_efficiency_threshold,
             "min_live_trade_notional": self.min_live_trade_notional,
             "live_warmup_candles": self.live_warmup_candles,
+            "live_order_cleanup_symbols": self.live_order_cleanup_symbols,
         }
 
     def safe_to_dict(self):
@@ -206,6 +220,7 @@ class Config:
             "session_ttl_hours": self.session_ttl_hours,
             "min_live_trade_notional": self.min_live_trade_notional,
             "live_warmup_candles": self.live_warmup_candles,
+            "live_order_cleanup_symbols": self.live_order_cleanup_symbols,
         }
 
         # Mask sensitive fields
@@ -272,6 +287,7 @@ def new_and_env(cli: Namespace | None = None) -> Config:
     session_ttl_hours = 24
     min_live_trade_notional = 11.0
     live_warmup_candles = 500
+    live_order_cleanup_symbols: list[str] = []
 
     commission = float(os.environ.get(TRADER_COMMISSION, commission))
     period = int(os.environ.get(TRADER_PERIOD, period))
@@ -295,6 +311,7 @@ def new_and_env(cli: Namespace | None = None) -> Config:
     session_ttl_hours = int(os.environ.get(TRADER_SESSION_TTL_HOURS, session_ttl_hours))
     min_live_trade_notional = float(os.environ.get(TRADER_MIN_LIVE_TRADE_NOTIONAL, min_live_trade_notional))
     live_warmup_candles = int(os.environ.get(TRADER_LIVE_WARMUP_CANDLES, live_warmup_candles))
+    live_order_cleanup_symbols = parse_string_list_config(os.environ.get(TRADER_LIVE_ORDER_CLEANUP_SYMBOLS, ""))
 
     protected_paths_env = os.environ.get(TRADER_PROTECTED_PATHS, "")
     if protected_paths_env:
@@ -350,6 +367,8 @@ def new_and_env(cli: Namespace | None = None) -> Config:
             min_live_trade_notional = float(a["min_live_trade_notional"])
         if "live_warmup_candles" in a:
             live_warmup_candles = int(a["live_warmup_candles"])
+        if "live_order_cleanup_symbols" in a:
+            live_order_cleanup_symbols = parse_string_list_config(a["live_order_cleanup_symbols"])
 
     return Config(
         commission=commission,
@@ -375,4 +394,5 @@ def new_and_env(cli: Namespace | None = None) -> Config:
         session_ttl_hours=session_ttl_hours,
         min_live_trade_notional=min_live_trade_notional,
         live_warmup_candles=live_warmup_candles,
+        live_order_cleanup_symbols=live_order_cleanup_symbols,
     )

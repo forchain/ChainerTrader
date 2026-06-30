@@ -247,6 +247,32 @@ def test_account_page_shows_account_read_error(rpc_test_client, monkeypatch):
     assert "Invalid API-key" in response.text
 
 
+def test_account_page_tolerates_legacy_account_info_without_margin_fields(rpc_test_client, monkeypatch):
+    user = type("User", (), {"id": 1, "username": "trader", "role": "user"})()
+    monkeypatch.setattr("trader.rpc.app.require_user", AsyncMock(return_value=user))
+    monkeypatch.setattr(
+        "trader.rpc.app._user_accounts_info",
+        lambda _cfg, _rpc_app, _user, _credentials: SimpleNamespace(
+            total=0,
+            balances=[],
+            locked_reasons=[],
+            account_error="交易所账户读取失败: Invalid API-key",
+        ),
+    )
+    rpc_stub = SimpleNamespace(
+        db_manager=SimpleNamespace(exchange_credential=SimpleNamespace(list_by_user=AsyncMock(return_value=[]))),
+        exchange=None,
+        logger=None,
+    )
+    monkeypatch.setattr("trader.rpc.app._require_rpc_app", lambda _request: rpc_stub)
+
+    response = rpc_test_client.get("/account")
+
+    assert response.status_code == 200
+    assert "交易所账户读取失败" in response.text
+    assert "Invalid API-key" in response.text
+
+
 def test_account_page_shows_existing_credential_summary_and_reset_button(rpc_test_client, monkeypatch):
     monkeypatch.setattr(
         "trader.rpc.app.require_user",

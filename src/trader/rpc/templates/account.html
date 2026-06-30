@@ -32,11 +32,11 @@
                 {% endif %}
                 <dl class="row mb-0">
                     <dt class="col-5">借贷资产</dt>
-                    <dd class="col-7">{{ accts_info.borrow_asset }}</dd>
+                    <dd class="col-7">{{ accts_info.borrow_asset | default('', true) }}</dd>
                     <dt class="col-5">当前最大可借</dt>
-                    <dd class="col-7">{{ accts_info.borrowable_amount | round(8) }}</dd>
+                    <dd class="col-7">{{ accts_info.borrowable_amount | default(0, true) | round(8) }}</dd>
                     <dt class="col-5">当前可操作</dt>
-                    <dd class="col-7">{{ accts_info.operable_amount | round(8) }}</dd>
+                    <dd class="col-7">{{ accts_info.operable_amount | default(0, true) | round(8) }}</dd>
                 </dl>
             </div>
         </div>
@@ -71,8 +71,8 @@
                                     <td>{{ b.asset }}</td>
                                     <td>{{ b.free | round(8) }}</td>
                                     <td>{{ b.locked | round(8) }}</td>
-                                    <td>{{ b.max_borrowable | round(8) }}</td>
-                                    <td>{{ b.operable | round(8) }}</td>
+                                    <td>{{ b.max_borrowable | default(0, true) | round(8) }}</td>
+                                    <td>{{ b.operable | default(0, true) | round(8) }}</td>
                                 </tr>
                                 {% endfor %}
                             {% else %}

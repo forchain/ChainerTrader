@@ -158,6 +158,11 @@ class BinanceExchange:
         # if self.spot_ws_client:
         #    self.spot_ws_client.stop()
 
+    def bind_order_context(self, task_id: int | None = None, strategy_name: str | None = None) -> None:
+        """Propagate task/strategy metadata to the underlying ccxt driver for clientOrderId tagging."""
+        if self.ccxt_driver is not None:
+            self.ccxt_driver.bind_order_context(task_id=task_id, strategy_name=strategy_name)
+
     def server_datetime(self):
         if self._use_ccxt():
             return self.ccxt_driver.server_datetime()
