@@ -22,6 +22,7 @@ from trader.exchange.user_credentials import (
     base_exchange_config,
     build_user_exchange_context,
 )
+from trader.execution.models import ExecutionStatus
 from trader.live.auto_execution import is_real_auto_mode
 from trader.statistics.stat import BackTraderStat
 from trader.strategy.trader_result import parse_trader_result
@@ -131,7 +132,7 @@ class TaskManager:
         try:
             await self._ensure_routed_exchanges(taskcs)
             await self._cancel_startup_open_orders(taskcs)
-            await self._reserve_task_funds(taskcs)
+            await self._preflight_live_task_balances(taskcs)
 
             async_tasks = []
             bttaskcs = []
@@ -250,13 +251,12 @@ class TaskManager:
         await task.start(queue)
 
     async def recover_task(self, cfg: TaskConfig, queue: Queue):
-        await self._reserve_task_funds([cfg])
+        await self._restore_recovered_task_runtime_budget(cfg)
         task_exchange = await self._exchange_for_task(cfg)
         task = self._build_task(cfg, task_exchange)
 
         if task is None:
             self.log.error(f"Can't recover task:{cfg.to_dict()}")
-            await self._release_task_funds(cfg.id, reason="recovery_build_failed")
             return
 
         self.tasks[task.id()] = task
@@ -271,75 +271,104 @@ class TaskManager:
                 try:
                     await runtime
                 except Exception:
-                    await self._release_task_funds(cfg.id, reason="recovery_failed")
                     raise
-                await self._release_task_funds(cfg.id, reason="recovery_done")
                 return
             if task.ts.is_running():
                 return
             await asyncio.sleep(0)
 
-    async def _reserve_task_funds(self, taskcs: list[TaskConfig]) -> None:
-        store = getattr(self.db_manager, "account_fund_reservation", None)
-        reserved_task_ids: list[int] = []
-        ephemeral_reserved: dict[tuple[str, str], float] = {}
-        try:
-            for cfg in taskcs:
-                requirement = await self._reservation_requirement(cfg)
-                if requirement is None:
-                    continue
-                try:
-                    if store is None:
-                        self._reserve_task_funds_in_memory(cfg, requirement, ephemeral_reserved)
-                        continue
-                    result = await store.reserve(**requirement)
-                except FundReservationError as exc:
-                    self.log.error(self._format_reservation_rejection_log(cfg, requirement, exc))
-                    raise
-                cfg.fund_reservation_account_key = requirement["account_key"]
-                cfg.fund_reservation_asset = requirement["asset"]
-                cfg.fund_reservation_amount = float(result.reservation.reserved_amount)
-                cfg.fund_reservation_remaining = float(result.reservation.remaining_amount)
-                reserved_task_ids.append(cfg.id)
-        except Exception:
-            for task_id in reserved_task_ids:
-                await self._release_task_funds(task_id, reason="reservation_rollback")
-            raise
+    async def _preflight_live_task_balances(self, taskcs: list[TaskConfig]) -> None:
+        for cfg in taskcs:
+            requirement = await self._reservation_requirement(cfg)
+            if requirement is None:
+                continue
+            amount = float(requirement["amount"])
+            capacity = float(requirement["capacity"])
+            if amount > capacity + 1e-12:
+                exc = FundReservationError(
+                    "insufficient live task balance: "
+                    f"task_id={getattr(cfg, 'id', None)} "
+                    f"account_key={requirement.get('account_key')} "
+                    f"asset={requirement.get('asset')} "
+                    f"capacity={capacity} "
+                    f"balance={requirement.get('balance')} "
+                    f"max_borrowable={requirement.get('max_borrowable')} "
+                    f"borrow_limit={requirement.get('borrow_limit')} "
+                    f"operable_capacity={requirement.get('operable_capacity')} "
+                    f"requested={amount}"
+                )
+                self.log.error(self._format_reservation_rejection_log(cfg, requirement, exc))
+                raise exc
+            self._set_task_runtime_budget(cfg, requirement)
 
-    def _reserve_task_funds_in_memory(
-        self,
-        cfg: TaskConfig,
-        requirement: dict,
-        reserved: dict[tuple[str, str], float],
-    ) -> None:
-        account_key = str(requirement["account_key"])
-        asset = str(requirement["asset"]).upper()
+    def _set_task_runtime_budget(self, cfg: TaskConfig, requirement: dict, *, remaining: float | None = None) -> None:
         amount = float(requirement["amount"])
-        capacity = float(requirement["capacity"])
-        active_reserved = float(reserved.get((account_key, asset), 0.0))
-        if active_reserved + amount > capacity + 1e-12:
-            raise FundReservationError(
-                "insufficient reserved capacity: "
-                f"account_key={account_key} asset={asset} capacity={capacity} "
-                f"balance={requirement.get('balance')} max_borrowable={requirement.get('max_borrowable')} "
-                f"borrow_limit={requirement.get('borrow_limit')} operable_capacity={requirement.get('operable_capacity')} "
-                f"active_reserved={active_reserved} requested={amount}"
-            )
-
-        reserved[(account_key, asset)] = active_reserved + amount
-        cfg.fund_reservation_account_key = account_key
-        cfg.fund_reservation_asset = asset
+        cfg.fund_reservation_account_key = requirement["account_key"]
+        cfg.fund_reservation_asset = requirement["asset"]
         cfg.fund_reservation_amount = amount
-        cfg.fund_reservation_remaining = amount
+        cfg.fund_reservation_remaining = amount if remaining is None else max(float(remaining), 0.0)
+
+    async def _restore_recovered_task_runtime_budget(self, cfg: TaskConfig) -> None:
+        requirement = await self._reservation_requirement(cfg)
+        if requirement is None:
+            return
+        amount = float(requirement["amount"])
+        spent = await self._submitted_entry_notional_for_task(int(cfg.id))
+        self._set_task_runtime_budget(cfg, requirement, remaining=max(amount - spent, 0.0))
+
+    async def _submitted_entry_notional_for_task(self, task_id: int) -> float:
+        store = getattr(self.db_manager, "execution_state", None)
+        if store is None:
+            return 0.0
+        list_open_by_task = getattr(store, "list_open_by_task", None)
+        if not callable(list_open_by_task):
+            return 0.0
+        records = list_open_by_task(task_id)
+        if inspect.isawaitable(records):
+            records = await records
+        total = 0.0
+        for record in records or []:
+            if str(getattr(record, "order_role", "")).lower() != "entry":
+                continue
+            status = getattr(record, "status", None)
+            status_value = getattr(status, "value", status)
+            if status_value != ExecutionStatus.SUBMITTED.value:
+                continue
+            notional = self._execution_record_notional(record)
+            if notional > 0:
+                total += notional
+        return total
+
+    def _execution_record_notional(self, record) -> float:
+        raw_payload = getattr(record, "raw_payload", None)
+        if isinstance(raw_payload, dict):
+            for key in ("effective_notional", "notional"):
+                value = raw_payload.get(key)
+                try:
+                    notional = float(value)
+                except (TypeError, ValueError):
+                    continue
+                if notional > 0:
+                    return notional
+        try:
+            quantity = float(getattr(record, "quantity", 0.0) or 0.0)
+            price = float(getattr(record, "price", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+        return max(quantity * price, 0.0)
 
     def _format_reservation_rejection_log(self, cfg: TaskConfig, requirement: dict, exc: FundReservationError) -> str:
         symbol_interval = getattr(cfg, "symbol_interval", None)
         symbol = symbol_interval.symbol() if symbol_interval is not None else ""
         return (
             "strategy rejected before execution: "
-            "rule=requested <= balance + max_borrowable - active_reserved "
+            "rule=requested <= operable_capacity "
             f"task_id={getattr(cfg, 'id', None)} "
             f"symbol={symbol} "
+            f"strategy={cfg.strategy_name()} "
+            f"live_execution_mode={getattr(cfg, 'live_execution_mode', None)} "
+            f"account_key={requirement.get('account_key')} "
+            f"market_mode={requirement.get('market_mode')} "
             f"asset={requirement.get('asset')} "
             f"required={requirement.get('amount')} "
             f"balance={requirement.get('balance')} "
@@ -372,6 +401,7 @@ class TaskManager:
             "asset": asset,
             "amount": amount,
             "capacity": capacity,
+            "market_mode": getattr(getattr(exchange, "margin_mode", None), "value", None),
             "balance": capacity_snapshot["balance"],
             "max_borrowable": capacity_snapshot["max_borrowable"],
             "borrow_limit": capacity_snapshot["borrow_limit"],

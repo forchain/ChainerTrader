@@ -318,7 +318,10 @@ TRADER_DB="sqlite://data/trader.db"
 TRADER_EXCHANGE='{"ty":"BINANCE","api_key":"","api_secret":""}'
 TRADER_API="127.0.0.1:8000"
 TRADER_NOTICE="./configs/notices/notice.json"
+TRADER_LEVERAGE_RATIO="1.0"
 ```
+
+`TRADER_LEVERAGE_RATIO` introduces configuration for leveraged or futures exposure-cap control. `1.0` means no leverage. It is independent from task sizing, and spot is unaffected.
 
 For CCXT REST requests through an HTTP proxy, add `http_proxy` to `TRADER_EXCHANGE`:
 
@@ -485,6 +488,8 @@ uv run trader-db migrate
 On restart or reconnect, automatic live modes load open execution state for the task symbol and expose the reconciliation view in runtime status. If reconciliation shows missing or stale protection, switch the task back to `manual_notify` until the live protection path is repaired.
 
 Real short execution is controlled by the strategy's `strategy_params.chainer_mode`. `SHORT_ONLY` and `BOTH` tasks require Binance cross margin; `LONG_ONLY` tasks use spot execution. Isolated margin and futures are separate future integrations. Operators must ensure exchange credentials, cross-margin account readiness, and any borrow/repay risk are understood before running short-capable live automation.
+
+`TRADER_LEVERAGE_RATIO` is the shared configuration surface for leveraged or futures exposure-cap control. It is separate from per-task sizing, and spot is unaffected.
 
 Cross-margin live execution includes borrow-risk controls for orders that may require Binance margin borrowing. When `live_margin_borrow_precheck` is enabled, ChainerTrader checks Binance max-borrow capacity before cross-margin long or short entries and skips orders that clearly cannot borrow enough. If Binance still returns `-3006 EXCEED_MAX_BORROWABLE`, `live_margin_borrow_block_policy` controls the response:
 

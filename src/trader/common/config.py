@@ -1,4 +1,5 @@
 import logging
+import math
 import os
 from argparse import Namespace
 from typing import Any
@@ -32,6 +33,7 @@ TRADER_LIVE_ORDER_CLEANUP_SYMBOLS = "TRADER_LIVE_ORDER_CLEANUP_SYMBOLS"
 TRADER_SECRET_KEY = "TRADER_SECRET_KEY"
 TRADER_SESSION_COOKIE_SECURE = "TRADER_SESSION_COOKIE_SECURE"
 TRADER_SESSION_TTL_HOURS = "TRADER_SESSION_TTL_HOURS"
+TRADER_LEVERAGE_RATIO = "TRADER_LEVERAGE_RATIO"
 
 
 def parse_log_file_config(value: Any) -> bool | str:
@@ -54,6 +56,18 @@ def parse_string_list_config(value: Any) -> list[str]:
     if isinstance(value, str):
         return [item.strip().upper() for item in value.split(",") if item.strip()]
     return [str(item).strip().upper() for item in value if str(item).strip()]
+
+
+def parse_leverage_ratio_config(value: Any, config_name: str = TRADER_LEVERAGE_RATIO) -> float:
+    try:
+        leverage_ratio = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{config_name} must be a finite float >= 1.0") from exc
+
+    if not math.isfinite(leverage_ratio) or leverage_ratio < 1.0:
+        raise ValueError(f"{config_name} must be a finite float >= 1.0")
+
+    return leverage_ratio
 
 
 class Config:
@@ -80,6 +94,7 @@ class Config:
         secret_key=None,
         session_cookie_secure: bool = False,
         session_ttl_hours: int = 24,
+        leverage_ratio: float = 1.0,
         optimization_sample_timeout_seconds: float = 60.0,
         optimization_dataset_prepare_timeout_seconds: float = 600.0,
         optimization_dataset_download_request_budget: int = 20,
@@ -116,6 +131,7 @@ class Config:
         self.secret_key = secret_key
         self.session_cookie_secure = bool(session_cookie_secure)
         self.session_ttl_hours = int(session_ttl_hours)
+        self.leverage_ratio = parse_leverage_ratio_config(leverage_ratio)
         self.optimization_sample_timeout_seconds = optimization_sample_timeout_seconds
         self.optimization_dataset_prepare_timeout_seconds = optimization_dataset_prepare_timeout_seconds
         self.optimization_dataset_download_request_budget = optimization_dataset_download_request_budget
@@ -159,6 +175,7 @@ class Config:
             os.environ[TRADER_SECRET_KEY] = self.secret_key
         os.environ[TRADER_SESSION_COOKIE_SECURE] = str(self.session_cookie_secure)
         os.environ[TRADER_SESSION_TTL_HOURS] = str(self.session_ttl_hours)
+        os.environ[TRADER_LEVERAGE_RATIO] = str(self.leverage_ratio)
         os.environ[TRADER_MIN_LIVE_TRADE_NOTIONAL] = str(self.min_live_trade_notional)
         os.environ[TRADER_LIVE_WARMUP_CANDLES] = str(self.live_warmup_candles)
         if self.live_order_cleanup_symbols:
@@ -187,6 +204,7 @@ class Config:
             "secret_key_configured": bool(self.secret_key),
             "session_cookie_secure": self.session_cookie_secure,
             "session_ttl_hours": self.session_ttl_hours,
+            "leverage_ratio": self.leverage_ratio,
             "optimization_sample_timeout_seconds": self.optimization_sample_timeout_seconds,
             "optimization_dataset_prepare_timeout_seconds": self.optimization_dataset_prepare_timeout_seconds,
             "optimization_dataset_download_request_budget": self.optimization_dataset_download_request_budget,
@@ -218,6 +236,7 @@ class Config:
             "protected_paths": self.protected_paths,
             "session_cookie_secure": self.session_cookie_secure,
             "session_ttl_hours": self.session_ttl_hours,
+            "leverage_ratio": self.leverage_ratio,
             "min_live_trade_notional": self.min_live_trade_notional,
             "live_warmup_candles": self.live_warmup_candles,
             "live_order_cleanup_symbols": self.live_order_cleanup_symbols,
@@ -285,6 +304,7 @@ def new_and_env(cli: Namespace | None = None) -> Config:
     secret_key = None
     session_cookie_secure = False
     session_ttl_hours = 24
+    leverage_ratio = 1.0
     min_live_trade_notional = 11.0
     live_warmup_candles = 500
     live_order_cleanup_symbols: list[str] = []
@@ -309,6 +329,7 @@ def new_and_env(cli: Namespace | None = None) -> Config:
     secret_key = os.environ.get(TRADER_SECRET_KEY, secret_key)
     session_cookie_secure = os.environ.get(TRADER_SESSION_COOKIE_SECURE, str(session_cookie_secure)).lower() == "true"
     session_ttl_hours = int(os.environ.get(TRADER_SESSION_TTL_HOURS, session_ttl_hours))
+    leverage_ratio = parse_leverage_ratio_config(os.environ.get(TRADER_LEVERAGE_RATIO, leverage_ratio))
     min_live_trade_notional = float(os.environ.get(TRADER_MIN_LIVE_TRADE_NOTIONAL, min_live_trade_notional))
     live_warmup_candles = int(os.environ.get(TRADER_LIVE_WARMUP_CANDLES, live_warmup_candles))
     live_order_cleanup_symbols = parse_string_list_config(os.environ.get(TRADER_LIVE_ORDER_CLEANUP_SYMBOLS, ""))
@@ -392,6 +413,7 @@ def new_and_env(cli: Namespace | None = None) -> Config:
         secret_key=secret_key,
         session_cookie_secure=session_cookie_secure,
         session_ttl_hours=session_ttl_hours,
+        leverage_ratio=leverage_ratio,
         min_live_trade_notional=min_live_trade_notional,
         live_warmup_candles=live_warmup_candles,
         live_order_cleanup_symbols=live_order_cleanup_symbols,

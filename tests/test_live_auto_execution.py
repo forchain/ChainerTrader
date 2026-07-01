@@ -137,6 +137,10 @@ def _op(otype, price=100.0, dtime=BASE):
     return Operate(otype, dtime, price)
 
 
+def _cfg(*, cash=10000.0, leverage_ratio=1.0):
+    return SimpleNamespace(cash=cash, leverage_ratio=leverage_ratio)
+
+
 def test_operation_identity_prefers_signal_event_id_and_falls_back_to_side_time_price():
     op = _op(OperateType.BUY, 123.456789)
     op.signal_event_id = "sig-123"
@@ -261,6 +265,60 @@ def test_full_live_auto_uses_configured_full_sizing_not_small_live_cap():
     assert outcome.status == AutoExecutionStatus.SUBMITTED
     assert outcome.effective_notional == 500.0
     assert outcome.effective_quantity == 5.0
+
+
+def test_margin_long_caps_full_live_requested_exposure_by_leverage_ratio():
+    exchange = RecordingExchange(quote_balance=60.0, margin_ready=True)
+    router = AutoExecutionRouter(
+        _short_tcfg(LiveExecutionMode.FULL_LIVE_AUTO, free=500.0),
+        exchange=exchange,
+        cfg=_cfg(leverage_ratio=2.0),
+    )
+
+    outcome = router.route(_op(OperateType.BUY, 100.0))
+
+    assert outcome.status == AutoExecutionStatus.SUBMITTED
+    assert outcome.requested_notional == 500.0
+    assert outcome.effective_notional == 120.0
+    assert outcome.effective_quantity == 1.2
+    assert exchange.new_order_calls == [("BTCUSDT", OperateType.BUY, 1.2)]
+    assert exchange.max_borrowable_reads == [("USDT", "BTCUSDT")]
+
+
+def test_margin_leverage_ratio_caps_but_does_not_auto_enlarge_requested_size():
+    exchange = RecordingExchange(quote_balance=60.0, margin_ready=True)
+    router = AutoExecutionRouter(
+        _short_tcfg(LiveExecutionMode.FULL_LIVE_AUTO, free=60.0),
+        exchange=exchange,
+        cfg=_cfg(leverage_ratio=2.0),
+    )
+
+    outcome = router.route(_op(OperateType.BUY, 100.0))
+
+    assert outcome.status == AutoExecutionStatus.SUBMITTED
+    assert outcome.requested_notional == 60.0
+    assert outcome.effective_notional == 60.0
+    assert outcome.effective_quantity == 0.6
+    assert exchange.new_order_calls == [("BTCUSDT", OperateType.BUY, 0.6)]
+    assert exchange.max_borrowable_reads == []
+
+
+def test_small_live_margin_hard_cap_is_not_enlarged_by_leverage_ratio():
+    exchange = RecordingExchange(quote_balance=60.0, margin_ready=True)
+    router = AutoExecutionRouter(
+        _short_tcfg(LiveExecutionMode.SMALL_LIVE_AUTO, live_trade_max_notional=10.0),
+        exchange=exchange,
+        cfg=_cfg(leverage_ratio=2.0),
+    )
+
+    outcome = router.route(_op(OperateType.BUY, 100.0))
+
+    assert outcome.status == AutoExecutionStatus.SUBMITTED
+    assert outcome.requested_notional == 10.0
+    assert outcome.effective_notional == 10.0
+    assert outcome.effective_quantity == 0.1
+    assert exchange.new_order_calls == [("BTCUSDT", OperateType.BUY, 0.1)]
+    assert exchange.max_borrowable_reads == []
 
 
 def test_real_auto_entry_skips_when_reserved_budget_is_too_small_even_if_exchange_balance_is_available():
@@ -478,6 +536,45 @@ def test_short_capable_tasks_use_margin_for_long_and_exit_when_margin_is_ready()
     assert entry.effective_quantity == 0.1
 
 
+def test_spot_execution_does_not_apply_leverage_ratio_cap():
+    exchange = RecordingExchange(quote_balance=5.0, margin_ready=False)
+    router = AutoExecutionRouter(
+        _tcfg(LiveExecutionMode.SMALL_LIVE_AUTO, live_trade_max_notional=10.0, chainer_mode="LONG_ONLY"),
+        exchange=exchange,
+        cfg=_cfg(leverage_ratio=2.0),
+    )
+
+    outcome = router.route(_op(OperateType.BUY, 100.0))
+
+    assert outcome.status == AutoExecutionStatus.SKIPPED
+    assert outcome.reason == "insufficient_quote_balance"
+    assert exchange.new_order_calls == []
+    assert exchange.max_borrowable_reads == []
+
+
+def test_long_only_stays_on_spot_path_even_when_margin_is_ready():
+    exchange = RecordingExchange(quote_balance=1000.0, base_balance=0.75, margin_ready=True)
+    router = AutoExecutionRouter(
+        _tcfg(LiveExecutionMode.SMALL_LIVE_AUTO, live_trade_max_notional=25.0, chainer_mode="LONG_ONLY"),
+        exchange=exchange,
+        cfg=_cfg(leverage_ratio=2.0),
+    )
+
+    entry = router.route(_op(OperateType.BUY, 100.0))
+    close = router.route(_op(OperateType.SELL, 110.0, BASE + 60))
+
+    assert entry.status == AutoExecutionStatus.SUBMITTED
+    assert entry.effective_notional == 25.0
+    assert entry.effective_quantity == 0.25
+    assert close.status == AutoExecutionStatus.SUBMITTED
+    assert close.effective_quantity == 0.25
+    assert exchange.new_order_calls == [
+        ("BTCUSDT", OperateType.BUY, 0.25),
+        ("BTCUSDT", OperateType.SELL, 0.25),
+    ]
+    assert exchange.max_borrowable_reads == []
+
+
 def test_margin_borrow_block_skip_policy_skips_short_and_continues():
     class BorrowBlockedExchange(RecordingExchange):
         def __init__(self):
@@ -639,7 +736,7 @@ def test_margin_borrow_block_exception_triggers_auto_repay_retry_with_capacity_c
     assert outcome.margin_borrow_control["repay"]["results"][0]["amount"] == 0.01
 
 
-def test_margin_borrow_precheck_skips_margin_long_when_quote_borrow_capacity_is_too_low():
+def test_margin_long_leverage_cap_ignores_quote_borrow_capacity_when_cap_removes_shortfall():
     class LowBorrowCapacityExchange(RecordingExchange):
         def get_max_borrowable(self, asset, symbol=None):
             self.max_borrowable_reads.append((asset, symbol))
@@ -657,11 +754,69 @@ def test_margin_borrow_precheck_skips_margin_long_when_quote_borrow_capacity_is_
 
     outcome = router.route(_op(OperateType.BUY, 100.0))
 
-    assert outcome.status == AutoExecutionStatus.SKIPPED
-    assert str(outcome.reason).startswith("margin_borrow_precheck_insufficient_capacity")
-    assert "asset=USDT" in str(outcome.reason)
-    assert exchange.max_borrowable_reads == [("USDT", "BTCUSDT")]
-    assert exchange.new_order_calls == []
+    assert outcome.status == AutoExecutionStatus.SUBMITTED
+    assert outcome.requested_notional == 10.0
+    assert outcome.effective_notional == 5.0
+    assert outcome.effective_quantity == 0.05
+    assert exchange.max_borrowable_reads == []
+    assert exchange.new_order_calls == [("BTCUSDT", OperateType.BUY, 0.05)]
+
+
+def test_margin_long_leverage_cap_prevents_unnecessary_borrow_precheck_when_shortfall_is_removed():
+    exchange = RecordingExchange(quote_balance=5.0, margin_ready=True)
+    router = AutoExecutionRouter(
+        _short_tcfg(
+            LiveExecutionMode.SMALL_LIVE_AUTO,
+            live_trade_max_notional=10.0,
+        ),
+        exchange=exchange,
+        cfg=_cfg(leverage_ratio=1.0),
+    )
+
+    outcome = router.route(_op(OperateType.BUY, 100.0))
+
+    assert outcome.status == AutoExecutionStatus.SUBMITTED
+    assert outcome.requested_notional == 10.0
+    assert outcome.effective_notional == 5.0
+    assert outcome.effective_quantity == 0.05
+    assert exchange.new_order_calls == [("BTCUSDT", OperateType.BUY, 0.05)]
+    assert exchange.max_borrowable_reads == []
+
+
+def test_leverage_cap_falls_back_to_cfg_cash_when_live_quote_balance_is_unreadable():
+    class UnreadableBalanceExchange:
+        def __init__(self):
+            self.new_order_calls = []
+
+        def get_account_balance(self, asset):
+            raise RuntimeError("balance unavailable")
+
+        def new_order(self, symbol, op, quantity):
+            self.new_order_calls.append((symbol.name(), op, quantity))
+            return {"orderId": "spot-1"}
+
+        def is_cross_margin_ready(self):
+            return True
+
+    tcfg = _short_tcfg(
+        LiveExecutionMode.SMALL_LIVE_AUTO,
+        free=-1.0,
+        live_trade_max_notional=100.0,
+    )
+    exchange = UnreadableBalanceExchange()
+    router = AutoExecutionRouter(
+        tcfg,
+        exchange=exchange,
+        cfg=_cfg(cash=30.0, leverage_ratio=2.0),
+    )
+
+    outcome = router.route(_op(OperateType.BUY, 100.0))
+
+    assert outcome.status == AutoExecutionStatus.SUBMITTED
+    assert outcome.requested_notional == 100.0
+    assert outcome.effective_notional == 60.0
+    assert outcome.effective_quantity == 0.6
+    assert exchange.new_order_calls == [("BTCUSDT", OperateType.BUY, 0.6)]
 
 
 def test_margin_borrow_precheck_skips_margin_short_when_base_borrow_capacity_is_too_low():
@@ -689,7 +844,33 @@ def test_margin_borrow_precheck_skips_margin_short_when_base_borrow_capacity_is_
     assert exchange.new_order_calls == []
 
 
-def test_margin_borrow_precheck_skips_margin_long_when_quote_balance_is_insufficient():
+def test_margin_short_applies_leverage_cap_on_quote_notional_before_borrow_capacity_check():
+    class BorrowCapacityExchange(RecordingExchange):
+        def get_max_borrowable(self, asset, symbol=None):
+            self.max_borrowable_reads.append((asset, symbol))
+            return {"asset": asset, "amount": "0.07", "borrowLimit": "0.07"}
+
+    exchange = BorrowCapacityExchange(quote_balance=6.0, base_balance=0.0, margin_ready=True)
+    router = AutoExecutionRouter(
+        _short_tcfg(
+            LiveExecutionMode.SMALL_LIVE_AUTO,
+            live_trade_max_notional=10.0,
+        ),
+        exchange=exchange,
+        cfg=_cfg(leverage_ratio=1.0),
+    )
+
+    outcome = router.route(_op(OperateType.SHORT, 100.0))
+
+    assert outcome.status == AutoExecutionStatus.SUBMITTED
+    assert outcome.requested_notional == 10.0
+    assert outcome.effective_notional == 6.0
+    assert outcome.effective_quantity == 0.06
+    assert exchange.max_borrowable_reads == [("BTC", "BTCUSDT")]
+    assert exchange.new_order_calls == [("BTCUSDT", OperateType.SHORT, 0.06)]
+
+
+def test_margin_long_leverage_cap_ignores_zero_quote_borrow_capacity_when_cap_removes_shortfall():
     class ZeroBorrowExchange(RecordingExchange):
         def get_max_borrowable(self, asset, symbol=None):
             self.max_borrowable_reads.append((asset, symbol))
@@ -707,11 +888,12 @@ def test_margin_borrow_precheck_skips_margin_long_when_quote_balance_is_insuffic
 
     outcome = router.route(_op(OperateType.BUY, 100.0))
 
-    assert outcome.status == AutoExecutionStatus.SKIPPED
-    assert str(outcome.reason).startswith("margin_borrow_precheck_insufficient_capacity")
-    assert "asset=USDT" in str(outcome.reason)
-    assert exchange.max_borrowable_reads == [("USDT", "BTCUSDT")]
-    assert exchange.new_order_calls == []
+    assert outcome.status == AutoExecutionStatus.SUBMITTED
+    assert outcome.requested_notional == 10.0
+    assert outcome.effective_notional == 5.0
+    assert outcome.effective_quantity == 0.05
+    assert exchange.max_borrowable_reads == []
+    assert exchange.new_order_calls == [("BTCUSDT", OperateType.BUY, 0.05)]
 
 
 def test_margin_borrow_block_repay_single_policy_handles_margin_long_orders():

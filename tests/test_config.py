@@ -2,6 +2,8 @@ import argparse
 import logging
 import os
 
+import pytest
+
 from trader.common.config import Config, new_and_env
 from trader.common.logger import Logger
 from trader.common.path import GetConfigsDir
@@ -182,6 +184,73 @@ def test_new_and_env_env_when_cli_absent(monkeypatch):
     monkeypatch.setenv("TRADER_COMMISSION", "0.003")
     cfg = new_and_env()
     assert cfg.commission == 0.003
+
+
+def test_new_and_env_leverage_ratio_defaults_to_one():
+    cfg = new_and_env()
+
+    assert cfg.leverage_ratio == 1.0
+
+
+def test_config_accepts_leverage_ratio_boundary_value():
+    cfg = Config(leverage_ratio=1.0)
+
+    assert cfg.leverage_ratio == 1.0
+
+
+@pytest.mark.parametrize("value", [0.999, 0, -1, "abc", "nan"])
+def test_config_rejects_invalid_leverage_ratio(value):
+    with pytest.raises(ValueError, match="TRADER_LEVERAGE_RATIO"):
+        Config(leverage_ratio=value)
+
+
+def test_new_and_env_reads_leverage_ratio_from_env(monkeypatch):
+    monkeypatch.setenv("TRADER_LEVERAGE_RATIO", "2.5")
+
+    cfg = new_and_env()
+
+    assert cfg.leverage_ratio == 2.5
+
+
+def test_new_and_env_does_not_accept_leverage_ratio_cli_override(monkeypatch):
+    monkeypatch.setenv("TRADER_LEVERAGE_RATIO", "2.5")
+    ns = argparse.Namespace(leverage_ratio=9.0)
+
+    cfg = new_and_env(ns)
+
+    assert cfg.leverage_ratio == 2.5
+
+
+@pytest.mark.parametrize("value", ["abc", "0", "-1", "0.999"])
+def test_new_and_env_rejects_invalid_leverage_ratio(monkeypatch, value):
+    monkeypatch.setenv("TRADER_LEVERAGE_RATIO", value)
+
+    with pytest.raises(ValueError, match="TRADER_LEVERAGE_RATIO"):
+        new_and_env()
+
+
+@pytest.mark.parametrize("value", ["nan", "inf", "-inf"])
+def test_new_and_env_rejects_non_finite_leverage_ratio(monkeypatch, value):
+    monkeypatch.setenv("TRADER_LEVERAGE_RATIO", value)
+
+    with pytest.raises(ValueError, match="TRADER_LEVERAGE_RATIO"):
+        new_and_env()
+
+
+def test_config_export_env_includes_leverage_ratio(monkeypatch):
+    monkeypatch.delenv("TRADER_LEVERAGE_RATIO", raising=False)
+    cfg = Config(leverage_ratio=3.0)
+
+    cfg.export_env()
+
+    assert os.environ["TRADER_LEVERAGE_RATIO"] == "3.0"
+
+
+def test_config_dict_serialization_includes_leverage_ratio():
+    cfg = Config(leverage_ratio=4.0)
+
+    assert cfg.to_dict()["leverage_ratio"] == 4.0
+    assert cfg.safe_to_dict()["leverage_ratio"] == 4.0
 
 
 def test_live_warmup_candles_defaults_to_500():

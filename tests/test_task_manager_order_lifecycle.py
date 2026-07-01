@@ -2,7 +2,7 @@
 
 Rules:
 - One live task per account at any time.
-- add_task   → cancel configured symbols plus currently-running task symbols before fund reservation.
+- add_task   → cancel configured symbols plus currently-running task symbols before live balance preflight.
 - recover_task → do NOT cancel anything (orders belong to the recovering task).
 - close_task_state → cancel configured symbols plus the closing task symbol.
 - All cancellation is best-effort (errors are logged, never raised).
@@ -128,7 +128,7 @@ def test_add_task_skips_cleanup_when_no_configured_symbols_and_no_running_tasks(
     assert exchange.cancel_all_open_orders_calls == []
 
 
-def test_do_add_tasks_cancels_configured_and_running_task_symbols_before_reserving_funds():
+def test_do_add_tasks_cancels_configured_and_running_task_symbols_before_balance_preflight():
     manager = TaskManager(
         cfg=Config(live_order_cleanup_symbols=["SOL-USDT", "BNBUSDT"]),
         log=MagicMock(),
@@ -150,8 +150,8 @@ def test_do_add_tasks_cancels_configured_and_running_task_symbols_before_reservi
     async def _start(_queue):
         events.append("start_task")
 
-    async def _reserve_funds(_taskcs):
-        events.append("reserve_funds")
+    async def _preflight_balances(_taskcs):
+        events.append("preflight_balances")
 
     exchange.cancel_all_open_orders = _cancel
     fake_task.start = _start
@@ -159,7 +159,7 @@ def test_do_add_tasks_cancels_configured_and_running_task_symbols_before_reservi
     async def _run():
         with (
             patch.object(manager, "_ensure_routed_exchanges", AsyncMock()),
-            patch.object(manager, "_reserve_task_funds", _reserve_funds),
+            patch.object(manager, "_preflight_live_task_balances", _preflight_balances),
             patch.object(manager, "_exchange_for_task", AsyncMock(return_value=exchange)),
             patch.object(manager, "_build_task", return_value=fake_task),
             patch.object(manager, "_persist_task_states", AsyncMock()),
@@ -169,7 +169,7 @@ def test_do_add_tasks_cancels_configured_and_running_task_symbols_before_reservi
 
     asyncio.run(_run())
 
-    assert events == ["cancel:SOLUSDT", "cancel:BNBUSDT", "cancel:ETHUSDT", "reserve_funds", "start_task"]
+    assert events == ["cancel:SOLUSDT", "cancel:BNBUSDT", "cancel:ETHUSDT", "preflight_balances", "start_task"]
     assert exchange.cancel_all_open_orders_calls == ["SOLUSDT", "BNBUSDT", "ETHUSDT"]
 
 
@@ -207,7 +207,7 @@ def test_recover_task_does_not_cancel_any_orders():
 
     async def _run():
         with (
-            patch.object(manager, "_reserve_task_funds", AsyncMock()),
+            patch.object(manager, "_restore_recovered_task_runtime_budget", AsyncMock()),
             patch.object(manager, "_exchange_for_task", AsyncMock(return_value=exchange)),
             patch.object(manager, "_build_task", return_value=fake_task),
         ):
@@ -226,7 +226,7 @@ def test_recover_task_still_binds_order_context():
 
     async def _run():
         with (
-            patch.object(manager, "_reserve_task_funds", AsyncMock()),
+            patch.object(manager, "_restore_recovered_task_runtime_budget", AsyncMock()),
             patch.object(manager, "_exchange_for_task", AsyncMock(return_value=exchange)),
             patch.object(manager, "_build_task", return_value=fake_task),
         ):
