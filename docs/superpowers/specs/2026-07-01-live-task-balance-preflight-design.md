@@ -72,8 +72,8 @@ Futures account routing is not implemented in this change. Once a futures exchan
 ## Required Amount Definition
 The preflight should use the same startup notional concept that currently drives task budget checks:
 
-- `small_live_auto`: use `live_trade_max_notional`
-- other real auto live modes: use `task.free` when configured
+- capped `auto_trade`: use `live_trade_max_notional`
+- uncapped `auto_trade`: use `task.free` when configured
 - otherwise fall back to global `cfg.cash`
 
 This is a startup eligibility check, not a promise that every order will use the full amount. The existing strategy and execution sizing layers remain responsible for deciding actual order size.

@@ -174,7 +174,41 @@ Indexes:
 
 - unique index on `task_id`
 
-#### 3. `availability`
+#### 3. `execution_states`
+
+Stores live execution intent and exchange-order state.
+
+Purpose:
+
+- track exchange-order lifecycle state
+- associate open order records with the owning task through `task_id`
+- support task-scoped order cleanup, restart recovery, and reconciliation
+
+Fields:
+
+- `task_id`
+  Owning task ID when the order was created by a managed task.
+- `idempotency_key`
+  Unique key for the execution intent.
+- `symbol`
+  Trading symbol, for example `BTCUSDT`.
+- `trade_id`
+  Strategy/framework trade identifier when available.
+- `order_role`
+  Order role such as entry, exit, or protection.
+- `status`
+  Current execution status.
+- `exchange_order_id`
+  Exchange-side order identifier.
+- `raw_payload`
+  Serialized execution intent or exchange payload.
+
+Indexes:
+
+- unique index on `idempotency_key`
+- composite index on `(task_id, symbol, trade_id)`
+
+#### 4. `availability`
 
 Stores market-data coverage metadata by exchange, symbol, and interval.
 
@@ -219,6 +253,10 @@ klines-<symbol-interval>
                          |
                          v
                        tasks
+                         |
+                         | owns
+                         v
+                  execution_states
 ```
 
 Relationship rules:
@@ -226,6 +264,7 @@ Relationship rules:
 - `availability` describes coverage for a market stream
 - `klines-<symbol-interval>` stores the actual candles for that market stream
 - `tasks` references that data indirectly through task configuration, symbol, interval, and time-window fields
+- `execution_states` links exchange-order state back to the originating task when available
 
 There is no relational foreign key between these collections. The relationship is established by:
 
@@ -446,8 +485,7 @@ Example task config:
     "strategy": "macd_triple_divergence",
     "free": 10000,
     "manual_start_position": 0,
-    "live_execution_mode": "manual_notify",
-    "live_data_mode": "realtime"
+    "live_execution_mode": "manual_notify"
   }
 ]
 ```
@@ -456,24 +494,24 @@ Run it with database, exchange market-data access, and notice configuration:
 
 ```bash
 python -m trader \
-  --tasks configs/tasks/live/realtime_macd_triple_divergence_top10_production.json \
+  --tasks configs/tasks/live/auto_trade_macd_triple_divergence_top10_production.json \
   --db mongodb://localhost:27017/ \
   --exchange=BINANCE \
   --notice configs/notices/notice.json
 ```
 
-When `live_data_mode` is `realtime`, the live task creates one persistent Backtrader `Cerebro` runtime and advances it through a live K-line data feed. Startup REST backfill is capped at the latest 500 closed candles and is delivered through the same strategy instance as warmup. During development validation, warmup strategy events use the same dashboard and `manual_notify` path as later live candles, so startup signals appear on the chart and can send email. After the feed transitions to LIVE, the default market-data stream uses CCXT-backed REST polling instead of Binance SDK WebSocket subscriptions. Each newly closed polled candle is persisted and delivered once to the same strategy instance. Open candles are dashboard-only when available and never advance Backtrader strategy execution.
+Live tasks always use one persistent Backtrader `Cerebro` runtime and advance it through the live K-line data feed. Startup REST backfill is capped at the latest 500 closed candles and is delivered through the same strategy instance as warmup. During development validation, warmup strategy events use the same dashboard and `manual_notify` path as later live candles, so startup signals appear on the chart and can send email. After the feed transitions to LIVE, the default market-data stream uses CCXT-backed REST polling instead of Binance SDK WebSocket subscriptions. Each newly closed polled candle is persisted and delivered once to the same strategy instance. Open candles are dashboard-only when available and never advance Backtrader strategy execution.
 
 Manual notification emails include the market, interval, strategy id, strategy name, action, side, suggested amount or quantity, signal price and time, local simulated cash and position, trigger reason, and dashboard correlation fields such as signal event id when available. Risk references such as stop loss, take profit, breakeven stop movement, or risk/reward are rendered as local strategy guidance only; the email is not an exchange fill confirmation and does not mean ChainerTrader submitted a stop-loss, take-profit, OCO, or other advanced order.
 
-### Staged Realtime Auto Trading
+### Live Auto Trading
 
-Realtime live tasks also support staged automatic execution modes:
+Live trader tasks support two execution modes:
 
-- `small_live_auto`: places real orders only after validation and caps each order by `live_trade_max_notional`.
-- `full_live_auto`: places real orders using the task sizing policy while retaining duplicate prevention, price/quantity validation, account checks, and execution outcome recording.
+- `manual_notify`: sends recommendations only and never places exchange orders.
+- `auto_trade`: places real orders through the live gateway after duplicate prevention, price/quantity validation, account checks, and execution outcome recording.
 
-The execution boundary is modeled as a gateway contract shared by Backtrader and Binance live execution. `live_execution_mode` remains the authoritative safety switch: `manual_notify` is notification-only, and live gateway execution is available only through live-capable modes such as `small_live_auto` and `full_live_auto`. A gateway setting must not be used to upgrade a safer staged mode.
+Set `live_trade_max_notional` on an `auto_trade` task to cap each entry order by a fixed notional. If the cap is omitted or non-positive, `auto_trade` uses the task sizing policy (`free` when configured, otherwise `Config.cash`). The execution boundary is modeled as a gateway contract shared by Backtrader and Binance live execution. `live_execution_mode` remains the authoritative safety switch: `manual_notify` is notification-only, and `auto_trade` is the only live mode that can submit exchange orders. A gateway setting must not be used to upgrade a safer mode.
 
 Execution outcomes published to the live dashboard include normalized execution event traces such as `order_submitted`, `order_accepted`, `order_filled`, `protection_armed`, `protection_replaced`, and `protection_missing`. Binance live protection is exchange-order-first: ChainerTrader should treat `protection_armed` as valid only when exchange protection order identifiers are accepted and verified. Local monitoring is a separate fallback/monitoring state, not proof that the exchange owns the stop-loss or take-profit order.
 
@@ -500,16 +538,16 @@ Cross-margin live execution includes borrow-risk controls for orders that may re
 
 `repay_all` is explicit opt-in and should be used with conservative caps such as `live_margin_auto_repay_max_total`, `live_margin_auto_repay_max_per_asset`, and `live_margin_auto_repay_excluded_assets`. Auto-repay outcomes include structured `margin_borrow_control` metadata in execution outcomes and dashboard payloads so operators can audit which assets were checked, repaid, skipped, or retried.
 
-Small-live example with a 10 USDT per-order cap:
+Capped auto-trade example with an 11 USDT per-order cap:
 
 ```bash
 python -m trader \
-  --tasks configs/tasks/live/small_live_auto_btc_1m.json \
+  --tasks configs/tasks/live/auto_trade_capped_btc_1m.json \
   --db mongodb://localhost:27017/ \
   --exchange=BINANCE
 ```
 
-For real-order smoke testing, use a dedicated exchange key, a minimal notional, and explicit operator opt-in. The end-to-end Binance live smoke test places real orders through the same live gateway used by `small_live_auto`; it covers Chainer-style entry, stop/take-profit protection, breakeven stop replacement, close, execution-state records, and MACD triple divergence style signal/framework metadata. The smoke defaults to the CCXT driver; set `CHAINERTRADER_LIVE_SMOKE_DRIVER=binance_native` only when deliberately testing the legacy Binance SDK path.
+For real-order smoke testing, use a dedicated exchange key, a minimal notional, and explicit operator opt-in. The end-to-end Binance live smoke test places real orders through the same live gateway used by capped `auto_trade`; it covers Chainer-style entry, stop/take-profit protection, breakeven stop replacement, close, execution-state records, and MACD triple divergence style signal/framework metadata. The smoke defaults to the CCXT driver; set `CHAINERTRADER_LIVE_SMOKE_DRIVER=binance_native` only when deliberately testing the legacy Binance SDK path.
 
 The black-box acceptance contract is strict:
 - single run must cover both spot long and cross-margin short flows
@@ -541,7 +579,7 @@ Manual Binance Web checks after the run:
 
 The legacy guard-only smoke remains available through `CHAINERTRADER_ENABLE_SMALL_LIVE_SMOKE=1`, but it only validates opt-in and configuration gates; use `scripts/run_binance_live_smoke_e2e.sh` for real exchange behavior.
 
-Rollback is configuration-only for staged runtime behavior: move from `full_live_auto` to `small_live_auto`, then to `manual_notify`. Use Backtrader backtests as the no-live-order test environment before enabling live automation.
+Rollback is configuration-only for live runtime behavior: move from uncapped `auto_trade` to capped `auto_trade`, then to `manual_notify`. Use Backtrader backtests as the no-live-order test environment before enabling live automation.
 
 ### Realtime Live Dashboard
 
@@ -550,7 +588,7 @@ Start ChainerTrader in Web mode with the realtime production task:
 ```bash
 python -m trader \
   --api 127.0.0.1:8000 \
-  --tasks configs/tasks/live/realtime_macd_triple_divergence_top10_production.json \
+  --tasks configs/tasks/live/auto_trade_macd_triple_divergence_top10_production.json \
   --db mongodb://localhost:27017/ \
   --exchange=BINANCE \
   --notice configs/notices/notice.json

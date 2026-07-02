@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, Request
 from trader.auth.context import current_user
 from trader.auth.credentials import decrypt_secret, service_key_available
 from trader.common import path as trader_path
+from trader.rpc.task_state_payload import public_task_state_dict
 from trader.exchange.binance.exchange import BinanceExchange
 from trader.exchange.exchange_config import ExchangeConfig, parse_exchange_config
 from trader.task.task_config import parse_task_config
@@ -62,7 +63,7 @@ async def get_tasks(request: Request):
     tss = await request.app.state.app.task_manager.get_all_task_state(user_id=user_id)
     ret = []
     for ts in tss:
-        ret.append(ts.to_dict())
+        ret.append(public_task_state_dict(ts))
     return ret
 
 

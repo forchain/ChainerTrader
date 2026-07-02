@@ -3,22 +3,17 @@
 ## Purpose
 TBD - created by archiving change staged-realtime-auto-trading. Update Purpose after archive.
 ## Requirements
-### Requirement: Realtime live tasks support staged automatic execution modes
-The system SHALL support realtime live execution modes `manual_notify`, `small_live_auto`, and `full_live_auto`. Real automatic modes SHALL consume the same realtime closed-candle strategy operations as `manual_notify`, but route them through automatic execution semantics instead of manual recommendation semantics. `paper_auto` SHALL be rejected as unsupported.
+### Requirement: Live tasks support manual notification and automatic execution
+The system SHALL support only `manual_notify` and `auto_trade` as live execution modes. `auto_trade` SHALL consume the same closed-candle strategy operations as `manual_notify`, but route them through automatic execution semantics instead of manual recommendation semantics. Removed modes such as `small_live_auto`, `full_live_auto`, `staged_auto_trade`, and `paper_auto` SHALL be rejected as unsupported.
 
-#### Scenario: Paper auto mode is rejected
-- **WHEN** a realtime live task is configured with `live_execution_mode` set to `paper_auto`
+#### Scenario: Removed live execution mode is rejected
+- **WHEN** a live task is configured with a removed `live_execution_mode`
 - **THEN** the system SHALL reject the task configuration as unsupported
 - **THEN** the system MUST NOT simulate execution and MUST NOT call exchange order placement APIs
 
-#### Scenario: Small live auto mode receives a strategy entry operation
-- **WHEN** a realtime live task is configured with `live_execution_mode` set to `small_live_auto` and a closed-candle strategy execution produces an entry operation
-- **THEN** the system SHALL route the operation through real-order validation, capped sizing, and the configured execution gateway
-- **THEN** the system SHALL place a real order only when every configured safety gate passes
-
-#### Scenario: Full live auto mode receives a strategy entry operation
-- **WHEN** a realtime live task is configured with `live_execution_mode` set to `full_live_auto` and a closed-candle strategy execution produces an entry operation
-- **THEN** the system SHALL route the operation through real-order validation, configured full sizing, and the configured execution gateway
+#### Scenario: Auto trade receives a strategy entry operation
+- **WHEN** a live task is configured with `live_execution_mode` set to `auto_trade` and a closed-candle strategy execution produces an entry operation
+- **THEN** the system SHALL route the operation through real-order validation, optional capped sizing, and the configured execution gateway
 - **THEN** the system SHALL place a real order only when every configured safety gate passes
 
 ### Requirement: Staged automatic execution emits structured execution outcomes

@@ -772,6 +772,23 @@ class BinanceExchange:
         response = self.spot_client.rest_api.get_open_orders(symbol=symbol.name())
         return response.data()
 
+    def get_all_open_orders(self):
+        if self._use_ccxt():
+            return self.ccxt_driver.get_all_open_orders()
+        if self.margin_mode != MarginMode.SPOT:
+            response = MarginTradingManager(self.cfg, self.log).client.rest_api.query_margin_accounts_open_orders()
+            return response.data()
+        response = self.spot_client.rest_api.get_open_orders()
+        return response.data()
+
+    def cancel_order(self, symbol: Symbol, order_id: str):
+        if self._use_ccxt():
+            return self.ccxt_driver.cancel_order(symbol, order_id)
+        if self.margin_mode != MarginMode.SPOT:
+            return MarginTradingManager(self.cfg, self.log).cancel_order(symbol, order_id)
+        response = self.spot_client.rest_api.delete_order(symbol=symbol.name(), order_id=int(order_id))
+        return response.data()
+
     def delete_order(self, symbol: str):
         if self._use_ccxt():
             return self.ccxt_driver.delete_order(symbol)

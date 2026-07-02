@@ -30,9 +30,8 @@ SAFE_LIVE_TASK = [
         "strategy": "macd_triple_divergence",
         "free": 10000,
         "manual_start_position": 0,
-        "live_execution_mode": "manual_notify",
-        "live_data_mode": "realtime",
-    }
+        "live_execution_mode": "manual_notify"
+  }
 ]
 SAFE_DEBUG_TASK = [
     {
@@ -48,9 +47,8 @@ REAL_ORDER_LIVE_TASK = [
         "strategy": "smoke_test",
         "free": 1000,
         "manual_start_position": 0,
-        "live_execution_mode": "small_live_auto",
+        "live_execution_mode": "auto_trade",
         "live_trade_max_notional": 11.0,
-        "live_data_mode": "realtime",
         "strategy_params": {
             "chainer_mode": "BOTH",
             "smoke_sequence": "long_short",

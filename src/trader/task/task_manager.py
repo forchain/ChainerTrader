@@ -245,7 +245,7 @@ class TaskManager:
             self.log.error(f"Can't add task:{cfg.to_dict()}")
             return
         if cancel_startup_orders:
-            self._cancel_task_start_open_orders(cfg, task_exchange, reason="task_start")
+            await self._cancel_task_start_open_orders(cfg, task_exchange, reason="task_start")
         self.tasks[task.id()] = task
         self._bind_order_context(cfg, task_exchange)
         await task.start(queue)
@@ -378,10 +378,13 @@ class TaskManager:
             f"reason={exc}"
         )
 
+    def _runtime_live_execution_mode(self, cfg: TaskConfig) -> str:
+        return str(getattr(cfg, "live_execution_mode", "auto_trade") or "auto_trade").strip().lower()
+
     async def _reservation_requirement(self, cfg: TaskConfig) -> dict | None:
         if cfg.ttype != TaskType.TRADER:
             return None
-        if not is_real_auto_mode(getattr(cfg, "live_execution_mode", None)):
+        if not is_real_auto_mode(self._runtime_live_execution_mode(cfg)):
             return None
         if getattr(cfg, "symbol_interval", None) is None:
             return None
@@ -410,8 +413,9 @@ class TaskManager:
         }
 
     def _reservation_amount(self, cfg: TaskConfig) -> float:
-        if getattr(cfg, "live_execution_mode", None) == "small_live_auto":
-            return float(getattr(cfg, "live_trade_max_notional", 0.0) or 0.0)
+        max_notional = float(getattr(cfg, "live_trade_max_notional", 0.0) or 0.0)
+        if max_notional > 0:
+            return max_notional
         if getattr(cfg, "free", -1) >= 0:
             return float(cfg.free)
         return float(getattr(self.cfg, "cash", 0.0) or 0.0)
@@ -493,7 +497,7 @@ class TaskManager:
                 f"credential_id={getattr(routed, 'credential_id', None)} api_key={getattr(routed, 'masked_api_key', '')}"
             )
             return routed
-        if not is_real_auto_mode(getattr(cfg, "live_execution_mode", None)):
+        if not is_real_auto_mode(self._runtime_live_execution_mode(cfg)):
             return self.exchange
         cached = self._exchange_by_mode.get(target_mode.value)
         if cached is not None:
@@ -556,7 +560,7 @@ class TaskManager:
             if getattr(tc, "user_id", None) is not None:
                 await self._exchange_for_user_mode(tc.user_id, target_mode)
                 continue
-            if not is_real_auto_mode(getattr(tc, "live_execution_mode", None)):
+            if not is_real_auto_mode(self._runtime_live_execution_mode(tc)):
                 continue
             _ = self._exchange_by_mode.get(target_mode.value) or self._exchange_for_mode(target_mode)
 
@@ -1000,15 +1004,13 @@ class TaskManager:
             if user_id is not None and getattr(task.ts, "user_id", None) != user_id:
                 return False
             task.stop()
-            close_symbols = self._configured_cleanup_symbols()
             si = getattr(task.tcfg, "symbol_interval", None)
-            if si is not None:
-                close_symbols.append(si.sy)
-            self._cancel_open_orders_for_symbols(
-                close_symbols,
+            fallback_symbols = [si.sy] if si is not None else []
+            await self._cancel_open_orders_for_task(
+                getattr(task.tcfg, "id", id),
                 getattr(task, "exchange", None),
                 reason="task_closed",
-                task_id=getattr(task.tcfg, "id", id),
+                fallback_symbols=fallback_symbols,
             )
             await self._persist_task_states([task.ts])
             await self._release_task_funds(id, reason="task_closed")
@@ -1023,10 +1025,34 @@ class TaskManager:
             state = await task_store.get_task(id)
         if state is None or not state.is_running():
             return False
+        cfg = self._task_config_from_state(state)
+        if cfg is not None:
+            task_exchange = await self._exchange_for_task(cfg)
+            si = getattr(cfg, "symbol_interval", None)
+            await self._cancel_open_orders_for_task(
+                id,
+                task_exchange,
+                reason="task_closed",
+                fallback_symbols=[si.sy] if si is not None else [],
+            )
         state.state = TaskStateType.DONE
         await self._persist_task_states([state])
         await self._release_task_funds(id, reason="task_closed")
         return True
+
+    def _task_config_from_state(self, state: TaskState) -> TaskConfig | None:
+        config_json = str(getattr(state, "config_json", "") or "").strip()
+        if not config_json:
+            return None
+        try:
+            taskcs = parse_task_config(config_json)
+        except Exception as exc:
+            self.log.error(f"task state config parse failed: task_id={getattr(state, 'id', None)} error={exc}")
+            return None
+        for cfg in taskcs:
+            if int(getattr(cfg, "id", 0) or 0) == int(getattr(state, "id", 0) or 0):
+                return cfg
+        return taskcs[0] if taskcs else None
 
     def del_task(self, id: int, user_id: int | None = None):
         task = self.get_task(id)
@@ -1074,9 +1100,9 @@ class TaskManager:
             if getattr(cfg, "ttype", None) != TaskType.TRADER:
                 continue
             task_exchange = await self._exchange_for_task(cfg)
-            self._cancel_task_start_open_orders(cfg, task_exchange, reason="task_start", seen=seen)
+            await self._cancel_task_start_open_orders(cfg, task_exchange, reason="task_start", seen=seen)
 
-    def _cancel_task_start_open_orders(
+    async def _cancel_task_start_open_orders(
         self,
         cfg,
         exchange,
@@ -1084,23 +1110,14 @@ class TaskManager:
         reason: str,
         seen: set[tuple[int, str]] | None = None,
     ) -> None:
-        self._cancel_open_orders_for_symbols(
-            self._configured_cleanup_symbols(),
-            exchange,
-            reason=reason,
-            task_id=getattr(cfg, "id", None),
-            seen=seen,
-        )
         for task in self._running_tasks_for_cleanup(cfg):
             si = getattr(getattr(task, "tcfg", None), "symbol_interval", None)
-            if si is None:
-                continue
             task_exchange = getattr(task, "exchange", None) or exchange
-            self._cancel_open_orders_for_symbols(
-                [si.sy],
+            await self._cancel_open_orders_for_task(
+                getattr(getattr(task, "tcfg", None), "id", None),
                 task_exchange,
                 reason=reason,
-                task_id=getattr(cfg, "id", None),
+                fallback_symbols=[si.sy] if si is not None else [],
                 seen=seen,
             )
 
@@ -1139,6 +1156,103 @@ class TaskManager:
         if si is None:
             return
         self._cancel_open_orders_for_symbols([si.sy], exchange, reason=reason, task_id=getattr(cfg, "id", None))
+
+    async def _cancel_open_orders_for_task(
+        self,
+        task_id,
+        exchange,
+        *,
+        reason: str,
+        fallback_symbols=None,
+        seen: set[tuple[int, str]] | None = None,
+    ) -> bool:
+        if task_id is None:
+            self._cancel_open_orders_for_symbols(fallback_symbols or [], exchange, reason=reason, task_id=task_id, seen=seen)
+            return False
+
+        records = await self._open_execution_records_for_task(int(task_id))
+        if not records:
+            self._cancel_open_orders_for_symbols(fallback_symbols or [], exchange, reason=reason, task_id=task_id, seen=seen)
+            return False
+
+        fallback_for_incomplete_records: list[Symbol] = []
+        cancel_order = getattr(exchange, "cancel_order", None)
+        for record in records:
+            symbol = self._symbol_from_value(getattr(record, "symbol", None))
+            if symbol is None:
+                continue
+            order_ids = self._record_exchange_order_ids(record)
+            if not order_ids or not callable(cancel_order):
+                fallback_for_incomplete_records.append(symbol)
+                continue
+            for order_id in order_ids:
+                key = (id(exchange), f"{symbol.name()}:{order_id}")
+                if seen is not None:
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                try:
+                    self.log.info(f"cancel_order: reason={reason} task_id={task_id} symbol={symbol.name()} order_id={order_id}")
+                    result = cancel_order(symbol, order_id)
+                    if inspect.isawaitable(result):
+                        await result
+                    await self._mark_execution_record_canceled(record)
+                except Exception as exc:
+                    self.log.error(
+                        f"cancel_order failed: reason={reason} task_id={task_id} symbol={symbol.name()} order_id={order_id} error={exc}"
+                    )
+
+        self._cancel_open_orders_for_symbols(
+            fallback_for_incomplete_records,
+            exchange,
+            reason=reason,
+            task_id=task_id,
+            seen=seen,
+        )
+        return True
+
+    async def _open_execution_records_for_task(self, task_id: int):
+        store = getattr(self.db_manager, "execution_state", None)
+        list_open_by_task = getattr(store, "list_open_by_task", None)
+        if not callable(list_open_by_task):
+            return []
+        records = list_open_by_task(task_id)
+        if inspect.isawaitable(records):
+            records = await records
+        if isinstance(records, list):
+            return records
+        return list(records or [])
+
+    def _record_exchange_order_ids(self, record) -> list[str]:
+        values: list[str] = []
+        raw = str(getattr(record, "exchange_order_id", "") or "").strip()
+        if raw:
+            values.extend(raw.split(","))
+        raw_payload = getattr(record, "raw_payload", None)
+        if isinstance(raw_payload, dict):
+            for key in ("orderId", "order_id", "clientOrderId", "id"):
+                value = raw_payload.get(key)
+                if value is not None:
+                    values.append(str(value))
+        ret: list[str] = []
+        seen: set[str] = set()
+        for value in values:
+            order_id = str(value or "").strip()
+            if not order_id or order_id in seen:
+                continue
+            seen.add(order_id)
+            ret.append(order_id)
+        return ret
+
+    async def _mark_execution_record_canceled(self, record) -> None:
+        store = getattr(self.db_manager, "execution_state", None)
+        save = getattr(store, "save", None)
+        if not callable(save) or not hasattr(record, "with_updates"):
+            return
+        updated = record.with_updates(status=ExecutionStatus.CANCELED, updated_at=int(datetime.now().timestamp()))
+        result = save(updated)
+        if inspect.isawaitable(result):
+            await result
 
     def _cancel_open_orders_for_symbols(
         self,

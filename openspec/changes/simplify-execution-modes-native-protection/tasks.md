@@ -21,7 +21,7 @@
 
 ## 4. Route Live Automation Through Execution Gateway
 
-- [x] 4.1 Replace legacy direct live order submission with `ExecutionGateway` order and protection intents for `small_live_auto` and `full_live_auto`.
+- [x] 4.1 Replace legacy direct live order submission with `ExecutionGateway` order and protection intents for `auto_trade`.
 - [x] 4.2 Keep small-live notional caps and account prerequisite checks before live gateway submission.
 - [x] 4.3 Persist entry, close, protection, replacement, cancellation, and failure state through the execution state store.
 - [x] 4.4 Emit dashboard-visible events for protection armed, rejected, missing, failed, replaced, and canceled states.

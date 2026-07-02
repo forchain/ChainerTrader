@@ -26,7 +26,7 @@
   - cross-margin long order notional matches the strategy-configured amount when the request is within available capital
   - cross-margin short borrow-side notional matches the strategy-configured amount when the request is within available capital
   - cross-margin short live path is capped by `available_capital * leverage_ratio` when the request exceeds the allowed limit
-  - `small_live_auto.live_trade_max_notional` remains an independent hard cap
+  - capped `auto_trade.live_trade_max_notional` remains an independent hard cap
   - operator can verify success from Chainer output plus Binance web history
 - Out of scope:
   - futures exchange integration
@@ -60,7 +60,7 @@
   - current account snapshot shows `CROSS_MARGIN USDT=100.0`
   - this run should treat cross-margin as the canonical account surface for both long and short verification
 - Safety limits:
-  - use `small_live_auto`
+  - use capped `auto_trade`
   - use minimal notional above exchange min-notional
   - one symbol only, default `BTC-USDT`
   - no run should intentionally create exposure beyond a small capped smoke amount
@@ -80,7 +80,7 @@ The third run must intentionally request more than the allowed leveraged ceiling
 | AC-LR-002 | Cross-margin long entry preserves configured order notional | Chainer outcome with requested/effective notional equality + Binance margin order history | long order notional stays at task-requested size | passed |
 | AC-LR-003 | Cross-margin short entry preserves configured order notional when within the limit | Chainer outcome with requested/effective notional equality + Binance margin order history | short borrow-side notional stays at task-requested size | passed |
 | AC-LR-004 | Cross-margin short entry is capped at 1:1 exposure when the request exceeds the limit | Chainer outcome with `requested_notional > effective_notional` + Binance margin order history sized near effective notional | margin short notional does not exceed owned quote capital | passed |
-| AC-LR-005 | `small_live_auto` cap remains independent from leverage ratio | Chainer outcome with ratio raised but `effective_notional` still equal to task cap | order size does not grow just because ratio increased | passed |
+| AC-LR-005 | capped `auto_trade` remains independent from leverage ratio | Chainer outcome with ratio raised but `effective_notional` still equal to task cap | order size does not grow just because ratio increased | passed |
 | AC-LR-006 | Observability is sufficient for operator sign-off | execution report with timestamps, task config, order IDs, requested/effective notionals, manual verification path | operator can independently cross-check in Binance Web | passed |
 
 ## Failure Classification

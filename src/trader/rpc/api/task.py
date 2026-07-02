@@ -3,6 +3,7 @@ from math import ceil
 from fastapi import APIRouter, Request
 
 from trader.auth.context import current_user
+from trader.rpc.task_state_payload import public_task_state_dict
 
 router = APIRouter()
 
@@ -23,7 +24,7 @@ async def get_task(id: int, request: Request):
     user_id = None if user is None or user.is_admin else user.id
     ts = await request.app.state.app.task_manager.get_task_state(id, user_id=user_id)
     if ts:
-        return ts.to_dict()
+        return public_task_state_dict(ts)
     return {"id": id, "error": "invalid"}
 
 

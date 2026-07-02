@@ -67,7 +67,7 @@ def test_order_and_risk_intents_validate_and_preserve_signal_context():
 def test_execution_events_and_results_use_normalized_taxonomy():
     event = ExecutionEvent.order_accepted(
         gateway=GatewayMode.BINANCE_LIVE,
-        staged_execution_mode="small_live_auto",
+        staged_execution_mode="auto_trade",
         intent_id="intent-1",
         operation_id="op-1",
         symbol="BTCUSDT",
@@ -116,27 +116,22 @@ def test_gateway_capabilities_return_explicit_unsupported_results():
     assert result.to_dict()["capability"] == "oco_protection"
 
 
-def test_gateway_resolver_preserves_staged_live_safety_modes():
+def test_gateway_resolver_supports_manual_notify_and_auto_trade_only():
     manual = resolve_execution_gateway(live_execution_mode="manual_notify")
-    small_live = resolve_execution_gateway(live_execution_mode="small_live_auto", live_trade_max_notional=25.0)
-    full_live = resolve_execution_gateway(live_execution_mode="full_live_auto")
+    auto = resolve_execution_gateway(live_execution_mode="auto_trade", live_trade_max_notional=25.0)
 
     assert manual.gateway_mode == GatewayMode.NOTIFICATION_ONLY
     assert manual.can_submit_orders is False
-    assert small_live.gateway_mode == GatewayMode.BINANCE_LIVE
-    assert small_live.max_notional == 25.0
-    assert small_live.requires_live_order_cap is True
-    assert full_live.gateway_mode == GatewayMode.BINANCE_LIVE
-    assert full_live.requires_live_order_cap is False
+    assert auto.gateway_mode == GatewayMode.BINANCE_LIVE
+    assert auto.max_notional == 25.0
+    assert auto.requires_live_order_cap is True
 
     with pytest.raises(GatewayResolutionError, match="conflicts with live_execution_mode=manual_notify"):
         resolve_execution_gateway(live_execution_mode="manual_notify", requested_gateway=GatewayMode.BINANCE_LIVE)
 
-    with pytest.raises(GatewayResolutionError, match="paper_auto is no longer supported"):
-        resolve_execution_gateway(live_execution_mode="paper_auto")
-
-    with pytest.raises(GatewayResolutionError, match="requires positive live_trade_max_notional"):
-        resolve_execution_gateway(live_execution_mode="small_live_auto", live_trade_max_notional=0.0)
+    for mode in ["small_live_auto", "full_live_auto", "paper_auto", "manual", "notify"]:
+        with pytest.raises(GatewayResolutionError, match=f"unsupported live_execution_mode={mode}"):
+            resolve_execution_gateway(live_execution_mode=mode)
 
 
 def test_execution_gateway_interface_declares_required_operations():
@@ -151,9 +146,9 @@ def test_execution_gateway_interface_declares_required_operations():
 
     request = ReconcileRequest(
         gateway=GatewayMode.BINANCE_LIVE,
-        staged_execution_mode="small_live_auto",
+        staged_execution_mode="auto_trade",
         symbol="BTCUSDT",
         trade_id="trade-1",
     )
 
-    assert request.idempotency_key == "binance_live:small_live_auto:BTCUSDT:trade-1"
+    assert request.idempotency_key == "binance_live:auto_trade:BTCUSDT:trade-1"

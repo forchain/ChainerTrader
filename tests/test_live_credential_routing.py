@@ -225,7 +225,7 @@ def test_user_owned_real_auto_task_builds_task_with_user_exchange(monkeypatch):
 
         manager._build_task = build_task
         task = _live_task(user_id=7)
-        task.live_execution_mode = "full_live_auto"
+        task.live_execution_mode = "auto_trade"
         task.free = 20.0
 
         await manager.do_add_tasks([task], asyncio.Queue())

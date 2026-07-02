@@ -3,6 +3,7 @@ import json
 
 from pydantic import BaseModel, Field
 
+from trader.rpc.task_state_payload import public_task_state_dict
 from trader.exchange.balance import Balance
 from trader.utils.symbol_interval import Symbol
 from trader.utils.task_state import TaskStateType
@@ -23,6 +24,7 @@ class TasksInfo(BaseModel):
 class AcctsInfo(BaseModel):
     total: int = 0
     balances: list[Balance]
+    open_orders: list[dict[str, Any]] = Field(default_factory=list)
     locked_reasons: list[dict[str, Any]] = Field(default_factory=list)
     borrow_asset: str = ""
     borrowable_amount: float = 0
@@ -49,7 +51,7 @@ async def get_taskinfo(app: "App", user=None, page: int = 1, per_page: int | Non
     for ts in tss:
         if ts.state == TaskStateType.DONE:
             completed += 1
-        item = ts.to_dict()
+        item = public_task_state_dict(ts)
         try:
             payload = json.loads(item.get("config_json") or "[]")
             cfg = payload[0] if isinstance(payload, list) and payload and isinstance(payload[0], dict) else {}
@@ -116,11 +118,12 @@ def get_accounts_info(app: "App") -> AcctsInfo:
         errors.append(f"最大可借额度读取失败: {exc}")
         _log_account_info_error(app, "max borrowable", exc)
     try:
-        locked_reasons = _locked_reasons_from_exchange(app.exchange, getattr(getattr(app, "task_manager", None), "latest_si", None))
+        open_orders = _open_orders_from_exchange(app.exchange, getattr(getattr(app, "task_manager", None), "latest_si", None))
     except Exception as exc:
-        locked_reasons = []
-        errors.append(f"锁定来源读取失败: {exc}")
+        open_orders = []
+        errors.append(f"开放订单读取失败: {exc}")
         _log_account_info_error(app, "locked orders", exc)
+    locked_reasons = list(open_orders)
     operable_amount = _operable_amount(balances, borrow_asset, borrowable_amount)
     for balance in balances:
         if balance.asset == borrow_asset:
@@ -131,6 +134,7 @@ def get_accounts_info(app: "App") -> AcctsInfo:
     return AcctsInfo(
         total=len(balances),
         balances=balances,
+        open_orders=open_orders,
         locked_reasons=locked_reasons,
         borrow_asset=borrow_asset,
         borrowable_amount=borrowable_amount,
@@ -171,26 +175,37 @@ def _get_max_borrowable_amount(exchange: Any, asset: str) -> float:
     return float(getattr(payload, "amount", 0.0) or 0.0)
 
 
-def _locked_reasons_from_exchange(exchange: Any, symbol: Any = None) -> list[dict[str, Any]]:
+def _open_orders_from_exchange(exchange: Any, symbol: Any = None) -> list[dict[str, Any]]:
+    all_reader = getattr(exchange, "get_all_open_orders", None)
+    if callable(all_reader):
+        rows = all_reader()
+        return _open_order_rows(rows)
     reader = getattr(exchange, "get_open_orders", None)
-    if not callable(reader):
-        return []
-    if symbol is None:
+    if not callable(reader) or symbol is None:
         return []
     order_symbol = Symbol(f"{symbol.sy.base}-{symbol.sy.quote}") if hasattr(symbol, "sy") else symbol
     rows = reader(order_symbol)
+    return _open_order_rows(rows)
+
+
+def _open_order_rows(rows: Any) -> list[dict[str, Any]]:
     reasons: list[dict[str, Any]] = []
     for row in rows or []:
         if not isinstance(row, dict):
             continue
+        info = row.get("info") if isinstance(row.get("info"), dict) else {}
+        symbol = str(row.get("symbol") or info.get("symbol") or "")
+        symbol = symbol.replace("/", "")
+        order_id = row.get("orderId") or row.get("order_id") or row.get("id") or info.get("orderId") or info.get("order_id")
         reasons.append(
             {
-                "symbol": str(row.get("symbol") or ""),
-                "side": str(row.get("side") or ""),
+                "symbol": symbol,
+                "side": str(row.get("side") or info.get("side") or ""),
                 "quantity": float(row.get("origQty") or row.get("amount") or row.get("quantity") or 0.0),
-                "order_id": str(row.get("orderId") or row.get("id") or ""),
-                "order_type": str(row.get("type") or ""),
+                "order_id": str(order_id or ""),
+                "order_type": str(row.get("type") or info.get("type") or ""),
                 "price": float(row.get("price") or 0.0),
+                "status": str(row.get("status") or info.get("status") or ""),
             }
         )
     return reasons

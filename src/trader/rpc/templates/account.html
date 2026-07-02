@@ -91,10 +91,17 @@
 
         <div class="card mt-4">
             <div class="card-header">
-                <h5 class="card-title mb-0">锁定来源</h5>
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                    <h5 class="card-title mb-0">开放订单</h5>
+                    <form method="post" action="/account/open-orders/cancel-cleanup-symbols" class="m-0" onsubmit="return confirm('确认取消配置币种的开放订单吗？');">
+                        <button class="btn btn-sm btn-outline-danger" type="submit" {% if not credentials %}disabled{% endif %}>
+                            <i class="fas fa-ban me-1"></i>取消配置币种开放订单
+                        </button>
+                    </form>
+                </div>
             </div>
             <div class="card-body">
-                {% if accts_info and accts_info.locked_reasons %}
+                {% if accts_info and accts_info.open_orders %}
                 <div class="table-responsive">
                     <table class="table table-sm table-striped table-bordered align-middle mb-0 bg-white text-dark">
                         <thead class="table-light">
@@ -102,25 +109,29 @@
                                 <th scope="col">交易对</th>
                                 <th scope="col">方向</th>
                                 <th scope="col">数量</th>
+                                <th scope="col">价格</th>
                                 <th scope="col">订单号</th>
                                 <th scope="col">类型</th>
+                                <th scope="col">状态</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {% for r in accts_info.locked_reasons %}
+                            {% for r in accts_info.open_orders %}
                             <tr>
                                 <td>{{ r.symbol }}</td>
                                 <td>{{ r.side }}</td>
                                 <td>{{ r.quantity | round(8) }}</td>
+                                <td>{{ r.price | default(0, true) | round(8) }}</td>
                                 <td>{{ r.order_id }}</td>
                                 <td>{{ r.order_type }}</td>
+                                <td>{{ r.status | default('', true) }}</td>
                             </tr>
                             {% endfor %}
                         </tbody>
                     </table>
                 </div>
                 {% else %}
-                <p class="text-muted mb-0">暂无可展示的锁定来源。</p>
+                <p class="text-muted mb-0">暂无开放订单。</p>
                 {% endif %}
             </div>
         </div>

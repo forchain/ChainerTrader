@@ -19,9 +19,9 @@
 
 ## Scope
 - In scope:
-  - dedicated fast-signal strategy/task (must not use `realtime_macd_triple_divergence_top10_production.json`)
+  - dedicated fast-signal strategy/task (must not use `auto_trade_macd_triple_divergence_top10_production.json`)
   - production runtime startup via `python -m trader --tasks ...`
-  - real Binance API order operations via `small_live_auto`
+  - real Binance API order operations via capped `auto_trade`
   - coverage: long+short, spot+cross-margin, stop-loss/take-profit, cancel order
   - strict operation logging: success includes order IDs; failure surfaces explicit errors (no silent pass)
   - routing rule: for mixed tasks in one runtime, API path selection must follow each task's Chain Trader mode / execution mode (not one global base path)
@@ -52,8 +52,8 @@
 - Required env from `.env`:
   - `BINANCE_API_KEY`, `BINANCE_API_SECRET`, `TRADER_DB`
 - Execution mode:
-  - `live_execution_mode=small_live_auto`
-  - `live_data_mode=realtime`
+  - `live_execution_mode=auto_trade`
+  - positive `live_trade_max_notional`
 - Exchange credentials source:
   - runtime must use `BINANCE_API_KEY/BINANCE_API_SECRET` for live exchange auth.
   - if `TRADER_EXCHANGE` conflicts, this run overrides it with runtime value derived from `BINANCE_*`.

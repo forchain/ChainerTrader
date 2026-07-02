@@ -83,7 +83,7 @@ def test_execution_orchestrator_reserves_state_before_gateway_submission():
         orchestrator = ExecutionOrchestrator(
             gateway,
             gateway_mode=GatewayMode.BINANCE_LIVE,
-            staged_execution_mode="small_live_auto",
+            staged_execution_mode="auto_trade",
             state_store=store,
             clock=lambda: 1_714_281_600,
         )

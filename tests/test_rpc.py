@@ -174,7 +174,17 @@ def test_account_page_shows_balances_with_default_filter(rpc_test_client, monkey
                 Balance(asset="BTC", free=0.0, locked=0.01, max_borrowable=0.0, operable=0.0),
                 Balance(asset="ETH", free=1.25, locked=0.0, max_borrowable=0.0, operable=1.25),
             ],
-            locked_reasons=[{"symbol": "BTCUSDT", "side": "BUY", "quantity": 0.5, "order_id": "1001", "order_type": "LIMIT"}],
+            open_orders=[
+                {
+                    "symbol": "BTCUSDT",
+                    "side": "BUY",
+                    "quantity": 0.5,
+                    "order_id": "1001",
+                    "order_type": "LIMIT",
+                    "price": 100.0,
+                    "status": "open",
+                }
+            ],
             borrow_asset="USDT",
             borrowable_amount=7.5,
             operable_amount=20.0,
@@ -194,7 +204,8 @@ def test_account_page_shows_balances_with_default_filter(rpc_test_client, monkey
     assert "策略可操作资金" in response.text
     assert "7.5" in response.text
     assert "20.0" in response.text
-    assert "锁定来源" in response.text
+    assert "开放订单" in response.text
+    assert "取消配置币种开放订单" in response.text
     assert "BTCUSDT" in response.text
     assert 'id="toggle-all-assets"' in response.text
     assert "USDT" in response.text
@@ -459,6 +470,83 @@ def test_accounts_info_adds_borrow_capacity_and_locked_order_reasons():
     assert info.locked_reasons[0]["order_id"] == "1001"
     assert exchange.borrow_reads == [("USDT", None)]
     assert exchange.open_order_reads == ["BTCUSDT"]
+
+
+def test_accounts_info_prefers_all_open_orders_reader():
+    class _Exchange:
+        def __init__(self):
+            self.all_open_order_reads = 0
+
+        def get_account_balances(self):
+            return [Balance(asset="USDT", free=5.0, locked=70.0)]
+
+        def get_max_borrowable(self, asset, symbol=None):
+            return {"amount": "0"}
+
+        def get_all_open_orders(self):
+            self.all_open_order_reads += 1
+            return [
+                {
+                    "symbol": "BTC/USDT",
+                    "side": "sell",
+                    "amount": 0.25,
+                    "id": "order-1",
+                    "type": "stop_loss",
+                    "price": "100.0",
+                    "status": "open",
+                }
+            ]
+
+        def get_open_orders(self, symbol):
+            raise AssertionError("symbol-scoped open order reader should not be used")
+
+    exchange = _Exchange()
+    info = get_accounts_info(type("AppStub", (), {"exchange": exchange})())
+
+    assert exchange.all_open_order_reads == 1
+    assert info.open_orders[0]["symbol"] == "BTCUSDT"
+    assert info.open_orders[0]["order_id"] == "order-1"
+    assert info.locked_reasons == info.open_orders
+
+
+def test_account_cancel_cleanup_symbol_open_orders_cancels_configured_cleanup_symbols(rpc_test_client, monkeypatch):
+    service_key = "service-secret"
+    user = type("User", (), {"id": 1, "username": "trader", "role": "user"})()
+    credential = SimpleNamespace(
+        id=1,
+        exchange="BINANCE",
+        encrypted_api_key=encrypt_secret(service_key, "user-api-key"),
+        encrypted_api_secret=encrypt_secret(service_key, "user-api-secret"),
+        masked_api_key="user***ikey",
+    )
+
+    class _Exchange:
+        def __init__(self):
+            self.cancel_all_open_orders_calls = []
+
+        def cancel_all_open_orders(self, symbol):
+            self.cancel_all_open_orders_calls.append(symbol.name())
+
+    exchange = _Exchange()
+    monkeypatch.setattr("trader.rpc.app.require_user", AsyncMock(return_value=user))
+    monkeypatch.setattr("trader.rpc.app._account_exchange_for_user", lambda *_args, **_kwargs: exchange)
+    app.state.cfg = Config(
+        api="127.0.0.1:8100",
+        tasks="[]",
+        secret_key=service_key,
+        live_order_cleanup_symbols=["BTC-USDT", "ETHUSDT", "BTC/USDT"],
+    )
+    rpc_stub = SimpleNamespace(
+        db_manager=SimpleNamespace(exchange_credential=SimpleNamespace(list_by_user=AsyncMock(return_value=[credential]))),
+        logger=None,
+    )
+    monkeypatch.setattr("trader.rpc.app._require_rpc_app", lambda _request: rpc_stub)
+
+    response = rpc_test_client.post("/account/open-orders/cancel-cleanup-symbols", follow_redirects=False)
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/account"
+    assert exchange.cancel_all_open_orders_calls == ["BTCUSDT", "ETHUSDT"]
 
 
 def test_admin_returns_503_when_rpc_app_not_initialized(monkeypatch):

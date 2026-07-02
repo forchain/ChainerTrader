@@ -7,12 +7,12 @@ TBD - created by archiving change staged-realtime-auto-trading. Update Purpose a
 The system SHALL disable real short order placement by default. Realtime real automatic modes SHALL place a real `SHORT` order only when the task explicitly configures `live_short_execution` as `margin_cross`.
 
 #### Scenario: Short execution is disabled
-- **WHEN** `small_live_auto` or `full_live_auto` processes a `SHORT` operation and `live_short_execution` is missing or set to `disabled`
+- **WHEN** `auto_trade` processes a `SHORT` operation and `live_short_execution` is missing or set to `disabled`
 - **THEN** the system MUST NOT place an exchange order
 - **THEN** the system SHALL record a skipped execution outcome explaining that real short execution is disabled
 
 #### Scenario: Cross margin short execution is enabled
-- **WHEN** `small_live_auto` or `full_live_auto` processes a `SHORT` operation and `live_short_execution` is set to `margin_cross`
+- **WHEN** `auto_trade` processes a `SHORT` operation and `live_short_execution` is set to `margin_cross`
 - **THEN** the system SHALL route the operation through Binance cross-margin order validation
 - **THEN** the system SHALL place a cross-margin short order only when every cross-margin safety gate passes
 
@@ -43,15 +43,15 @@ Before placing a real cross-margin short order, the system SHALL validate that m
 - **THEN** the system SHALL record a skipped execution outcome with the readiness failure reason
 
 ### Requirement: Cross margin short execution respects staged sizing
-Cross-margin short orders SHALL use the same staged sizing rules as other real automatic orders. `small_live_auto` cross-margin shorts MUST be capped by `live_trade_max_notional`; `full_live_auto` cross-margin shorts SHALL use configured full sizing after validation.
+Cross-margin short orders SHALL use the same sizing rules as other real automatic orders. Positive `live_trade_max_notional` values on `auto_trade` MUST cap cross-margin shorts; uncapped `auto_trade` SHALL use configured task sizing after validation.
 
-#### Scenario: Small live cross-margin short is capped
-- **WHEN** `small_live_auto` places a cross-margin `SHORT` order
+#### Scenario: Auto trade cross-margin short is capped
+- **WHEN** capped `auto_trade` places a cross-margin `SHORT` order
 - **THEN** the effective order notional MUST be less than or equal to `live_trade_max_notional`
 - **THEN** the system SHALL record the capped effective notional in the execution outcome
 
-#### Scenario: Full live cross-margin short uses configured sizing
-- **WHEN** `full_live_auto` places a cross-margin `SHORT` order
+#### Scenario: Uncapped auto trade cross-margin short uses configured sizing
+- **WHEN** uncapped `auto_trade` places a cross-margin `SHORT` order
 - **THEN** the effective order quantity SHALL be based on the configured full sizing policy
 - **THEN** the order MUST still pass margin readiness, price, quantity, duplicate, and account-side validation before placement
 
@@ -67,4 +67,3 @@ When a cross-margin-enabled task processes a short-side exit such as `CLOSE`, th
 - **WHEN** a cross-margin-enabled task processes `CLOSE` and the runtime cannot determine the short exposure to close
 - **THEN** the system MUST NOT place a margin close order
 - **THEN** the system SHALL record a skipped execution outcome with an unknown short exposure reason
-

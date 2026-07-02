@@ -1,4 +1,5 @@
 import argparse
+import json
 import logging
 import os
 
@@ -84,9 +85,8 @@ def test_base_task_config_json_preserves_live_runtime_controls():
         SymbolInterval("BTC-USDT", Interval.INTERVAL_1m),
         strategies=["macd_triple_divergence"],
         free=10000,
-        strategy_params={"chainer_mode": "BOTH"},
-        live_execution_mode="small_live_auto",
-        live_data_mode="realtime",
+        strategy_params={"chainer_mode": "LONG_ONLY"},
+        live_execution_mode="auto_trade",
         live_trade_max_notional=12.0,
         live_margin_borrow_block_policy="repay_all",
         live_margin_borrow_precheck=False,
@@ -99,13 +99,20 @@ def test_base_task_config_json_preserves_live_runtime_controls():
     )
     original.fund_reservation_asset = "USDT"
     original.fund_reservation_amount = 12.0
-    original.fund_reservation_remaining = 7.5
+    original.fund_reservation_remaining = 12.0
     persisted = BaseTask(original, Config(tasks="[]"), Logger(Config(tasks="[]"))).ts.config_json
+    payload = json.loads(persisted)[0]
 
     restored = parse_task_config(persisted, last_task_id=original.id)[0]
 
-    assert restored.live_execution_mode == original.live_execution_mode
-    assert restored.live_data_mode == original.live_data_mode
+    assert "live_execution_mode" not in payload
+    assert "live_data_mode" not in payload
+    assert "persisted_legacy_live_execution_mode" not in payload
+    assert "persisted_live_data_mode" not in payload
+    assert restored.live_execution_mode == "auto_trade"
+    assert not hasattr(restored, "live_data_mode")
+    assert getattr(restored, "persisted_legacy_live_execution_mode", None) is None
+    assert getattr(restored, "persisted_live_data_mode", None) is None
     assert restored.live_trade_max_notional == original.live_trade_max_notional
     assert restored.live_margin_borrow_block_policy == original.live_margin_borrow_block_policy
     assert restored.live_margin_borrow_precheck is original.live_margin_borrow_precheck
@@ -119,6 +126,58 @@ def test_base_task_config_json_preserves_live_runtime_controls():
     assert restored.fund_reservation_asset == original.fund_reservation_asset
     assert restored.fund_reservation_amount == original.fund_reservation_amount
     assert restored.fund_reservation_remaining == original.fund_reservation_remaining
+    assert "persisted_legacy_live_execution_mode" not in restored.to_dict()
+    assert "persisted_live_data_mode" not in restored.to_dict()
+
+
+def test_task_config_rejects_manual_notify_polling_legacy_data_mode():
+    with pytest.raises(ValueError, match="live_data_mode is no longer supported"):
+        TaskConfig(
+            1,
+            TaskType.TRADER,
+            SymbolInterval("BTC-USDT", Interval.INTERVAL_1m),
+            strategies=["macd_triple_divergence"],
+            live_execution_mode="manual_notify",
+            live_data_mode="polling",
+        )
+
+
+def test_parse_task_config_rejects_live_data_mode():
+    cfg = (
+        '[{"task_type":"TRADER","symbol":"BTC-USDT","interval":"1m",'
+        '"strategy":"macd_triple_divergence","live_data_mode":"realtime"}]'
+    )
+
+    with pytest.raises(ValueError, match="live_data_mode is no longer supported"):
+        parse_task_config(cfg)
+
+
+@pytest.mark.parametrize(
+    "mode",
+    ["small_live_auto", "full_live_auto", "staged_auto_trade", "paper_auto", "manual", "notify"],
+)
+def test_parse_task_config_rejects_removed_live_execution_modes(mode):
+    cfg = (
+        '[{"task_type":"TRADER","symbol":"BTC-USDT","interval":"1m",'
+        f'"strategy":"macd_triple_divergence","live_execution_mode":"{mode}"}}]'
+    )
+
+    with pytest.raises(ValueError, match=f"unsupported live_execution_mode: {mode}"):
+        parse_task_config(cfg)
+
+
+def test_parse_task_config_accepts_only_current_live_execution_modes():
+    cfg = (
+        '[{"task_type":"TRADER","symbol":"BTC-USDT","interval":"1m",'
+        '"strategy":"macd_triple_divergence","live_execution_mode":"manual_notify"}]'
+    )
+
+    task = parse_task_config(cfg)[0]
+    persisted = BaseTask(task, Config(tasks="[]"), Logger(Config(tasks="[]"))).ts.config_json
+
+    assert task.live_execution_mode == "manual_notify"
+    assert "live_data_mode" not in task.to_dict()
+    assert "live_data_mode" not in persisted
 
 
 def test_parse_task_config_keeps_legacy_margin_borrow_policy_aliases():

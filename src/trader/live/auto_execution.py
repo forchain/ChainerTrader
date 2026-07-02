@@ -28,8 +28,6 @@ AUTO_EXECUTION_EVENT_TYPE = "auto_execution_outcome"
 
 class LiveExecutionMode(str, Enum):
     MANUAL_NOTIFY = MANUAL_NOTIFY_MODE
-    SMALL_LIVE_AUTO = "small_live_auto"
-    FULL_LIVE_AUTO = "full_live_auto"
     AUTO_TRADE = "auto_trade"
 
 
@@ -46,9 +44,8 @@ class AutoExecutionStatus(str, Enum):
     FAILED = "failed"
 
 
-REAL_AUTO_MODES = {LiveExecutionMode.SMALL_LIVE_AUTO.value, LiveExecutionMode.FULL_LIVE_AUTO.value, LiveExecutionMode.AUTO_TRADE.value}
-STAGED_AUTO_MODES = set(REAL_AUTO_MODES)
-SUPPORTED_LIVE_EXECUTION_MODES = {LiveExecutionMode.MANUAL_NOTIFY.value, *STAGED_AUTO_MODES}
+REAL_AUTO_MODES = {LiveExecutionMode.AUTO_TRADE.value}
+SUPPORTED_LIVE_EXECUTION_MODES = {LiveExecutionMode.MANUAL_NOTIFY.value, LiveExecutionMode.AUTO_TRADE.value}
 SUPPORTED_MARGIN_BORROW_BLOCK_POLICIES = {
     MarginBorrowBlockPolicy.SKIP_CONTINUE.value,
     MarginBorrowBlockPolicy.REPAY_SINGLE.value,
@@ -110,10 +107,6 @@ class AutoExecutionOutcome:
 def normalize_live_execution_mode(value: str | LiveExecutionMode | None) -> str:
     raw = value.value if isinstance(value, LiveExecutionMode) else value
     mode = str(raw or LiveExecutionMode.AUTO_TRADE.value).strip().lower()
-    if mode in ("manual", "notify"):
-        mode = LiveExecutionMode.MANUAL_NOTIFY.value
-    if mode == "paper_auto":
-        raise ValueError("paper_auto is no longer supported; use backtest mode for testing or manual_notify for no-order realtime operation")
     if mode not in SUPPORTED_LIVE_EXECUTION_MODES:
         raise ValueError(f"unsupported live_execution_mode: {raw}")
     return mode
@@ -142,10 +135,6 @@ def normalize_margin_borrow_block_policy(value: str | MarginBorrowBlockPolicy | 
 
 def is_manual_notify_mode(value: str | None) -> bool:
     return normalize_live_execution_mode(value) == LiveExecutionMode.MANUAL_NOTIFY.value
-
-
-def is_paper_auto_mode(value: str | None) -> bool:
-    return False
 
 
 def is_real_auto_mode(value: str | None) -> bool:
@@ -177,7 +166,7 @@ class AutoExecutionRouter:
         self.cfg = cfg
         self.log = log
         self._reserved_budget_remaining = self._initial_reserved_budget()
-        self.mode = normalize_live_execution_mode(getattr(tcfg, "live_execution_mode", None))
+        self.mode = self._resolved_runtime_mode()
         self.margin_borrow_block_policy = normalize_margin_borrow_block_policy(
             getattr(tcfg, "live_margin_borrow_block_policy", None)
         )
@@ -187,6 +176,9 @@ class AutoExecutionRouter:
         self._protection_order_ids_by_trade: dict[str, str] = {}
         self._seen_operation_ids: set[str] = set()
         self.outcomes: list[AutoExecutionOutcome] = []
+
+    def _resolved_runtime_mode(self) -> str:
+        return normalize_live_execution_mode(getattr(self.tcfg, "live_execution_mode", None))
 
     @property
     def market(self) -> str:
@@ -375,16 +367,15 @@ class AutoExecutionRouter:
         return self._record(self._outcome(op, AutoExecutionStatus.SKIPPED, reason="unsupported_operation"))
 
     def _requested_notional(self) -> float:
-        if self.mode == LiveExecutionMode.SMALL_LIVE_AUTO.value:
-            return float(getattr(self.tcfg, "live_trade_max_notional", 0.0) or 0.0)
+        max_notional = float(getattr(self.tcfg, "live_trade_max_notional", 0.0) or 0.0)
+        if max_notional > 0:
+            return max_notional
         if getattr(self.tcfg, "free", -1) >= 0:
             return float(self.tcfg.free)
         return float(getattr(self.cfg, "cash", 0.0) or 0.0)
 
     def _route_real_long(self, op, price: float) -> AutoExecutionOutcome:
         requested_notional = self._requested_notional()
-        if self.mode == LiveExecutionMode.SMALL_LIVE_AUTO.value and requested_notional <= 0:
-            return self._record(self._outcome(op, AutoExecutionStatus.SKIPPED, reason="invalid_live_trade_max_notional"))
         if requested_notional <= 0 or not isfinite(requested_notional):
             return self._record(self._outcome(op, AutoExecutionStatus.SKIPPED, reason="invalid_notional"))
         requested_quantity = requested_notional / price
@@ -520,8 +511,6 @@ class AutoExecutionRouter:
                     effective_quantity=quantity,
                 )
             )
-        if self.mode == LiveExecutionMode.SMALL_LIVE_AUTO.value and requested_notional <= 0:
-            return self._record(self._outcome(op, AutoExecutionStatus.SKIPPED, reason="invalid_live_trade_max_notional"))
         if not self._margin_ready():
             return self._record(self._outcome(op, AutoExecutionStatus.SKIPPED, reason="margin_not_ready"))
         requested_quantity = requested_notional / price if requested_notional > 0 else 0.0

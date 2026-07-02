@@ -99,59 +99,52 @@ def test_parse_task_config_accepts_manual_notify_mode_and_start_position():
 
     assert len(tasks) == 1
     assert tasks[0].live_execution_mode == "manual_notify"
-    assert tasks[0].live_data_mode == "realtime"
+    assert not hasattr(tasks[0], "live_data_mode")
     assert tasks[0].manual_start_position == 0.125
     assert tasks[0].to_dict()["live_execution_mode"] == "manual_notify"
-    assert tasks[0].to_dict()["live_data_mode"] == "realtime"
+    assert "live_data_mode" not in tasks[0].to_dict()
     assert tasks[0].to_dict()["manual_start_position"] == 0.125
 
 
-def test_parse_task_config_preserves_explicit_manual_notify_polling_mode():
-    tasks = parse_task_config(
-        json.dumps(
-            [
-                {
-                    "task_type": "TRADER",
-                    "symbol": "BTC-USDT",
-                    "interval": "1m",
-                    "strategy": "macd_triple_divergence",
-                    "live_execution_mode": "manual_notify",
-                    "live_data_mode": "polling",
-                }
-            ]
+def test_parse_task_config_rejects_explicit_manual_notify_data_mode():
+    with pytest.raises(ValueError, match="live_data_mode is no longer supported"):
+        parse_task_config(
+            json.dumps(
+                [
+                    {
+                        "task_type": "TRADER",
+                        "symbol": "BTC-USDT",
+                        "interval": "1m",
+                        "strategy": "macd_triple_divergence",
+                        "live_execution_mode": "manual_notify",
+                        "live_data_mode": "polling",
+                    }
+                ]
+            )
         )
-    )
-
-    assert len(tasks) == 1
-    assert tasks[0].live_data_mode == "polling"
 
 
-def test_parse_task_config_accepts_staged_auto_trade_options():
-    tasks = parse_task_config(
-        json.dumps(
-            [
-                {
-                    "task_type": "TRADER",
-                    "symbol": "BTC-USDT",
-                    "interval": "1m",
-                    "strategy": "macd_triple_divergence",
-                    "free": 2500,
-                    "live_execution_mode": "small_live_auto",
-                    "live_trade_max_notional": 15,
-                    "strategy_params": {"chainer_mode": "BOTH"},
-                }
-            ]
+def test_parse_task_config_rejects_staged_auto_trade_options():
+    with pytest.raises(ValueError, match="unsupported live_execution_mode: small_live_auto"):
+        parse_task_config(
+            json.dumps(
+                [
+                    {
+                        "task_type": "TRADER",
+                        "symbol": "BTC-USDT",
+                        "interval": "1m",
+                        "strategy": "macd_triple_divergence",
+                        "free": 2500,
+                        "live_execution_mode": "small_live_auto",
+                        "live_trade_max_notional": 15,
+                        "strategy_params": {"chainer_mode": "BOTH"},
+                    }
+                ]
+            )
         )
-    )
-
-    assert len(tasks) == 1
-    assert tasks[0].live_execution_mode == "small_live_auto"
-    assert tasks[0].live_trade_max_notional == 15.0
-    assert tasks[0].requires_short_capability is True
-    assert tasks[0].to_dict()["live_trade_max_notional"] == 15.0
 
 
-def test_parse_task_config_defaults_notional_to_global_min_when_missing(monkeypatch):
+def test_parse_task_config_leaves_notional_uncapped_when_missing(monkeypatch):
     monkeypatch.setenv("TRADER_MIN_LIVE_TRADE_NOTIONAL", "11")
     tasks = parse_task_config(
         json.dumps(
@@ -161,14 +154,14 @@ def test_parse_task_config_defaults_notional_to_global_min_when_missing(monkeypa
                     "symbol": "BTC-USDT",
                     "interval": "1m",
                     "strategy": "macd_triple_divergence",
-                    "live_execution_mode": "small_live_auto",
+                    "live_execution_mode": "auto_trade",
                 }
             ]
         )
     )
 
     assert len(tasks) == 1
-    assert tasks[0].live_trade_max_notional == 11.0
+    assert tasks[0].live_trade_max_notional == 0.0
 
 
 def test_parse_task_config_rejects_notional_below_global_min(monkeypatch):
@@ -182,7 +175,7 @@ def test_parse_task_config_rejects_notional_below_global_min(monkeypatch):
                         "symbol": "BTC-USDT",
                         "interval": "1m",
                         "strategy": "macd_triple_divergence",
-                        "live_execution_mode": "small_live_auto",
+                        "live_execution_mode": "auto_trade",
                         "live_trade_max_notional": 10,
                     }
                 ]
@@ -190,12 +183,13 @@ def test_parse_task_config_rejects_notional_below_global_min(monkeypatch):
         )
 
 
-def test_normalize_live_execution_mode_preserves_staged_modes_and_rejects_unknown():
-    assert normalize_live_execution_mode("small_live_auto") == "small_live_auto"
-    assert normalize_live_execution_mode("full_live_auto") == "full_live_auto"
+def test_normalize_live_execution_mode_accepts_only_current_modes_and_rejects_unknown():
+    assert normalize_live_execution_mode("manual_notify") == "manual_notify"
+    assert normalize_live_execution_mode("auto_trade") == "auto_trade"
 
-    with pytest.raises(ValueError, match="paper_auto is no longer supported"):
-        normalize_live_execution_mode("paper_auto")
+    for mode in ["small_live_auto", "full_live_auto", "paper_auto", "manual", "notify"]:
+        with pytest.raises(ValueError, match=f"unsupported live_execution_mode: {mode}"):
+            normalize_live_execution_mode(mode)
 
     with pytest.raises(ValueError, match="unsupported live_execution_mode"):
         normalize_live_execution_mode("surprise")

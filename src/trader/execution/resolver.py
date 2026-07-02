@@ -20,11 +20,8 @@ class ResolvedExecutionGateway:
 
 
 MANUAL_NOTIFY = "manual_notify"
-PAPER_AUTO = "paper_auto"
-SMALL_LIVE_AUTO = "small_live_auto"
-FULL_LIVE_AUTO = "full_live_auto"
 AUTO_TRADE = "auto_trade"
-SUPPORTED_STAGED_EXECUTION_MODES = {MANUAL_NOTIFY, SMALL_LIVE_AUTO, FULL_LIVE_AUTO, AUTO_TRADE}
+SUPPORTED_STAGED_EXECUTION_MODES = {MANUAL_NOTIFY, AUTO_TRADE}
 
 
 def _normalize_requested_gateway(value: GatewayMode | str | None) -> GatewayMode | None:
@@ -47,21 +44,16 @@ def resolve_execution_gateway(
     if mode == MANUAL_NOTIFY:
         return _resolve_expected(mode, GatewayMode.NOTIFICATION_ONLY, requested, can_submit_orders=False)
 
-    if mode == SMALL_LIVE_AUTO:
+    if mode == AUTO_TRADE:
         max_notional = float(live_trade_max_notional or 0.0)
-        if max_notional <= 0:
-            raise GatewayResolutionError("small_live_auto requires positive live_trade_max_notional")
         return _resolve_expected(
             mode,
             GatewayMode.BINANCE_LIVE,
             requested,
             can_submit_orders=True,
-            max_notional=max_notional,
-            requires_live_order_cap=True,
+            max_notional=max_notional if max_notional > 0 else None,
+            requires_live_order_cap=max_notional > 0,
         )
-
-    if mode in {FULL_LIVE_AUTO, AUTO_TRADE}:
-        return _resolve_expected(mode, GatewayMode.BINANCE_LIVE, requested, can_submit_orders=True)
 
     raise GatewayResolutionError(f"unsupported live_execution_mode={mode}")
 
@@ -69,10 +61,6 @@ def resolve_execution_gateway(
 def _normalize_live_execution_mode(value: str | object | None) -> str:
     raw = getattr(value, "value", value)
     mode = str(raw or AUTO_TRADE).strip().lower()
-    if mode in ("manual", "notify"):
-        mode = MANUAL_NOTIFY
-    if mode == PAPER_AUTO:
-        raise GatewayResolutionError("paper_auto is no longer supported; use backtest mode for testing or manual_notify for no-order realtime operation")
     if mode not in SUPPORTED_STAGED_EXECUTION_MODES:
         raise GatewayResolutionError(f"unsupported live_execution_mode={raw}")
     return mode

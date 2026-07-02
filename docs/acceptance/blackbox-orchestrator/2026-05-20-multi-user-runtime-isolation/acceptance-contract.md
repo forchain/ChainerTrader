@@ -34,7 +34,7 @@ The acceptance setup may create users and credentials directly in the SQL databa
 
 ## Safety Gate
 
-Live `TRADER` tasks may contact Binance. Tasks configured with `small_live_auto` can place real orders if the strategy emits a live signal. The default safe acceptance run uses `DEBUG` tasks and must not contact Binance. Live-safe and mixed-safe runs use `manual_notify` and must not place real orders. Real-order mode must not run unless the User explicitly approves it for this workflow.
+Live `TRADER` tasks may contact Binance. Tasks configured with `auto_trade` can place real orders if the strategy emits a live signal. The default safe acceptance run uses `DEBUG` tasks and must not contact Binance. Live-safe and mixed-safe runs use `manual_notify` and must not place real orders. Real-order mode must not run unless the User explicitly approves it for this workflow.
 
 If real-order mode is approved, the run must cap notional using `live_trade_max_notional`, record the task IDs and any exchange order identifiers observed through public APIs, and stop on the first unexpected order or credential error.
 

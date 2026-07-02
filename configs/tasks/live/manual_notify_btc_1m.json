@@ -6,7 +6,6 @@
     "strategy": "macd_triple_divergence",
     "free": 10000,
     "manual_start_position": 0,
-    "live_execution_mode": "manual_notify",
-    "live_data_mode": "realtime"
+    "live_execution_mode": "manual_notify"
   }
 ]

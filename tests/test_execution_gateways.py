@@ -173,7 +173,7 @@ class FakeNativeBinanceExchange:
 
 def test_binance_live_gateway_maps_market_native_oco_and_breakeven_replacement():
     exchange = FakeNativeBinanceExchange()
-    gateway = BinanceLiveExecutionGateway(exchange, staged_execution_mode="small_live_auto")
+    gateway = BinanceLiveExecutionGateway(exchange, staged_execution_mode="auto_trade")
 
     entry = gateway.open_position(_entry())
     protection = gateway.place_protection(_protection())
@@ -208,7 +208,7 @@ def test_binance_live_gateway_rejects_market_order_without_exchange_order_id():
 
 def test_binance_live_gateway_maps_single_protection_orders_to_closing_side():
     exchange = FakeNativeBinanceExchange()
-    gateway = BinanceLiveExecutionGateway(exchange, staged_execution_mode="small_live_auto")
+    gateway = BinanceLiveExecutionGateway(exchange, staged_execution_mode="auto_trade")
 
     long_stop = RiskIntent.place_protection(
         intent_id="risk-long-stop",
@@ -247,14 +247,14 @@ def test_binance_live_gateway_maps_single_protection_orders_to_closing_side():
 
 
 def test_binance_live_gateway_rejects_unsupported_or_unverified_native_protection():
-    unsupported = BinanceLiveExecutionGateway(object(), staged_execution_mode="small_live_auto").place_protection(_protection())
+    unsupported = BinanceLiveExecutionGateway(object(), staged_execution_mode="auto_trade").place_protection(_protection())
     assert unsupported.status == ExecutionStatus.REJECTED
     assert unsupported.capability == GatewayCapability.OCO_PROTECTION
     assert ExecutionEventType.PROTECTION_ARMED not in _event_types(unsupported)
 
     unverified = BinanceLiveExecutionGateway(
         FakeNativeBinanceExchange(verify=False),
-        staged_execution_mode="small_live_auto",
+        staged_execution_mode="auto_trade",
     ).place_protection(_protection())
     assert unverified.status == ExecutionStatus.FAILED
     assert ExecutionEventType.PROTECTION_MISSING in _event_types(unverified)

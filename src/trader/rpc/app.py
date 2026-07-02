@@ -37,6 +37,7 @@ from trader.exchange.user_credentials import (
 from trader.live.monitor import GLOBAL_LIVE_EVENT_BUS
 from trader.rpc.models import AcctsInfo, get_accounts_info, get_klines_info, get_logs_info, get_taskinfo
 from trader.rpc.rpc_app import RpcApp
+from trader.utils.symbol_interval import Symbol
 
 
 @asynccontextmanager
@@ -360,6 +361,18 @@ async def account_exchange_credentials_submit(request: Request):
     return RedirectResponse(url="/account", status_code=status.HTTP_303_SEE_OTHER)
 
 
+@app.post("/account/open-orders/cancel-cleanup-symbols")
+async def account_cancel_cleanup_symbol_open_orders(request: Request):
+    user = await require_user(request)
+    rpc_app = _require_rpc_app(request)
+    credentials = []
+    if rpc_app.db_manager and getattr(rpc_app.db_manager, "exchange_credential", None):
+        credentials = await rpc_app.db_manager.exchange_credential.list_by_user(user.id)
+    exchange = _account_exchange_for_user(request.app.state.cfg, rpc_app, user, credentials)
+    _cancel_configured_open_order_symbols(request.app.state.cfg, exchange, getattr(rpc_app, "logger", None))
+    return RedirectResponse(url="/account", status_code=status.HTTP_303_SEE_OTHER)
+
+
 def _validate_exchange_credential_connectivity(cfg: Config, exchange: str, api_key: str, api_secret: str) -> str | None:
     if exchange != "BINANCE":
         return None
@@ -411,6 +424,54 @@ def _default_binance_credential(credentials: list):
     for credential in credentials or []:
         if str(getattr(credential, "exchange", "") or "").upper() == "BINANCE":
             return credential
+    return None
+
+
+def _cancel_configured_open_order_symbols(cfg: Config, exchange, logger=None) -> int:
+    cancel_all = getattr(exchange, "cancel_all_open_orders", None)
+    if not callable(cancel_all):
+        return 0
+    symbols = _configured_cleanup_symbols(cfg)
+    total = 0
+    for symbol in symbols:
+        try:
+            cancel_all(symbol)
+            total += 1
+        except Exception as exc:
+            if logger is not None and hasattr(logger, "error"):
+                logger.error(f"account cancel_all_open_orders failed: symbol={symbol.name()} error={exc}")
+    return total
+
+
+def _configured_cleanup_symbols(cfg: Config) -> list[Symbol]:
+    raw = getattr(cfg, "live_order_cleanup_symbols", None)
+    if raw is None:
+        return []
+    values = [raw] if isinstance(raw, str) else list(raw)
+    ret: list[Symbol] = []
+    seen: set[str] = set()
+    for value in values:
+        symbol = _symbol_from_exchange_text(str(value))
+        if symbol is None:
+            continue
+        name = symbol.name()
+        if name in seen:
+            continue
+        seen.add(name)
+        ret.append(symbol)
+    return ret
+
+
+def _symbol_from_exchange_text(raw: str) -> Symbol | None:
+    text = str(raw or "").strip().upper()
+    if not text:
+        return None
+    text = text.replace("/", "-").replace("_", "-")
+    if "-" in text:
+        return Symbol(text)
+    for quote in ("FDUSD", "USDT", "USDC", "BUSD", "TUSD", "BTC", "ETH", "BNB", "USD"):
+        if text.endswith(quote) and len(text) > len(quote):
+            return Symbol(f"{text[:-len(quote)]}-{quote}")
     return None
 
 

@@ -11,7 +11,7 @@ from trader.database.config import build_tortoise_config
 from trader.execution.models import ExecutionStatus, GatewayMode
 from trader.execution.state import ExecutionStateRecord
 from trader.task.base_task import BaseTask
-from trader.task.task_config import TaskConfig
+from trader.task.task_config import TaskConfig, parse_task_config
 from trader.task.task_manager import TaskManager
 from trader.task.task_type import TaskType
 from trader.task.trader_task import TraderTask
@@ -174,7 +174,7 @@ def test_task_manager_reserves_live_task_budget_before_start_and_releases_on_com
             symbol_interval=SymbolInterval("BTC-USDT", Interval("1m")),
             strategies=["macd_triple_divergence"],
             free=40.0,
-            live_execution_mode="full_live_auto",
+            live_execution_mode="auto_trade",
         )
 
         async def fake_add_task(taskc, queue):
@@ -209,7 +209,7 @@ def test_task_manager_accepts_multiple_live_tasks_when_each_fits_exchange_balanc
             symbol_interval=SymbolInterval("BTC-USDT", Interval("1m")),
             strategies=["macd_triple_divergence"],
             free=100.0,
-            live_execution_mode="full_live_auto",
+            live_execution_mode="auto_trade",
         )
         second = TaskConfig(
             id=302,
@@ -217,7 +217,7 @@ def test_task_manager_accepts_multiple_live_tasks_when_each_fits_exchange_balanc
             symbol_interval=SymbolInterval("ETH-USDT", Interval("1m")),
             strategies=["macd_triple_divergence"],
             free=100.0,
-            live_execution_mode="full_live_auto",
+            live_execution_mode="auto_trade",
         )
 
         async def fake_add_task(taskc, _queue):
@@ -255,7 +255,7 @@ def test_task_manager_rejects_first_live_task_that_exceeds_its_account_capacity(
             symbol_interval=SymbolInterval("BTC-USDT", Interval("1m")),
             strategies=["macd_triple_divergence"],
             free=1000.0,
-            live_execution_mode="full_live_auto",
+            live_execution_mode="auto_trade",
         )
         second = TaskConfig(
             id=312,
@@ -263,7 +263,7 @@ def test_task_manager_rejects_first_live_task_that_exceeds_its_account_capacity(
             symbol_interval=SymbolInterval("ETH-USDT", Interval("1m")),
             strategies=["macd_triple_divergence"],
             free=10000.0,
-            live_execution_mode="full_live_auto",
+            live_execution_mode="auto_trade",
         )
 
         async def fake_add_task(taskc, _queue):
@@ -295,7 +295,7 @@ def test_task_manager_rejects_live_task_budget_without_reservation_store():
             symbol_interval=SymbolInterval("BTC-USDT", Interval("1m")),
             strategies=["macd_triple_divergence"],
             free=10000.0,
-            live_execution_mode="full_live_auto",
+            live_execution_mode="auto_trade",
         )
         manager.add_task = lambda _taskc, _queue: asyncio.sleep(0)
 
@@ -318,7 +318,7 @@ def test_task_manager_accepts_cross_margin_budget_when_borrowable_capacity_cover
             strategies=["macd_triple_divergence"],
             strategy_params={"chainer_mode": "BOTH"},
             free=10000.0,
-            live_execution_mode="full_live_auto",
+            live_execution_mode="auto_trade",
         )
         manager.add_task = lambda _taskc, _queue: asyncio.sleep(0)
 
@@ -344,7 +344,7 @@ def test_task_manager_preflights_mixed_live_tasks_against_their_routed_accounts(
             symbol_interval=SymbolInterval("BTC-USDT", Interval("1m")),
             strategies=["macd_triple_divergence"],
             free=100.0,
-            live_execution_mode="full_live_auto",
+            live_execution_mode="auto_trade",
         )
         short_task = TaskConfig(
             id=362,
@@ -353,7 +353,7 @@ def test_task_manager_preflights_mixed_live_tasks_against_their_routed_accounts(
             strategies=["macd_triple_divergence"],
             strategy_params={"chainer_mode": "BOTH"},
             free=100.0,
-            live_execution_mode="full_live_auto",
+            live_execution_mode="auto_trade",
         )
 
         async def exchange_for_task(task_cfg):
@@ -389,7 +389,7 @@ def test_task_manager_rejects_cross_margin_budget_when_balance_plus_borrowable_i
             strategies=["macd_triple_divergence"],
             strategy_params={"chainer_mode": "BOTH"},
             free=10000.0,
-            live_execution_mode="full_live_auto",
+            live_execution_mode="auto_trade",
         )
         manager.add_task = lambda _taskc, _queue: asyncio.sleep(0)
 
@@ -401,6 +401,42 @@ def test_task_manager_rejects_cross_margin_budget_when_balance_plus_borrowable_i
         assert "balance=0.08" in str(exc_info.value)
         assert "max_borrowable=5000.0" in str(exc_info.value)
         assert "operable_capacity=5000.08" in str(exc_info.value)
+        assert "requested=10000.0" in str(exc_info.value)
+
+    asyncio.run(run())
+
+
+def test_task_manager_preflights_parsed_uncapped_auto_trade_against_task_free_budget():
+    async def run():
+        cfg = Config(tasks="[]", cash=1000.0)
+        logger = Logger(cfg)
+        db_manager = SimpleNamespace(task=None, account_fund_reservation=None)
+        manager = TaskManager(cfg, logger, db_manager, _Exchange(quote_balance=50.0, quote_borrowable=0.0))
+        task_config = parse_task_config(
+            """
+            [
+              {
+                "task_type": "TRADER",
+                "symbol": "BTC-USDT",
+                "interval": "1m",
+                "strategy": "macd_triple_divergence",
+                "free": 10000,
+                "manual_start_position": 0,
+                "live_execution_mode": "auto_trade",
+                "strategy_params": {
+                  "chainer_mode": "BOTH"
+                }
+              }
+            ]
+            """
+        )[0]
+        manager.add_task = lambda _taskc, _queue: asyncio.sleep(0)
+
+        with pytest.raises(FundReservationError) as exc_info:
+            await manager.do_add_tasks([task_config], asyncio.Queue())
+
+        assert task_config.live_trade_max_notional == 0.0
+        assert "capacity=50.0" in str(exc_info.value)
         assert "requested=10000.0" in str(exc_info.value)
 
     asyncio.run(run())
@@ -419,7 +455,7 @@ def test_task_manager_logs_balance_plus_borrowable_rejection_reason():
             strategies=["macd_triple_divergence"],
             strategy_params={"chainer_mode": "BOTH"},
             free=10000.0,
-            live_execution_mode="full_live_auto",
+            live_execution_mode="auto_trade",
         )
         manager.add_task = lambda _taskc, _queue: asyncio.sleep(0)
 
@@ -458,7 +494,7 @@ def test_task_manager_uses_current_max_borrowable_amount_not_account_borrow_limi
             strategies=["macd_triple_divergence"],
             strategy_params={"chainer_mode": "BOTH"},
             free=30.0,
-            live_execution_mode="full_live_auto",
+            live_execution_mode="auto_trade",
         )
         manager.add_task = lambda _taskc, _queue: asyncio.sleep(0)
 
@@ -483,7 +519,7 @@ def test_task_manager_recovers_live_task_without_fresh_balance_preflight():
             symbol_interval=SymbolInterval("BTC-USDT", Interval("1m")),
             strategies=["macd_triple_divergence"],
             free=10000.0,
-            live_execution_mode="full_live_auto",
+            live_execution_mode="auto_trade",
         )
         manager._build_task = lambda task_cfg, exchange: BaseTask(task_cfg, cfg, logger, db_manager, exchange)
 
@@ -507,7 +543,7 @@ def test_task_manager_reconstructs_recovered_runtime_budget_from_execution_recor
                 intent_id="intent-1",
                 operation_id="op-1",
                 gateway=GatewayMode.BINANCE_LIVE,
-                staged_execution_mode="full_live_auto",
+                staged_execution_mode="auto_trade",
                 symbol="BTCUSDT",
                 order_role="entry",
                 status=ExecutionStatus.SUBMITTED,
@@ -520,7 +556,7 @@ def test_task_manager_reconstructs_recovered_runtime_budget_from_execution_recor
                 intent_id="intent-2",
                 operation_id="op-2",
                 gateway=GatewayMode.BINANCE_LIVE,
-                staged_execution_mode="full_live_auto",
+                staged_execution_mode="auto_trade",
                 symbol="BTCUSDT",
                 order_role="entry",
                 status=ExecutionStatus.SUBMITTED,
@@ -542,7 +578,7 @@ def test_task_manager_reconstructs_recovered_runtime_budget_from_execution_recor
             symbol_interval=SymbolInterval("BTC-USDT", Interval("1m")),
             strategies=["macd_triple_divergence"],
             free=100.0,
-            live_execution_mode="full_live_auto",
+            live_execution_mode="auto_trade",
         )
         manager._build_task = lambda task_cfg, exchange: BaseTask(task_cfg, cfg, logger, db_manager, exchange)
 
@@ -567,7 +603,7 @@ def test_task_manager_recovery_build_failure_does_not_create_live_reservation():
             symbol_interval=SymbolInterval("BTC-USDT", Interval("1m")),
             strategies=["macd_triple_divergence"],
             free=40.0,
-            live_execution_mode="full_live_auto",
+            live_execution_mode="auto_trade",
         )
         manager._build_task = lambda _task_cfg, _exchange: None
 
@@ -590,7 +626,7 @@ def test_task_manager_exits_cli_when_live_task_budget_preflight_fails():
             symbol_interval=SymbolInterval("BTC-USDT", Interval("1m")),
             strategies=["macd_triple_divergence"],
             free=10000.0,
-            live_execution_mode="full_live_auto",
+            live_execution_mode="auto_trade",
         )
         queue = asyncio.Queue()
 
@@ -634,7 +670,7 @@ def test_trader_task_persists_auto_execution_spent_budget():
             symbol_interval=SymbolInterval("BTC-USDT", Interval("1m")),
             strategies=["macd_triple_divergence"],
             free=50.0,
-            live_execution_mode="full_live_auto",
+            live_execution_mode="auto_trade",
         )
         task_config.fund_reservation_amount = 50.0
         task_config.fund_reservation_asset = "USDT"
@@ -672,7 +708,7 @@ def test_task_manager_shutdown_preserves_running_live_task_reservation_for_recov
             symbol_interval=SymbolInterval("BTC-USDT", Interval("1m")),
             strategies=["macd_triple_divergence"],
             free=40.0,
-            live_execution_mode="full_live_auto",
+            live_execution_mode="auto_trade",
         )
         manager._build_task = lambda task_cfg, exchange: _LongRunningTask(task_cfg, cfg, logger, db_manager, exchange)
 
@@ -706,7 +742,7 @@ def test_task_manager_releases_live_reservation_when_failed_state_persistence_fa
             symbol_interval=SymbolInterval("BTC-USDT", Interval("1m")),
             strategies=["macd_triple_divergence"],
             free=40.0,
-            live_execution_mode="full_live_auto",
+            live_execution_mode="auto_trade",
         )
 
         async def fail_add_task(_taskc, _queue):

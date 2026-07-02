@@ -2,9 +2,9 @@
 
 Rules:
 - One live task per account at any time.
-- add_task   → cancel configured symbols plus currently-running task symbols before live balance preflight.
+- add_task   → cancel currently-running task orders for the same account before live balance preflight.
 - recover_task → do NOT cancel anything (orders belong to the recovering task).
-- close_task_state → cancel configured symbols plus the closing task symbol.
+- close_task_state → cancel the closing task's persisted open execution orders.
 - All cancellation is best-effort (errors are logged, never raised).
 """
 from __future__ import annotations
@@ -14,6 +14,8 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from trader.common.config import Config
+from trader.execution.models import ExecutionStatus, GatewayMode
+from trader.execution.state import ExecutionStateRecord
 from trader.task.task_manager import TaskManager
 from trader.task.task_type import TaskType
 from trader.utils.symbol_interval import Interval, Symbol, SymbolInterval
@@ -45,10 +47,15 @@ def _cfg(task_id: int = 1, strategy: str = "TestStrategy", symbol: str = "BTC-US
 class _FakeExchange:
     def __init__(self):
         self.cancel_all_open_orders_calls: list[str] = []
+        self.cancel_order_calls: list[tuple[str, str]] = []
         self.bind_order_context_calls: list = []
 
     def cancel_all_open_orders(self, symbol: Symbol):
         self.cancel_all_open_orders_calls.append(symbol.name())
+
+    def cancel_order(self, symbol: Symbol, order_id: str):
+        self.cancel_order_calls.append((symbol.name(), order_id))
+        return {"id": order_id, "status": "canceled"}
 
     def bind_order_context(self, task_id=None, strategy_name=None):
         self.bind_order_context_calls.append({"task_id": task_id, "strategy_name": strategy_name})
@@ -82,12 +89,40 @@ def _manager() -> TaskManager:
     return TaskManager(cfg=Config(), log=log, db_manager=db, exchange=MagicMock())
 
 
+def _execution_record(task_id: int, *, symbol: str = "BTCUSDT", order_id: str = "order-1") -> ExecutionStateRecord:
+    return ExecutionStateRecord(
+        task_id=task_id,
+        idempotency_key=f"key-{task_id}-{order_id}",
+        intent_id=f"intent-{task_id}",
+        operation_id=f"op-{task_id}",
+        gateway=GatewayMode.BINANCE_LIVE,
+        staged_execution_mode="auto_trade",
+        symbol=symbol,
+        order_role="entry",
+        status=ExecutionStatus.SUBMITTED,
+        exchange_order_id=order_id,
+    )
+
+
+class _ExecutionStore:
+    def __init__(self, records_by_task: dict[int, list[ExecutionStateRecord]]):
+        self.records_by_task = records_by_task
+        self.saved: list[ExecutionStateRecord] = []
+
+    async def list_open_by_task(self, task_id: int):
+        return list(self.records_by_task.get(task_id, []))
+
+    async def save(self, record):
+        self.saved.append(record)
+        return record
+
+
 # ---------------------------------------------------------------------------
 # add_task – cancels symbol-scoped open orders
 # ---------------------------------------------------------------------------
 
 
-def test_add_task_cancels_configured_cleanup_symbols():
+def test_add_task_does_not_cancel_configured_cleanup_symbols_without_running_tasks():
     manager = TaskManager(
         cfg=Config(live_order_cleanup_symbols=["SOL-USDT", "BNBUSDT"]),
         log=MagicMock(),
@@ -107,7 +142,8 @@ def test_add_task_cancels_configured_cleanup_symbols():
 
     asyncio.run(_run())
 
-    assert exchange.cancel_all_open_orders_calls == ["SOLUSDT", "BNBUSDT"]
+    assert exchange.cancel_all_open_orders_calls == []
+    assert exchange.cancel_order_calls == []
 
 
 def test_add_task_skips_cleanup_when_no_configured_symbols_and_no_running_tasks():
@@ -128,7 +164,7 @@ def test_add_task_skips_cleanup_when_no_configured_symbols_and_no_running_tasks(
     assert exchange.cancel_all_open_orders_calls == []
 
 
-def test_do_add_tasks_cancels_configured_and_running_task_symbols_before_balance_preflight():
+def test_do_add_tasks_cancels_running_task_orders_before_balance_preflight():
     manager = TaskManager(
         cfg=Config(live_order_cleanup_symbols=["SOL-USDT", "BNBUSDT"]),
         log=MagicMock(),
@@ -141,11 +177,12 @@ def test_do_add_tasks_cancels_configured_and_running_task_symbols_before_balance
     manager.tasks[running_cfg.id] = _FakeTask(running_cfg, running_exchange)
     task_cfg = _cfg(task_id=10, symbol="BTC-USDT")
     fake_task = _FakeTask(task_cfg, exchange)
+    manager.db_manager.execution_state = _ExecutionStore({5: [_execution_record(5, symbol="ETHUSDT", order_id="live-5")]})
     events = []
 
-    def _cancel(symbol: Symbol):
-        exchange.cancel_all_open_orders_calls.append(symbol.name())
-        events.append(f"cancel:{symbol.name()}")
+    def _cancel_order(symbol: Symbol, order_id: str):
+        exchange.cancel_order_calls.append((symbol.name(), order_id))
+        events.append(f"cancel:{symbol.name()}:{order_id}")
 
     async def _start(_queue):
         events.append("start_task")
@@ -153,7 +190,7 @@ def test_do_add_tasks_cancels_configured_and_running_task_symbols_before_balance
     async def _preflight_balances(_taskcs):
         events.append("preflight_balances")
 
-    exchange.cancel_all_open_orders = _cancel
+    exchange.cancel_order = _cancel_order
     fake_task.start = _start
 
     async def _run():
@@ -169,8 +206,9 @@ def test_do_add_tasks_cancels_configured_and_running_task_symbols_before_balance
 
     asyncio.run(_run())
 
-    assert events == ["cancel:SOLUSDT", "cancel:BNBUSDT", "cancel:ETHUSDT", "preflight_balances", "start_task"]
-    assert exchange.cancel_all_open_orders_calls == ["SOLUSDT", "BNBUSDT", "ETHUSDT"]
+    assert events == ["cancel:ETHUSDT:live-5", "preflight_balances", "start_task"]
+    assert exchange.cancel_all_open_orders_calls == []
+    assert exchange.cancel_order_calls == [("ETHUSDT", "live-5")]
 
 
 def test_add_task_binds_order_context():
@@ -239,17 +277,18 @@ def test_recover_task_still_binds_order_context():
 
 
 # ---------------------------------------------------------------------------
-# close_task_state – cancels all open orders
+# close_task_state – cancels task-scoped open orders
 # ---------------------------------------------------------------------------
 
 
-def test_close_task_state_cancels_all_open_orders():
+def test_close_task_state_cancels_task_execution_orders():
     manager = TaskManager(
         cfg=Config(live_order_cleanup_symbols=["SOL-USDT"]),
         log=MagicMock(),
         db_manager=MagicMock(),
         exchange=MagicMock(),
     )
+    manager.db_manager.execution_state = _ExecutionStore({7: [_execution_record(7, symbol="ETHUSDT", order_id="live-7")]})
     exchange = _FakeExchange()
     task_cfg = _cfg(task_id=7, symbol="ETH-USDT")
     fake_task = _FakeTask(task_cfg, exchange)
@@ -264,7 +303,66 @@ def test_close_task_state_cancels_all_open_orders():
 
     assert result is True
     assert fake_task._stopped
-    assert exchange.cancel_all_open_orders_calls == ["SOLUSDT", "ETHUSDT"]
+    assert exchange.cancel_order_calls == [("ETHUSDT", "live-7")]
+    assert exchange.cancel_all_open_orders_calls == []
+
+
+def test_close_task_state_falls_back_to_task_symbol_when_no_execution_records():
+    manager = TaskManager(
+        cfg=Config(live_order_cleanup_symbols=["SOL-USDT"]),
+        log=MagicMock(),
+        db_manager=MagicMock(),
+        exchange=MagicMock(),
+    )
+    manager.db_manager.execution_state = _ExecutionStore({})
+    exchange = _FakeExchange()
+    task_cfg = _cfg(task_id=7, symbol="ETH-USDT")
+    fake_task = _FakeTask(task_cfg, exchange)
+    manager.tasks[task_cfg.id] = fake_task
+
+    async def _run():
+        with patch.object(manager, "_persist_task_states", AsyncMock()):
+            with patch.object(manager, "_release_task_funds", AsyncMock()):
+                return await manager.close_task_state(task_cfg.id)
+
+    result = asyncio.run(_run())
+
+    assert result is True
+    assert exchange.cancel_order_calls == []
+    assert exchange.cancel_all_open_orders_calls == ["ETHUSDT"]
+
+
+def test_close_persisted_running_task_cancels_task_execution_orders():
+    manager = TaskManager(
+        cfg=Config(),
+        log=MagicMock(),
+        db_manager=MagicMock(),
+        exchange=MagicMock(),
+    )
+    manager.db_manager.execution_state = _ExecutionStore({7: [_execution_record(7, symbol="ETHUSDT", order_id="live-7")]})
+    state = SimpleNamespace(
+        id=7,
+        is_running=lambda: True,
+        config_json='[{"id":7,"task_type":"TRADER","symbol":"ETH-USDT","interval":"1h","strategies":"TestStrategy"}]',
+        state=None,
+    )
+    manager.db_manager.task.get_task = AsyncMock(return_value=state)
+    exchange = _FakeExchange()
+
+    async def _run():
+        with (
+            patch.object(manager, "get_task", return_value=None),
+            patch.object(manager, "_exchange_for_task", AsyncMock(return_value=exchange)),
+            patch.object(manager, "_persist_task_states", AsyncMock()),
+            patch.object(manager, "_release_task_funds", AsyncMock()),
+        ):
+            return await manager.close_task_state(7)
+
+    result = asyncio.run(_run())
+
+    assert result is True
+    assert exchange.cancel_order_calls == [("ETHUSDT", "live-7")]
+    assert exchange.cancel_all_open_orders_calls == []
 
 
 # ---------------------------------------------------------------------------

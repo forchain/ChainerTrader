@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from trader.task.task_config import parse_task_config
 
 
@@ -42,6 +44,11 @@ def test_parse_task_config_accepts_inline_json_after_config_migration():
     assert tasks[0].strategy_name() == "macd_triple_divergence"
     assert tasks[0].start_time == int(parse_task_config.__globals__["parse_datetime"]("2000-01-01 00:00:00").timestamp())
     assert tasks[0].end_time >= tasks[0].start_time
+
+
+def test_parse_task_config_reports_missing_config_file_path():
+    with pytest.raises(ValueError, match="task config file does not exist"):
+        parse_task_config("configs/tasks/live/realtime_macd_triple_divergence_top10_production.json")
 
 
 def test_parse_task_config_expands_migrated_optimization_config_with_param_grid_fragments():

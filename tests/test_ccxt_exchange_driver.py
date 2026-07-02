@@ -255,6 +255,19 @@ def test_ccxt_cross_margin_open_order_queries_use_margin_mode_params():
     assert client.fetch_open_orders_call == ("BTC/USDT", None, None, {"marginMode": "cross"})
 
 
+def test_ccxt_cross_margin_all_open_order_queries_use_no_symbol_with_margin_mode_params():
+    client = FakeCcxtClient()
+    driver = CcxtExchangeDriver(
+        ExchangeConfig(ty=ExchangeType.BINANCE, driver=ExchangeDriverType.CCXT, margin_mode=MarginMode.CROSS_MARGIN),
+        client=client,
+    )
+
+    orders = driver.get_all_open_orders()
+
+    assert len(orders) == 3
+    assert client.fetch_open_orders_call == (None, None, None, {"marginMode": "cross"})
+
+
 def test_ccxt_cross_margin_cancel_all_uses_margin_mode_params():
     client = FakeCcxtClient()
     driver = CcxtExchangeDriver(

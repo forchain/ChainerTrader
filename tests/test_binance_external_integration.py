@@ -112,7 +112,6 @@ def _task_config():
         strategies=["macd_triple_divergence"],
         free=1000,
         live_execution_mode="manual_notify",
-        live_data_mode="realtime",
     )
 
 

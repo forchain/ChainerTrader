@@ -693,6 +693,44 @@ async def test_current_task_workspace_lists_only_latest_running_batch_members():
 
 
 @pytest.mark.anyio
+async def test_current_task_workspace_sanitizes_recovery_only_config_json_metadata():
+    recovered = SimpleNamespace(
+        id=12,
+        state=TaskStateType.DONE,
+        name="12.TRADER.BTCUSDT-1m",
+        start_time="2026-05-23 10:00:00",
+        strategy_end_time=0,
+        config_json=(
+            '[{"task_type":"TRADER","symbol":"BTC-USDT","interval":"1m",'
+            '"live_execution_mode":"auto_trade","persisted_legacy_live_execution_mode":"small_live_auto",'
+            '"persisted_live_data_mode":"realtime","run_id":"run-live"}]'
+        ),
+    )
+
+    async def all_states(user_id=None):
+        return [recovered]
+
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                app=SimpleNamespace(
+                    task_manager=SimpleNamespace(
+                        get_all_task_state=all_states,
+                        get_task=lambda task_id: None,
+                    ),
+                    db_manager=FakeDb([]),
+                )
+            )
+        )
+    )
+
+    payload = await current_task_workspace(request=request)
+
+    assert "persisted_legacy_live_execution_mode" not in payload["snapshot"]["config_json"]
+    assert "persisted_live_data_mode" not in payload["snapshot"]["config_json"]
+
+
+@pytest.mark.anyio
 async def test_current_task_workspace_treats_legacy_latest_done_without_batch_as_single_task():
     latest_legacy = SimpleNamespace(
         id=20,
@@ -814,7 +852,7 @@ async def test_rerun_task_normalizes_legacy_compact_symbol_and_assigns_new_run()
             '[{"task_type":"TRADER","symbol":"BTCUSDT","interval":"1m",'
             '"start_time":"2026-05-23 10:00:00","end_time":"2099-01-01 00:00:00",'
             '"strategy":"macd_triple_divergence","free":100,'
-            '"live_execution_mode":"manual_notify","live_data_mode":"realtime",'
+            '"live_execution_mode":"manual_notify",'
             '"live_trade_max_notional":20,"run_id":"run-old"}]'
         ),
     )
@@ -888,6 +926,84 @@ async def test_rerun_task_assigns_new_run_for_already_parseable_saved_config():
     assert taskcs[0].id != 42
     assert taskcs[0].run_id
     assert taskcs[0].run_id != "run-old"
+
+
+@pytest.mark.anyio
+async def test_rerun_task_public_response_does_not_expose_recovery_only_metadata(monkeypatch):
+    saved = SimpleNamespace(
+        id=42,
+        state=TaskStateType.DONE,
+        name="42.TRADER.BTCUSDT-1m",
+        start_time="2026-05-23 10:00:00",
+        config_json=(
+            '[{"task_type":"TRADER","symbol":"BTC-USDT","interval":"1m",'
+            '"strategy":"macd_triple_divergence","live_execution_mode":"auto_trade",'
+            '"persisted_legacy_live_execution_mode":"small_live_auto",'
+            '"persisted_live_data_mode":"realtime","run_id":"run-old"}]'
+        ),
+    )
+    queue = RecordingQueue()
+
+    async def all_states(user_id=None):
+        return [saved]
+
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                app=SimpleNamespace(
+                    task_manager=SimpleNamespace(get_all_task_state=all_states),
+                    queue=queue,
+                ),
+                cfg=Config(),
+            )
+        )
+    )
+
+    payload = await rerun_task(request=request, task_id=42)
+
+    assert payload["result"] == "success"
+    assert "persisted_legacy_live_execution_mode" not in payload["tasks"][0]
+    assert "persisted_live_data_mode" not in payload["tasks"][0]
+
+
+@pytest.mark.anyio
+async def test_rerun_task_rehydrates_recovery_only_metadata_internally():
+    saved = SimpleNamespace(
+        id=43,
+        state=TaskStateType.DONE,
+        name="43.TRADER.BTCUSDT-1m",
+        start_time="2026-05-23 10:00:00",
+        config_json=(
+            '[{"task_type":"TRADER","symbol":"BTC-USDT","interval":"1m",'
+            '"strategy":"macd_triple_divergence","live_execution_mode":"auto_trade",'
+            '"persisted_legacy_live_execution_mode":"small_live_auto",'
+            '"persisted_live_data_mode":"realtime","run_id":"run-old"}]'
+        ),
+    )
+    queue = RecordingQueue()
+
+    async def all_states(user_id=None):
+        return [saved]
+
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(
+                app=SimpleNamespace(
+                    task_manager=SimpleNamespace(get_all_task_state=all_states),
+                    queue=queue,
+                ),
+                cfg=Config(),
+            )
+        )
+    )
+
+    payload = await rerun_task(request=request, task_id=43)
+
+    taskcs = queue.messages[0].get_data()
+    assert payload["result"] == "success"
+    assert getattr(taskcs[0], "persisted_legacy_live_execution_mode", None) == "small_live_auto"
+    assert getattr(taskcs[0], "persisted_live_data_mode", None) is None
+    assert not hasattr(taskcs[0], "live_data_mode")
 
 
 @pytest.mark.anyio

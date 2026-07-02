@@ -562,7 +562,7 @@ def _task_config(symbol: Symbol, notional: Decimal, *, chainer_mode: str) -> Tas
         SymbolInterval(f"{symbol.base}-{symbol.quote}", Interval.INTERVAL_1m),
         strategies=["macd_triple_divergence"],
         free=float(notional),
-        live_execution_mode="small_live_auto",
+        live_execution_mode="auto_trade",
         live_trade_max_notional=float(notional),
         strategy_params={"chainer_mode": chainer_mode},
     )

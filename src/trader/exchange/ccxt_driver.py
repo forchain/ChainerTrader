@@ -299,6 +299,13 @@ class CcxtExchangeDriver:
         orders = fetch_open_orders(self._ccxt_symbol(symbol.name()), None, None, self._margin_order_params())
         return [self._as_dict(order) for order in orders or []]
 
+    def get_all_open_orders(self) -> list[dict[str, Any]]:
+        fetch_open_orders = getattr(self.client, "fetch_open_orders", None)
+        if fetch_open_orders is None:
+            return []
+        orders = fetch_open_orders(None, None, None, self._margin_order_params())
+        return [self._as_dict(order) for order in orders or []]
+
     def get_open_protection_orders(self, symbol: Symbol) -> list[ProtectionOrderView]:
         fetch_open_orders = getattr(self.client, "fetch_open_orders", None)
         if fetch_open_orders is None:

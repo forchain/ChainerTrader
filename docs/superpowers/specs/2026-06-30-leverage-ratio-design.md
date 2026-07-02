@@ -71,7 +71,7 @@ For leveraged paths, the enforcement should be layered:
 
 1. Compute the existing task/requested notional using the current sizing rules.
 2. Compute a leverage ceiling from available capital: `available_capital * cfg.leverage_ratio`.
-3. Apply existing safety caps such as `live_trade_max_notional` for `small_live_auto`; these caps are not multiplied by leverage.
+3. Apply existing safety caps such as positive `live_trade_max_notional` on `auto_trade`; these caps are not multiplied by leverage.
 4. Submit only the effective notional that is within all applicable caps and exchange constraints.
 
 This keeps `TRADER_LEVERAGE_RATIO` independent from task sizing while still preventing an operator from exceeding the global leverage intent.
@@ -117,7 +117,7 @@ Automated coverage should include:
 - non-finite environment values such as `nan` and `inf` raise `ValueError`
 - leveraged execution uses the configured ratio when enforcing exposure limits
 - the ratio acts as a cap rather than an automatic size multiplier
-- `small_live_auto` still honors `live_trade_max_notional` as an independent hard cap
+- capped `auto_trade` still honors `live_trade_max_notional` as an independent hard cap
 - margin short enforcement caps quote notional before base-asset borrow-capacity checks
 - spot execution does not consult or depend on the new ratio
 - the new config field is preserved by `to_dict()` / `safe_to_dict()` and `export_env()`
