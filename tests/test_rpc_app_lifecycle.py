@@ -59,6 +59,41 @@ async def test_rpc_app_processes_initial_task_message(monkeypatch):
 
 
 @pytest.mark.anyio
+async def test_rpc_app_api_mode_ignores_startup_tasks_and_startup_admin(monkeypatch):
+    app = RpcApp(
+        Config(
+            tasks='[{"task_type":"DEBUG","limit":1}]',
+            api="0.0.0.0:8000",
+        )
+    )
+    process_calls = []
+
+    class FakeDbManager:
+        started = True
+
+        async def start(self):
+            raise AssertionError("db.start should not be called")
+
+        async def get_startup_admin(self):
+            raise AssertionError("startup admin should not be requested in API mode")
+
+    monkeypatch.setattr(app.notify_mgr, "start", lambda: None)
+    monkeypatch.setattr(
+        app.task_manager,
+        "start",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("startup tasks should be ignored in API mode")),
+    )
+    monkeypatch.setattr(app, "process", lambda msgs: process_calls.append(list(msgs)))
+    app.db_manager = FakeDbManager()
+
+    result = await app.start_async()
+
+    assert result is True
+    assert process_calls == [[]]
+    assert not hasattr(app, "startup_self_check")
+
+
+@pytest.mark.anyio
 async def test_rpc_app_waits_until_handler_ready(monkeypatch):
     app = RpcApp(Config(tasks="[]"))
     ready_reached = asyncio.Event()

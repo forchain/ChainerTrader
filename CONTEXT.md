@@ -27,3 +27,11 @@ _Avoid_: Lock reason, frozen source
 **手动取消清理币种开放订单**:
 An account-page emergency action that cancels open orders only for symbols configured by `TRADER_LIVE_ORDER_CLEANUP_SYMBOLS`.
 _Avoid_: Global cleanup, auto-cancel, cancel all account orders
+
+**API模式**:
+An API-first runtime mode that keeps the FastAPI service alive after startup.
+_Avoid_: Server mode, web mode
+
+**console模式**:
+A one-shot runtime mode that runs startup work and then exits.
+_Avoid_: CLI mode, batch mode

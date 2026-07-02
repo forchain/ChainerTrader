@@ -361,6 +361,7 @@ TRADER_LEVERAGE_RATIO="1.0"
 ```
 
 `TRADER_LEVERAGE_RATIO` introduces configuration for leveraged or futures exposure-cap control. `1.0` means no leverage. It is independent from task sizing, and spot is unaffected.
+`TRADER_API` switches the process into API mode. When it is set, the server stays alive, ignores startup task configs, and restores persisted running tasks after boot.
 
 For CCXT REST requests through an HTTP proxy, add `http_proxy` to `TRADER_EXCHANGE`:
 
@@ -371,9 +372,9 @@ TRADER_EXCHANGE='{"ty":"BINANCE","driver":"ccxt","api_key":"","api_secret":"","h
 ### Runtime Modes
 
 - CLI mode
-  Run backtests, optimizations, data tasks, or scans directly
+  Run backtests, optimizations, data tasks, or scans directly. Startup task configs are executed once and the process exits after the work completes. Console mode does not restore persisted running tasks.
 - API mode
-  Start the HTTP service for admin pages and API access
+  Start the HTTP service for admin pages and API access. API mode ignores startup task configs and only restores persisted running tasks.
 
 ## CLI Manual
 

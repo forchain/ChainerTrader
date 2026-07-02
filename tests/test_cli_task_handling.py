@@ -8,7 +8,7 @@ from scripts.migrate_persisted_live_task_configs import main as migrate_persiste
 from trader.app.app import App
 from trader.common.config import Config, TRADER_DB, TRADER_EXCHANGE, TRADER_TASKS
 from trader.common.logger import Logger
-from trader.common.message import new_add_tasks_msg
+from trader.common.message import new_add_tasks_msg, new_exit_msg
 from trader.task.base_task import BaseTask
 from trader.task.persisted_live_config_migration import migrate_persisted_task_config_json
 from trader.task.task_config import TaskConfig
@@ -328,6 +328,40 @@ def test_app_start_skips_all_startup_tasks_when_any_running_task_will_recover():
 
     assert app.start() is True
     assert ("process", 0) in events
+
+
+def test_app_handler_in_console_mode_does_not_schedule_recovery():
+    cfg = Config(tasks="[]")
+    app = App(cfg)
+    close_called = []
+    recover_called = []
+
+    class _FakeDbManager:
+        started = True
+
+        async def start(self):
+            raise AssertionError("db.start should not be called")
+
+        async def get_startup_admin(self):
+            raise AssertionError("startup admin should not be requested in console mode without startup tasks")
+
+        async def stop(self):
+            return None
+
+    async def _close():
+        close_called.append(True)
+
+    async def _recover_task(*_args, **_kwargs):
+        recover_called.append(True)
+
+    app.db_manager = _FakeDbManager()
+    app.task_manager = SimpleNamespace(close=_close, recover_task=_recover_task)
+
+    asyncio.run(app.handler([new_exit_msg()], asyncio.Event()))
+
+    assert close_called == [True]
+    assert recover_called == []
+    assert app.recovery_task is None
 
 
 def test_app_start_skips_startup_task_when_migrated_persisted_row_matches_startup_config(monkeypatch):

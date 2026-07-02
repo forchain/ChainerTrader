@@ -107,7 +107,7 @@ class App:
             return None
         if not getattr(self.db_manager, "started", False):
             await self.db_manager.start()
-        if not self.tasks_cfg:
+        if self.cfg.is_server() or not self.tasks_cfg:
             return None
         startup_admin = await self.db_manager.get_startup_admin()
         if startup_admin is None:
@@ -127,24 +127,27 @@ class App:
         if self.exchange:
             self.exchange.start()
 
-        startup_taskcs = await self._startup_task_configs_to_start()
-        if self.exchange and startup_taskcs:
-            self.startup_self_check = evaluate_live_startup_self_check(self.exchange, startup_taskcs)
-            self.logger.info(f"Startup self-check: {self.startup_self_check.summary()}", LogTag.PRIVATE)
-            if not self.startup_self_check.passed:
-                self.logger.warning(f"Startup self-check details: {self.startup_self_check.to_dict()}", LogTag.PRIVATE)
-
         msgs: list[Message] = []
         if self.task_manager:
-            try:
-                msg = self.task_manager.start(startup_taskcs)
-            except TypeError:
-                msg = self.task_manager.start()
-            if msg:
-                msgs.append(msg)
-            elif self.cfg.tasks and not self.cfg.is_server():
-                self.logger.warning("No valid tasks can be executed")
-                return None
+            if self.cfg.is_server():
+                startup_taskcs = []
+            else:
+                startup_taskcs = await self._startup_task_configs_to_start()
+                if self.exchange and startup_taskcs:
+                    self.startup_self_check = evaluate_live_startup_self_check(self.exchange, startup_taskcs)
+                    self.logger.info(f"Startup self-check: {self.startup_self_check.summary()}", LogTag.PRIVATE)
+                    if not self.startup_self_check.passed:
+                        self.logger.warning(f"Startup self-check details: {self.startup_self_check.to_dict()}", LogTag.PRIVATE)
+            if not self.cfg.is_server():
+                try:
+                    msg = self.task_manager.start(startup_taskcs)
+                except TypeError:
+                    msg = self.task_manager.start()
+                if msg:
+                    msgs.append(msg)
+                elif self.cfg.tasks and not self.cfg.is_server():
+                    self.logger.warning("No valid tasks can be executed")
+                    return None
 
         return msgs
 
@@ -299,13 +302,14 @@ class App:
         if self.db_manager:
             if not getattr(self.db_manager, "started", False):
                 await self.db_manager.start()
-            if self.tasks_cfg or any(msg.is_add_tasks() for msg in msgs):
+            if (not self.cfg.is_server() and self.tasks_cfg) or any(msg.is_add_tasks() for msg in msgs):
                 startup_admin = await self.db_manager.get_startup_admin()
                 if startup_admin is None:
                     raise RuntimeError("startup tasks require an administrator account")
                 startup_admin_id = startup_admin.id
-                for taskc in self.tasks_cfg:
-                    taskc.user_id = startup_admin_id
+                if not self.cfg.is_server():
+                    for taskc in self.tasks_cfg:
+                        taskc.user_id = startup_admin_id
 
         queue = asyncio.Queue()
         self.queue = queue
