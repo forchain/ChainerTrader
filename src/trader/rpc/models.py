@@ -1,10 +1,10 @@
-from typing import TYPE_CHECKING, Any
 import json
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
-from trader.rpc.task_state_payload import public_task_state_dict
 from trader.exchange.balance import Balance
+from trader.rpc.task_state_payload import public_task_state_dict
 from trader.utils.symbol_interval import Symbol
 from trader.utils.task_state import TaskStateType
 
@@ -100,7 +100,7 @@ async def get_taskinfo(app: "App", user=None, page: int = 1, per_page: int | Non
     )
 
 
-def get_accounts_info(app: "App") -> AcctsInfo:
+def get_accounts_info(app: "App", *, include_open_orders: bool = True) -> AcctsInfo:
     if app.exchange is None:
         return AcctsInfo(total=0, balances=[])
     errors: list[str] = []
@@ -117,12 +117,18 @@ def get_accounts_info(app: "App") -> AcctsInfo:
         borrowable_amount = 0.0
         errors.append(f"最大可借额度读取失败: {exc}")
         _log_account_info_error(app, "max borrowable", exc)
-    try:
-        open_orders = _open_orders_from_exchange(app.exchange, getattr(getattr(app, "task_manager", None), "latest_si", None))
-    except Exception as exc:
-        open_orders = []
-        errors.append(f"开放订单读取失败: {exc}")
-        _log_account_info_error(app, "locked orders", exc)
+    open_orders = []
+    if include_open_orders:
+        try:
+            open_orders = _open_orders_from_exchange(
+                app.exchange,
+                balances,
+                getattr(getattr(app, "task_manager", None), "latest_si", None),
+                borrow_asset,
+            )
+        except Exception as exc:
+            errors.append(f"开放订单读取失败: {exc}")
+            _log_account_info_error(app, "locked orders", exc)
     locked_reasons = list(open_orders)
     operable_amount = _operable_amount(balances, borrow_asset, borrowable_amount)
     for balance in balances:
@@ -175,17 +181,101 @@ def _get_max_borrowable_amount(exchange: Any, asset: str) -> float:
     return float(getattr(payload, "amount", 0.0) or 0.0)
 
 
-def _open_orders_from_exchange(exchange: Any, symbol: Any = None) -> list[dict[str, Any]]:
-    all_reader = getattr(exchange, "get_all_open_orders", None)
-    if callable(all_reader):
-        rows = all_reader()
-        return _open_order_rows(rows)
+def _open_orders_from_exchange(exchange: Any, balances: list[Balance], symbol: Any = None, quote_asset: str | None = None) -> list[dict[str, Any]]:
     reader = getattr(exchange, "get_open_orders", None)
-    if not callable(reader) or symbol is None:
+    if not callable(reader):
         return []
-    order_symbol = Symbol(f"{symbol.sy.base}-{symbol.sy.quote}") if hasattr(symbol, "sy") else symbol
-    rows = reader(order_symbol)
+    quote = _quote_asset_for_locked_symbol_search(symbol, quote_asset)
+    all_reader = getattr(exchange, "get_all_open_orders", None)
+    if quote and quote in _locked_balance_assets(balances) and callable(all_reader):
+        try:
+            rows = all_reader() or []
+        except Exception:
+            rows = []
+        if rows:
+            return _open_order_rows(rows)
+    rows: list[Any] = []
+    for order_symbol in open_order_symbols_from_locked_balances(balances, symbol=symbol, quote_asset=quote):
+        rows.extend(reader(order_symbol) or [])
     return _open_order_rows(rows)
+
+
+def open_orders_for_symbol_from_exchange(exchange: Any, symbol: Symbol) -> list[dict[str, Any]]:
+    reader = getattr(exchange, "get_open_orders", None)
+    if not callable(reader):
+        return []
+    return _open_order_rows(reader(symbol) or [])
+
+
+def open_order_symbols_from_locked_balances(
+    balances: list[Balance],
+    *,
+    symbol: Any = None,
+    quote_asset: str | None = None,
+) -> list[Symbol]:
+    locked_assets = _locked_balance_assets(balances)
+    if not locked_assets:
+        return []
+    quote = _quote_asset_for_locked_symbol_search(symbol, quote_asset)
+    if not quote:
+        return []
+
+    ret: list[Symbol] = []
+    seen: set[str] = set()
+
+    current_symbol = _symbol_from_symbol_interval(symbol)
+    if current_symbol is not None and {current_symbol.base, current_symbol.quote} & set(locked_assets):
+        _append_symbol_once(ret, seen, current_symbol)
+
+    for asset in locked_assets:
+        if asset == quote:
+            continue
+        _append_symbol_once(ret, seen, Symbol(f"{asset}-{quote}"))
+    return ret
+
+
+def _locked_balance_assets(balances: list[Balance]) -> list[str]:
+    ret: list[str] = []
+    seen: set[str] = set()
+    for balance in balances:
+        try:
+            locked = float(balance.locked or 0.0)
+        except (TypeError, ValueError):
+            continue
+        asset = str(balance.asset or "").strip().upper()
+        if locked <= 0 or not asset or asset in seen:
+            continue
+        seen.add(asset)
+        ret.append(asset)
+    return ret
+
+
+def _quote_asset_for_locked_symbol_search(symbol: Any = None, quote_asset: str | None = None) -> str:
+    current_symbol = _symbol_from_symbol_interval(symbol)
+    if current_symbol is not None and current_symbol.quote:
+        return current_symbol.quote
+    return str(quote_asset or "USDT").strip().upper()
+
+
+def _symbol_from_symbol_interval(symbol: Any = None) -> Symbol | None:
+    if symbol is None:
+        return None
+    if isinstance(symbol, Symbol):
+        return symbol
+    if hasattr(symbol, "sy"):
+        base = str(getattr(symbol.sy, "base", "") or "").strip().upper()
+        quote = str(getattr(symbol.sy, "quote", "") or "").strip().upper()
+        if base and quote:
+            return Symbol(f"{base}-{quote}")
+    return None
+
+
+def _append_symbol_once(ret: list[Symbol], seen: set[str], symbol: Symbol) -> None:
+    name = symbol.name()
+    if not name or name in seen:
+        return
+    seen.add(name)
+    ret.append(symbol)
 
 
 def _open_order_rows(rows: Any) -> list[dict[str, Any]]:

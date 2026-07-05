@@ -24,9 +24,9 @@ _Avoid_: Pending order, unfinished order
 The account-page view that explains which open orders are locking balance.
 _Avoid_: Lock reason, frozen source
 
-**手动取消清理币种开放订单**:
-An account-page emergency action that cancels open orders only for symbols configured by `TRADER_LIVE_ORDER_CLEANUP_SYMBOLS`.
-_Avoid_: Global cleanup, auto-cancel, cancel all account orders
+**手动取消冻结资产开放订单**:
+An account-page emergency action that cancels open orders only for symbols inferred from balances with `locked > 0`, using the current task symbol when a locked quote asset needs a concrete pair.
+_Avoid_: Global cleanup, auto-cancel, cancel all account orders, configured cleanup symbols
 
 **API模式**:
 An API-first runtime mode that keeps the FastAPI service alive after startup.

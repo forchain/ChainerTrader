@@ -3,7 +3,7 @@
 {% block title %}我的账户{% endblock %}
 
 {% block content %}
-<div class="row">
+<div class="row g-4">
     <div class="col-lg-5">
         <div class="card">
             <div class="card-header">
@@ -93,45 +93,92 @@
             <div class="card-header">
                 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
                     <h5 class="card-title mb-0">开放订单</h5>
-                    <form method="post" action="/account/open-orders/cancel-cleanup-symbols" class="m-0" onsubmit="return confirm('确认取消配置币种的开放订单吗？');">
-                        <button class="btn btn-sm btn-outline-danger" type="submit" {% if not credentials %}disabled{% endif %}>
-                            <i class="fas fa-ban me-1"></i>取消配置币种开放订单
-                        </button>
-                    </form>
+                    <span class="badge text-bg-warning">取消前必须指定交易对</span>
                 </div>
             </div>
             <div class="card-body">
-                {% if accts_info and accts_info.open_orders %}
-                <div class="table-responsive">
-                    <table class="table table-sm table-striped table-bordered align-middle mb-0 bg-white text-dark">
-                        <thead class="table-light">
-                            <tr>
-                                <th scope="col">交易对</th>
-                                <th scope="col">方向</th>
-                                <th scope="col">数量</th>
-                                <th scope="col">价格</th>
-                                <th scope="col">订单号</th>
-                                <th scope="col">类型</th>
-                                <th scope="col">状态</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for r in accts_info.open_orders %}
-                            <tr>
-                                <td>{{ r.symbol }}</td>
-                                <td>{{ r.side }}</td>
-                                <td>{{ r.quantity | round(8) }}</td>
-                                <td>{{ r.price | default(0, true) | round(8) }}</td>
-                                <td>{{ r.order_id }}</td>
-                                <td>{{ r.order_type }}</td>
-                                <td>{{ r.status | default('', true) }}</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+                <form method="get" action="/account" class="row g-2 align-items-end mb-3">
+                    <div class="col-sm-7">
+                        <label class="form-label" for="cancel_symbol">指定交易对</label>
+                        <input
+                            class="form-control"
+                            id="cancel_symbol"
+                            name="cancel_symbol"
+                            value="{{ request.query_params.get('cancel_symbol', '') }}"
+                            placeholder="例如 SOLUSDT"
+                            autocomplete="off"
+                            {% if not credentials %}disabled{% endif %}
+                        >
+                    </div>
+                    <div class="col-sm-5">
+                        <button class="btn btn-outline-primary w-100" type="submit" {% if not credentials %}disabled{% endif %}>
+                            查询待取消订单
+                        </button>
+                    </div>
+                </form>
+
+                {% if cancel_preview_error %}
+                <div class="alert alert-warning" role="alert">{{ cancel_preview_error }}</div>
+                {% endif %}
+
+                {% if cancel_preview %}
+                <div class="border rounded p-3 mb-4 bg-light text-dark">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                        <div>
+                            <div class="fw-semibold">{{ cancel_preview.symbol }} 待取消订单预览</div>
+                            <div class="text-muted small">只会取消该交易对当前开放订单，不会取消其它交易对。</div>
+                        </div>
+                        <form
+                            method="post"
+                            action="/account/open-orders/cancel-cleanup-symbols"
+                            class="m-0 cancel-symbol-form"
+                            data-symbol="{{ cancel_preview.symbol }}"
+                            data-order-ids="{{ cancel_preview.order_ids }}"
+                            data-order-count="{{ cancel_preview.count }}"
+                        >
+                            <input type="hidden" name="symbol" value="{{ cancel_preview.symbol }}">
+                            <button class="btn btn-sm btn-outline-danger" type="submit" {% if not cancel_preview.orders %}disabled{% endif %}>
+                                确认取消 {{ cancel_preview.symbol }}
+                            </button>
+                        </form>
+                    </div>
+                    {% if cancel_preview.orders %}
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered align-middle mb-0 bg-white text-dark">
+                            <thead class="table-light">
+                                <tr>
+                                    <th scope="col">方向</th>
+                                    <th scope="col">数量</th>
+                                    <th scope="col">价格</th>
+                                    <th scope="col">订单号</th>
+                                    <th scope="col">类型</th>
+                                    <th scope="col">状态</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for r in cancel_preview.orders %}
+                                <tr>
+                                    <td>{{ r.side }}</td>
+                                    <td>{{ r.quantity | round(8) }}</td>
+                                    <td>{{ r.price | default(0, true) | round(8) }}</td>
+                                    <td>{{ r.order_id }}</td>
+                                    <td>{{ r.order_type }}</td>
+                                    <td>{{ r.status | default('', true) }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-info mb-0" role="status">
+                        {{ cancel_preview.symbol }} 当前没有开放订单。
+                    </div>
+                    {% endif %}
                 </div>
-                {% else %}
-                <p class="text-muted mb-0">暂无开放订单。</p>
+                {% endif %}
+
+                {% if not cancel_preview %}
+                <p class="text-muted mb-0">请输入交易对查询该交易对开放订单。账户页不会默认列出全部开放订单。</p>
                 {% endif %}
             </div>
         </div>
@@ -218,4 +265,20 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll('.cancel-symbol-form').forEach(function(form) {
+    form.addEventListener('submit', function(event) {
+        var symbol = form.getAttribute('data-symbol') || '';
+        var count = form.getAttribute('data-order-count') || '0';
+        var orderIds = form.getAttribute('data-order-ids') || '无订单号';
+        var message = '确认取消 ' + symbol + ' 的 ' + count + ' 个开放订单吗？\n订单号：' + orderIds;
+        if (!window.confirm(message)) {
+            event.preventDefault();
+        }
+    });
+});
+</script>
 {% endblock %}
