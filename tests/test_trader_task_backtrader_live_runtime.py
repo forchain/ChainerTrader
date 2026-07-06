@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import threading
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -359,6 +360,51 @@ async def test_trader_task_realtime_fetches_latest_configured_warmup_when_local_
     assert len(runner.started_warmup) == 400
     assert runner.started_warmup[0].open_time == BASE
     assert runner.started_warmup[-1].open_time == BASE + 399 * 60
+
+
+@pytest.mark.anyio
+async def test_trader_task_realtime_startup_blocking_work_does_not_stall_event_loop(monkeypatch):
+    class BlockingExchange(FakeExchange):
+        def get_latest_klines(self, si, limit):
+            time.sleep(0.12)
+            return super().get_latest_klines(si, limit)
+
+    class BlockingRunner(FakeRunner):
+        def start(self, warmup=None):
+            time.sleep(0.12)
+            super().start(warmup=warmup)
+
+    class QuitOnSubscribeHub(FakeHub):
+        async def subscribe(self, key, reconnect_callback=None):
+            subscription = await super().subscribe(key, reconnect_callback=reconnect_callback)
+            self.quit_event.set()
+            return subscription
+
+    FakeRunner.instances = []
+    fetched = [_kline(BASE + i * 60, close=100 + i) for i in range(3)]
+    cfg = Config(window=500)
+    tcfg = TaskConfig(
+        810,
+        TaskType.TRADER,
+        SymbolInterval("BTC-USDT", Interval.INTERVAL_1m),
+        strategies=["macd_triple_divergence"],
+        free=1000,
+        live_execution_mode="manual_notify",
+    )
+    task = TraderTask(tcfg, cfg, Logger(cfg), FakeDb(), BlockingExchange(fetched))
+    hub = QuitOnSubscribeHub([], task.quit)
+
+    monkeypatch.setattr("trader.task.trader_task.BacktraderLiveRunner", BlockingRunner)
+    monkeypatch.setattr("trader.task.trader_task.GLOBAL_MARKET_STREAM_HUB", hub)
+
+    runtime = asyncio.create_task(task.start_realtime(asyncio.Queue(), [NoopStrategy]))
+    started_at = time.perf_counter()
+    await asyncio.sleep(0.02)
+    loop_delay = time.perf_counter() - started_at
+
+    await asyncio.wait_for(runtime, timeout=1)
+
+    assert loop_delay < 0.08
 
 
 @pytest.mark.anyio

@@ -393,7 +393,7 @@ class TaskManager:
             return None
         exchange = await self._exchange_for_task(cfg)
         asset = str(cfg.symbol_interval.sy.quote).upper()
-        capacity_snapshot = self._reservation_capacity_snapshot(cfg, exchange, asset)
+        capacity_snapshot = await asyncio.to_thread(self._reservation_capacity_snapshot, cfg, exchange, asset)
         capacity = capacity_snapshot["operable_capacity"]
         return {
             "account_key": await self._reservation_account_key(cfg),
@@ -510,9 +510,7 @@ class TaskManager:
             return cached
         try:
             routed = self._exchange_for_mode(target_mode)
-            self.log.info(
-                f"TaskManager created routed exchange for mode={target_mode.value} task_id={cfg.id} strategy={cfg.strategy_name()}"
-            )
+            self.log.info(f"TaskManager created routed exchange for mode={target_mode.value} task_id={cfg.id} strategy={cfg.strategy_name()}")
             self.log.info(
                 "TaskManager selected execution exchange "
                 f"task_id={cfg.id} user_id={getattr(cfg, 'user_id', None)} strategy={cfg.strategy_name()} "
@@ -521,9 +519,7 @@ class TaskManager:
             )
             return routed
         except Exception as exc:
-            self.log.warning(
-                f"TaskManager failed to create routed exchange for mode={target_mode.value}, falling back to default exchange: {exc}"
-            )
+            self.log.warning(f"TaskManager failed to create routed exchange for mode={target_mode.value}, falling back to default exchange: {exc}")
             self.log.info(
                 "TaskManager selected execution exchange "
                 f"task_id={cfg.id} user_id={getattr(cfg, 'user_id', None)} strategy={cfg.strategy_name()} "
@@ -1198,9 +1194,7 @@ class TaskManager:
                         await result
                     await self._mark_execution_record_canceled(record)
                 except Exception as exc:
-                    self.log.error(
-                        f"cancel_order failed: reason={reason} task_id={task_id} symbol={symbol.name()} order_id={order_id} error={exc}"
-                    )
+                    self.log.error(f"cancel_order failed: reason={reason} task_id={task_id} symbol={symbol.name()} order_id={order_id} error={exc}")
 
         self._cancel_open_orders_for_symbols(
             fallback_for_incomplete_records,

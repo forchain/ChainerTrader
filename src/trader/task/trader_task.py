@@ -3,13 +3,11 @@ import contextvars
 from asyncio import Queue
 from datetime import datetime, timedelta
 
-from trader.common.common import sleep, sleep_loop
 from trader.common.config import Config
 from trader.common.logger import Logger
 from trader.common.message import new_stat_msg
 from trader.database.execution_state import execution_state_record_context
 from trader.database.manager import DatabaseManager
-from trader.exchange.binance.data import BinanceData
 from trader.exchange.binance.exchange import BinanceExchange
 from trader.live.auto_execution import AutoExecutionRouter, execution_outcome_event
 from trader.live.backtrader_runtime import BacktraderLiveRunner
@@ -31,7 +29,7 @@ from trader.notify.trade_notification import (
     normalize_live_execution_mode,
 )
 from trader.statistics.stat import TraderStat
-from trader.strategy.node import Node, build_strategy_kwargs
+from trader.strategy.node import build_strategy_kwargs
 from trader.strategy.strategy import parse_strategies
 from trader.strategy.trader_result import TraderResult
 from trader.task.base_task import BaseTask
@@ -46,6 +44,10 @@ async def _maybe_await(value):
     if asyncio.iscoroutine(value):
         return await value
     return value
+
+
+async def _run_blocking(func, *args, **kwargs):
+    return await asyncio.to_thread(func, *args, **kwargs)
 
 
 async def _add_repository_klines(kline_store, collection_name: str, klines: list):
@@ -111,7 +113,7 @@ class TraderTask(BaseTask):
         #    self.exchange.spot_ws_client.klines(symbol=self.symbol_interval.symbol, interval=self.symbol_interval.interval.value, limit=1)
 
         if not self.is_manual_notify_mode():
-            commission = self.exchange.get_account_commission(self.tcfg.symbol_interval.symbol())
+            commission = await _run_blocking(self.exchange.get_account_commission, self.tcfg.symbol_interval.symbol())
             if commission:
                 self.cfg.commission = commission
                 self.log.info(f"set commission for trader task config:{self.cfg.commission}")
@@ -133,10 +135,11 @@ class TraderTask(BaseTask):
         )
         fetched = []
         if plan.kind == BackfillRequestKind.LATEST:
-            fetched = self.exchange.get_latest_klines(self.tcfg.symbol_interval, plan.limit) or []
+            fetched = await _run_blocking(self.exchange.get_latest_klines, self.tcfg.symbol_interval, plan.limit) or []
         elif plan.kind == BackfillRequestKind.RANGE:
             fetched = (
-                self.exchange.get_klines(
+                await _run_blocking(
+                    self.exchange.get_klines,
                     self.tcfg.symbol_interval,
                     start_time=plan.start_time,
                     end_time=plan.end_time,
@@ -156,7 +159,7 @@ class TraderTask(BaseTask):
         self.log.info(f"Realtime live warmup started: task_id={self.tcfg.id} collection={collection_name} target={warmup_limit}")
         warmup = await _maybe_await(self.db_manager.kline.get_latest_klines(collection_name, warmup_limit)) or []
         if len(warmup) < warmup_limit:
-            fetched_warmup = self.exchange.get_latest_klines(self.tcfg.symbol_interval, warmup_limit) or []
+            fetched_warmup = await _run_blocking(self.exchange.get_latest_klines, self.tcfg.symbol_interval, warmup_limit) or []
             if fetched_warmup:
                 await _add_repository_klines(self.db_manager.kline, collection_name, fetched_warmup)
                 warmup = await _maybe_await(self.db_manager.kline.get_latest_klines(collection_name, warmup_limit)) or []
@@ -166,6 +169,7 @@ class TraderTask(BaseTask):
         live_operation_context = contextvars.copy_context()
         live_operation_tasks: set[asyncio.Task] = set()
         live_tick_operations: dict[int, list[str]] = {}
+        auto_execution_lock = asyncio.Lock()
 
         def operation_name(op) -> str:
             otype = getattr(op, "otype", None)
@@ -187,7 +191,8 @@ class TraderTask(BaseTask):
                         f"strategy={self.tcfg.strategy_name()} operation={operation_name(op)} event_time={int(getattr(op, 'dtime', 0) or 0)}"
                     )
                 else:
-                    outcome = self._auto_execution_router.route(op)
+                    async with auto_execution_lock:
+                        outcome = await _run_blocking(self._auto_execution_router.route, op)
                     auto_execution_outcomes = [outcome]
                     await self._persist_auto_execution_state(outcome)
                     self.ts.auto_execution_outcomes = list(getattr(self.ts, "auto_execution_outcomes", []) or []) + auto_execution_outcomes
@@ -254,7 +259,7 @@ class TraderTask(BaseTask):
             operation_handler=handle_operation,
             inject_operation_sink=True,
         )
-        runner.start(warmup=warmup)
+        await _run_blocking(runner.start, warmup=warmup)
         await asyncio.sleep(0)
 
         connector = getattr(GLOBAL_MARKET_STREAM_HUB, "connector", None)
@@ -287,10 +292,11 @@ class TraderTask(BaseTask):
             plan = plan_initial_backfill(latest, now=int(datetime.now().timestamp()), interval=self.tcfg.symbol_interval.interval)
             fetched = []
             if plan.kind == BackfillRequestKind.LATEST:
-                fetched = self.exchange.get_latest_klines(self.tcfg.symbol_interval, plan.limit) or []
+                fetched = await _run_blocking(self.exchange.get_latest_klines, self.tcfg.symbol_interval, plan.limit) or []
             elif plan.kind == BackfillRequestKind.RANGE:
                 fetched = (
-                    self.exchange.get_klines(
+                    await _run_blocking(
+                        self.exchange.get_klines,
                         self.tcfg.symbol_interval,
                         start_time=plan.start_time,
                         end_time=plan.end_time,
@@ -304,7 +310,7 @@ class TraderTask(BaseTask):
             sorted_fetched = sorted(fetched, key=lambda item: int(item.open_time))
             for kline in sorted_fetched:
                 await _add_repository_klines(self.db_manager.kline, collection_name, [kline])
-                runner.put_kline(kline)
+                await _run_blocking(runner.put_kline, kline)
                 self.log.debug(
                     f"Realtime catch-up kline processed: task_id={self.tcfg.id} collection={collection_name} "
                     f"stream={key.stream_name()} open_time={int(kline.open_time)} close={kline.close} volume={kline.volume}"
@@ -335,7 +341,7 @@ class TraderTask(BaseTask):
                     f"Realtime kline persisted: task_id={self.tcfg.id} collection={collection_name} "
                     f"stream={key.stream_name()} open_time={update.open_time}"
                 )
-                runner.put_kline(kline)
+                await _run_blocking(runner.put_kline, kline)
                 await asyncio.sleep(0)
                 await publish_runtime_status(update.open_time)
                 op_types = live_tick_operations.pop(int(update.open_time), [])
@@ -391,9 +397,10 @@ class TraderTask(BaseTask):
         reservation_store = getattr(self.db_manager, "account_fund_reservation", None)
         if reservation_store is None:
             return
-        if str(getattr(outcome, "status", "")) not in {"submitted", "AutoExecutionStatus.SUBMITTED"} and getattr(
-            getattr(outcome, "status", None), "value", None
-        ) != "submitted":
+        if (
+            str(getattr(outcome, "status", "")) not in {"submitted", "AutoExecutionStatus.SUBMITTED"}
+            and getattr(getattr(outcome, "status", None), "value", None) != "submitted"
+        ):
             return
         notional = float(getattr(outcome, "effective_notional", 0.0) or 0.0)
         if notional <= 0:
