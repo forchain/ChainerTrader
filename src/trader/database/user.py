@@ -62,3 +62,6 @@ class UserCol:
     async def delete_session(self, session_hash: str) -> bool:
         deleted = await SessionModel.filter(session_hash=session_hash).delete()
         return deleted > 0
+
+    async def delete_sessions_for_user(self, user_id: int) -> int:
+        return await SessionModel.filter(user_id=user_id).delete()
