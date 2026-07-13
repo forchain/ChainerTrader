@@ -160,21 +160,28 @@ class App:
 
         states = await task_repo.get_all_tasks()
         taskcs = []
+        recovery_errors: list[RuntimeError] = []
         for state in states:
             if getattr(getattr(state, "state", None), "name", None) != "RUNNING":
                 continue
-            config_json = getattr(state, "config_json", None)
-            if not config_json:
-                raise RuntimeError(f"persisted running task({getattr(state, 'id', 'unknown')}) is missing config_json")
-            saved_config = self._first_task_config(config_json)
+            saved_config = {}
             try:
+                config_json = getattr(state, "config_json", None)
+                if not config_json:
+                    raise RuntimeError(f"persisted running task({getattr(state, 'id', 'unknown')}) is missing config_json")
+                saved_config = self._first_task_config(config_json)
                 assert_persisted_task_config_json_is_migrated(config_json)
                 recovered = parse_task_config(config_json)
             except Exception as exc:
                 task_kind = "live task" if self._is_persisted_live_task_config(saved_config) else "running task"
-                raise RuntimeError(
-                    f"persisted {task_kind}({getattr(state, 'id', 'unknown')}) recovery failed: {exc}"
-                ) from exc
+                if str(exc).startswith("persisted running task("):
+                    message = str(exc)
+                else:
+                    message = f"persisted {task_kind}({getattr(state, 'id', 'unknown')}) recovery failed: {exc}"
+                error = RuntimeError(message)
+                recovery_errors.append(error)
+                self.logger.error(message)
+                continue
             for taskc in recovered:
                 taskc.id = int(getattr(state, "id", taskc.id) or taskc.id)
                 if getattr(state, "user_id", None) is not None:
@@ -186,6 +193,8 @@ class App:
 
         if taskcs:
             self.logger.info(f"Recovered {len(taskcs)} running task config(s) from persisted state")
+        elif recovery_errors:
+            raise recovery_errors[0]
         return taskcs
 
     async def _running_task_configs_for_recovery(self) -> list[TaskConfig]:
@@ -212,6 +221,15 @@ class App:
         if self.recovery_task is not None:
             return
         self.recovery_task = asyncio.create_task(self._recover_running_tasks_in_background())
+        self.recovery_task.add_done_callback(self._on_recovery_task_done)
+
+    def _on_recovery_task_done(self, task: asyncio.Task) -> None:
+        if task.cancelled():
+            return
+        try:
+            task.result()
+        except Exception:
+            self.log().exception("Running task recovery failed")
 
     async def _recover_running_tasks_in_background(self) -> None:
         if not self.queue or not self.task_manager:
