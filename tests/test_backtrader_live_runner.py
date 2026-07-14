@@ -91,8 +91,10 @@ def test_backtrader_live_runner_warms_then_advances_same_strategy_instance():
     runner.start(warmup=[_kline(BASE, 100.0), _kline(BASE + 60, 101.0)])
     try:
         _wait_until(lambda: len(RecordingLiveStrategy.events) >= 2)
+        assert runner.status()["latest_processed_open_time"] == BASE + 60
         runner.put_kline(_kline(BASE + 120, 102.0))
         _wait_until(lambda: len(RecordingLiveStrategy.events) >= 3)
+        assert runner.status()["latest_processed_open_time"] == BASE + 120
     finally:
         runner.stop()
 

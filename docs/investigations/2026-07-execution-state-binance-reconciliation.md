@@ -1,5 +1,7 @@
 # July 2026 Binance Execution Reconciliation
 
+Related follow-up: [July 2026 Live / Backtest Signal Parity](2026-07-live-backtest-signal-parity.md) checks whether finalized Binance candles produced the same strategy operations in live processing and offline replay.
+
 ## Scope
 
 - Log source: `logs/trader.log`
