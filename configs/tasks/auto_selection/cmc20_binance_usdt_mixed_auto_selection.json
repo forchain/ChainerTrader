@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "task_type": "AUTO_SELECTION",
+  "name": "CMC20 Binance USDT mixed-interval auto-selection",
+  "description": "Evaluate CMC20 coins with Binance USDT spot markets across hourly, four-hour, and daily intervals, then generate live tasks for the highest-ranked symbol-interval pairs.",
+  "market_data": {
+    "index": "CMC20",
+    "binance_pairs": "data/market_universes/binance_usdt_pairs.json",
+    "constituents": "data/market_universes/cmc20_constituents.json",
+    "refresh_market_data": false
+  },
+  "universe": "configs/market_universes/cmc20_binance_usdt_universe.json",
+  "optimization": {
+    "output": "configs/tasks/optimizations/cmc20_binance_usdt_mixed_auto_select_all.json",
+    "run_id": "cmc20-binance-usdt-mixed-auto-select",
+    "profiles": {
+      "1h": "1M",
+      "4h": "1Y",
+      "1d": "*"
+    }
+  },
+  "selection": {
+    "live_output": "configs/tasks/live/cmc20_binance_usdt_mixed_top10_selected.json",
+    "top": 10,
+    "rank_field": "avg_total_return_pct",
+    "min_return_pct": 0
+  },
+  "task_template": {
+    "task_type": "TRADER",
+    "strategy": "macd_triple_divergence",
+    "auto_download": true,
+    "free": 100000,
+    "param_combinations": [
+      {
+        "chainer_mode": ["LONG", "BOTH"],
+        "chainer_need_confirm": [true, false],
+        "chainer_stoploss_atr_mult": [1],
+        "chainer_enable_breakeven": [true],
+        "chainer_min_equity_percent": [0.1]
+      }
+    ]
+  }
+}

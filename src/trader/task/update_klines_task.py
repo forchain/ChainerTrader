@@ -279,14 +279,15 @@ async def download_range(
         current_start = next_start
         await sleep(log, 0.1)
 
-    await _update_cached_open_time_range(
-        db_manager,
-        exchange,
-        symbol_interval,
-        start_time,
-        end_time,
-        source="download_range",
-    )
+    if total_records > 0:
+        await _update_cached_open_time_range(
+            db_manager,
+            exchange,
+            symbol_interval,
+            start_time,
+            end_time,
+            source="download_range",
+        )
     log.info(f"{name} download_range completed. total={total_records}")
     return True
 
@@ -387,14 +388,15 @@ async def download_range_backward(
             source="backward_fill",
         )
 
-    await _update_cached_open_time_range(
-        db_manager,
-        exchange,
-        symbol_interval,
-        start_time,
-        end_time,
-        source="download_range_backward",
-    )
+    if total_records > 0:
+        await _update_cached_open_time_range(
+            db_manager,
+            exchange,
+            symbol_interval,
+            start_time,
+            end_time,
+            source="download_range_backward",
+        )
     log.info(f"{name} download_range_backward completed. total={total_records}")
     return True
 

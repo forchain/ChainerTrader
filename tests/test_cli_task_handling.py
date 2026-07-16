@@ -6,7 +6,7 @@ import pytest
 
 from scripts.migrate_persisted_live_task_configs import main as migrate_persisted_live_task_configs_main
 from trader.app.app import App
-from trader.common.config import Config, TRADER_DB, TRADER_EXCHANGE, TRADER_TASKS
+from trader.common.config import TRADER_DB, TRADER_EXCHANGE, TRADER_TASKS, Config
 from trader.common.logger import Logger
 from trader.common.message import new_add_tasks_msg, new_exit_msg
 from trader.task.base_task import BaseTask
@@ -65,6 +65,17 @@ def test_app_promotes_exchange_margin_mode_for_short_capable_tasks():
 
     assert app.exchange is not None
     assert app.exchange.margin_mode.value == "cross_margin"
+
+
+def test_app_does_not_promote_exchange_margin_mode_for_short_capable_backtests():
+    cfg = Config(
+        tasks='[{"task_type":"BACK_TRADER","symbol":"BTC-USDT","interval":"1d","strategy":"macd_triple_divergence","strategy_params":{"chainer_mode":"BOTH"}}]',
+        exchange='{"ty":"BINANCE","driver":"ccxt","api_key":"k","api_secret":"s"}',
+    )
+    app = App(cfg)
+
+    assert app.exchange is not None
+    assert app.exchange.margin_mode.value == "spot"
 
 
 def test_base_task_stop_without_db_manager_does_not_crash():
@@ -323,7 +334,10 @@ def test_app_start_skips_all_startup_tasks_when_any_running_task_will_recover():
             return SimpleNamespace(id=1)
 
     app.db_manager = _FakeDbManager()
-    app.task_manager = SimpleNamespace(start=lambda taskcs: new_add_tasks_msg(taskcs) if taskcs else None, recover_task=lambda *_args, **_kwargs: None)
+    app.task_manager = SimpleNamespace(
+        start=lambda taskcs: new_add_tasks_msg(taskcs) if taskcs else None,
+        recover_task=lambda *_args, **_kwargs: None,
+    )
     app.process = lambda msgs: events.append(("process", len(msgs)))
 
     assert app.start() is True
@@ -399,7 +413,10 @@ def test_app_start_skips_startup_task_when_migrated_persisted_row_matches_startu
             return SimpleNamespace(id=1)
 
     app.db_manager = _FakeDbManager()
-    app.task_manager = SimpleNamespace(start=lambda taskcs: new_add_tasks_msg(taskcs) if taskcs else None, recover_task=lambda *_args, **_kwargs: None)
+    app.task_manager = SimpleNamespace(
+        start=lambda taskcs: new_add_tasks_msg(taskcs) if taskcs else None,
+        recover_task=lambda *_args, **_kwargs: None,
+    )
     app.process = lambda msgs: events.append(("process", len(msgs)))
 
     assert app.start() is True
@@ -441,7 +458,10 @@ def test_app_start_ignores_recovery_only_live_data_mode_when_deduping_startup_ta
             return SimpleNamespace(id=1)
 
     app.db_manager = _FakeDbManager()
-    app.task_manager = SimpleNamespace(start=lambda taskcs: new_add_tasks_msg(taskcs) if taskcs else None, recover_task=lambda *_args, **_kwargs: None)
+    app.task_manager = SimpleNamespace(
+        start=lambda taskcs: new_add_tasks_msg(taskcs) if taskcs else None,
+        recover_task=lambda *_args, **_kwargs: None,
+    )
     app.process = lambda msgs: events.append(("process", len(msgs)))
 
     assert app.start() is True

@@ -5,7 +5,6 @@ from typing import Any, Iterable
 
 from trader.exchange.exchange_config import MarginMode
 from trader.strategy.strategy import parse_strategies
-from trader.utils.symbol_interval import SymbolInterval
 
 SHORT_CAPABLE_MODES = {"SHORT_ONLY", "BOTH"}
 
@@ -26,9 +25,18 @@ def task_requires_short_capability(task: Any) -> bool:
     return _chainer_mode(task) in SHORT_CAPABLE_MODES
 
 
+def _is_live_trader_task(task: Any) -> bool:
+    task_type = getattr(task, "ttype", None)
+    if task_type is None:
+        return True
+    value = getattr(task_type, "value", task_type)
+    name = getattr(task_type, "name", value)
+    return str(value).upper() == "TRADER" or str(name).upper() == "TRADER"
+
+
 def infer_required_margin_mode(tasks: Iterable[Any]) -> MarginMode:
     for task in tasks:
-        if task_requires_short_capability(task):
+        if _is_live_trader_task(task) and task_requires_short_capability(task):
             return MarginMode.CROSS_MARGIN
     return MarginMode.SPOT
 
@@ -139,6 +147,8 @@ def _check_klines(exchange: Any, tasks: list[Any], *, limit: int) -> list[dict[s
     checks: list[dict[str, Any]] = []
     seen: set[str] = set()
     for task in tasks:
+        if not _is_live_trader_task(task):
+            continue
         si = getattr(task, "symbol_interval", None)
         if si is None:
             continue

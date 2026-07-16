@@ -146,6 +146,10 @@ output/
 .worktrees/
 tmp
 data
+!data/
+data/*
+!data/market_universes/
+!data/market_universes/*.json
 artifacts
 skills-lock.json
 

@@ -1,6 +1,6 @@
 import asyncio
-from concurrent.futures import TimeoutError as FutureTimeoutError
 import json
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -8,7 +8,7 @@ from types import SimpleNamespace
 from trader.common.config import Config
 from trader.exchange.binance.data import BinanceData
 from trader.strategy.trader_result import TraderResult
-from trader.task.backtrader_task import BacktestSampleSpec, run_backtest_sample
+from trader.task.backtrader_task import BacktestSampleSpec, build_backtest_sample_spec, run_backtest_sample
 from trader.task.optimization_runtime import OptimizationRuntimeStatus
 from trader.task.task_config import TaskConfig
 from trader.task.task_manager import TaskManager
@@ -90,6 +90,22 @@ def _make_sample_spec(dataset_path: Path) -> BacktestSampleSpec:
         param_id="param-a",
         dataset_key="dataset-a",
     )
+
+
+def test_build_backtest_sample_spec_reserves_configured_warmup_before_strategy_start():
+    strategy_start = 1_700_000_000
+    task = _make_backtest_task(
+        1,
+        "BTC-USDT",
+        Interval.INTERVAL_1h,
+        strategy_start,
+        strategy_start + 7 * 24 * 3600,
+    )
+
+    spec = build_backtest_sample_spec(Config(warmup_candles=100, db="sqlite://data/trader.db"), task)
+
+    assert spec.start_time == strategy_start
+    assert spec.data_start_time == strategy_start - 100 * 3600
 
 
 def test_prepare_backtest_datasets_runs_unique_jobs_with_bounded_parallelism(monkeypatch):

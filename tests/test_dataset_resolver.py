@@ -80,6 +80,17 @@ def make_kline(open_time: int, price: float = 100.0) -> Kline:
     )
 
 
+def test_cache_range_does_not_extend_current_day_into_future_candles(monkeypatch):
+    resolver = DatasetResolver(db_manager=None, exchange=None, log=DummyLog())
+    start_time = 1_700_000_000
+    end_time = start_time + 5 * 3600 + 17 * 60
+    monkeypatch.setattr("trader.task.dataset_resolver.time.time", lambda: end_time)
+
+    _, cache_end = resolver._cache_range(SymbolInterval("BTC-USDT", Interval.INTERVAL_1h), start_time, end_time)
+
+    assert cache_end == end_time - (end_time % 3600)
+
+
 def test_prepare_uses_db_and_materializes_cache_without_downloading(tmp_path: Path):
     async def _test():
         start_time = 1_700_000_000
@@ -193,6 +204,52 @@ def test_prepare_does_not_download_internal_source_gap_inside_cached_range(tmp_p
         assert result.ok is True
         assert kline_store.get_klines.call_count == 1
         availability_store.update_cached_open_time_range.assert_not_called()
+
+    asyncio.run(_test())
+
+
+def test_prepare_redownloads_when_cached_range_has_no_persisted_klines(tmp_path: Path):
+    async def _test():
+        start_time = 1_700_000_000
+        start_time = start_time - (start_time % 86400)
+        end_time = start_time + 2 * 86400
+        downloaded_bars = [
+            make_kline(start_time, 100.0),
+            make_kline(start_time + 86400, 101.0),
+            make_kline(end_time, 102.0),
+        ]
+        kline_store = SimpleNamespace(get_klines=AsyncMock(side_effect=[[], downloaded_bars]))
+        availability_store = SimpleNamespace(
+            get_earliest_known_open_time=AsyncMock(return_value=None),
+            get_cached_open_time_range=AsyncMock(return_value=(start_time, end_time)),
+            update_cached_open_time_range=AsyncMock(),
+        )
+        requested_ranges = []
+
+        async def downloader(name, log, db_manager_arg, collection_name, exchange, symbol_interval, range_start, range_end, quit_event):
+            requested_ranges.append((collection_name, range_start, range_end))
+            return True
+
+        resolver = DatasetResolver(
+            db_manager=SimpleNamespace(kline=kline_store, availability=availability_store),
+            exchange=SimpleNamespace(name=lambda: "BINANCE"),
+            log=DummyLog(),
+            cache_dir=tmp_path,
+            range_downloader=downloader,
+        )
+
+        result = await resolver.prepare(SymbolInterval("BTC-USDT", Interval.INTERVAL_1d), start_time, end_time)
+
+        assert result.ok is True
+        assert requested_ranges == [("BTCUSDT-1d", start_time, end_time)]
+        availability_store.update_cached_open_time_range.assert_awaited_once_with(
+            "BINANCE",
+            "BTCUSDT",
+            "1d",
+            start_time,
+            end_time,
+            source="dataset_resolver",
+        )
 
     asyncio.run(_test())
 
@@ -747,6 +804,96 @@ def test_prepare_downloads_earlier_range_when_no_availability_metadata_exists(tm
             end_time,
             source="dataset_resolver",
         )
+
+    asyncio.run(_test())
+
+
+def test_prepare_clamps_missing_download_to_binance_daily_archive_start(tmp_path: Path):
+    async def _test():
+        requested_start = 1_600_000_000 - (1_600_000_000 % 86400)
+        archive_start = 1_700_000_000 - (1_700_000_000 % 86400)
+        end_time = archive_start + 2 * 86400
+        bars = [make_kline(archive_start), make_kline(archive_start + 86400), make_kline(end_time)]
+        requested_ranges = []
+        kline_store = SimpleNamespace(get_klines=AsyncMock(side_effect=[[], bars]))
+        availability_store = SimpleNamespace(get_earliest_known_open_time=AsyncMock(side_effect=[None, None]))
+        exchange = SimpleNamespace(
+            get_earliest_daily_archive_open_time=lambda symbol_interval: archive_start,
+        )
+
+        async def downloader(name, log, db_manager_arg, collection_name, exchange_arg, symbol_interval, range_start, range_end, quit_event):
+            requested_ranges.append((collection_name, range_start, range_end))
+            return True
+
+        resolver = DatasetResolver(
+            db_manager=SimpleNamespace(kline=kline_store, availability=availability_store),
+            exchange=exchange,
+            log=DummyLog(),
+            cache_dir=tmp_path,
+            range_downloader=downloader,
+        )
+
+        result = await resolver.prepare(SymbolInterval("BTC-USDT", Interval.INTERVAL_1d), requested_start, end_time)
+
+        assert result.ok is True
+        assert requested_ranges == [("BTCUSDT-1d", archive_start, end_time)]
+
+    asyncio.run(_test())
+
+
+def test_prepare_returns_no_data_without_downloading_when_request_ends_before_binance_daily_archive_start(tmp_path: Path):
+    async def _test():
+        requested_start = 1_600_000_000 - (1_600_000_000 % 86400)
+        requested_end = requested_start + 86400
+        archive_start = requested_end + 86400
+        kline_store = SimpleNamespace(get_klines=AsyncMock())
+        availability_store = SimpleNamespace(get_earliest_known_open_time=AsyncMock(return_value=None))
+        exchange = SimpleNamespace(
+            get_earliest_daily_archive_open_time=lambda symbol_interval: archive_start,
+        )
+
+        async def downloader(*args, **kwargs):
+            raise AssertionError("downloader must not run before the archive start")
+
+        resolver = DatasetResolver(
+            db_manager=SimpleNamespace(kline=kline_store, availability=availability_store),
+            exchange=exchange,
+            log=DummyLog(),
+            cache_dir=tmp_path,
+            range_downloader=downloader,
+        )
+
+        result = await resolver.prepare(SymbolInterval("BTC-USDT", Interval.INTERVAL_1d), requested_start, requested_end)
+
+        assert result.ok is False
+        assert result.failure.reason == "no_data"
+        kline_store.get_klines.assert_not_called()
+
+    asyncio.run(_test())
+
+
+def test_prepare_uses_cached_exact_boundary_without_querying_binance_daily_archive(tmp_path: Path):
+    async def _test():
+        start_time = 1_600_000_000 - (1_600_000_000 % 86400)
+        exact_start = start_time + 86400
+        end_time = exact_start + 86400
+        bars = [make_kline(exact_start), make_kline(end_time)]
+        kline_store = SimpleNamespace(get_klines=AsyncMock(return_value=bars))
+        availability_store = SimpleNamespace(get_earliest_known_open_time=AsyncMock(return_value=exact_start))
+        exchange = SimpleNamespace(
+            get_earliest_daily_archive_open_time=lambda symbol_interval: (_ for _ in ()).throw(AssertionError("archive lookup must not run")),
+        )
+
+        resolver = DatasetResolver(
+            db_manager=SimpleNamespace(kline=kline_store, availability=availability_store),
+            exchange=exchange,
+            log=DummyLog(),
+            cache_dir=tmp_path,
+        )
+
+        result = await resolver.prepare(SymbolInterval("BTC-USDT", Interval.INTERVAL_1d), start_time, end_time)
+
+        assert result.ok is True
 
     asyncio.run(_test())
 

@@ -180,14 +180,14 @@ def test_build_initial_snapshot_returns_latest_500_chart_candles():
 
 
 @pytest.mark.anyio
-async def test_live_strategy_snapshot_api_uses_configured_live_warmup_candles_limit():
+async def test_live_strategy_snapshot_api_uses_configured_warmup_candles_limit():
     klines = [_kline(BASE + i * 60, close=100 + i) for i in range(120)]
     task = FakeTask()
     manager = SimpleNamespace(tasks={7: task}, get_task=lambda strategy_id: task if strategy_id == 7 else None)
     request = SimpleNamespace(
         app=SimpleNamespace(
             state=SimpleNamespace(
-                app=SimpleNamespace(task_manager=manager, db_manager=FakeDb(klines), cfg=Config(live_warmup_candles=50))
+                app=SimpleNamespace(task_manager=manager, db_manager=FakeDb(klines), cfg=Config(warmup_candles=50))
             )
         )
     )
@@ -408,7 +408,7 @@ def test_admin_live_route_returns_monitor_layout():
             get_task=lambda task_id: FakeTask() if task_id == 7 else None,
         ),
         db_manager=FakeDb([_kline(BASE)]),
-        cfg=Config(live_warmup_candles=20),
+        cfg=Config(warmup_candles=20),
     )
     rpc_app.state.cfg = Config(api="127.0.0.1:0", tasks="[]")
 
@@ -438,7 +438,7 @@ def test_admin_dashboard_renders_task_monitor_navigation_without_klines_entry():
             get_task=lambda task_id: FakeTask() if task_id == 7 else None,
         ),
         db_manager=FakeDb([_kline(BASE)]),
-        cfg=Config(live_warmup_candles=20),
+        cfg=Config(warmup_candles=20),
     )
     rpc_app.state.cfg = Config(api="127.0.0.1:0", tasks="[]")
 
@@ -466,7 +466,7 @@ async def test_current_task_workspace_prefers_running_task_and_uses_live_rendere
         app=SimpleNamespace(
             state=SimpleNamespace(
                 app=SimpleNamespace(
-                    cfg=Config(live_warmup_candles=20),
+                    cfg=Config(warmup_candles=20),
                     task_manager=SimpleNamespace(
                         get_all_task_state=all_states,
                         get_task=lambda task_id: task if task_id == 7 else None,
@@ -609,7 +609,7 @@ async def test_current_task_workspace_latest_done_backtest_run_returns_batch_cha
         app=SimpleNamespace(
             state=SimpleNamespace(
                 app=SimpleNamespace(
-                    cfg=Config(live_warmup_candles=20),
+                    cfg=Config(warmup_candles=20),
                     task_manager=SimpleNamespace(
                         get_all_task_state=all_states,
                         get_task=lambda task_id: None,
@@ -674,7 +674,7 @@ async def test_current_task_workspace_lists_only_latest_running_batch_members():
         app=SimpleNamespace(
             state=SimpleNamespace(
                 app=SimpleNamespace(
-                    cfg=Config(live_warmup_candles=20),
+                    cfg=Config(warmup_candles=20),
                     task_manager=SimpleNamespace(
                         get_all_task_state=all_states,
                         get_task=lambda task_id: FakeTask(task_id=task_id, state=TaskStateType.RUNNING),

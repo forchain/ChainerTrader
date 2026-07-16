@@ -1,14 +1,13 @@
 import asyncio
-from dataclasses import dataclass
-from datetime import datetime, timezone
 import json
 import os
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from trader.common import path
 from trader.common.config import Config
-from trader.common.log_tag import LogTag
 from trader.common.logger import Logger
 from trader.common.message import new_stat_msg
 from trader.database.manager import DatabaseManager
@@ -16,14 +15,13 @@ from trader.exchange.binance.csvdata import BinanceCSVData
 from trader.exchange.binance.data import BinanceData
 from trader.exchange.binance.exchange import BinanceExchange
 from trader.statistics.stat import BackTraderStat
-from trader.strategy.trader_result import TraderResult, parse_trader_result
 from trader.strategy.node import Node
 from trader.strategy.strategy import parse_strategies
+from trader.strategy.trader_result import TraderResult, parse_trader_result
 from trader.task.base_task import BaseTask
 from trader.task.dataset_resolver import DatasetResolver
 from trader.task.task_config import TaskConfig
-from trader.task.update_klines_task import download_range
-from trader.utils.symbol_interval import Interval, SymbolInterval
+from trader.utils.symbol_interval import Interval, SymbolInterval, get_time_duration
 
 
 @dataclass(frozen=True)
@@ -40,11 +38,20 @@ class BacktestSampleSpec:
     optimization_run_id: str | None
     param_id: str | None
     dataset_key: str | None
+    data_start_time: int | None = None
     source_type: str = "csv"
     data_path: str | None = None
     db_url: str | None = None
     use_data_range: bool = False
     free_cash: float = 0.0
+
+
+def backtest_data_start_time(cfg: Config, tcfg: TaskConfig) -> int:
+    """Reserve the configured warmup candles before a bounded backtest."""
+    if tcfg.start_time <= 0:
+        return tcfg.start_time
+    warmup_candles = max(0, int(getattr(cfg, "warmup_candles", 0) or 0))
+    return max(0, tcfg.start_time - warmup_candles * get_time_duration(tcfg.symbol_interval.interval))
 
 
 @dataclass(frozen=True)
@@ -90,6 +97,7 @@ def build_backtest_sample_spec(cfg: Config, tcfg: TaskConfig) -> BacktestSampleS
         interval=tcfg.symbol_interval.interval.value,
         start_time=tcfg.start_time,
         end_time=tcfg.end_time,
+        data_start_time=backtest_data_start_time(cfg, tcfg),
         source_type=source_type,
         data_path=data_path,
         db_url=cfg.db,
@@ -108,9 +116,10 @@ def _build_csv_data_for_spec(spec: BacktestSampleSpec):
         raise ValueError(f"missing CSV path for backtest sample task_id={spec.task_id}")
     if not spec.use_data_range:
         return BinanceCSVData(dataname=spec.data_path)
-    if spec.start_time <= 0 and spec.end_time <= 0:
+    data_start_time = spec.data_start_time if spec.data_start_time is not None else spec.start_time
+    if data_start_time <= 0 and spec.end_time <= 0:
         return BinanceCSVData(dataname=spec.data_path)
-    if spec.start_time <= 0:
+    if data_start_time <= 0:
         return BinanceCSVData(
             dataname=spec.data_path,
             todate=datetime.fromtimestamp(spec.end_time),
@@ -118,11 +127,11 @@ def _build_csv_data_for_spec(spec: BacktestSampleSpec):
     if spec.end_time <= 0:
         return BinanceCSVData(
             dataname=spec.data_path,
-            fromdate=datetime.fromtimestamp(spec.start_time),
+            fromdate=datetime.fromtimestamp(data_start_time),
         )
     return BinanceCSVData(
         dataname=spec.data_path,
-        fromdate=datetime.fromtimestamp(spec.start_time),
+        fromdate=datetime.fromtimestamp(data_start_time),
         todate=datetime.fromtimestamp(spec.end_time),
     )
 
@@ -132,7 +141,8 @@ async def _build_db_data_for_spec(spec: BacktestSampleSpec, cfg: Config, logger:
     await db_manager.start()
     try:
         symbol_interval = SymbolInterval(spec.symbol, Interval(spec.interval))
-        klines = await db_manager.kline.get_klines(symbol_interval.name(), spec.start_time, spec.end_time) or []
+        data_start_time = spec.data_start_time if spec.data_start_time is not None else spec.start_time
+        klines = await db_manager.kline.get_klines(symbol_interval.name(), data_start_time, spec.end_time) or []
         if not klines:
             raise ValueError(f"no kline data available for dataset={spec.dataset_key}")
         return BinanceData(klines)
@@ -269,6 +279,7 @@ class BackTraderTask(BaseTask):
         await super().start(queue)
 
         data = None
+        data_start_time = backtest_data_start_time(self.cfg, self.tcfg)
         if self.tcfg.csv:
             data_file = path.get_file_path(self.tcfg.csv)
             if self.tcfg.start_time <= 0 and self.tcfg.end_time <= 0:
@@ -283,12 +294,12 @@ class BackTraderTask(BaseTask):
             elif self.tcfg.end_time <= 0:
                 data = BinanceCSVData(
                     dataname=data_file,
-                    fromdate=datetime.fromtimestamp(self.tcfg.start_time),
+                    fromdate=datetime.fromtimestamp(data_start_time),
                 )
             else:
                 data = BinanceCSVData(
                     dataname=data_file,
-                    fromdate=datetime.fromtimestamp(self.tcfg.start_time),
+                    fromdate=datetime.fromtimestamp(data_start_time),
                     todate=datetime.fromtimestamp(self.tcfg.end_time),
                 )
         if data is None and self.tcfg.dataset_ref is not None and getattr(self.tcfg.dataset_ref, "path", None):
@@ -298,7 +309,7 @@ class BackTraderTask(BaseTask):
             allow_download = self.tcfg.auto_download or self.tcfg.optimization_run_id is not None
             prepare_result = await resolver.prepare(
                 self.tcfg.symbol_interval,
-                self.tcfg.start_time,
+                data_start_time,
                 self.tcfg.end_time,
                 allow_download=allow_download,
             )

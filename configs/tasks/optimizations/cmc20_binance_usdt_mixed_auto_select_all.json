@@ -1,0 +1,98 @@
+[
+  {
+    "task_type": "BACK_TRADER",
+    "strategy": "macd_triple_divergence",
+    "auto_download": true,
+    "free": 100000,
+    "param_combinations": [
+      {
+        "chainer_mode": [
+          "LONG",
+          "BOTH"
+        ],
+        "chainer_need_confirm": [
+          true,
+          false
+        ],
+        "chainer_stoploss_atr_mult": [
+          1
+        ],
+        "chainer_enable_breakeven": [
+          true
+        ],
+        "chainer_min_equity_percent": [
+          0.1
+        ]
+      }
+    ],
+    "symbols": "BTC-USDT,ETH-USDT,BNB-USDT,XRP-USDT,SOL-USDT,TRX-USDT,DOGE-USDT,ZEC-USDT,XLM-USDT,LINK-USDT,ADA-USDT,BCH-USDT,GRAM-USDT,LTC-USDT,HBAR-USDT,AVAX-USDT,SUI-USDT",
+    "interval": "1h",
+    "start_time": "2026-06-16 17:05:44",
+    "end_time": "2026-07-16 17:05:44",
+    "optimization_run_id": "cmc20-binance-usdt-mixed-auto-select"
+  },
+  {
+    "task_type": "BACK_TRADER",
+    "strategy": "macd_triple_divergence",
+    "auto_download": true,
+    "free": 100000,
+    "param_combinations": [
+      {
+        "chainer_mode": [
+          "LONG",
+          "BOTH"
+        ],
+        "chainer_need_confirm": [
+          true,
+          false
+        ],
+        "chainer_stoploss_atr_mult": [
+          1
+        ],
+        "chainer_enable_breakeven": [
+          true
+        ],
+        "chainer_min_equity_percent": [
+          0.1
+        ]
+      }
+    ],
+    "symbols": "BTC-USDT,ETH-USDT,BNB-USDT,XRP-USDT,SOL-USDT,TRX-USDT,DOGE-USDT,ZEC-USDT,XLM-USDT,LINK-USDT,ADA-USDT,BCH-USDT,GRAM-USDT,LTC-USDT,HBAR-USDT,AVAX-USDT,SUI-USDT",
+    "interval": "4h",
+    "start_time": "2025-07-16 17:05:44",
+    "end_time": "2026-07-16 17:05:44",
+    "optimization_run_id": "cmc20-binance-usdt-mixed-auto-select"
+  },
+  {
+    "task_type": "BACK_TRADER",
+    "strategy": "macd_triple_divergence",
+    "auto_download": true,
+    "free": 100000,
+    "param_combinations": [
+      {
+        "chainer_mode": [
+          "LONG",
+          "BOTH"
+        ],
+        "chainer_need_confirm": [
+          true,
+          false
+        ],
+        "chainer_stoploss_atr_mult": [
+          1
+        ],
+        "chainer_enable_breakeven": [
+          true
+        ],
+        "chainer_min_equity_percent": [
+          0.1
+        ]
+      }
+    ],
+    "symbols": "BTC-USDT,ETH-USDT,BNB-USDT,XRP-USDT,SOL-USDT,TRX-USDT,DOGE-USDT,ZEC-USDT,XLM-USDT,LINK-USDT,ADA-USDT,BCH-USDT,GRAM-USDT,LTC-USDT,HBAR-USDT,AVAX-USDT,SUI-USDT",
+    "interval": "1d",
+    "start_time": "2000-01-01 00:00:00",
+    "end_time": "2026-07-16 17:05:44",
+    "optimization_run_id": "cmc20-binance-usdt-mixed-auto-select"
+  }
+]

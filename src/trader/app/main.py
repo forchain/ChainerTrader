@@ -75,7 +75,7 @@ def main():
         default=argparse.SUPPRESS,
     )
     parser.add_argument(
-        "--live-warmup-candles",
+        "--warmup-candles",
         help="Max realtime warmup candles loaded at startup (default: 500)",
         action="store",
         type=int,

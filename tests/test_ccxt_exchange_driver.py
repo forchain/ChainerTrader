@@ -116,6 +116,14 @@ class FailingMaxBorrowableClient(FakeCcxtClient):
         raise RuntimeError("signature rejected")
 
 
+class RestrictedMarketDataClient(FakeCcxtClient):
+    def fetch_ohlcv(self, symbol, timeframe, since=None, limit=None):
+        self.fetch_ohlcv_calls.append((symbol, timeframe, since, limit))
+        raise RuntimeError(
+            'binance GET https://api.binance.com/api/v3/exchangeInfo 451 {"msg":"Service unavailable from a restricted location"}'
+        )
+
+
 def _driver():
     return CcxtExchangeDriver(
         ExchangeConfig(ty=ExchangeType.BINANCE, driver=ExchangeDriverType.CCXT, margin_mode=MarginMode.SPOT),
@@ -133,6 +141,124 @@ def test_ccxt_driver_loads_klines_and_normalizes_candles():
     assert candles[0].close_time == 1_700_003_599
     assert candles[1].close == 112.0
     assert driver.client.fetch_ohlcv_calls == [("BTC/USDT", "1h", None, 2)]
+
+
+def test_ccxt_driver_falls_back_to_binance_public_data_api_for_restricted_market_data(monkeypatch):
+    calls = []
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return [
+                [
+                    1_700_000_000_000,
+                    "100.0",
+                    "110.0",
+                    "90.0",
+                    "105.0",
+                    "12.5",
+                    1_700_003_599_999,
+                    "1300.0",
+                    42,
+                    "6.0",
+                    "650.0",
+                    "0",
+                ]
+            ]
+
+    def fake_get(url, params, timeout):
+        calls.append((url, params, timeout))
+        return FakeResponse()
+
+    monkeypatch.setattr("trader.exchange.ccxt_driver.requests.get", fake_get)
+    driver = CcxtExchangeDriver(
+        ExchangeConfig(ty=ExchangeType.BINANCE, driver=ExchangeDriverType.CCXT, margin_mode=MarginMode.SPOT),
+        client=RestrictedMarketDataClient(),
+    )
+
+    candles = driver.get_klines(SymbolInterval("BTC-USDT", Interval.INTERVAL_1h), start_time=1_700_000_000, limit=1)
+
+    assert len(candles) == 1
+    assert candles[0].open_time == 1_700_000_000
+    assert candles[0].close_time == 1_700_003_599
+    assert candles[0].close == 105.0
+    assert calls == [
+        (
+            "https://data-api.binance.vision/api/v3/klines",
+            {
+                "symbol": "BTCUSDT",
+                "interval": "1h",
+                "limit": 1,
+                "startTime": 1_700_000_000_000,
+            },
+            20,
+        )
+    ]
+
+
+def test_ccxt_driver_fallback_uses_bounded_start_time_for_end_time_window(monkeypatch):
+    calls = []
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return [
+                [
+                    1_700_086_400_000,
+                    "100.0",
+                    "110.0",
+                    "90.0",
+                    "105.0",
+                    "12.5",
+                    1_700_172_799_999,
+                    "1300.0",
+                    42,
+                    "6.0",
+                    "650.0",
+                    "0",
+                ]
+            ]
+
+    def fake_get(url, params, timeout):
+        calls.append((url, params, timeout))
+        return FakeResponse()
+
+    monkeypatch.setattr("trader.exchange.ccxt_driver.requests.get", fake_get)
+    driver = CcxtExchangeDriver(
+        ExchangeConfig(ty=ExchangeType.BINANCE, driver=ExchangeDriverType.CCXT, margin_mode=MarginMode.SPOT),
+        client=RestrictedMarketDataClient(),
+    )
+
+    candles = driver.get_klines(SymbolInterval("BTC-USDT", Interval.INTERVAL_1d), end_time=1_700_086_400, limit=1)
+
+    assert len(candles) == 1
+    assert candles[0].open_time == 1_700_086_400
+    assert calls == [
+        (
+            "https://data-api.binance.vision/api/v3/klines",
+            {
+                "symbol": "BTCUSDT",
+                "interval": "1d",
+                "limit": 1,
+                "startTime": 1_700_086_400_000,
+                "endTime": 1_700_086_400_000,
+            },
+            20,
+        )
+    ]
+
+
+def test_ccxt_driver_get_klines_by_end_fetches_window_ending_at_requested_time():
+    driver = _driver()
+
+    candles = driver.get_klines_by_end(SymbolInterval("BTC-USDT", Interval.INTERVAL_1h), 1_700_003_600, limit=2)
+
+    assert len(candles) == 2
+    assert driver.client.fetch_ohlcv_calls == [("BTC/USDT", "1h", 1_700_000_000_000, 2)]
 
 
 def test_ccxt_driver_start_does_not_require_market_network_preload():

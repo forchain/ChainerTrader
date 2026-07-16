@@ -38,6 +38,7 @@ from urllib.parse import urlencode, urlparse
 
 from trader.common.logger import default
 from trader.exchange.balance import Balance
+from trader.exchange.binance.archive import find_earliest_daily_archive_open_time
 from trader.exchange.ccxt_driver import CcxtExchangeDriver
 try:
     from trader.exchange.binance.margin import MarginTradingManager
@@ -283,6 +284,10 @@ class BinanceExchange:
         if start_time is None or start_time == 0:
             start_time = int(get_oldest_time().timestamp())
         return self.get_klines(si, start_time, r_end_time, limit)
+
+    def get_earliest_daily_archive_open_time(self, symbol_interval: SymbolInterval) -> int | None:
+        """Return Binance Public Data's earliest daily archive date for this market."""
+        return find_earliest_daily_archive_open_time(symbol_interval)
 
     def get_account(self):
         if self._use_ccxt():

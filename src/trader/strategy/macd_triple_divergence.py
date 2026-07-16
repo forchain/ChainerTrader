@@ -682,15 +682,24 @@ class MacdTripleDivergenceStrategy(BaseStrategy):
         between_start = left.extreme_idx + 1
         between_end = right.start_idx - 1
         if between_end >= between_start:
-            best_idx = None
-            for idx in range(between_start, between_end + 1):
-                shift = self._shift_from_bar_index(idx)
-                abs_hist = abs(float(self.macd_hist[shift]))
-                if separator_abs is None or abs_hist < separator_abs:
-                    separator_abs = abs_hist
-                    best_idx = idx
-            if best_idx is not None:
-                separator_time = self._bar_snapshot(best_idx)["time"]
+            if mode == "opposite_color":
+                for idx in range(between_start, between_end + 1):
+                    shift = self._shift_from_bar_index(idx)
+                    hist = float(self.macd_hist[shift])
+                    if self._get_sign(hist) not in (left.sign, SegmentSign.ZERO):
+                        separator_abs = abs(hist)
+                        separator_time = self._bar_snapshot(idx)["time"]
+                        break
+            else:
+                best_idx = None
+                for idx in range(between_start, between_end + 1):
+                    shift = self._shift_from_bar_index(idx)
+                    abs_hist = abs(float(self.macd_hist[shift]))
+                    if separator_abs is None or abs_hist < separator_abs:
+                        separator_abs = abs_hist
+                        best_idx = idx
+                if best_idx is not None:
+                    separator_time = self._bar_snapshot(best_idx)["time"]
 
         reference_abs = abs(float(left.extreme_val))
         if separator_abs is not None and reference_abs > 0:

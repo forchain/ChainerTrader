@@ -1,0 +1,154 @@
+{
+  "schema_version": 1,
+  "market_index": "CMC20",
+  "generated_at": "2026-07-16T16:57:44+08:00",
+  "source_url": "https://coinmarketcap.com/charts/cmc20/",
+  "source_api_url": "https://pro-api.coinmarketcap.com/public-api/v3/index/cmc20-latest",
+  "last_update": "2026-07-16T08:57:47.000Z",
+  "next_update": "2026-07-16T08:57:48.000Z",
+  "value": 131.21,
+  "value_24h_percentage_change": -0.9,
+  "count": 20,
+  "constituents": [
+    {
+      "id": 1,
+      "name": "Bitcoin",
+      "symbol": "BTC",
+      "url": "https://coinmarketcap.com/currencies/bitcoin",
+      "weight": 70.7
+    },
+    {
+      "id": 1027,
+      "name": "Ethereum",
+      "symbol": "ETH",
+      "url": "https://coinmarketcap.com/currencies/ethereum",
+      "weight": 12.5
+    },
+    {
+      "id": 1839,
+      "name": "BNB",
+      "symbol": "BNB",
+      "url": "https://coinmarketcap.com/currencies/bnb",
+      "weight": 4.22
+    },
+    {
+      "id": 52,
+      "name": "XRP",
+      "symbol": "XRP",
+      "url": "https://coinmarketcap.com/currencies/xrp",
+      "weight": 3.8
+    },
+    {
+      "id": 5426,
+      "name": "Solana",
+      "symbol": "SOL",
+      "url": "https://coinmarketcap.com/currencies/solana",
+      "weight": 2.44
+    },
+    {
+      "id": 1958,
+      "name": "TRON",
+      "symbol": "TRX",
+      "url": "https://coinmarketcap.com/currencies/tron",
+      "weight": 1.69
+    },
+    {
+      "id": 32196,
+      "name": "Hyperliquid",
+      "symbol": "HYPE",
+      "url": "https://coinmarketcap.com/currencies/hyperliquid",
+      "weight": 0.92
+    },
+    {
+      "id": 74,
+      "name": "Dogecoin",
+      "symbol": "DOGE",
+      "url": "https://coinmarketcap.com/currencies/dogecoin",
+      "weight": 0.62
+    },
+    {
+      "id": 1437,
+      "name": "Zcash",
+      "symbol": "ZEC",
+      "url": "https://coinmarketcap.com/currencies/zcash",
+      "weight": 0.51
+    },
+    {
+      "id": 512,
+      "name": "Stellar",
+      "symbol": "XLM",
+      "url": "https://coinmarketcap.com/currencies/stellar",
+      "weight": 0.35
+    },
+    {
+      "id": 1975,
+      "name": "Chainlink",
+      "symbol": "LINK",
+      "url": "https://coinmarketcap.com/currencies/chainlink",
+      "weight": 0.35
+    },
+    {
+      "id": 2010,
+      "name": "Cardano",
+      "symbol": "ADA",
+      "url": "https://coinmarketcap.com/currencies/cardano",
+      "weight": 0.32
+    },
+    {
+      "id": 37263,
+      "name": "Canton",
+      "symbol": "CC",
+      "url": "https://coinmarketcap.com/currencies/canton-network",
+      "weight": 0.29
+    },
+    {
+      "id": 1831,
+      "name": "Bitcoin Cash",
+      "symbol": "BCH",
+      "url": "https://coinmarketcap.com/currencies/bitcoin-cash",
+      "weight": 0.25
+    },
+    {
+      "id": 11419,
+      "name": "Gram (prev. Toncoin)",
+      "symbol": "GRAM",
+      "url": "https://coinmarketcap.com/currencies/gram",
+      "weight": 0.23
+    },
+    {
+      "id": 2,
+      "name": "Litecoin",
+      "symbol": "LTC",
+      "url": "https://coinmarketcap.com/currencies/litecoin",
+      "weight": 0.19
+    },
+    {
+      "id": 4642,
+      "name": "Hedera",
+      "symbol": "HBAR",
+      "url": "https://coinmarketcap.com/currencies/hedera",
+      "weight": 0.16
+    },
+    {
+      "id": 5805,
+      "name": "Avalanche",
+      "symbol": "AVAX",
+      "url": "https://coinmarketcap.com/currencies/avalanche",
+      "weight": 0.16
+    },
+    {
+      "id": 20947,
+      "name": "Sui",
+      "symbol": "SUI",
+      "url": "https://coinmarketcap.com/currencies/sui",
+      "weight": 0.16
+    },
+    {
+      "id": 3635,
+      "name": "Cronos",
+      "symbol": "CRO",
+      "url": "https://coinmarketcap.com/currencies/cronos",
+      "weight": 0.14
+    }
+  ]
+}

@@ -1,11 +1,12 @@
 import json
 from datetime import datetime
 from pathlib import Path
+from types import MethodType, SimpleNamespace
 
 import backtrader as bt
 
 from trader.exchange.binance.csvdata import BinanceCSVData
-from trader.strategy.macd_triple_divergence import MacdTripleDivergenceStrategy, SegmentSign
+from trader.strategy.macd_triple_divergence import MacdTripleDivergenceStrategy, Segment, SegmentSign
 
 
 class _SignalProbeStrategy(MacdTripleDivergenceStrategy):
@@ -186,3 +187,49 @@ def test_latest_same_sign_wave_window_is_capped_at_five():
     for sign in (SegmentSign.NEGATIVE, SegmentSign.POSITIVE):
         latest = st._latest_same_sign_waves(waves, sign)
         assert len(latest) <= 5
+
+
+def test_separator_detail_uses_first_opposite_color_bar_when_present():
+    probe = SimpleNamespace(
+        macd_hist=[10.0, 8.0, -1.5, -4.0, -2.0, 9.0],
+        params=SimpleNamespace(noise_cluster_ratio=0.1, zero_eps=0.0001),
+    )
+    probe._shift_from_bar_index = lambda idx: idx
+    probe._bar_snapshot = lambda idx: {"time": f"bar-{idx}"}
+    probe._wave_span_indices = MethodType(MacdTripleDivergenceStrategy._wave_span_indices, probe)
+    probe._get_sign = MethodType(MacdTripleDivergenceStrategy._get_sign, probe)
+
+    waves = [
+        Segment(start_idx=0, end_idx=1, sign=SegmentSign.POSITIVE, extreme_val=10.0, extreme_idx=0, price_extreme=0.0, price_extreme_idx=0),
+        Segment(start_idx=2, end_idx=4, sign=SegmentSign.NEGATIVE, extreme_val=-4.0, extreme_idx=3, price_extreme=0.0, price_extreme_idx=3),
+        Segment(start_idx=5, end_idx=5, sign=SegmentSign.POSITIVE, extreme_val=9.0, extreme_idx=5, price_extreme=0.0, price_extreme_idx=5),
+    ]
+
+    detail = MacdTripleDivergenceStrategy._separator_detail(probe, waves, waves[0], waves[2])
+
+    assert detail["mode"] == "opposite_color"
+    assert detail["separator_time"] == "bar-2"
+    assert detail["separator_macd_abs"] == 1.5
+
+
+def test_separator_detail_keeps_near_zero_minimum_bar_selection_when_no_opposite_color_exists():
+    probe = SimpleNamespace(
+        macd_hist=[10.0, 4.0, 0.0, 3.0, 9.0],
+        params=SimpleNamespace(noise_cluster_ratio=0.1, zero_eps=0.0001),
+    )
+    probe._shift_from_bar_index = lambda idx: idx
+    probe._bar_snapshot = lambda idx: {"time": f"bar-{idx}"}
+    probe._wave_span_indices = MethodType(MacdTripleDivergenceStrategy._wave_span_indices, probe)
+    probe._get_sign = MethodType(MacdTripleDivergenceStrategy._get_sign, probe)
+
+    waves = [
+        Segment(start_idx=0, end_idx=1, sign=SegmentSign.POSITIVE, extreme_val=10.0, extreme_idx=0, price_extreme=0.0, price_extreme_idx=0),
+        Segment(start_idx=2, end_idx=3, sign=SegmentSign.POSITIVE, extreme_val=4.0, extreme_idx=1, price_extreme=0.0, price_extreme_idx=1),
+        Segment(start_idx=4, end_idx=4, sign=SegmentSign.POSITIVE, extreme_val=9.0, extreme_idx=4, price_extreme=0.0, price_extreme_idx=4),
+    ]
+
+    detail = MacdTripleDivergenceStrategy._separator_detail(probe, waves, waves[0], waves[2])
+
+    assert detail["mode"] == "near_zero"
+    assert detail["separator_time"] == "bar-2"
+    assert detail["separator_macd_abs"] == 0.0

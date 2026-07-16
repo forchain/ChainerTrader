@@ -398,7 +398,10 @@ def test_download_range_backward_confirms_boundary_when_first_batch_is_empty():
         end_time = 1_600_000_000
         start_time = end_time - 10 * 86400
 
-        availability = SimpleNamespace(update_earliest_known_open_time=AsyncMock())
+        availability = SimpleNamespace(
+            update_earliest_known_open_time=AsyncMock(),
+            update_cached_open_time_range=AsyncMock(),
+        )
         db_manager = SimpleNamespace(
             kline=SimpleNamespace(add_klines=MagicMock()),
             availability=availability,
@@ -428,6 +431,7 @@ def test_download_range_backward_confirms_boundary_when_first_batch_is_empty():
             add_time_duration(end_time, symbol_interval.interval, 1),
             source="backward_fill",
         )
+        availability.update_cached_open_time_range.assert_not_called()
         assert any("detected earliest available kline" in message for message in log.messages)
 
     asyncio.run(_test())
