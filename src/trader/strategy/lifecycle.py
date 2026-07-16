@@ -70,6 +70,7 @@ class TradeContext:
     exit_reason_code: str | None = None
     exit_reason_label: str | None = None
     exit_reason_detail: str | None = None
+    replacement_trade_id: int | None = None
     stop_multiple_r: float | None = None
     exit_risk_reward_ratio: float | None = None
 

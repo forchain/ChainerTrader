@@ -302,7 +302,7 @@ def test_short_only_long_signal_exits_active_short_trade():
     assert trades[0].exit_reason_code == "signal_exit"
 
 
-def test_both_mode_reverse_signal_does_not_exit_active_trade():
+def test_both_mode_reverse_signal_force_closes_active_trade_before_opening_replacement():
     class _BothModeReverseSignalProbeStrategy(BaseStrategy):
         params = (
             ("name", "BOTH_MODE_REVERSE_SIGNAL_PROBE"),
@@ -318,6 +318,16 @@ def test_both_mode_reverse_signal_does_not_exit_active_trade():
         def log_debug(self, msg):
             pass
 
+        def __init__(self):
+            super().__init__()
+            self.completed_exit_trade_ids = []
+
+        def notify_order(self, order):
+            role = getattr(order, "info", {}).get("chainer_role")
+            if order.status == order.Completed and role in {"exit", "stop", "take_profit"}:
+                self.completed_exit_trade_ids.append(int(order.tradeid))
+            super().notify_order(order)
+
         def get_long_signal(self) -> bool:
             return self.bar_idx() == 2
 
@@ -329,8 +339,10 @@ def test_both_mode_reverse_signal_does_not_exit_active_trade():
         dict(open=100, high=101, low=99, close=100),
         dict(open=100, high=105, low=90, close=104),  # long signal, stop=90
         dict(open=104, high=106, low=100, close=105),  # long entry fills
-        dict(open=105, high=107, low=100, close=103),  # short signal should not close long
-        dict(open=103, high=104, low=99, close=102),
+        dict(open=105, high=107, low=100, close=103),  # short signal replaces the long
+        dict(open=103, high=104, low=99, close=102),  # long exit fills
+        dict(open=102, high=104, low=98, close=100),  # replacement short entry fills
+        dict(open=100, high=103, low=97, close=99),
     ]
 
     cerebro = bt.Cerebro()
@@ -342,7 +354,15 @@ def test_both_mode_reverse_signal_does_not_exit_active_trade():
     st = cerebro.run()[0]
 
     trades = list(st._trades_by_id.values())  # noqa: SLF001
-    assert len(trades) == 1
+    assert len(trades) == 2
     assert trades[0].direction == "LONG"
-    assert trades[0].status == BaseStrategy.TradeStatus.ACTIVE
-    assert trades[0].exit_reason_code is None
+    assert trades[0].status == BaseStrategy.TradeStatus.CLOSED
+    assert trades[0].exit_reason_code == "signal_replaced"
+    assert trades[0].exit_reason_label == "新交易信号强制平仓"
+    assert trades[0].replacement_trade_id == trades[1].trade_id
+    assert f"replacement_trade_id={trades[1].trade_id}" in trades[0].exit_reason_detail
+    assert trades[1].direction == "SHORT"
+    assert trades[1].status == BaseStrategy.TradeStatus.ACTIVE
+    assert trades[1].trade_id == 2
+    assert st.completed_exit_trade_ids == [trades[0].trade_id]
+    assert float(getattr(st.position, "size", 0.0)) < 0.0

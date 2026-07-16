@@ -101,6 +101,7 @@ class BacktestReportAnalyzer(bt.Analyzer):
             "exit_reason_code": getattr(ctx, "exit_reason_code", None) if ctx is not None else None,
             "exit_reason_label": getattr(ctx, "exit_reason_label", None) if ctx is not None else None,
             "exit_reason_detail": getattr(ctx, "exit_reason_detail", None) if ctx is not None else None,
+            "replacement_trade_id": getattr(ctx, "replacement_trade_id", None) if ctx is not None else None,
             "stop_multiple_r": getattr(ctx, "stop_multiple_r", None) if ctx is not None else None,
             "risk_reward_ratio": getattr(ctx, "exit_risk_reward_ratio", None) if ctx is not None else None,
             "framework_initial_stop_price": getattr(ctx, "initial_stop_price", None) if ctx is not None else None,
@@ -207,8 +208,19 @@ class BacktestReportAnalyzer(bt.Analyzer):
 
     def _trade_win_rate_pct(self, total_closed, won_total):
         if self._trades:
-            won = sum(1 for trade in self._trades if float(trade.get("pnl", 0.0) or 0.0) > 0.0)
-            return won / len(self._trades) * 100
+            decisive_trades = [
+                trade
+                for trade in self._trades
+                if float(trade.get("pnl_pct", trade.get("pnl", 0.0)) or 0.0) != 0.0
+            ]
+            if decisive_trades:
+                won = sum(
+                    1
+                    for trade in decisive_trades
+                    if float(trade.get("pnl_pct", trade.get("pnl", 0.0)) or 0.0) > 0.0
+                )
+                return won / len(decisive_trades) * 100
+            return 0.0
         return (won_total / total_closed * 100) if total_closed > 0 else 0
 
     def _get_trade_analyzer(self):
@@ -379,6 +391,7 @@ class BacktestReportAnalyzer(bt.Analyzer):
                 "exit_reason_code": getattr(ctx, "exit_reason_code", None),
                 "exit_reason_label": getattr(ctx, "exit_reason_label", None),
                 "exit_reason_detail": getattr(ctx, "exit_reason_detail", None),
+                "replacement_trade_id": getattr(ctx, "replacement_trade_id", None),
                 "stop_multiple_r": getattr(ctx, "stop_multiple_r", None),
                 "risk_reward_ratio": getattr(ctx, "exit_risk_reward_ratio", None),
                 "framework_initial_stop_price": getattr(ctx, "initial_stop_price", None),
@@ -433,6 +446,7 @@ class BacktestReportAnalyzer(bt.Analyzer):
                 trade_record["exit_reason_code"] = getattr(ctx, "exit_reason_code", None)
                 trade_record["exit_reason_label"] = getattr(ctx, "exit_reason_label", None)
                 trade_record["exit_reason_detail"] = getattr(ctx, "exit_reason_detail", None)
+                trade_record["replacement_trade_id"] = getattr(ctx, "replacement_trade_id", None)
                 trade_record["stop_multiple_r"] = getattr(ctx, "stop_multiple_r", None)
                 trade_record["risk_reward_ratio"] = getattr(ctx, "exit_risk_reward_ratio", None)
                 trade_record["framework_initial_stop_price"] = getattr(ctx, "initial_stop_price", None)

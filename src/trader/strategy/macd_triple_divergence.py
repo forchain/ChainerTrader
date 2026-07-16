@@ -1311,11 +1311,13 @@ class MacdTripleDivergenceStrategy(BaseStrategy):
                     )
                 self.log_info(f"记录入场MACD柱: direction={self._entry_direction} hist={self._entry_hist_val:.6f}")
             elif role == "exit" or role == "stop" or role == "take_profit":
-                # Clear entry tracking on exit
-                self._entry_hist_val = None
-                self._entry_direction = None
-                self._entry_signal_bar_idx = None
-                self._pending_entry_hist_val = None
+                active_trade = getattr(self, "_active_trade", None)
+                if active_trade is None or int(active_trade.trade_id) == int(getattr(order, "tradeid", 0) or 0):
+                    # Do not clear a replacement trade's signal state when the old trade exits.
+                    self._entry_hist_val = None
+                    self._entry_direction = None
+                    self._entry_signal_bar_idx = None
+                    self._pending_entry_hist_val = None
         elif order.status in (order.Canceled, order.Margin, order.Rejected):
             role = getattr(order, "info", {}).get("chainer_role")
             if role == "entry":
@@ -1344,6 +1346,15 @@ class MacdTripleDivergenceStrategy(BaseStrategy):
 
         if event_type == "entry_context_cancelled":
             self._update_signal_outcome(signal_id, "entry_context_cancelled", reason=payload.get("reason"))
+            return
+
+        if event_type == "replacement_scheduled":
+            self._update_signal_outcome(
+                signal_id,
+                "replacement_scheduled",
+                replaced_trade_id=payload.get("replaced_trade_id"),
+                replacement_trade_id=payload.get("replacement_trade_id"),
+            )
             return
 
         if event_type == "blocked":

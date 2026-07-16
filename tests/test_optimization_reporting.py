@@ -375,6 +375,7 @@ def test_backtest_report_enrichment_uses_tradeid_mapping_when_broker_ref_differs
                 exit_reason_code="framework_stop",
                 exit_reason_label="框架止损退出",
                 exit_reason_detail="触发框架止损（止损），止损位达到 -1.00R",
+                replacement_trade_id=8,
                 stop_multiple_r=-1.0,
                 exit_risk_reward_ratio=None,
                 initial_stop_price=98.0,
@@ -392,6 +393,7 @@ def test_backtest_report_enrichment_uses_tradeid_mapping_when_broker_ref_differs
     assert analyzer._trades[0]["exit_signal_time"] == "2025-01-03T00:00:00"
     assert analyzer._trades[0]["exit_reason_code"] == "framework_stop"
     assert analyzer._trades[0]["exit_reason_label"] == "框架止损退出"
+    assert analyzer._trades[0]["replacement_trade_id"] == 8
     assert analyzer._trades[0]["stop_multiple_r"] == -1.0
     assert analyzer._trades[0]["framework_initial_stop_price"] == 98.0
     assert analyzer._trades[0]["framework_final_stop_price"] == 99.5
@@ -547,14 +549,16 @@ def test_backtest_report_drawdown_summary_includes_active_position_scope():
     assert drawdown["active_max_dd_days"] == 10
 
 
-def test_backtest_report_win_rate_counts_positive_pnl_trades_directly():
+def test_backtest_report_win_rate_excludes_zero_return_breakeven_trades():
     analyzer = BacktestReportAnalyzer.__new__(BacktestReportAnalyzer)
     analyzer._trades = [
-        {"id": 1, "entry_px": 100.0, "exit_px": 110.0, "pnl": 10.0},
-        {"id": 2, "entry_px": 100.0, "exit_px": 90.0, "pnl": -10.0},
-        {"id": 3, "entry_px": 100.0, "exit_px": 100.0, "pnl": -0.2},
+        {"id": 1, "pnl_pct": 10.0, "pnl": 10.0},
+        {"id": 2, "pnl_pct": -2.0, "pnl": -2.0},
+        {"id": 3, "pnl_pct": 0.0, "pnl": -0.2},
+        {"id": 4, "pnl_pct": -6.0, "pnl": -6.0},
+        {"id": 5, "pnl_pct": 20.0, "pnl": 20.0},
     ]
 
-    win_rate = analyzer._trade_win_rate_pct(total_closed=3, won_total=1)
+    win_rate = analyzer._trade_win_rate_pct(total_closed=5, won_total=2)
 
-    assert round(win_rate, 2) == 33.33
+    assert win_rate == 50.0

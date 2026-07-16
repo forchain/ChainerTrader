@@ -122,6 +122,33 @@ def test_signal_router_exits_short_only_active_short():
     assert actions[-1].exit_reason_detail == "SHORT_ONLY 模式下出现反向信号"
 
 
+def test_signal_router_replaces_active_trade_in_both_mode():
+    router = SignalRouter()
+    lifecycle = TradeLifecycleEngine()
+    ctx = lifecycle.create_trade(
+        trade_id=4,
+        key="long",
+        direction="LONG",
+        entry_key_bar_index=1,
+        key_kline_ref=KlineRef(dt=base_strategy.datetime.fromtimestamp(0), high=110.0, low=90.0),
+        stoploss_atr_mult=0.0,
+        entry_need_confirm=False,
+        exit_need_confirm=False,
+        enable_breakeven=False,
+        risk_reward_ratio=0.0,
+    )
+    ctx.status = TradeStatus.ACTIVE
+
+    actions = router.route(
+        SignalSnapshot(bar_index=2, long_signal=False, short_signal=True, short_context={"kind": "replacement"}),
+        SignalRoutingState(mode="BOTH", can_open_new_position=True, active_trade=ctx, position_size=1.0),
+    )
+
+    assert actions[-1].action_type == SignalRouteActionType.REPLACE
+    assert actions[-1].direction == "SHORT"
+    assert actions[-1].active_trade["trade_id"] == 4
+
+
 def test_risk_engine_computes_initial_stop_take_profit_and_breakeven():
     risk = StrategyRiskEngine()
     stop = risk.initial_stop_price(

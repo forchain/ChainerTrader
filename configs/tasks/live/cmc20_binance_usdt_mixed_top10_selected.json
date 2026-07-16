@@ -1,0 +1,192 @@
+[
+  {
+    "task_type": "TRADER",
+    "strategy": "macd_triple_divergence",
+    "auto_download": true,
+    "free": 100000,
+    "symbol": "ETH-USDT",
+    "interval": "1d",
+    "strategy_params": {
+      "chainer_mode": "BOTH",
+      "chainer_need_confirm": true,
+      "chainer_stoploss_atr_mult": 1,
+      "chainer_enable_breakeven": true,
+      "chainer_min_equity_percent": 0.1
+    },
+    "selection_rank": 1,
+    "selection_metric": "avg_total_return_pct",
+    "selection_metric_value": 300.53,
+    "selection_param_id": "7bf00ed2028d"
+  },
+  {
+    "task_type": "TRADER",
+    "strategy": "macd_triple_divergence",
+    "auto_download": true,
+    "free": 100000,
+    "symbol": "ZEC-USDT",
+    "interval": "1d",
+    "strategy_params": {
+      "chainer_mode": "LONG",
+      "chainer_need_confirm": true,
+      "chainer_stoploss_atr_mult": 1,
+      "chainer_enable_breakeven": true,
+      "chainer_min_equity_percent": 0.1
+    },
+    "selection_rank": 2,
+    "selection_metric": "avg_total_return_pct",
+    "selection_metric_value": 172.3,
+    "selection_param_id": "1547740dc145"
+  },
+  {
+    "task_type": "TRADER",
+    "strategy": "macd_triple_divergence",
+    "auto_download": true,
+    "free": 100000,
+    "symbol": "BTC-USDT",
+    "interval": "1d",
+    "strategy_params": {
+      "chainer_mode": "BOTH",
+      "chainer_need_confirm": false,
+      "chainer_stoploss_atr_mult": 1,
+      "chainer_enable_breakeven": true,
+      "chainer_min_equity_percent": 0.1
+    },
+    "selection_rank": 3,
+    "selection_metric": "avg_total_return_pct",
+    "selection_metric_value": 161.92,
+    "selection_param_id": "c375f3e06cad"
+  },
+  {
+    "task_type": "TRADER",
+    "strategy": "macd_triple_divergence",
+    "auto_download": true,
+    "free": 100000,
+    "symbol": "LINK-USDT",
+    "interval": "1d",
+    "strategy_params": {
+      "chainer_mode": "LONG",
+      "chainer_need_confirm": false,
+      "chainer_stoploss_atr_mult": 1,
+      "chainer_enable_breakeven": true,
+      "chainer_min_equity_percent": 0.1
+    },
+    "selection_rank": 4,
+    "selection_metric": "avg_total_return_pct",
+    "selection_metric_value": 71.48,
+    "selection_param_id": "acc6a4a875a0"
+  },
+  {
+    "task_type": "TRADER",
+    "strategy": "macd_triple_divergence",
+    "auto_download": true,
+    "free": 100000,
+    "symbol": "TRX-USDT",
+    "interval": "1d",
+    "strategy_params": {
+      "chainer_mode": "LONG",
+      "chainer_need_confirm": false,
+      "chainer_stoploss_atr_mult": 1,
+      "chainer_enable_breakeven": true,
+      "chainer_min_equity_percent": 0.1
+    },
+    "selection_rank": 5,
+    "selection_metric": "avg_total_return_pct",
+    "selection_metric_value": 41.94,
+    "selection_param_id": "acc6a4a875a0"
+  },
+  {
+    "task_type": "TRADER",
+    "strategy": "macd_triple_divergence",
+    "auto_download": true,
+    "free": 100000,
+    "symbol": "LTC-USDT",
+    "interval": "1d",
+    "strategy_params": {
+      "chainer_mode": "LONG",
+      "chainer_need_confirm": true,
+      "chainer_stoploss_atr_mult": 1,
+      "chainer_enable_breakeven": true,
+      "chainer_min_equity_percent": 0.1
+    },
+    "selection_rank": 6,
+    "selection_metric": "avg_total_return_pct",
+    "selection_metric_value": 41.73,
+    "selection_param_id": "1547740dc145"
+  },
+  {
+    "task_type": "TRADER",
+    "strategy": "macd_triple_divergence",
+    "auto_download": true,
+    "free": 100000,
+    "symbol": "ADA-USDT",
+    "interval": "1d",
+    "strategy_params": {
+      "chainer_mode": "BOTH",
+      "chainer_need_confirm": false,
+      "chainer_stoploss_atr_mult": 1,
+      "chainer_enable_breakeven": true,
+      "chainer_min_equity_percent": 0.1
+    },
+    "selection_rank": 7,
+    "selection_metric": "avg_total_return_pct",
+    "selection_metric_value": 30.89,
+    "selection_param_id": "c375f3e06cad"
+  },
+  {
+    "task_type": "TRADER",
+    "strategy": "macd_triple_divergence",
+    "auto_download": true,
+    "free": 100000,
+    "symbol": "XRP-USDT",
+    "interval": "1d",
+    "strategy_params": {
+      "chainer_mode": "LONG",
+      "chainer_need_confirm": true,
+      "chainer_stoploss_atr_mult": 1,
+      "chainer_enable_breakeven": true,
+      "chainer_min_equity_percent": 0.1
+    },
+    "selection_rank": 8,
+    "selection_metric": "avg_total_return_pct",
+    "selection_metric_value": 22.13,
+    "selection_param_id": "1547740dc145"
+  },
+  {
+    "task_type": "TRADER",
+    "strategy": "macd_triple_divergence",
+    "auto_download": true,
+    "free": 100000,
+    "symbol": "BCH-USDT",
+    "interval": "4h",
+    "strategy_params": {
+      "chainer_mode": "BOTH",
+      "chainer_need_confirm": true,
+      "chainer_stoploss_atr_mult": 1,
+      "chainer_enable_breakeven": true,
+      "chainer_min_equity_percent": 0.1
+    },
+    "selection_rank": 9,
+    "selection_metric": "avg_total_return_pct",
+    "selection_metric_value": 21.9,
+    "selection_param_id": "7bf00ed2028d"
+  },
+  {
+    "task_type": "TRADER",
+    "strategy": "macd_triple_divergence",
+    "auto_download": true,
+    "free": 100000,
+    "symbol": "AVAX-USDT",
+    "interval": "4h",
+    "strategy_params": {
+      "chainer_mode": "LONG",
+      "chainer_need_confirm": false,
+      "chainer_stoploss_atr_mult": 1,
+      "chainer_enable_breakeven": true,
+      "chainer_min_equity_percent": 0.1
+    },
+    "selection_rank": 10,
+    "selection_metric": "avg_total_return_pct",
+    "selection_metric_value": 17.4,
+    "selection_param_id": "acc6a4a875a0"
+  }
+]
