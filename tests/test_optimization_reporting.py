@@ -412,13 +412,13 @@ def test_backtest_report_collects_active_trade_contexts_as_open_trades():
     }
     analyzer.strategy = SimpleNamespace(
         position=SimpleNamespace(size=-99.0),
-        data=SimpleNamespace(close=[90.0]),
+        data=SimpleNamespace(close=[90.987654]),
         _trades_by_id={
             9: SimpleNamespace(
                 trade_id=9,
                 status="active",
                 direction="SHORT",
-                entry_price=100.0,
+                entry_price=100.123456,
                 stop_price=105.0,
                 initial_stop_price=105.0,
                 tp_price=None,
@@ -437,9 +437,9 @@ def test_backtest_report_collects_active_trade_contexts_as_open_trades():
             "qty": 2.5,
             "entry_signal_time": "2026-01-01T00:00:00",
             "entry": "2026-01-02T00:00:00",
-            "entry_px": 100.0,
-            "current_px": 90.0,
-            "unrealized_pnl_pct": 10.0,
+            "entry_px": 100.123456,
+            "current_px": 90.987654,
+            "unrealized_pnl_pct": round(((100.123456 - 90.987654) / 100.123456) * 100, 2),
             "framework_initial_stop_price": 105.0,
             "framework_final_stop_price": 105.0,
             "framework_tp_price": None,
@@ -478,9 +478,9 @@ def test_backtest_report_appends_closed_context_missing_from_notify_trade_record
                 trade_id=2,
                 status="closed",
                 direction="LONG",
-                entry_price=100.0,
-                exit_price=130.0,
-                exit_value=260.0,
+                entry_price=100.123456,
+                exit_price=130.123456,
+                exit_value=260.246912,
                 initial_stop_price=90.0,
                 stop_price=130.0,
                 tp_price=None,
@@ -508,10 +508,10 @@ def test_backtest_report_appends_closed_context_missing_from_notify_trade_record
     assert missing["entry"] == "2024-05-04T08:00:00"
     assert missing["exit_signal_time"] == "2024-06-01T08:00:00"
     assert missing["exit"] == "2024-06-01T08:00:00"
-    assert missing["entry_px"] == 100.0
-    assert missing["exit_px"] == 130.0
-    assert missing["pnl_pct"] == 30.0
-    assert missing["pnl"] == 59.54
+    assert missing["entry_px"] == 100.123456
+    assert missing["exit_px"] == 130.123456
+    assert missing["pnl_pct"] == round(((130.123456 - 100.123456) / 100.123456) * 100, 2)
+    assert missing["pnl"] == round(((130.123456 - 100.123456) * 2.0) - ((100.123456 * 2.0 + 130.123456 * 2.0) * 0.001), 2)
     assert missing["exit_reason_label"] == "框架止损退出"
 
 
@@ -547,7 +547,7 @@ def test_backtest_report_drawdown_summary_includes_active_position_scope():
     assert drawdown["active_max_dd_days"] == 10
 
 
-def test_backtest_report_win_rate_excludes_breakeven_trades_from_denominator():
+def test_backtest_report_win_rate_counts_positive_pnl_trades_directly():
     analyzer = BacktestReportAnalyzer.__new__(BacktestReportAnalyzer)
     analyzer._trades = [
         {"id": 1, "entry_px": 100.0, "exit_px": 110.0, "pnl": 10.0},
@@ -557,4 +557,4 @@ def test_backtest_report_win_rate_excludes_breakeven_trades_from_denominator():
 
     win_rate = analyzer._trade_win_rate_pct(total_closed=3, won_total=1)
 
-    assert win_rate == 50.0
+    assert round(win_rate, 2) == 33.33

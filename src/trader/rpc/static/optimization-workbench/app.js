@@ -317,10 +317,10 @@
       return "SL: -";
     }
     if (initialStop == null) {
-      return `SL: ${escapeHtml(String(finalStop))}`;
+      return `SL: ${escapeHtml(formatPrice(finalStop))}`;
     }
     if (finalStop == null) {
-      return `SL: ${escapeHtml(String(initialStop))}`;
+      return `SL: ${escapeHtml(formatPrice(initialStop))}`;
     }
 
     const initialNumber = Number(initialStop);
@@ -329,9 +329,9 @@
       ? Math.abs(initialNumber - finalNumber) < 1e-9
       : String(initialStop) === String(finalStop);
     if (sameStop) {
-      return `SL: ${escapeHtml(String(initialStop))}`;
+      return `SL: ${escapeHtml(formatPrice(initialStop))}`;
     }
-    return `SL: ${escapeHtml(String(initialStop))} → ${escapeHtml(String(finalStop))}`;
+    return `SL: ${escapeHtml(formatPrice(initialStop))} → ${escapeHtml(formatPrice(finalStop))}`;
   }
 
   function renderTradeDetails(item) {
@@ -366,14 +366,14 @@
           <tbody>
             ${trades.map((trade) => {
               const isOpen = trade.status === "open";
-              const exitValue = isOpen ? `当前: ${trade.current_px ?? "-"}` : `出: ${trade.exit || "-"}`;
+              const exitValue = isOpen ? `当前: ${formatPrice(trade.current_px)}` : `出: ${trade.exit || "-"}`;
               const pnlValue = isOpen ? `未实现PnL: ${trade.unrealized_pnl_pct ?? "-"}%` : `PnL: ${trade.pnl_pct ?? "-"}%`;
               return `
               <tr>
                 <td><div class="stack"><span class="primary">${escapeHtml(String(trade.dir || ""))}</span><span class="secondary">#${escapeHtml(String(trade.id || ""))}</span></div></td>
                 <td><div class="stack"><span class="primary">进: ${escapeHtml(String(trade.entry || "-"))}</span><span class="secondary">信号: ${escapeHtml(String(trade.entry_signal_time || "-"))}</span><span class="primary">${escapeHtml(String(exitValue))}</span><span class="secondary">信号: ${escapeHtml(String(trade.exit_signal_time || "-"))}</span></div></td>
-                <td><div class="stack"><span class="primary">${escapeHtml(String(trade.entry_px || "-"))} → ${escapeHtml(String(isOpen ? trade.current_px ?? "-" : trade.exit_px || "-"))}</span><span class="secondary">数量: ${escapeHtml(String(trade.qty ?? "-"))}</span><span class="secondary">${escapeHtml(String(pnlValue))}</span></div></td>
-                <td><div class="stack"><span class="primary">${formatStopRange(trade)}</span><span class="secondary">TP: ${escapeHtml(String(trade.framework_tp_price ?? "-"))}</span></div></td>
+                <td><div class="stack"><span class="primary">${escapeHtml(formatPrice(trade.entry_px))} → ${escapeHtml(formatPrice(isOpen ? trade.current_px : trade.exit_px))}</span><span class="secondary">数量: ${escapeHtml(String(trade.qty ?? "-"))}</span><span class="secondary">${escapeHtml(String(pnlValue))}</span></div></td>
+                <td><div class="stack"><span class="primary">${formatStopRange(trade)}</span><span class="secondary">TP: ${escapeHtml(formatPrice(trade.framework_tp_price))}</span></div></td>
                 <td><div class="stack"><span class="primary">${escapeHtml(String(trade.exit_reason_label || trade.exit_reason_code || "-"))}</span><span class="secondary">${escapeHtml(String(trade.exit_reason_detail || ""))}</span></div></td>
               </tr>
             `;}).join("")}
@@ -443,6 +443,16 @@
 
   function formatPct(value) {
     return `${formatNumber(value)}%`;
+  }
+
+  function formatPrice(value) {
+    if (value === null || value === undefined || value === "") return "-";
+    const number = Number(value);
+    if (!Number.isFinite(number)) return "-";
+    return new Intl.NumberFormat("en-US", {
+      useGrouping: false,
+      maximumSignificantDigits: 6,
+    }).format(number);
   }
 
   function renderWinRate(item) {

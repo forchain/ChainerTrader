@@ -91,10 +91,10 @@ class BacktestReportAnalyzer(bt.Analyzer):
             "qty": round(abs(float(entry_size)), 8),
             "entry_signal_time": entry_signal_time,
             "entry": entry_time,
-            "entry_px": round(entry_px, 2),
+            "entry_px": float(entry_px),
             "exit_signal_time": exit_signal_time,
             "exit": exit_time,
-            "exit_px": round(float(exit_px), 2),
+            "exit_px": float(exit_px),
             "pnl_pct": round(pnl_pct, 2),
             "pnl": round(trade.pnlcomm, 2),
             "bars_held": bars_held,
@@ -206,23 +206,10 @@ class BacktestReportAnalyzer(bt.Analyzer):
         }
 
     def _trade_win_rate_pct(self, total_closed, won_total):
-        decisive_trades = [
-            trade
-            for trade in self._trades
-            if not self._is_breakeven_trade(trade)
-        ]
-        if decisive_trades:
-            won = sum(1 for trade in decisive_trades if float(trade.get("pnl", 0.0) or 0.0) > 0.0)
-            return won / len(decisive_trades) * 100
+        if self._trades:
+            won = sum(1 for trade in self._trades if float(trade.get("pnl", 0.0) or 0.0) > 0.0)
+            return won / len(self._trades) * 100
         return (won_total / total_closed * 100) if total_closed > 0 else 0
-
-    def _is_breakeven_trade(self, trade):
-        try:
-            entry_px = float(trade.get("entry_px"))
-            exit_px = float(trade.get("exit_px"))
-        except (TypeError, ValueError):
-            return False
-        return entry_px == exit_px
 
     def _get_trade_analyzer(self):
         result = {}
@@ -323,8 +310,8 @@ class BacktestReportAnalyzer(bt.Analyzer):
                 "qty": round(qty, 8),
                 "entry_signal_time": entry_signal_time or signal_metadata.get("signal_time"),
                 "entry": entry_time,
-                "entry_px": round(float(entry_price), 2),
-                "current_px": round(float(current_px), 2) if current_px is not None else None,
+                "entry_px": float(entry_price),
+                "current_px": float(current_px) if current_px is not None else None,
                 "unrealized_pnl_pct": round(unrealized_pnl_pct, 2) if unrealized_pnl_pct is not None else None,
                 "framework_initial_stop_price": getattr(ctx, "initial_stop_price", None),
                 "framework_final_stop_price": getattr(ctx, "stop_price", None),
@@ -382,10 +369,10 @@ class BacktestReportAnalyzer(bt.Analyzer):
                 "qty": round(abs(float(qty)), 8),
                 "entry_signal_time": entry_info.get("entry_signal_time") or signal_metadata.get("signal_time"),
                 "entry": entry_dt,
-                "entry_px": round(float(entry_price), 2),
+                "entry_px": float(entry_price),
                 "exit_signal_time": self._exit_signal_time(ctx, fallback=exit_dt),
                 "exit": exit_dt,
-                "exit_px": round(float(exit_price), 2),
+                "exit_px": float(exit_price),
                 "pnl_pct": round(pnl_pct, 2),
                 "pnl": round(pnl, 2),
                 "bars_held": None,
