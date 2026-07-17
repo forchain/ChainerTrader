@@ -106,6 +106,9 @@ class BacktestReportAnalyzer(bt.Analyzer):
             "risk_reward_ratio": getattr(ctx, "exit_risk_reward_ratio", None) if ctx is not None else None,
             "framework_initial_stop_price": getattr(ctx, "initial_stop_price", None) if ctx is not None else None,
             "framework_final_stop_price": getattr(ctx, "stop_price", None) if ctx is not None else None,
+            "framework_trailing_best_price": getattr(ctx, "trailing_best_price", None) if ctx is not None else None,
+            "framework_trailing_stop_price": getattr(ctx, "trailing_stop_price", None) if ctx is not None else None,
+            "framework_trailing_update_count": getattr(ctx, "trailing_update_count", 0) if ctx is not None else 0,
             "framework_tp_price": getattr(ctx, "tp_price", None) if ctx is not None else None,
             "strategy_suggested_stop_price": (
                 getattr(ctx, "signal_metadata", {}).get("suggested_stop_price") if ctx is not None and getattr(ctx, "signal_metadata", None) else None
@@ -327,6 +330,9 @@ class BacktestReportAnalyzer(bt.Analyzer):
                 "unrealized_pnl_pct": round(unrealized_pnl_pct, 2) if unrealized_pnl_pct is not None else None,
                 "framework_initial_stop_price": getattr(ctx, "initial_stop_price", None),
                 "framework_final_stop_price": getattr(ctx, "stop_price", None),
+                "framework_trailing_best_price": getattr(ctx, "trailing_best_price", None),
+                "framework_trailing_stop_price": getattr(ctx, "trailing_stop_price", None),
+                "framework_trailing_update_count": getattr(ctx, "trailing_update_count", 0),
                 "framework_tp_price": getattr(ctx, "tp_price", None),
                 "strategy_suggested_stop_price": signal_metadata.get("suggested_stop_price"),
                 "exit_reason_code": "open_position",
@@ -396,6 +402,9 @@ class BacktestReportAnalyzer(bt.Analyzer):
                 "risk_reward_ratio": getattr(ctx, "exit_risk_reward_ratio", None),
                 "framework_initial_stop_price": getattr(ctx, "initial_stop_price", None),
                 "framework_final_stop_price": getattr(ctx, "stop_price", None),
+                "framework_trailing_best_price": getattr(ctx, "trailing_best_price", None),
+                "framework_trailing_stop_price": getattr(ctx, "trailing_stop_price", None),
+                "framework_trailing_update_count": getattr(ctx, "trailing_update_count", 0),
                 "framework_tp_price": getattr(ctx, "tp_price", None),
                 "strategy_suggested_stop_price": signal_metadata.get("suggested_stop_price"),
                 "recovered_from_context": True,
@@ -451,6 +460,9 @@ class BacktestReportAnalyzer(bt.Analyzer):
                 trade_record["risk_reward_ratio"] = getattr(ctx, "exit_risk_reward_ratio", None)
                 trade_record["framework_initial_stop_price"] = getattr(ctx, "initial_stop_price", None)
                 trade_record["framework_final_stop_price"] = getattr(ctx, "stop_price", None)
+                trade_record["framework_trailing_best_price"] = getattr(ctx, "trailing_best_price", None)
+                trade_record["framework_trailing_stop_price"] = getattr(ctx, "trailing_stop_price", None)
+                trade_record["framework_trailing_update_count"] = getattr(ctx, "trailing_update_count", 0)
                 trade_record["framework_tp_price"] = getattr(ctx, "tp_price", None)
                 trade_record["strategy_suggested_stop_price"] = signal_metadata.get("suggested_stop_price")
 

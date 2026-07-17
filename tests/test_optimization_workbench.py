@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from trader.task.optimization_report import build_optimization_artifacts, write_optimization_artifacts
+from trader.task.optimization_workbench import build_parameter_observations
 
 
 def _signal(signal_time: str, status: str, side: str = "LONG") -> dict:
@@ -220,6 +221,63 @@ def test_disabled_parameter_observation_is_not_reported_as_has_evidence():
     assert observations["chainer_risk_reward_ratio"]["status"] == "disabled"
     assert observations["chainer_enable_breakeven"]["status"] == "disabled"
     assert observations["chainer_min_equity_percent"]["status"] == "disabled"
+
+
+def test_atr_stoploss_observation_preserves_effective_audit_status():
+    item = {
+        "params": {"chainer_stoploss_atr_mult": 1.0},
+        "sample_details": [
+            {
+                "trades": [
+                    {
+                        "framework_initial_stop_price": 90.0,
+                        "exit_reason_code": "framework_stop",
+                    }
+                ],
+                "signals": [],
+            }
+        ],
+    }
+
+    observations = build_parameter_observations(
+        item,
+        {"chainer_stoploss_atr_mult": {"status": "effective"}},
+    )
+
+    assert observations[0]["status"] == "effective"
+
+
+def test_trailing_stop_observation_reports_update_count_and_effective_status():
+    item = {
+        "params": {"chainer_trailing_stop_ratio": 0.5},
+        "sample_details": [
+            {
+                "trades": [
+                    {
+                        "framework_initial_stop_price": 90.0,
+                        "framework_trailing_stop_price": 105.0,
+                        "framework_trailing_update_count": 1,
+                    }
+                ],
+                "signals": [],
+            }
+        ],
+    }
+
+    observations = build_parameter_observations(
+        item,
+        {"chainer_trailing_stop_ratio": {"status": "effective"}},
+    )
+
+    assert observations == [
+        {
+            "parameter": "chainer_trailing_stop_ratio",
+            "value": 0.5,
+            "status": "effective",
+            "evidence": ["1 笔交易更新过移动止损"],
+            "stats": {"trailing_update_trade_count": 1, "trailing_update_count": 1},
+        }
+    ]
 
 
 def test_need_confirm_without_signal_time_evidence_is_suspicious():

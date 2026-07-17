@@ -17,6 +17,13 @@ class BreakevenAdjustment:
     step: int
 
 
+@dataclass(frozen=True)
+class TrailingStopAdjustment:
+    old_stop: float
+    new_stop: float
+    best_price: float
+
+
 class StrategyRiskEngine:
     def initial_stop_price(
         self,
@@ -34,11 +41,11 @@ class StrategyRiskEngine:
         except Exception:
             suggested_stop = None
 
-        if suggested_stop is not None:
-            return float(suggested_stop)
-
         direction_norm = str(direction).upper()
-        stop_price = float(key_low) if direction_norm == "LONG" else float(key_high)
+        if suggested_stop is not None:
+            stop_price = float(suggested_stop)
+        else:
+            stop_price = float(key_low) if direction_norm == "LONG" else float(key_high)
         if float(stoploss_atr_mult) == 0.0:
             return stop_price
         if direction_norm == "LONG":
@@ -88,4 +95,31 @@ class StrategyRiskEngine:
             old_stop=float(ctx.stop_price),
             new_stop=float(new_stop),
             step=max(int(ctx.breakeven_step), int(step)),
+        )
+
+    def trailing_stop_adjustment(
+        self,
+        ctx: TradeContext,
+        *,
+        best_price: float,
+        ratio: float,
+    ) -> TrailingStopAdjustment | None:
+        if ratio <= 0.0 or ctx.initial_stop_price is None or ctx.stop_price is None:
+            return None
+
+        initial_stop = float(ctx.initial_stop_price)
+        current_stop = float(ctx.stop_price)
+        best = float(best_price)
+        if ctx.direction == "LONG":
+            candidate = initial_stop + ((best - initial_stop) * float(ratio))
+            if candidate <= current_stop or (ctx.entry_price is not None and candidate <= float(ctx.entry_price)):
+                return None
+        else:
+            candidate = initial_stop - ((initial_stop - best) * float(ratio))
+            if candidate >= current_stop or (ctx.entry_price is not None and candidate >= float(ctx.entry_price)):
+                return None
+        return TrailingStopAdjustment(
+            old_stop=current_stop,
+            new_stop=float(candidate),
+            best_price=best,
         )

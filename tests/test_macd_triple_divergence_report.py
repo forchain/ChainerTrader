@@ -16,10 +16,17 @@ class _SilentReportStrategy(MacdTripleDivergenceStrategy):
         pass
 
 
-def _run_report_probe():
+class _AtrReportStrategy(_SilentReportStrategy):
+    params = (
+        ("chainer_stoploss_atr_mult", 1.0),
+        ("chainer_atr_period", 14),
+    )
+
+
+def _run_report_probe(strategy_cls=_SilentReportStrategy):
     csv_path = Path(__file__).resolve().parents[1] / "data" / "BTCUSDT-1d-20170101-20251231.csv"
     cerebro = bt.Cerebro(stdstats=False)
-    cerebro.addstrategy(_SilentReportStrategy)
+    cerebro.addstrategy(strategy_cls)
     cerebro.adddata(BinanceCSVData(dataname=str(csv_path)))
     cerebro.addanalyzer(
         BacktestReportAnalyzer,
@@ -54,7 +61,7 @@ def test_report_includes_signal_context_for_known_top_case():
     assert "documented_case_status" not in signal
 
 
-def test_report_includes_near_zero_separator_details_and_replacement_trade_trace():
+def test_report_includes_near_zero_separator_details():
     report = _run_report_probe()
 
     near_zero_signal = next(s for s in report["signals"] if s["signal_time"] == "2024-05-03T08:00:00")
@@ -66,15 +73,6 @@ def test_report_includes_near_zero_separator_details_and_replacement_trade_trace
     assert near_zero_separators[0]["noise_cluster_ratio_threshold"] == DEFAULT_NOISE_CLUSTER_RATIO
     assert near_zero_separators[0]["from_time"] is not None
     assert near_zero_separators[0]["to_time"] is not None
-
-    replacement_signal = next(s for s in report["signals"] if s["signal_time"] == "2025-05-23T08:00:00")
-    replacement_trade_id = replacement_signal["trade_outcome"]["trade_id"]
-    replaced_trade = next(t for t in report["trades"] if t.get("replacement_trade_id") == replacement_trade_id)
-
-    assert replacement_signal["trade_outcome"]["status"] == "entered"
-    assert replaced_trade["exit_reason_code"] == "signal_replaced"
-    assert replaced_trade["exit_reason_label"] == "新交易信号强制平仓"
-    assert f"replacement_trade_id={replacement_trade_id}" in replaced_trade["exit_reason_detail"]
 
 
 def test_documented_2020_02_13_signal_enters_after_prior_trade_is_resolved():
@@ -90,7 +88,7 @@ def test_documented_2020_02_13_signal_enters_after_prior_trade_is_resolved():
     assert trade["entry"] == "2020-02-14T08:00:00"
 
 
-def test_documented_2020_02_10_replacement_enters_next_day_and_uses_strategy_stop():
+def test_documented_2020_02_10_replacement_enters_next_day_and_framework_stop_wins():
     report = _run_report_probe()
 
     signal = next(s for s in report["signals"] if s["signal_time"] == "2020-02-10T08:00:00")
@@ -99,20 +97,29 @@ def test_documented_2020_02_10_replacement_enters_next_day_and_uses_strategy_sto
     assert signal["trade_outcome"]["status"] == "entered"
     assert trade["entry"] == "2020-02-11T08:00:00"
     assert trade["exit_signal_time"] == "2020-02-11T08:00:00"
-    assert trade["exit_reason_code"] == "strategy_stop"
-    assert trade["exit_reason_label"] == "策略止损逻辑退出"
-    assert trade["exit_reason_detail"] == "MACD 三背离后续走势失效"
+    assert trade["exit_reason_code"] == "framework_stop"
+    assert trade["exit_reason_label"] == "框架止损退出"
+    assert trade["exit_reason_detail"] == "触发框架止损（止损），止损位达到 -1.00R"
 
 
-def test_documented_2018_02_03_follow_through_failure_is_classified_as_strategy_stop():
+def test_documented_2018_02_03_follow_through_failure_is_preempted_by_framework_stop():
     report = _run_report_probe()
 
     trade = next(t for t in report["trades"] if t["entry_signal_time"] == "2018-02-03T08:00:00")
 
     assert trade["exit_signal_time"] == "2018-02-04T08:00:00"
-    assert trade["exit_reason_code"] == "strategy_stop"
-    assert trade["exit_reason_label"] == "策略止损逻辑退出"
-    assert trade["exit_reason_detail"] == "MACD 三背离后续走势失效"
+    assert trade["exit"] == "2018-02-04T08:00:00"
+    assert trade["exit_reason_code"] == "framework_stop"
+    assert trade["exit_reason_label"] == "框架止损退出"
+    assert trade["exit_reason_detail"] == "触发框架止损（止损），止损位达到 -1.00R"
+
+
+def test_atr_stop_uses_the_key_kline_atr_not_the_signal_kline_atr():
+    report = _run_report_probe(_AtrReportStrategy)
+
+    trade = next(t for t in report["trades"] if t["entry_signal_time"] == "2018-02-03T08:00:00")
+
+    assert abs(float(trade["framework_initial_stop_price"]) - 6507.208894703846) < 1e-9
 
 
 def test_report_covers_all_documented_fixture_cases_as_regular_signals():

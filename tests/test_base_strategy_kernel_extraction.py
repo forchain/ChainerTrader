@@ -209,15 +209,17 @@ def test_backtrader_adapter_owns_concrete_order_calls():
     adapter.place_or_replace_take_profit(ctx)
     adapter.close_position(ctx)
 
-    assert [call[0] for call in strategy.calls] == ["sell", "buy", "buy", "buy"]
+    assert [call[0] for call in strategy.calls] == ["sell", "buy", "cancel", "buy", "buy", "buy"]
     assert strategy.calls[1][1]["price"] == 110.0
-    assert strategy.calls[2][1]["price"] == 80.0
-    assert strategy.calls[2][1]["oco"] is ctx.stop_order
+    assert strategy.calls[3][1]["price"] == 110.0
+    assert strategy.calls[4][1]["price"] == 80.0
+    assert strategy.calls[4][1]["oco"] is ctx.stop_order
 
 
 class FakeOrder:
     def __init__(self, ref):
         self.ref = ref
+        self.size = 2.0
 
     def alive(self):
         return True

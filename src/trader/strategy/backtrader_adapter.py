@@ -18,8 +18,27 @@ class BacktraderStrategyExecutionAdapter:
 
     def open_entry(self, ctx: TradeContext):
         if ctx.direction == "LONG":
-            return self.strategy.buy(tradeid=ctx.trade_id, **{ORDER_ROLE_KEY: ORDER_ROLE_ENTRY})
-        return self.strategy.sell(tradeid=ctx.trade_id, **{ORDER_ROLE_KEY: ORDER_ROLE_ENTRY})
+            entry_order = self.strategy.buy(tradeid=ctx.trade_id, **{ORDER_ROLE_KEY: ORDER_ROLE_ENTRY})
+            if entry_order is not None and ctx.stop_price is not None:
+                ctx.stop_order = self.strategy.sell(
+                    size=float(entry_order.size),
+                    exectype=bt.Order.Stop,
+                    price=float(ctx.stop_price),
+                    tradeid=ctx.trade_id,
+                    **{ORDER_ROLE_KEY: ORDER_ROLE_STOP},
+                )
+            return entry_order
+
+        entry_order = self.strategy.sell(tradeid=ctx.trade_id, **{ORDER_ROLE_KEY: ORDER_ROLE_ENTRY})
+        if entry_order is not None and ctx.stop_price is not None:
+            ctx.stop_order = self.strategy.buy(
+                size=float(entry_order.size),
+                exectype=bt.Order.Stop,
+                price=float(ctx.stop_price),
+                tradeid=ctx.trade_id,
+                **{ORDER_ROLE_KEY: ORDER_ROLE_STOP},
+            )
+        return entry_order
 
     def close_position(self, ctx: TradeContext, *, oco_order=None):
         close_size = self.close_size()

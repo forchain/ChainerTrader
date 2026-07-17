@@ -418,7 +418,7 @@
       acc[obs.status] = (acc[obs.status] || 0) + 1;
       return acc;
     }, {});
-    return `有痕迹 ${counts.has_evidence || 0} / 未启用 ${counts.disabled || 0} / 未触发 ${counts.not_triggered || 0} / 可疑 ${counts.suspicious || 0}`;
+    return `有效 ${counts.effective || 0} / 有痕迹 ${counts.has_evidence || 0} / 未启用 ${counts.disabled || 0} / 未触发 ${counts.not_triggered || 0} / 可疑 ${counts.suspicious || 0}`;
   }
 
   function shortName(parameter) {
@@ -427,6 +427,7 @@
 
   function statusLabel(status) {
     return {
+      effective: "有效",
       has_evidence: "有痕迹",
       disabled: "未启用",
       not_triggered: "本样本未触发",

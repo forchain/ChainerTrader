@@ -36,6 +36,12 @@ def test_stop_order_triggers_on_low_even_if_close_above_stop():
         def __init__(self):
             super().__init__()
             self.ctx = None
+            self.stop_completed_bar = None
+
+        def notify_order(self, order):
+            super().notify_order(order)
+            if order.status == order.Completed and order.info.get("chainer_role") == "stop":
+                self.stop_completed_bar = self.bar_idx()
 
         def next(self):
             super().next()
@@ -59,8 +65,8 @@ def test_stop_order_triggers_on_low_even_if_close_above_stop():
         dict(open=100, high=101, low=99, close=100),
         dict(open=100, high=101, low=99, close=100),
         dict(open=100, high=105, low=95, close=100),  # key bar -> stop=95
-        dict(open=100, high=106, low=99, close=104),  # entry fills at open=100, stop order becomes active
-        dict(open=104, high=110, low=94, close=106),  # low breaks stop(95), but close stays above
+        dict(open=100, high=106, low=94, close=104),  # entry fills at open=100, same-day low breaks stop(95)
+        dict(open=104, high=110, low=99, close=106),
         dict(open=106, high=107, low=100, close=101),
     ]
 
@@ -78,9 +84,10 @@ def test_stop_order_triggers_on_low_even_if_close_above_stop():
     assert ctx.entry_price is not None
     assert ctx.stop_price is not None
     assert float(ctx.stop_price) == 95.0
-    # Stop should have closed the trade even though close(106) > stop(95)
+    # Stop should close on the entry bar when its intrabar low breaks the stop.
     assert ctx.exit_price is not None
     assert abs(float(ctx.exit_price) - 95.0) < 1e-9
+    assert st.stop_completed_bar == 4
 
 
 def test_short_stop_order_triggers_on_high_even_if_close_below_stop():

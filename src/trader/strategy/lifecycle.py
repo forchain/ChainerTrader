@@ -54,6 +54,12 @@ class TradeContext:
     initial_stop_price: float | None = None
     stop_price: float | None = None
     breakeven_step: int = 0
+    trailing_stop_ratio: float = 0.0
+    trailing_best_price: float | None = None
+    trailing_stop_price: float | None = None
+    trailing_update_count: int = 0
+    trailing_peak_confirmed: bool = False
+    stop_source: str = "initial"
 
     entry_key_banned: bool = False
     exit_key_banned: bool = False
@@ -141,6 +147,7 @@ class TradeLifecycleEngine:
         exit_need_confirm: bool,
         enable_breakeven: bool,
         risk_reward_ratio: float,
+        trailing_stop_ratio: float = 0.0,
         signal_metadata: dict[str, Any] | None = None,
     ) -> TradeContext:
         return TradeContext(
@@ -156,6 +163,7 @@ class TradeLifecycleEngine:
             exit_need_confirm=bool(exit_need_confirm),
             enable_breakeven=bool(enable_breakeven),
             risk_reward_ratio=float(risk_reward_ratio),
+            trailing_stop_ratio=float(trailing_stop_ratio),
             signal_metadata=dict(signal_metadata or {}),
         )
 
@@ -214,6 +222,7 @@ class TradeLifecycleEngine:
         if ctx.stop_price is None:
             ctx.stop_price = float(ctx.initial_stop_price)
         ctx.breakeven_step = 0
+        ctx.trailing_best_price = float(price)
 
     def request_exit(
         self,
