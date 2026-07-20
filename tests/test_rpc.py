@@ -98,6 +98,34 @@ def test_public_nav_hides_admin_dropdown_for_anonymous(rpc_test_client):
     assert 'href="/admin/users"' not in response.text
 
 
+def test_registration_can_be_disabled(rpc_test_client, monkeypatch):
+    app.state.cfg.registration_enabled = False
+    monkeypatch.setattr(
+        "trader.rpc.app._require_user_repo",
+        lambda _request: pytest.fail("disabled registration must not access the user repository"),
+    )
+
+    register_page = rpc_test_client.get("/register")
+    assert register_page.status_code == 200
+    assert "当前暂未开放用户注册" in register_page.text
+    assert '<form method="post" action="/register">' not in register_page.text
+
+    register_submit = rpc_test_client.post(
+        "/register",
+        data={"username": "new-user", "password": "ValidPassword123"},
+    )
+    assert register_submit.status_code == 403
+    assert "当前暂未开放用户注册" in register_submit.text
+
+    login_page = rpc_test_client.get("/login")
+    assert 'href="/register"' not in login_page.text
+
+
+def test_registration_enabled_keeps_login_link(rpc_test_client):
+    app.state.cfg.registration_enabled = True
+    assert 'href="/register"' in rpc_test_client.get("/login").text
+
+
 def test_admin_nav_shows_admin_dropdown_for_user_management_only(monkeypatch):
     from types import SimpleNamespace
 

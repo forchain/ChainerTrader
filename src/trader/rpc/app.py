@@ -206,7 +206,11 @@ def _require_user_repo(request: Request):
 
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
-    return templates.TemplateResponse(request, "login.html", {"error": None})
+    return templates.TemplateResponse(
+        request,
+        "login.html",
+        {"error": None, "registration_enabled": request.app.state.cfg.registration_enabled},
+    )
 
 
 @app.post("/login", response_class=HTMLResponse)
@@ -217,7 +221,12 @@ async def login_submit(request: Request):
     password = str(form.get("password", ""))
     user = await users.get_by_username(username)
     if user is None or user.status != "active" or not verify_password(password, user.password_hash):
-        return templates.TemplateResponse(request, "login.html", {"error": "用户名或密码错误"}, status_code=401)
+        return templates.TemplateResponse(
+            request,
+            "login.html",
+            {"error": "用户名或密码错误", "registration_enabled": request.app.state.cfg.registration_enabled},
+            status_code=401,
+        )
 
     token = create_session_token()
     expires_at = datetime.now(UTC) + timedelta(hours=int(request.app.state.cfg.session_ttl_hours))
@@ -238,11 +247,23 @@ async def login_submit(request: Request):
 
 @app.get("/register", response_class=HTMLResponse)
 async def register_page(request: Request):
-    return templates.TemplateResponse(request, "register.html", {"error": None})
+    error = None if request.app.state.cfg.registration_enabled else "当前暂未开放用户注册"
+    return templates.TemplateResponse(
+        request,
+        "register.html",
+        {"error": error, "registration_enabled": request.app.state.cfg.registration_enabled},
+    )
 
 
 @app.post("/register", response_class=HTMLResponse)
 async def register_submit(request: Request):
+    if not request.app.state.cfg.registration_enabled:
+        return templates.TemplateResponse(
+            request,
+            "register.html",
+            {"error": "当前暂未开放用户注册", "registration_enabled": False},
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
     users = _require_user_repo(request)
     form = await request.form()
     username = str(form.get("username", "")).strip()
@@ -251,9 +272,19 @@ async def register_submit(request: Request):
         validate_username(username)
         validate_password(username, password)
     except PasswordPolicyError as exc:
-        return templates.TemplateResponse(request, "register.html", {"error": str(exc)}, status_code=422)
+        return templates.TemplateResponse(
+            request,
+            "register.html",
+            {"error": str(exc), "registration_enabled": True},
+            status_code=422,
+        )
     if await users.get_by_username(username) is not None:
-        return templates.TemplateResponse(request, "register.html", {"error": "用户名已存在"}, status_code=409)
+        return templates.TemplateResponse(
+            request,
+            "register.html",
+            {"error": "用户名已存在", "registration_enabled": True},
+            status_code=409,
+        )
     await users.create_user(username, hash_password(password), role="user")
     return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
 

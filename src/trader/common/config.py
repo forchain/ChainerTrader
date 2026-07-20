@@ -33,6 +33,7 @@ TRADER_LIVE_ORDER_CLEANUP_SYMBOLS = "TRADER_LIVE_ORDER_CLEANUP_SYMBOLS"
 TRADER_SECRET_KEY = "TRADER_SECRET_KEY"
 TRADER_SESSION_COOKIE_SECURE = "TRADER_SESSION_COOKIE_SECURE"
 TRADER_SESSION_TTL_HOURS = "TRADER_SESSION_TTL_HOURS"
+TRADER_REGISTRATION_ENABLED = "TRADER_REGISTRATION_ENABLED"
 TRADER_LEVERAGE_RATIO = "TRADER_LEVERAGE_RATIO"
 
 
@@ -48,6 +49,19 @@ def parse_log_file_config(value: Any) -> bool | str:
     if normalized in {"false", "0", "no", "off", "none", "null"}:
         return False
     return raw
+
+
+def parse_bool_config(value: Any, default: bool = False, *, strict: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    normalized = str(value).strip().lower()
+    if normalized in {"true", "1", "yes", "on"}:
+        return True
+    if normalized in {"false", "0", "no", "off", "none", "null", ""}:
+        return False
+    if strict:
+        raise ValueError(f"invalid boolean configuration value: {value!r}")
+    return default
 
 
 def parse_string_list_config(value: Any) -> list[str]:
@@ -107,6 +121,7 @@ class Config:
         min_live_trade_notional: float = 11.0,
         warmup_candles: int = 500,
         live_order_cleanup_symbols=None,
+        registration_enabled: bool = True,
         **kwargs,
     ):
         self.commission = commission
@@ -131,6 +146,7 @@ class Config:
         self.secret_key = secret_key
         self.session_cookie_secure = bool(session_cookie_secure)
         self.session_ttl_hours = int(session_ttl_hours)
+        self.registration_enabled = parse_bool_config(registration_enabled, default=True, strict=True)
         self.leverage_ratio = parse_leverage_ratio_config(leverage_ratio)
         self.optimization_sample_timeout_seconds = optimization_sample_timeout_seconds
         self.optimization_dataset_prepare_timeout_seconds = optimization_dataset_prepare_timeout_seconds
@@ -175,6 +191,7 @@ class Config:
             os.environ[TRADER_SECRET_KEY] = self.secret_key
         os.environ[TRADER_SESSION_COOKIE_SECURE] = str(self.session_cookie_secure)
         os.environ[TRADER_SESSION_TTL_HOURS] = str(self.session_ttl_hours)
+        os.environ[TRADER_REGISTRATION_ENABLED] = str(self.registration_enabled)
         os.environ[TRADER_LEVERAGE_RATIO] = str(self.leverage_ratio)
         os.environ[TRADER_MIN_LIVE_TRADE_NOTIONAL] = str(self.min_live_trade_notional)
         os.environ[TRADER_WARMUP_CANDLES] = str(self.warmup_candles)
@@ -204,6 +221,7 @@ class Config:
             "secret_key_configured": bool(self.secret_key),
             "session_cookie_secure": self.session_cookie_secure,
             "session_ttl_hours": self.session_ttl_hours,
+            "registration_enabled": self.registration_enabled,
             "leverage_ratio": self.leverage_ratio,
             "optimization_sample_timeout_seconds": self.optimization_sample_timeout_seconds,
             "optimization_dataset_prepare_timeout_seconds": self.optimization_dataset_prepare_timeout_seconds,
@@ -236,6 +254,7 @@ class Config:
             "protected_paths": self.protected_paths,
             "session_cookie_secure": self.session_cookie_secure,
             "session_ttl_hours": self.session_ttl_hours,
+            "registration_enabled": self.registration_enabled,
             "leverage_ratio": self.leverage_ratio,
             "min_live_trade_notional": self.min_live_trade_notional,
             "warmup_candles": self.warmup_candles,
@@ -304,6 +323,7 @@ def new_and_env(cli: Namespace | None = None) -> Config:
     secret_key = None
     session_cookie_secure = False
     session_ttl_hours = 24
+    registration_enabled = True
     leverage_ratio = 1.0
     min_live_trade_notional = 11.0
     warmup_candles = 500
@@ -327,8 +347,11 @@ def new_and_env(cli: Namespace | None = None) -> Config:
     auth_username = os.environ.get(TRADER_AUTH_USERNAME, auth_username)
     auth_password = os.environ.get(TRADER_AUTH_PASSWORD, auth_password)
     secret_key = os.environ.get(TRADER_SECRET_KEY, secret_key)
-    session_cookie_secure = os.environ.get(TRADER_SESSION_COOKIE_SECURE, str(session_cookie_secure)).lower() == "true"
+    session_cookie_secure = parse_bool_config(os.environ.get(TRADER_SESSION_COOKIE_SECURE, session_cookie_secure))
     session_ttl_hours = int(os.environ.get(TRADER_SESSION_TTL_HOURS, session_ttl_hours))
+    registration_enabled = parse_bool_config(
+        os.environ.get(TRADER_REGISTRATION_ENABLED, registration_enabled), default=True, strict=True
+    )
     leverage_ratio = parse_leverage_ratio_config(os.environ.get(TRADER_LEVERAGE_RATIO, leverage_ratio))
     min_live_trade_notional = float(os.environ.get(TRADER_MIN_LIVE_TRADE_NOTIONAL, min_live_trade_notional))
     warmup_candles = int(os.environ.get(TRADER_WARMUP_CANDLES, warmup_candles))
@@ -384,6 +407,8 @@ def new_and_env(cli: Namespace | None = None) -> Config:
             session_cookie_secure = bool(a["session_cookie_secure"])
         if "session_ttl_hours" in a:
             session_ttl_hours = int(a["session_ttl_hours"])
+        if "registration_enabled" in a:
+            registration_enabled = bool(a["registration_enabled"])
         if "min_live_trade_notional" in a:
             min_live_trade_notional = float(a["min_live_trade_notional"])
         if "warmup_candles" in a:
@@ -413,6 +438,7 @@ def new_and_env(cli: Namespace | None = None) -> Config:
         secret_key=secret_key,
         session_cookie_secure=session_cookie_secure,
         session_ttl_hours=session_ttl_hours,
+        registration_enabled=registration_enabled,
         leverage_ratio=leverage_ratio,
         min_live_trade_notional=min_live_trade_notional,
         warmup_candles=warmup_candles,

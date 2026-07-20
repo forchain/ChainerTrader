@@ -699,7 +699,12 @@ export TRADER_AUTH_USERNAME="admin"
 export TRADER_AUTH_PASSWORD="your_secure_password_2026"
 export TRADER_SESSION_COOKIE_SECURE="false"
 export TRADER_SESSION_TTL_HOURS="24"
+export TRADER_REGISTRATION_ENABLED="true"
 ```
+
+Set `TRADER_REGISTRATION_ENABLED="false"` to temporarily close public user registration. Existing users and administrator account bootstrap are unaffected.
+
+The same setting can be overridden for a single start with `--registration-enabled` or `--no-registration`.
 
 CLI example:
 
