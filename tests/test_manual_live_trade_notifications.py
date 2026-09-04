@@ -138,7 +138,7 @@ def test_parse_task_config_accepts_staged_auto_trade_options():
                     "free": 2500,
                     "live_execution_mode": "small_live_auto",
                     "live_trade_max_notional": 15,
-                    "live_short_execution": "margin_cross",
+                    "strategy_params": {"chainer_mode": "BOTH"},
                 }
             ]
         )
@@ -147,9 +147,8 @@ def test_parse_task_config_accepts_staged_auto_trade_options():
     assert len(tasks) == 1
     assert tasks[0].live_execution_mode == "small_live_auto"
     assert tasks[0].live_trade_max_notional == 15.0
-    assert tasks[0].live_short_execution == "margin_cross"
+    assert tasks[0].requires_short_capability is True
     assert tasks[0].to_dict()["live_trade_max_notional"] == 15.0
-    assert tasks[0].to_dict()["live_short_execution"] == "margin_cross"
 
 
 def test_parse_task_config_defaults_notional_to_global_min_when_missing(monkeypatch):

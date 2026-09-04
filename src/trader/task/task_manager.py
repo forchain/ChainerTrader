@@ -4,6 +4,7 @@ import os
 from asyncio import Queue
 from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeoutError
+from datetime import datetime
 from pathlib import Path
 
 from trader.auth.credentials import decrypt_secret, service_key_available
@@ -122,12 +123,12 @@ class TaskManager:
             return
 
         self.log.info(f"Try to add tasks:{len(taskcs)}")
-        await self._ensure_routed_exchanges(taskcs)
-        await self._reserve_task_funds(taskcs)
-
-        async_tasks = []
-        bttaskcs = []
         try:
+            await self._ensure_routed_exchanges(taskcs)
+            await self._reserve_task_funds(taskcs)
+
+            async_tasks = []
+            bttaskcs = []
             for taskc in taskcs:
                 if taskc.free < 0:
                     taskc.free = self.cfg.cash
@@ -163,20 +164,61 @@ class TaskManager:
             await self._persist_task_states(completed_states)
             for task_id in releasable_task_ids:
                 await self._release_task_funds(task_id, reason="task_done")
-        except Exception:
+        except Exception as exc:
+            persist_exc = None
+            try:
+                await self._persist_failed_task_states(taskcs, exc)
+            except Exception as failed_state_exc:
+                persist_exc = failed_state_exc
             for tc in taskcs:
                 await self._release_task_funds(tc.id, reason="task_failed")
+            if persist_exc is not None:
+                raise persist_exc
             raise
-
-        if not self.cfg.is_server():
-            self.log.info("Try to actively exit")
-            await queue.put(new_exit_msg())
+        finally:
+            if not self.cfg.is_server():
+                self.log.info("Try to actively exit")
+                await queue.put(new_exit_msg())
 
     async def _persist_task_states(self, states: list[TaskState]) -> None:
         if not self.db_manager or not getattr(self.db_manager, "task", None):
             return
         if states:
             await self.db_manager.task.add_tasks(states)
+
+    async def _persist_failed_task_states(self, taskcs: list[TaskConfig], exc: Exception) -> None:
+        if not taskcs:
+            return
+        error_message = str(exc)
+        failed_states = []
+        for tc in taskcs:
+            task = self.get_task(tc.id)
+            if task is not None:
+                state = task.ts
+            else:
+                state = TaskState(
+                    tc.id,
+                    self._task_state_name(tc),
+                    datetime.now(),
+                    commission=getattr(self.cfg, "commission", 0),
+                    strategy_start_time=getattr(tc, "start_time", 0),
+                    strategy_end_time=getattr(tc, "end_time", 0),
+                    initial_cash=getattr(tc, "free", 0) if getattr(tc, "free", -1) >= 0 else getattr(self.cfg, "cash", 0),
+                    config_json=self._task_config_json(tc),
+                    user_id=getattr(tc, "user_id", None),
+                )
+            state.state = TaskStateType.FAILED
+            state.error_message = error_message
+            failed_states.append(state)
+        await self._persist_task_states(failed_states)
+
+    def _task_state_name(self, cfg: TaskConfig) -> str:
+        symbol_interval = getattr(cfg, "symbol_interval", None)
+        symbol_name = symbol_interval.name() if symbol_interval is not None else ""
+        return f"{cfg.id}.{cfg.ttype.name}.{symbol_name}"
+
+    def _task_config_json(self, cfg: TaskConfig) -> str:
+        return BaseTask(cfg, self.cfg, self.log, self.db_manager).ts.config_json
 
     async def add_task(self, cfg, queue: Queue):
         task_exchange = await self._exchange_for_task(cfg)
@@ -190,11 +232,13 @@ class TaskManager:
         await task.start(queue)
 
     async def recover_task(self, cfg: TaskConfig, queue: Queue):
+        await self._reserve_task_funds([cfg])
         task_exchange = await self._exchange_for_task(cfg)
         task = self._build_task(cfg, task_exchange)
 
         if task is None:
             self.log.error(f"Can't recover task:{cfg.to_dict()}")
+            await self._release_task_funds(cfg.id, reason="recovery_build_failed")
             return
 
         self.tasks[task.id()] = task
@@ -203,7 +247,12 @@ class TaskManager:
 
         while True:
             if runtime.done():
-                await runtime
+                try:
+                    await runtime
+                except Exception:
+                    await self._release_task_funds(cfg.id, reason="recovery_failed")
+                    raise
+                await self._release_task_funds(cfg.id, reason="recovery_done")
                 return
             if task.ts.is_running():
                 return
@@ -211,13 +260,15 @@ class TaskManager:
 
     async def _reserve_task_funds(self, taskcs: list[TaskConfig]) -> None:
         store = getattr(self.db_manager, "account_fund_reservation", None)
-        if store is None:
-            return
         reserved_task_ids: list[int] = []
+        ephemeral_reserved: dict[tuple[str, str], float] = {}
         try:
             for cfg in taskcs:
                 requirement = await self._reservation_requirement(cfg)
                 if requirement is None:
+                    continue
+                if store is None:
+                    self._reserve_task_funds_in_memory(cfg, requirement, ephemeral_reserved)
                     continue
                 result = await store.reserve(**requirement)
                 cfg.fund_reservation_account_key = requirement["account_key"]
@@ -229,6 +280,30 @@ class TaskManager:
             for task_id in reserved_task_ids:
                 await self._release_task_funds(task_id, reason="reservation_rollback")
             raise
+
+    def _reserve_task_funds_in_memory(
+        self,
+        cfg: TaskConfig,
+        requirement: dict,
+        reserved: dict[tuple[str, str], float],
+    ) -> None:
+        account_key = str(requirement["account_key"])
+        asset = str(requirement["asset"]).upper()
+        amount = float(requirement["amount"])
+        capacity = float(requirement["capacity"])
+        active_reserved = float(reserved.get((account_key, asset), 0.0))
+        if active_reserved + amount > capacity + 1e-12:
+            raise FundReservationError(
+                "insufficient reserved capacity: "
+                f"account_key={account_key} asset={asset} capacity={capacity} "
+                f"active_reserved={active_reserved} requested={amount}"
+            )
+
+        reserved[(account_key, asset)] = active_reserved + amount
+        cfg.fund_reservation_account_key = account_key
+        cfg.fund_reservation_asset = asset
+        cfg.fund_reservation_amount = amount
+        cfg.fund_reservation_remaining = amount
 
     async def _reservation_requirement(self, cfg: TaskConfig) -> dict | None:
         if cfg.ttype != TaskType.TRADER:
@@ -242,10 +317,7 @@ class TaskManager:
             return None
         exchange = await self._exchange_for_task(cfg)
         asset = str(cfg.symbol_interval.sy.quote).upper()
-        balance_reader = getattr(exchange, "get_account_balance", None)
-        if not callable(balance_reader):
-            raise FundReservationError(f"cannot read exchange balance for reservation: task_id={cfg.id} asset={asset}")
-        capacity = float(balance_reader(asset) or 0.0)
+        capacity = self._reservation_capacity(cfg, exchange, asset)
         return {
             "account_key": await self._reservation_account_key(cfg),
             "exchange": getattr(exchange, "name", lambda: "BINANCE")() if callable(getattr(exchange, "name", None)) else "BINANCE",
@@ -264,6 +336,29 @@ class TaskManager:
         if getattr(cfg, "free", -1) >= 0:
             return float(cfg.free)
         return float(getattr(self.cfg, "cash", 0.0) or 0.0)
+
+    def _reservation_capacity(self, cfg: TaskConfig, exchange: BinanceExchange, asset: str) -> float:
+        balance_reader = getattr(exchange, "get_account_balance", None)
+        if not callable(balance_reader):
+            raise FundReservationError(f"cannot read exchange balance for reservation: task_id={cfg.id} asset={asset}")
+        balance = float(balance_reader(asset) or 0.0)
+        if not task_requires_short_capability(cfg):
+            return balance
+        if not bool(getattr(cfg, "live_margin_borrow_precheck", True)):
+            return balance
+        borrow_reader = getattr(exchange, "get_max_borrowable", None)
+        if not callable(borrow_reader):
+            return balance
+        payload = borrow_reader(asset, symbol=cfg.symbol_interval.symbol())
+        borrowable = self._numeric_payload_value(payload, "amount")
+        return balance + float(borrowable or 0.0)
+
+    def _numeric_payload_value(self, payload, key: str) -> float | None:
+        value = payload.get(key) if isinstance(payload, dict) else getattr(payload, key, None)
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
 
     async def _reservation_account_key(self, cfg: TaskConfig) -> str:
         credential_id = await self._reservation_credential_id(cfg)
@@ -297,20 +392,48 @@ class TaskManager:
         if not is_real_auto_mode(getattr(cfg, "live_execution_mode", None)):
             return self.exchange
         target_mode = MarginMode.CROSS_MARGIN if task_requires_short_capability(cfg) else MarginMode.SPOT
+        chainer_mode = str((getattr(cfg, "strategy_params", {}) or {}).get("chainer_mode", "LONG_ONLY")).strip().upper()
+        requires_short_capability = task_requires_short_capability(cfg)
         if getattr(cfg, "user_id", None) is not None:
-            return await self._exchange_for_user_mode(cfg.user_id, target_mode)
+            routed = await self._exchange_for_user_mode(cfg.user_id, target_mode)
+            self.log.info(
+                "TaskManager selected execution exchange "
+                f"task_id={cfg.id} user_id={cfg.user_id} strategy={cfg.strategy_name()} "
+                f"chainer_mode={chainer_mode} requires_short_capability={requires_short_capability} "
+                f"target_margin_mode={target_mode.value} actual_margin_mode={getattr(getattr(routed, 'margin_mode', None), 'value', 'unknown')}"
+            )
+            return routed
         cached = self._exchange_by_mode.get(target_mode.value)
         if cached is not None:
+            self.log.info(
+                "TaskManager selected execution exchange "
+                f"task_id={cfg.id} user_id={getattr(cfg, 'user_id', None)} strategy={cfg.strategy_name()} "
+                f"chainer_mode={chainer_mode} requires_short_capability={requires_short_capability} "
+                f"target_margin_mode={target_mode.value} actual_margin_mode={getattr(getattr(cached, 'margin_mode', None), 'value', 'unknown')}"
+            )
             return cached
         try:
             routed = self._exchange_for_mode(target_mode)
             self.log.info(
                 f"TaskManager created routed exchange for mode={target_mode.value} task_id={cfg.id} strategy={cfg.strategy_name()}"
             )
+            self.log.info(
+                "TaskManager selected execution exchange "
+                f"task_id={cfg.id} user_id={getattr(cfg, 'user_id', None)} strategy={cfg.strategy_name()} "
+                f"chainer_mode={chainer_mode} requires_short_capability={requires_short_capability} "
+                f"target_margin_mode={target_mode.value} actual_margin_mode={getattr(getattr(routed, 'margin_mode', None), 'value', 'unknown')}"
+            )
             return routed
         except Exception as exc:
             self.log.warning(
                 f"TaskManager failed to create routed exchange for mode={target_mode.value}, falling back to default exchange: {exc}"
+            )
+            self.log.info(
+                "TaskManager selected execution exchange "
+                f"task_id={cfg.id} user_id={getattr(cfg, 'user_id', None)} strategy={cfg.strategy_name()} "
+                f"chainer_mode={chainer_mode} requires_short_capability={requires_short_capability} "
+                f"target_margin_mode={target_mode.value} actual_margin_mode={getattr(getattr(self.exchange, 'margin_mode', None), 'value', 'unknown')} "
+                "fallback=true"
             )
             return self.exchange
 

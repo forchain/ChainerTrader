@@ -33,10 +33,6 @@ class LiveExecutionMode(str, Enum):
     AUTO_TRADE = "auto_trade"
 
 
-class LiveShortExecution(str, Enum):
-    DISABLED = "disabled"
-    MARGIN_CROSS = "margin_cross"
-
 class MarginBorrowBlockPolicy(str, Enum):
     SKIP_CONTINUE = "skip_continue"
     REPAY_SINGLE = "repay_single"
@@ -53,7 +49,6 @@ class AutoExecutionStatus(str, Enum):
 REAL_AUTO_MODES = {LiveExecutionMode.SMALL_LIVE_AUTO.value, LiveExecutionMode.FULL_LIVE_AUTO.value, LiveExecutionMode.AUTO_TRADE.value}
 STAGED_AUTO_MODES = set(REAL_AUTO_MODES)
 SUPPORTED_LIVE_EXECUTION_MODES = {LiveExecutionMode.MANUAL_NOTIFY.value, *STAGED_AUTO_MODES}
-SUPPORTED_SHORT_EXECUTION_MODES = {LiveShortExecution.DISABLED.value, LiveShortExecution.MARGIN_CROSS.value}
 SUPPORTED_MARGIN_BORROW_BLOCK_POLICIES = {
     MarginBorrowBlockPolicy.SKIP_CONTINUE.value,
     MarginBorrowBlockPolicy.REPAY_SINGLE.value,
@@ -124,14 +119,6 @@ def normalize_live_execution_mode(value: str | LiveExecutionMode | None) -> str:
     return mode
 
 
-def normalize_live_short_execution(value: str | LiveShortExecution | None) -> str:
-    raw = value.value if isinstance(value, LiveShortExecution) else value
-    mode = str(raw or LiveShortExecution.DISABLED.value).strip().lower()
-    if mode not in SUPPORTED_SHORT_EXECUTION_MODES:
-        raise ValueError(f"unsupported live_short_execution: {raw}")
-    return mode
-
-
 def normalize_margin_borrow_block_policy(value: str | MarginBorrowBlockPolicy | None) -> str:
     raw = value.value if isinstance(value, MarginBorrowBlockPolicy) else value
     mode = str(raw or MarginBorrowBlockPolicy.SKIP_CONTINUE.value).strip().lower()
@@ -191,7 +178,6 @@ class AutoExecutionRouter:
         self.log = log
         self._reserved_budget_remaining = self._initial_reserved_budget()
         self.mode = normalize_live_execution_mode(getattr(tcfg, "live_execution_mode", None))
-        self.short_execution = normalize_live_short_execution(getattr(tcfg, "live_short_execution", None))
         self.margin_borrow_block_policy = normalize_margin_borrow_block_policy(
             getattr(tcfg, "live_margin_borrow_block_policy", None)
         )
@@ -499,7 +485,7 @@ class AutoExecutionRouter:
                 self._outcome(
                     op,
                     AutoExecutionStatus.SKIPPED,
-                    reason="real_short_execution_disabled",
+                    reason="short_capability_not_required",
                     requested_notional=notional,
                     requested_quantity=quantity,
                     effective_notional=notional if notional > 0 else 0.0,

@@ -91,8 +91,6 @@ class BaseTask:
             config_dict["manual_start_position"] = self.tcfg.manual_start_position
         if getattr(self.tcfg, "live_trade_max_notional", 0.0):
             config_dict["live_trade_max_notional"] = self.tcfg.live_trade_max_notional
-        if getattr(self.tcfg, "live_short_execution", "disabled") != "disabled":
-            config_dict["live_short_execution"] = self.tcfg.live_short_execution
         if getattr(self.tcfg, "live_margin_borrow_block_policy", "skip_continue") != "skip_continue":
             config_dict["live_margin_borrow_block_policy"] = self.tcfg.live_margin_borrow_block_policy
         if getattr(self.tcfg, "live_margin_borrow_precheck", True) is not True:

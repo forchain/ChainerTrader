@@ -60,7 +60,7 @@ def test_parse_task_config_rejects_compact_symbol_without_rerun_normalization():
 def test_parse_task_config_accepts_margin_borrow_controls():
     cfg = (
         '[{"task_type":"TRADER","symbol":"BTC-USDT","interval":"1m","strategy":"macd_triple_divergence",'
-        '"live_short_execution":"margin_cross","live_margin_borrow_block_policy":"repay_all",'
+        '"live_margin_borrow_block_policy":"repay_all",'
         '"live_margin_borrow_precheck":true,"live_margin_auto_repay_max_total":100,'
         '"live_margin_auto_repay_max_per_asset":50,"live_margin_auto_repay_min_amount":0.000001,'
         '"live_margin_auto_repay_excluded_assets":["BNB"]}]'
@@ -86,7 +86,6 @@ def test_base_task_config_json_preserves_live_runtime_controls():
         live_execution_mode="small_live_auto",
         live_data_mode="realtime",
         live_trade_max_notional=12.0,
-        live_short_execution="margin_cross",
         live_margin_borrow_block_policy="repay_all",
         live_margin_borrow_precheck=False,
         live_margin_auto_repay_max_total=100.0,
@@ -106,7 +105,6 @@ def test_base_task_config_json_preserves_live_runtime_controls():
     assert restored.live_execution_mode == original.live_execution_mode
     assert restored.live_data_mode == original.live_data_mode
     assert restored.live_trade_max_notional == original.live_trade_max_notional
-    assert restored.live_short_execution == original.live_short_execution
     assert restored.live_margin_borrow_block_policy == original.live_margin_borrow_block_policy
     assert restored.live_margin_borrow_precheck is original.live_margin_borrow_precheck
     assert restored.live_margin_auto_repay_max_total == original.live_margin_auto_repay_max_total

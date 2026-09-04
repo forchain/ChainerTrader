@@ -1,5 +1,7 @@
 import asyncio
+import math
 import uuid
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -9,10 +11,12 @@ from fastapi.testclient import TestClient
 from trader.auth.context import SessionAuthMiddleware
 from trader.common.config import Config
 from trader.rpc.api.tasks import router
+from trader.strategy.trader_result import TraderResult
 from trader.task.task_config import TaskConfig
 from trader.task.task_manager import TaskManager
 from trader.task.task_type import TaskType
 from trader.utils.symbol_interval import Interval, SymbolInterval
+from trader.utils.task_state import TaskState
 
 
 class _UserRepo:
@@ -193,6 +197,53 @@ def test_task_creation_stops_running_tasks_before_submitting_new_one():
     assert response.status_code == 200
     assert send_add_tasks_msg.call_count == 1
     assert task_manager.closed_ids == [(99, 5)]
+
+
+def test_task_listing_serializes_task_states_with_nan_values():
+    app = FastAPI()
+    app.add_middleware(SessionAuthMiddleware)
+    app.include_router(router, prefix="/api/tasks")
+    state = TaskState(
+        77,
+        "nan-task",
+        datetime(2026, 6, 24, 12, 17),
+        tret=TraderResult(
+            math.nan,
+            0.0,
+            timedelta(0),
+            math.inf,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0,
+            0,
+            [],
+            0.0,
+            0,
+        ),
+        user_id=5,
+    )
+    app.state.cfg = Config(auth_username="admin", auth_password="AdminPass123")
+    app.state.app = SimpleNamespace(
+        db_manager=SimpleNamespace(user=_UserRepo()),
+        task_manager=_TaskManager([state]),
+        logger=_Logger(),
+    )
+
+    @app.middleware("http")
+    async def inject_user(request, call_next):
+        request.state.user = SimpleNamespace(id=5, username="alice", role="user", status="active", must_change_password=False, is_admin=False)
+        return await call_next(request)
+
+    client = TestClient(app)
+    response = client.get("/api/tasks")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload[0]["task_id"] == 77
+    assert payload[0]["tret"]["total_return_rate"] is None
+    assert payload[0]["tret"]["volatility"] is None
 
 
 def test_task_creation_allowed_when_only_other_user_has_running_task():

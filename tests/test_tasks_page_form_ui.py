@@ -96,3 +96,35 @@ def test_tasks_page_loads_operation_records_on_demand_in_paginated_modal():
     assert "'CLOSE': { className: 'opts-close', label: '平仓' }" in template
     assert "'RISK_UPDATE': { className: 'opts-risk', label: '风控更新' }" in template
     assert "tret.opts.map" not in template
+
+
+def test_tasks_page_persists_config_file_form_state_before_submit_reload():
+    template = (ROOT / "src/trader/rpc/templates/tasks.html").read_text(encoding="utf-8")
+
+    assert "TASK_CONFIG_FORM_STATE_STORAGE_KEY" in template
+    assert "writeTaskConfigFormState" in template
+    assert "restoreTaskConfigFormState" in template
+    assert "writeTaskConfigFormState();" in template
+    assert "restoreTaskConfigFormState();" in template
+    assert "editor.value = savedState.editorValue || '';" in template
+    assert "taskConfigFilterState.type = savedState.filters?.type || '';" in template
+    assert "if (savedState.selectedPath && filteredPaths.includes(savedState.selectedPath))" in template
+
+
+def test_tasks_page_renders_failed_task_error_state():
+    template = (ROOT / "src/trader/rpc/templates/tasks.html").read_text(encoding="utf-8")
+
+    assert "task.state == 'FAILED'" in template
+    assert "启动失败" in template
+    assert "task.error_message" in template
+    assert ".task-status-badge[data-state=\"FAILED\"]" in template
+
+
+def test_tasks_page_waits_for_async_startup_failures_before_reload():
+    template = (ROOT / "src/trader/rpc/templates/tasks.html").read_text(encoding="utf-8")
+
+    assert "async function waitForSubmittedTaskFailures(taskIds)" in template
+    assert "const failure = await waitForSubmittedTaskFailures(taskIds);" in template
+    assert "showTaskNotice('添加任务失败', failure.message || '任务启动失败');" in template
+    assert "setTimeout(() => location.reload(), 1200);" in template
+    assert "fetch('/api/tasks')" in template

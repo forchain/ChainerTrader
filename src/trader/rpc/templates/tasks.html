@@ -83,19 +83,26 @@
                                             <i class="fas fa-play me-1"></i>运行中
                                         {% elif task.state == 'DONE' %}
                                             <i class="fas fa-check me-1"></i>已完成
+                                        {% elif task.state == 'FAILED' %}
+                                            <i class="fas fa-triangle-exclamation me-1"></i>启动失败
                                         {% else %}
                                             <i class="fas fa-question me-1"></i>{{ task.state }}
                                         {% endif %}
                                     </span>
                                 </div>
                             </div>
+                            {% if task.error_message %}
+                            <div class="alert alert-danger py-2 px-3 mt-3 mb-0 small">
+                                {{ task.error_message }}
+                            </div>
+                            {% endif %}
                             <div class="mt-3 d-flex gap-2">
                                 {% if task.state == 'RUNNING' %}
                                 <button type="button" class="btn btn-sm btn-outline-danger task-stop-btn" data-task-id="{{ task.task_id }}">
                                     <i class="fas fa-stop me-1"></i>停止
                                 </button>
                                 {% endif %}
-                                {% if task.state == 'DONE' %}
+                                {% if task.state == 'DONE' or task.state == 'FAILED' %}
                                 <button type="button" class="btn btn-sm btn-outline-primary task-rerun-btn" data-task-id="{{ task.task_id }}">
                                     <i class="fas fa-rotate-right me-1"></i>重跑
                                 </button>
@@ -564,6 +571,11 @@
     color: white;
 }
 
+.task-status-badge[data-state="FAILED"] {
+    background-color: var(--bs-danger);
+    color: white;
+}
+
 .task-status-badge[data-state="ERROR"] {
     background-color: var(--bs-danger);
     color: white;
@@ -637,7 +649,6 @@ const TASK_FIELD_DEFS = {
         { key: 'manual_start_position', label: '手动起始仓位', type: 'number', default: '0' },
         { key: 'live_data_mode', label: '数据模式', type: 'select', default: 'realtime', options: ['realtime', 'polling'] },
         { key: 'live_trade_max_notional', label: '单次交易最大名义金额', type: 'number', default: '11' },
-        { key: 'live_short_execution', label: '做空执行模式', type: 'select', default: 'disabled', options: ['disabled', 'margin_cross'] },
         { key: 'live_margin_borrow_block_policy', label: '借币阻塞策略', type: 'select', default: 'skip_continue', options: ['skip_continue', 'abort_task', 'repay_all'] },
         { key: 'live_margin_borrow_precheck', label: '借币预检查', type: 'checkbox', default: true },
         { key: 'live_margin_auto_repay_max_total', label: '自动还款总额上限', type: 'number', default: '100' },
@@ -1238,6 +1249,7 @@ function updateTaskInputModeState() {
 }
 
 const TASK_INPUT_MODE_STORAGE_KEY = 'tasks_page_input_mode';
+const TASK_CONFIG_FORM_STATE_STORAGE_KEY = 'tasks_page_config_form_state';
 
 function readTaskInputMode() {
     try {
@@ -1251,6 +1263,48 @@ function writeTaskInputMode(mode) {
     try {
         localStorage.setItem(TASK_INPUT_MODE_STORAGE_KEY, mode);
     } catch (_err) {}
+}
+
+function readTaskConfigFormState() {
+    try {
+        const raw = localStorage.getItem(TASK_CONFIG_FORM_STATE_STORAGE_KEY);
+        return raw ? JSON.parse(raw) : null;
+    } catch (_err) {
+        return null;
+    }
+}
+
+function writeTaskConfigFormState() {
+    const editor = document.getElementById('taskConfigEditor');
+    const selectedPath = document.getElementById('taskConfigPath')?.value || '';
+    try {
+        localStorage.setItem(TASK_CONFIG_FORM_STATE_STORAGE_KEY, JSON.stringify({
+            inputMode: document.getElementById('taskInputMode')?.value || 'config_file',
+            selectedPath,
+            editorValue: editor?.value || '',
+            filters: {
+                type: taskConfigFilterState.type,
+                symbol: taskConfigFilterState.symbol,
+                interval: taskConfigFilterState.interval,
+                strategy: taskConfigFilterState.strategy,
+            },
+        }));
+    } catch (_err) {}
+}
+
+function restoreTaskConfigFormState() {
+    const savedState = readTaskConfigFormState();
+    if (!savedState || typeof savedState !== 'object') return null;
+    taskConfigFilterState.type = savedState.filters?.type || '';
+    taskConfigFilterState.symbol = savedState.filters?.symbol || '';
+    taskConfigFilterState.interval = savedState.filters?.interval || '';
+    taskConfigFilterState.strategy = savedState.filters?.strategy || '';
+    ['Type', 'Symbol', 'Interval', 'Strategy'].forEach((suffix) => {
+        const key = suffix.toLowerCase();
+        const select = document.getElementById(`taskConfigFilter${suffix}`);
+        if (select) select.value = taskConfigFilterState[key] || '';
+    });
+    return savedState;
 }
 
 function parseTaskConfigPathMeta(pathValue) {
@@ -1385,6 +1439,50 @@ function showTaskNotice(title, message) {
     modal.show();
 }
 
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function extractSubmittedTaskIds(payload) {
+    if (!payload || !Array.isArray(payload.tasks)) return [];
+    return payload.tasks
+        .map((task) => {
+            if (typeof task === 'number' || typeof task === 'string') return String(task);
+            if (task && task.task_id !== undefined) return String(task.task_id);
+            if (task && task.id !== undefined) return String(task.id);
+            return '';
+        })
+        .filter(Boolean);
+}
+
+async function waitForSubmittedTaskFailures(taskIds) {
+    const ids = new Set((taskIds || []).map(String));
+    if (ids.size === 0) return null;
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+        if (attempt > 0) await sleep(1000);
+        let tasks = [];
+        try {
+            const response = await fetch('/api/tasks');
+            if (!response.ok) continue;
+            tasks = await response.json();
+        } catch (_err) {
+            continue;
+        }
+        if (!Array.isArray(tasks)) continue;
+        const failed = tasks.find((task) => {
+            const taskId = task && (task.task_id !== undefined ? task.task_id : task.id);
+            return ids.has(String(taskId)) && String(task.state || '').toUpperCase() === 'FAILED';
+        });
+        if (failed) {
+            return {
+                taskId: failed.task_id || failed.id,
+                message: failed.error_message || '任务启动失败',
+            };
+        }
+    }
+    return null;
+}
+
 function applyTaskListFilters() {
     const items = Array.from(document.querySelectorAll('#tasksList .task-item'));
     items.forEach((itemEl) => {
@@ -1413,6 +1511,7 @@ function initTaskListFilters() {
 function applyTaskConfigPathFilters() {
     const select = document.getElementById('taskConfigPath');
     if (!select) return;
+    const savedState = readTaskConfigFormState();
     const all = Array.isArray(TASK_CONFIG_OPTIONS) ? TASK_CONFIG_OPTIONS : [];
     const meta = all.map((path) => taskConfigMetaCache.get(path) || parseTaskConfigPathMeta(path));
     const filtered = meta.filter((item) => {
@@ -1428,20 +1527,26 @@ function applyTaskConfigPathFilters() {
         : ['<option value="">无匹配配置文件</option>'];
     select.innerHTML = options.join('');
     const filteredPaths = filtered.map((item) => item.path);
-    if (filteredPaths.includes(selectedBefore)) {
+    if (savedState) {
+        if (savedState.selectedPath && filteredPaths.includes(savedState.selectedPath)) {
+            select.value = savedState.selectedPath;
+        }
+    } else if (filteredPaths.includes(selectedBefore)) {
         select.value = selectedBefore;
     }
-    loadSelectedTaskConfigTemplate();
+    loadSelectedTaskConfigTemplate().then(writeTaskConfigFormState);
 }
 
 async function initTaskConfigPathFilters() {
     await ensureTaskConfigMetaLoaded();
+    restoreTaskConfigFormState();
     const all = Array.isArray(TASK_CONFIG_OPTIONS) ? TASK_CONFIG_OPTIONS : [];
     const meta = all.map((path) => taskConfigMetaCache.get(path) || parseTaskConfigPathMeta(path));
     fillTaskConfigFilterOptions('taskConfigFilterType', meta.map((item) => item.type));
     fillTaskConfigFilterOptions('taskConfigFilterSymbol', meta.map((item) => item.symbol));
     fillTaskConfigFilterOptions('taskConfigFilterInterval', meta.map((item) => item.interval));
     fillTaskConfigFilterOptions('taskConfigFilterStrategy', meta.map((item) => item.strategy));
+    restoreTaskConfigFormState();
     applyTaskConfigPathFilters();
 }
 
@@ -1449,6 +1554,11 @@ async function loadSelectedTaskConfigTemplate() {
     const selected = (document.getElementById('taskConfigPath').value || '').trim();
     const editor = document.getElementById('taskConfigEditor');
     if (!editor) return;
+    const savedState = readTaskConfigFormState();
+    if (savedState?.selectedPath === selected && savedState.editorValue !== undefined) {
+        editor.value = savedState.editorValue || '';
+        return;
+    }
     if (!selected) {
         editor.value = '';
         return;
@@ -1495,26 +1605,34 @@ document.addEventListener('DOMContentLoaded', function() {
 
     taskInputMode.addEventListener('change', function() {
         writeTaskInputMode(this.value);
+        writeTaskConfigFormState();
         updateTaskInputModeState();
         if (this.value === 'config_file') {
             loadSelectedTaskConfigTemplate();
         }
     });
-    document.getElementById('taskConfigPath')?.addEventListener('change', loadSelectedTaskConfigTemplate);
+    document.getElementById('taskConfigPath')?.addEventListener('change', function() {
+        loadSelectedTaskConfigTemplate().then(writeTaskConfigFormState);
+    });
+    document.getElementById('taskConfigEditor')?.addEventListener('input', writeTaskConfigFormState);
     document.getElementById('taskConfigFilterType')?.addEventListener('change', function(event) {
         taskConfigFilterState.type = (event.target.value || '').toUpperCase();
+        writeTaskConfigFormState();
         applyTaskConfigPathFilters();
     });
     document.getElementById('taskConfigFilterSymbol')?.addEventListener('change', function(event) {
         taskConfigFilterState.symbol = (event.target.value || '').toUpperCase();
+        writeTaskConfigFormState();
         applyTaskConfigPathFilters();
     });
     document.getElementById('taskConfigFilterInterval')?.addEventListener('change', function(event) {
         taskConfigFilterState.interval = (event.target.value || '').toLowerCase();
+        writeTaskConfigFormState();
         applyTaskConfigPathFilters();
     });
     document.getElementById('taskConfigFilterStrategy')?.addEventListener('change', function(event) {
         taskConfigFilterState.strategy = (event.target.value || '').toLowerCase();
+        writeTaskConfigFormState();
         applyTaskConfigPathFilters();
     });
     document.getElementById('taskListFilterType')?.addEventListener('change', function(event) {
@@ -1638,6 +1756,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 showTaskNotice('提示', '请先选择配置文件并确认配置内容');
                 return;
             }
+            writeTaskConfigFormState();
             addTask(editorValue);
             return;
         }
@@ -1706,7 +1825,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     initTaskConfigPathFilters().then(() => {
         if (taskInputMode.value === 'config_file') {
-            loadSelectedTaskConfigTemplate();
+            loadSelectedTaskConfigTemplate().then(writeTaskConfigFormState);
         }
     });
     initTaskListFilters();
@@ -1759,8 +1878,16 @@ async function addTask(json_str) {
         });
         
         if (response.ok) {
+            const payload = await response.json();
+            const taskIds = extractSubmittedTaskIds(payload);
             taskDrafts.length = 0;
             updateTaskBatchPreview();
+            const failure = await waitForSubmittedTaskFailures(taskIds);
+            if (failure) {
+                showTaskNotice('添加任务失败', failure.message || '任务启动失败');
+                setTimeout(() => location.reload(), 1200);
+                return;
+            }
             location.reload();
         } else {
             let message = '添加任务失败';
@@ -2091,6 +2218,7 @@ function getStateBadge(state) {
         'READY': { class: 'badge-secondary', text: '就绪' },
         'RUNNING': { class: 'badge-info', text: '运行中' },
         'DONE': { class: 'badge-success', text: '已完成' },
+        'FAILED': { class: 'badge-danger', text: '启动失败' },
         'ERROR': { class: 'badge-danger', text: '错误' },
         'CANCELLED': { class: 'badge-warning', text: '已取消' }
     };

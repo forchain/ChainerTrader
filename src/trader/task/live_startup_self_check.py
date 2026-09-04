@@ -18,9 +18,6 @@ def _chainer_mode(task: Any) -> str:
     params = _strategy_params(task)
     raw = params.get("chainer_mode")
     if raw is None:
-        legacy = str(getattr(task, "live_short_execution", "disabled") or "disabled").strip().lower()
-        if legacy == "margin_cross":
-            return "BOTH"
         return "LONG_ONLY"
     return str(raw).strip().upper()
 

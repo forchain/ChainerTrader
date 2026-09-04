@@ -554,7 +554,10 @@ class CcxtPollingMarketStreamAdapter:
             logging.exception("CCXT polling fetch failed: stream=%s", key.stream_name())
             state.next_poll_at = self._now() + max(self.min_request_spacing_seconds, 1.0)
             if state.on_disconnect is not None:
-                await state.on_disconnect()
+                try:
+                    await state.on_disconnect()
+                except Exception:
+                    logging.exception("CCXT polling disconnect recovery failed: stream=%s", key.stream_name())
             return
         if not state.baseline_initialized:
             state.baseline_initialized = True

@@ -484,7 +484,7 @@ uv run trader-db migrate
 
 On restart or reconnect, automatic live modes load open execution state for the task symbol and expose the reconciliation view in runtime status. If reconciliation shows missing or stale protection, switch the task back to `manual_notify` until the live protection path is repaired.
 
-Real short execution is disabled unless `live_short_execution` is explicitly set to `margin_cross`. In the first implementation, real shorts use Binance cross margin only; isolated margin and futures are separate future integrations. Operators must ensure exchange credentials, cross-margin account readiness, and any borrow/repay risk are understood before enabling cross-margin short execution.
+Real short execution is controlled by the strategy's `strategy_params.chainer_mode`. `SHORT_ONLY` and `BOTH` tasks require Binance cross margin; `LONG_ONLY` tasks use spot execution. Isolated margin and futures are separate future integrations. Operators must ensure exchange credentials, cross-margin account readiness, and any borrow/repay risk are understood before running short-capable live automation.
 
 Cross-margin live execution includes borrow-risk controls for orders that may require Binance margin borrowing. When `live_margin_borrow_precheck` is enabled, ChainerTrader checks Binance max-borrow capacity before cross-margin long or short entries and skips orders that clearly cannot borrow enough. If Binance still returns `-3006 EXCEED_MAX_BORROWABLE`, `live_margin_borrow_block_policy` controls the response:
 
@@ -509,7 +509,7 @@ For real-order smoke testing, use a dedicated exchange key, a minimal notional, 
 The black-box acceptance contract is strict:
 - single run must cover both spot long and cross-margin short flows
 - `TRADER_DB` must be configured because execution-state closure is part of acceptance
-- short verification must run with `live_short_execution=margin_cross`
+- short verification must run with `strategy_params.chainer_mode` set to `SHORT_ONLY` or `BOTH`
 - report output must be validated against Binance Web order/trade history
 
 ```bash

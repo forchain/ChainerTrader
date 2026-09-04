@@ -227,6 +227,33 @@ def test_admin_subroutes_return_503_when_rpc_app_not_initialized(monkeypatch, pa
     assert response.json()["detail"] == "RPC application is not initialized"
 
 
+def test_admin_logs_highlights_warning_error_and_critical(rpc_test_client, monkeypatch):
+    from types import SimpleNamespace
+
+    rpc_stub = SimpleNamespace(
+        logger=SimpleNamespace(
+            get_buffer_str=lambda: [
+                "2026-06-24 00:01:20[INFO:trader] startup ok",
+                "2026-06-24 00:01:21[WARNING:trader] check config",
+                "2026-06-24 00:01:22[ERROR:trader] failed task",
+                "2026-06-24 00:01:23[CRITICAL:trader] service down",
+            ]
+        )
+    )
+    monkeypatch.setattr("trader.rpc.app._require_rpc_app", lambda _request: rpc_stub)
+    monkeypatch.setattr("trader.rpc.app._template_user", AsyncMock(return_value=None))
+
+    response = rpc_test_client.get("/admin/logs")
+
+    assert response.status_code == 200
+    assert "log-line-warning" in response.text
+    assert "log-line-error" in response.text
+    assert "log-line-critical" in response.text
+    assert "check config" in response.text
+    assert "failed task" in response.text
+    assert "service down" in response.text
+
+
 def test_read_root_follow_redirect_returns_503_when_rpc_app_not_initialized(monkeypatch):
     monkeypatch.delattr(app.state, "cfg", raising=False)
     monkeypatch.delattr(app.state, "app", raising=False)

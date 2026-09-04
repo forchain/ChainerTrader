@@ -7,7 +7,6 @@ from trader.common.common import parse_datetime
 from trader.common.config import TRADER_MIN_LIVE_TRADE_NOTIONAL
 from trader.live.auto_execution import (
     normalize_live_execution_mode,
-    normalize_live_short_execution,
     normalize_margin_borrow_block_policy,
 )
 from trader.task.optimization import expand_parameter_space, has_parameter_search, make_optimization_run_id, make_param_id
@@ -62,12 +61,12 @@ def normalize_strategy_params(params: dict) -> dict:
     return normalized
 
 
-def infer_strategy_requires_short(strategy_params: dict | None, live_short_execution: str | None = None) -> bool:
+def infer_strategy_requires_short(strategy_params: dict | None) -> bool:
     params = dict(strategy_params or {})
     mode = params.get("chainer_mode")
     if mode is not None:
         return str(mode).strip().upper() in {"SHORT_ONLY", "BOTH"}
-    return str(live_short_execution or "disabled").strip().lower() == "margin_cross"
+    return False
 
 
 def _global_min_live_trade_notional() -> float:
@@ -96,7 +95,6 @@ class TaskConfig:
         manual_start_position: float = 0.0,
         live_data_mode: str = "polling",
         live_trade_max_notional: float = 0.0,
-        live_short_execution: str = "disabled",
         live_margin_borrow_block_policy: str = "skip_continue",
         live_margin_borrow_precheck: bool = True,
         live_margin_auto_repay_max_total: float = 100.0,
@@ -127,7 +125,6 @@ class TaskConfig:
         self.manual_start_position = float(manual_start_position or 0.0)
         self.live_data_mode = str(live_data_mode or "polling").strip().lower()
         self.live_trade_max_notional = float(live_trade_max_notional or 0.0)
-        self.live_short_execution = normalize_live_short_execution(live_short_execution)
         self.live_margin_borrow_block_policy = normalize_margin_borrow_block_policy(live_margin_borrow_block_policy)
         self.live_margin_borrow_precheck = parse_bool(live_margin_borrow_precheck, default=True)
         self.live_margin_auto_repay_max_total = float(live_margin_auto_repay_max_total or 0.0)
@@ -146,7 +143,7 @@ class TaskConfig:
                 "repay_all requires positive live_margin_auto_repay_max_total "
                 "and live_margin_auto_repay_max_per_asset"
             )
-        self.requires_short_capability = infer_strategy_requires_short(self.strategy_params, self.live_short_execution)
+        self.requires_short_capability = infer_strategy_requires_short(self.strategy_params)
 
         self.id = id
 
@@ -195,7 +192,6 @@ class TaskConfig:
             "manual_start_position": self.manual_start_position,
             "live_data_mode": self.live_data_mode,
             "live_trade_max_notional": self.live_trade_max_notional,
-            "live_short_execution": self.live_short_execution,
             "live_margin_borrow_block_policy": self.live_margin_borrow_block_policy,
             "live_margin_borrow_precheck": self.live_margin_borrow_precheck,
             "live_margin_auto_repay_max_total": self.live_margin_auto_repay_max_total,
@@ -303,7 +299,6 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
                 )
         else:
             live_trade_max_notional = float(global_min_notional)
-        live_short_execution = normalize_live_short_execution(tcd.get("live_short_execution", "disabled"))
         live_margin_borrow_block_policy = normalize_margin_borrow_block_policy(
             tcd.get("live_margin_borrow_block_policy", "skip_continue")
         )
@@ -380,7 +375,6 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
                     manual_start_position=manual_start_position,
                     live_data_mode=live_data_mode,
                     live_trade_max_notional=live_trade_max_notional,
-                    live_short_execution=live_short_execution,
                     live_margin_borrow_block_policy=live_margin_borrow_block_policy,
                     live_margin_borrow_precheck=live_margin_borrow_precheck,
                     live_margin_auto_repay_max_total=live_margin_auto_repay_max_total,
@@ -417,7 +411,6 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
                             manual_start_position=manual_start_position,
                             live_data_mode=live_data_mode,
                             live_trade_max_notional=live_trade_max_notional,
-                            live_short_execution=live_short_execution,
                             live_margin_borrow_block_policy=live_margin_borrow_block_policy,
                             live_margin_borrow_precheck=live_margin_borrow_precheck,
                             live_margin_auto_repay_max_total=live_margin_auto_repay_max_total,
@@ -450,7 +443,6 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
                         manual_start_position=manual_start_position,
                         live_data_mode=live_data_mode,
                         live_trade_max_notional=live_trade_max_notional,
-                        live_short_execution=live_short_execution,
                         live_margin_borrow_block_policy=live_margin_borrow_block_policy,
                         live_margin_borrow_precheck=live_margin_borrow_precheck,
                         live_margin_auto_repay_max_total=live_margin_auto_repay_max_total,
