@@ -1,6 +1,6 @@
 from trader.app.app import App
 from trader.common.config import Config
-from trader.strategy.strategy import parseStrategy, parseStrategyType
+from trader.strategy.strategy import parseStrategy, parseStrategyType, parse_strategys
 from trader.utils.trend import TrendType
 
 def test_ShihunMACD():
@@ -18,4 +18,8 @@ def test_ShihunMacdRsiBollingerBand_UP():
 
 def test_parse_strategy():
     sy=parseStrategy(parseStrategyType("ShihunMACD"))
+    print(sy)
+
+def test_parse_strategys():
+    sy=parse_strategys([parseStrategyType("ShihunMACD"),parseStrategyType("ShihunMACD2")])
     print(sy)
