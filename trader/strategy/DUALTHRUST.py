@@ -6,7 +6,7 @@ from trader.strategy.base_strategy import BaseStrategy
 from trader.utils.operate import OperateType
 
 
-class DualThrustStrategy(BaseStrategy):
+class DUALTHRUSTStrategy(BaseStrategy):
     params = (
         ("upper_track", 0.5),  # uppper track param
         ("lower_track", 0.5)  # lower track param

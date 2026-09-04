@@ -7,7 +7,7 @@ from trader.strategy.base_strategy import BaseStrategy
 
 
 # Bollinger Bands Mean Regression Strategy
-class BollingerMeanRegStrategy(BaseStrategy):
+class BOLLMEANREGStrategy(BaseStrategy):
     params = (
         ('devfactor', 2),       # 标准差系数
     )
