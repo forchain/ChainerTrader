@@ -22,6 +22,23 @@ def event_time_text(event_time: int | float | None) -> str:
     return datetime.fromtimestamp(int(event_time)).strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _op_attr(op, name, default=None):
+    if isinstance(op, dict):
+        if name == "dtime":
+            return op.get("dtime") or op.get("datetime") or default
+        if name == "otype":
+            val = op.get("otype") or op.get("type")
+            if isinstance(val, str):
+                from trader.utils.operate import OperateType
+                try:
+                    return OperateType[val]
+                except KeyError:
+                    return val
+            return val
+        return op.get(name, default)
+    return getattr(op, name, default)
+
+
 def kline_to_chart_candle(kline: Kline) -> dict[str, float | int]:
     return {
         "time": int(kline.open_time),
@@ -106,34 +123,40 @@ def runtime_status_event(strategy_id: int, event_time: int, status: dict[str, An
 
 
 def ensure_signal_tracking(strategy_id: int, op, signal_number: int = 1) -> tuple[str, int]:
-    side = op.otype.name if getattr(op, "otype", None) else "UNKNOWN"
-    existing_number = getattr(op, "signal_number", None)
+    otype = _op_attr(op, "otype")
+    side = otype.name if hasattr(otype, "name") else str(otype or "UNKNOWN")
+    existing_number = _op_attr(op, "signal_number")
     number = int(existing_number) if existing_number is not None else int(signal_number)
-    signal_event_id = getattr(op, "signal_event_id", None)
+    signal_event_id = _op_attr(op, "signal_event_id")
     if not signal_event_id:
-        metadata = getattr(op, "divergence_metadata", None) or getattr(op, "signal_metadata", None)
+        metadata = _op_attr(op, "divergence_metadata") or _op_attr(op, "signal_metadata")
         if isinstance(metadata, dict):
             signal_event_id = metadata.get("signal_event_id") or metadata.get("event_id")
     if not signal_event_id:
-        signal_event_id = f"live-{int(strategy_id)}-{int(op.dtime)}-{side}-{number}"
-        setattr(op, "signal_event_id", signal_event_id)
-    setattr(op, "signal_number", number)
+        dtime = _op_attr(op, "dtime") or 0
+        signal_event_id = f"live-{int(strategy_id)}-{int(dtime)}-{side}-{number}"
+        if not isinstance(op, dict):
+            setattr(op, "signal_event_id", signal_event_id)
+    if not isinstance(op, dict):
+        setattr(op, "signal_number", number)
     return signal_event_id, number
 
 
 def build_signal_marker_event(strategy_id: int, op, mode: str, signal_number: int = 1) -> DashboardEvent:
     signal_event_id, number = ensure_signal_tracking(strategy_id, op, signal_number)
+    dtime = _op_attr(op, "dtime") or 0
+    otype = _op_attr(op, "otype")
     return DashboardEvent(
         event_type="signal_marker",
         strategy_id=strategy_id,
-        event_time=int(op.dtime),
+        event_time=int(dtime),
         payload={
-            "time": int(op.dtime),
-            "time_text": event_time_text(op.dtime),
-            "price": float(op.price),
-            "side": op.otype.name if getattr(op, "otype", None) else "UNKNOWN",
+            "time": int(dtime),
+            "time_text": event_time_text(dtime),
+            "price": float(_op_attr(op, "price") or 0.0),
+            "side": otype.name if hasattr(otype, "name") else str(otype or "UNKNOWN"),
             "mode": mode,
-            "trigger_reason": getattr(op, "trigger_reason", "signal"),
+            "trigger_reason": _op_attr(op, "trigger_reason", "signal"),
             "signal_event_id": signal_event_id,
             "signal_number": number,
         },
@@ -142,12 +165,13 @@ def build_signal_marker_event(strategy_id: int, op, mode: str, signal_number: in
 
 def build_risk_overlay_events(strategy_id: int, op) -> list[DashboardEvent]:
     events: list[DashboardEvent] = []
-    event_time = int(op.dtime)
-    stop_loss = getattr(op, "stop_loss", None)
-    take_profit = getattr(op, "take_profit", None)
-    risk_reward_ratio = getattr(op, "risk_reward_ratio", None)
+    dtime = _op_attr(op, "dtime") or 0
+    event_time = int(dtime)
+    stop_loss = _op_attr(op, "stop_loss")
+    take_profit = _op_attr(op, "take_profit")
+    risk_reward_ratio = _op_attr(op, "risk_reward_ratio")
     stop_source = "local_strategy_reference"
-    framework_trade = getattr(op, "framework_trade", None)
+    framework_trade = _op_attr(op, "framework_trade")
     if isinstance(framework_trade, dict):
         if stop_loss is None:
             stop_loss = framework_trade.get("stop_price") or framework_trade.get("initial_stop_price")
@@ -157,7 +181,7 @@ def build_risk_overlay_events(strategy_id: int, op) -> list[DashboardEvent]:
         if risk_reward_ratio is None:
             risk_reward_ratio = framework_trade.get("risk_reward_ratio")
 
-    metadata = getattr(op, "divergence_metadata", None) or getattr(op, "signal_metadata", None)
+    metadata = _op_attr(op, "divergence_metadata") or _op_attr(op, "signal_metadata")
     if stop_loss is None and isinstance(metadata, dict):
         stop_loss = metadata.get("suggested_stop_price")
         stop_source = "signal_metadata"
@@ -169,6 +193,7 @@ def build_risk_overlay_events(strategy_id: int, op) -> list[DashboardEvent]:
                 strategy_id=strategy_id,
                 event_time=event_time,
                 payload={
+                    "time": event_time,
                     "time_text": event_time_text(event_time),
                     "overlay_type": "stop_loss",
                     "price": float(stop_loss),
@@ -187,6 +212,7 @@ def build_risk_overlay_events(strategy_id: int, op) -> list[DashboardEvent]:
                 strategy_id=strategy_id,
                 event_time=event_time,
                 payload={
+                    "time": event_time,
                     "time_text": event_time_text(event_time),
                     "overlay_type": "take_profit",
                     "price": float(take_profit),
@@ -196,8 +222,8 @@ def build_risk_overlay_events(strategy_id: int, op) -> list[DashboardEvent]:
             )
         )
 
-    old_stop = getattr(op, "breakeven_old_stop", None)
-    new_stop = getattr(op, "breakeven_new_stop", None)
+    old_stop = _op_attr(op, "breakeven_old_stop")
+    new_stop = _op_attr(op, "breakeven_new_stop")
     if old_stop is not None and new_stop is not None:
         events.append(
             DashboardEvent(
@@ -205,12 +231,13 @@ def build_risk_overlay_events(strategy_id: int, op) -> list[DashboardEvent]:
                 strategy_id=strategy_id,
                 event_time=event_time,
                 payload={
+                    "time": event_time,
                     "time_text": event_time_text(event_time),
                     "overlay_type": "breakeven_move",
                     "price": float(new_stop),
                     "old_stop": float(old_stop),
                     "new_stop": float(new_stop),
-                    "step": getattr(op, "breakeven_step", None),
+                    "step": _op_attr(op, "breakeven_step"),
                     "source": "local_strategy_reference",
                 },
             )

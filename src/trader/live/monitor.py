@@ -154,13 +154,21 @@ async def _task_result_operations(task, db_manager) -> list:
     return list(getattr(saved_result, "opts", []) or [])
 
 
+def _get_op_time(op) -> int:
+    if isinstance(op, dict):
+        return int(op.get("dtime") or op.get("datetime") or 0)
+    return int(getattr(op, "dtime", 0) or getattr(op, "datetime", 0) or 0)
+
+
 def _within_loaded_window(op, candles: list) -> bool:
     if not candles:
         return False
     start_time = int(candles[0].open_time)
     end_time = int(candles[-1].open_time)
-    op_time = int(getattr(op, "dtime", 0) or 0)
-    return start_time <= op_time <= end_time
+    op_time = _get_op_time(op)
+    # A bit more lenient: if op_time is 0 (missing), we don't know, so skip.
+    # Otherwise, check if it's within or reasonably close.
+    return op_time > 0 and start_time <= op_time <= end_time
 
 
 async def build_snapshot_overlays(task, db_manager, candles: list) -> dict[str, list[dict[str, Any]]]:
@@ -169,16 +177,35 @@ async def build_snapshot_overlays(task, db_manager, candles: list) -> dict[str, 
     strategy_events = []
     mode = getattr(task.tcfg, "live_execution_mode", "auto_trade")
     signal_number = 0
-    for op in await _task_result_operations(task, db_manager):
-        if not _within_loaded_window(op, candles):
+    all_ops = await _task_result_operations(task, db_manager)
+    for index, op in enumerate(all_ops):
+        is_in_window = _within_loaded_window(op, candles)
+        is_last_op = index == len(all_ops) - 1
+
+        # Always process the last operation for risk lines if it represents an open trade,
+        # even if its entry was before the current window.
+        if is_in_window or is_last_op:
+            risk_events = build_risk_overlay_events(task.tcfg.id, op)
+            if risk_events:
+                # If not in window, we might want to adjust the event time to the first visible candle
+                # so the frontend still renders it as a horizontal line.
+                risk.extend(event.payload for event in risk_events)
+
+        if not is_in_window:
             continue
+
         signal_number += 1
         signals.append(build_signal_marker_event(task.tcfg.id, op, mode, signal_number).payload)
-        risk.extend(event.payload for event in build_risk_overlay_events(task.tcfg.id, op))
+        
         metadata = getattr(op, "divergence_metadata", None) or getattr(op, "signal_metadata", None)
+        if metadata is None and isinstance(op, dict):
+            metadata = op.get("divergence_metadata") or op.get("signal_metadata")
+            
         if isinstance(metadata, dict):
-            event = build_macd_divergence_event(task.tcfg.id, int(getattr(op, "dtime", 0) or 0), metadata)
+            op_time = _get_op_time(op)
+            event = build_macd_divergence_event(task.tcfg.id, op_time, metadata)
             strategy_events.append({"event_type": event.event_type, "event_time": event.event_time, **event.payload})
+            
     return {
         "signals": signals,
         "risk": risk,

@@ -135,6 +135,13 @@ def test_ccxt_driver_loads_klines_and_normalizes_candles():
     assert driver.client.fetch_ohlcv_calls == [("BTC/USDT", "1h", None, 2)]
 
 
+def test_ccxt_driver_start_does_not_require_market_network_preload():
+    driver = _driver()
+
+    assert driver.start() is True
+    assert driver.client.load_markets_calls == 0
+
+
 def test_ccxt_driver_reads_balances_positions_and_fees():
     driver = _driver()
 
@@ -271,6 +278,25 @@ def test_ccxt_default_type_is_spot_for_cross_margin_to_avoid_futures_endpoint_ro
         client=FakeCcxtClient(),
     )
     assert driver._default_type() == "spot"
+
+
+def test_ccxt_build_client_disables_private_currency_fetch_during_market_loading(monkeypatch):
+    created_payloads = []
+
+    class FakeExchange:
+        def __init__(self, payload):
+            created_payloads.append(payload)
+
+    class FakeCcxtModule:
+        binance = FakeExchange
+
+    monkeypatch.setattr("trader.exchange.ccxt_driver.ccxt", FakeCcxtModule)
+
+    CcxtExchangeDriver(ExchangeConfig(ty=ExchangeType.BINANCE, api_key="key", api_secret="secret"))
+
+    options = created_payloads[0]["options"]
+    assert options["fetchCurrencies"] is False
+    assert options["fetchMarkets"] == {"types": ["spot"]}
 
 
 def test_ccxt_repay_single_for_borrow_block_uses_margin_repay_endpoint():

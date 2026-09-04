@@ -1,6 +1,6 @@
 [project]
 name = "trader"
-version = "0.69.8"
+version = "0.70.3"
 description = "Awesome trader created by socoldlight"
 authors = [
     {name = "socoldlight", email = "socoldlight@example.com"},
@@ -24,6 +24,7 @@ dependencies = [
     "binance-sdk-spot>=1.0.0",
     "fastapi-auto-router>=0.1.1",
     "binance-sdk-margin-trading>=5.0.0",
+    "argon2-cffi>=25.1.0",
 ]
 
 [dependency-groups]

@@ -220,7 +220,8 @@ class TraderTask(BaseTask):
             f"stream={key.stream_name()} fetched={len(fetched)}"
         )
 
-        warmup_limit = min(int(self.cfg.window), 500)
+        warmup_cap = max(1, int(getattr(self.cfg, "live_warmup_candles", 500) or 500))
+        warmup_limit = min(int(self.cfg.window), warmup_cap)
         self.log.info(f"Realtime live warmup started: task_id={self.tcfg.id} collection={collection_name} target={warmup_limit}")
         warmup = await _maybe_await(self.db_manager.kline.get_latest_klines(collection_name, warmup_limit)) or []
         if len(warmup) < warmup_limit:
@@ -428,7 +429,11 @@ class TraderTask(BaseTask):
         if store is None:
             self.ts.execution_reconcile = []
             return []
-        records = await _maybe_await(store.list_open_by_symbol(self.tcfg.symbol_interval.symbol()))
+        list_open_by_task = getattr(store, "list_open_by_task", None)
+        if callable(list_open_by_task):
+            records = await _maybe_await(list_open_by_task(self.tcfg.id))
+        else:
+            records = await _maybe_await(store.list_open_by_symbol(self.tcfg.symbol_interval.symbol()))
         payload = [self._execution_state_record_payload(record) for record in records]
         self.ts.execution_reconcile = payload
         return payload

@@ -17,6 +17,7 @@ def model_to_task_state(row: TaskStateModel) -> TaskState:
         "initial_cash": row.initial_cash,
         "config_json": row.config_json,
         "tret": row.tret,
+        "user_id": row.user_id,
     }
     if row.strategy_start_time > 0:
         payload["strategy_start_time"] = datetime.fromtimestamp(row.strategy_start_time).strftime(DATETIME_FORMART)
@@ -40,6 +41,7 @@ class TaskCol:
                     task_id=ta.id,
                     defaults={
                         "state": ta.state.name,
+                        "user_id": ta.user_id,
                         "name": ta.name,
                         "start_time": ta.start_time,
                         "commission": ta.commission,
@@ -79,6 +81,16 @@ class TaskCol:
         self.log.debug(f"get task({row.task_id}):{ts.to_json()}")
         return ts
 
+    async def get_task_for_user(self, id: int, user_id: int) -> TaskState | None:
+        row = await TaskStateModel.filter(task_id=id, user_id=user_id).first()
+        if row is None:
+            return None
+        return model_to_task_state(row)
+
     async def get_all_tasks(self) -> list[TaskState]:
         rows = await TaskStateModel.all().order_by("task_id")
+        return [model_to_task_state(row) for row in rows]
+
+    async def get_all_tasks_for_user(self, user_id: int) -> list[TaskState]:
+        rows = await TaskStateModel.filter(user_id=user_id).order_by("task_id")
         return [model_to_task_state(row) for row in rows]

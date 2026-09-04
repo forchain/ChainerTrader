@@ -43,6 +43,7 @@ class TaskState:
         strategy_end_time: int = 0,
         initial_cash: float = 0,
         config_json: str = None,
+        user_id: int | None = None,
     ):
         self.id = id
         self.state = TaskStateType.READY
@@ -54,6 +55,7 @@ class TaskState:
         self.strategy_end_time = strategy_end_time
         self.initial_cash = initial_cash
         self.config_json = config_json
+        self.user_id = user_id
 
     def to_dict(self) -> dict[str, Any]:
         ret: dict[str, Any] = {
@@ -72,6 +74,8 @@ class TaskState:
             ret["initial_cash"] = self.initial_cash
         if self.config_json:
             ret["config_json"] = self.config_json
+        if self.user_id is not None:
+            ret["user_id"] = self.user_id
 
         if self.tret:
             ret["tret"] = self.tret.to_dict()
@@ -120,6 +124,7 @@ def parse_task_state(data) -> TaskState:
         strategy_end_time=strategy_end_time,
         initial_cash=float(data.get("initial_cash", 0)),
         config_json=data.get("config_json"),
+        user_id=data.get("user_id"),
     )
 
     # Safely handle state field

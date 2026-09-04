@@ -2,4 +2,5 @@ site_name: trader
 theme: readthedocs
 nav:
   - Home: index.md
+  - 用户手册: user-manual.md
   - About: about.md

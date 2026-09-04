@@ -26,7 +26,7 @@ async def test_get_taskinfo_supports_async_task_manager_and_sorts_descending():
         _task_state(1, TaskStateType.RUNNING, "2026-05-13 20:00:00"),
         _task_state(2, TaskStateType.DONE, "2026-05-13 21:00:00"),
     ]
-    async def get_all_task_state():
+    async def get_all_task_state(*args, **kwargs):
         return states
 
     app = SimpleNamespace(task_manager=SimpleNamespace(get_all_task_state=get_all_task_state))
@@ -39,13 +39,18 @@ async def test_get_taskinfo_supports_async_task_manager_and_sorts_descending():
 
 
 @pytest.mark.anyio
-async def test_tasks_api_get_tasks_awaits_task_state_coroutine():
+async def test_tasks_api_get_tasks_awaits_task_state_coroutine(monkeypatch):
     states = [
         _task_state(7, TaskStateType.RUNNING, "2026-05-13 20:00:00"),
         _task_state(8, TaskStateType.DONE, "2026-05-13 21:00:00"),
     ]
-    async def get_all_task_state():
+    async def get_all_task_state(*args, **kwargs):
         return states
+
+    async def fake_current_user(*args, **kwargs):
+        return SimpleNamespace(id=7)
+
+    monkeypatch.setattr("trader.rpc.api.tasks.current_user", fake_current_user)
 
     request = SimpleNamespace(
         app=SimpleNamespace(
@@ -59,4 +64,5 @@ async def test_tasks_api_get_tasks_awaits_task_state_coroutine():
         {"id": 7, "state": "RUNNING", "start_time": "2026-05-13 20:00:00"},
         {"id": 8, "state": "DONE", "start_time": "2026-05-13 21:00:00"},
     ]
+
 

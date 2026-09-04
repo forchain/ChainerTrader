@@ -587,19 +587,22 @@ ChainerTrader exposes a web API and admin interface.
 ```bash
 python -m trader --api
 python -m trader --api 0.0.0.0:8080
-python -m trader --api --auth-username admin --auth-password your_secure_password
+python -m trader --api --auth-username admin --auth-password your_secure_password_2026
 ```
 
 ### Authentication
 
-The web interface supports HTTP Basic Auth with path-based protection.
+The web interface uses a database-backed login system with HTTP-only session cookies. The configured
+`TRADER_AUTH_USERNAME` and `TRADER_AUTH_PASSWORD` are now bootstrap administrator credentials: on the first
+DB-backed server start, they create the initial admin account. Normal users register from `/register`.
 
 Environment variables:
 
 ```bash
 export TRADER_AUTH_USERNAME="admin"
-export TRADER_AUTH_PASSWORD="your_secure_password"
-export TRADER_PROTECTED_PATHS="/admin,/api/admin"
+export TRADER_AUTH_PASSWORD="your_secure_password_2026"
+export TRADER_SESSION_COOKIE_SECURE="false"
+export TRADER_SESSION_TTL_HOURS="24"
 ```
 
 CLI example:
@@ -608,19 +611,42 @@ CLI example:
 python -m trader \
   --api \
   --auth-username admin \
-  --auth-password your_secure_password \
-  --protected-paths "/admin,/api/admin"
+  --auth-password your_secure_password_2026
 ```
+
+Administrator capabilities:
+
+- View users at `/admin/users`.
+- Reset a user password. The system returns a temporary password and forces the user to set a new password after login.
+
+Normal user capabilities:
+
+- Use the same task, data, live monitoring, and account pages under their own account scope.
+- Save a personal exchange API key from `/account`.
+
+Per-user exchange API keys are encrypted with `TRADER_SECRET_KEY`:
+
+```bash
+export TRADER_SECRET_KEY="replace-with-a-long-random-service-secret"
+```
+
+Keep this key stable and backed up. If it is missing, users can still log in and view pages, but the system refuses to save exchange API keys or start user-owned live trading tasks. If it is lost after credentials have been saved, those credentials cannot be decrypted and must be re-entered.
 
 ### API Surface
 
 Web pages:
 
 - `/`
+- `/login`
+- `/register`
+- `/change-password`
+- `/account`
 - `/admin`
 - `/admin/tasks`
 - `/admin/klines`
+- `/admin/live`
 - `/admin/logs`
+- `/admin/users`
 
 Public endpoints by default:
 
@@ -630,7 +656,7 @@ Public endpoints by default:
 - `/api/health`
 - `/api/health/ready`
 
-Protected endpoints when configured:
+Session-protected endpoints when authentication is configured:
 
 - `/admin`
 - `/api/admin`

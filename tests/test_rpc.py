@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from trader.common.common import NAME
 from trader.common.config import Config
 from trader.rpc.app import app
-from trader.rpc.models import AcctsInfo, TasksInfo
+from trader.rpc.models import AcctsInfo, TasksInfo, get_accounts_info
 
 
 @pytest.fixture
@@ -54,6 +54,10 @@ def test_admin_dashboard_returns_200_when_lifecycle_active(rpc_test_client, monk
     response = rpc_test_client.get("/admin")
     assert response.status_code == 200
     assert "<!DOCTYPE html>" in response.text
+
+
+def test_accounts_info_returns_empty_when_exchange_is_not_configured():
+    assert get_accounts_info(type("AppStub", (), {"exchange": None})()) == AcctsInfo(total=0, balances=[])
 
 
 def test_admin_returns_503_when_rpc_app_not_initialized(monkeypatch):

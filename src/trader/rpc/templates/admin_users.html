@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block title %}用户管理{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h5 class="card-title mb-0">用户管理</h5>
+    </div>
+    <div class="card-body">
+        {% if temporary_password %}
+        <div class="alert alert-warning">
+            临时密码：<span class="font-monospace">{{ temporary_password }}</span>
+        </div>
+        {% endif %}
+        <div class="table-responsive">
+            <table class="table align-middle">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>用户名</th>
+                        <th>角色</th>
+                        <th>状态</th>
+                        <th>强制改密</th>
+                        <th>最近登录</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in users %}
+                    <tr>
+                        <td>{{ item.id }}</td>
+                        <td>{{ item.username }}</td>
+                        <td>{{ item.role }}</td>
+                        <td>{{ item.status }}</td>
+                        <td>{{ "是" if item.must_change_password else "否" }}</td>
+                        <td>{{ item.last_login_at or "-" }}</td>
+                        <td>
+                            <form method="post" action="/admin/users/{{ item.id }}/reset-password" class="d-inline">
+                                <button class="btn btn-sm btn-outline-warning" type="submit">重置密码</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

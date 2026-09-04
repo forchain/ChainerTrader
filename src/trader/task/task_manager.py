@@ -6,6 +6,7 @@ from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeoutError
 from pathlib import Path
 
+from trader.auth.credentials import decrypt_secret, service_key_available
 from trader.common.common import sleep
 from trader.common.config import Config
 from trader.common.log_tag import LogTag
@@ -100,7 +101,7 @@ class TaskManager:
             return
 
         self.log.info(f"Try to add tasks:{len(taskcs)}")
-        self._ensure_routed_exchanges(taskcs)
+        await self._ensure_routed_exchanges(taskcs)
 
         async_tasks = []
         bttaskcs = []
@@ -146,7 +147,7 @@ class TaskManager:
 
     async def add_task(self, cfg, queue: Queue):
         task = None
-        task_exchange = self._exchange_for_task(cfg)
+        task_exchange = await self._exchange_for_task(cfg)
         if cfg.ttype == TaskType.TRADER:
             task = TraderTask(cfg, self.cfg, self.log, self.db_manager, task_exchange)
         elif cfg.ttype == TaskType.BACK_TRADER:
@@ -169,10 +170,12 @@ class TaskManager:
 
         await task.start(queue)
 
-    def _exchange_for_task(self, cfg: TaskConfig) -> BinanceExchange:
+    async def _exchange_for_task(self, cfg: TaskConfig) -> BinanceExchange:
         if cfg.ttype != TaskType.TRADER:
             return self.exchange
         target_mode = MarginMode.CROSS_MARGIN if task_requires_short_capability(cfg) else MarginMode.SPOT
+        if getattr(cfg, "user_id", None) is not None:
+            return await self._exchange_for_user_mode(cfg.user_id, target_mode)
         cached = self._exchange_by_mode.get(target_mode.value)
         if cached is not None:
             return cached
@@ -188,13 +191,39 @@ class TaskManager:
             )
             return self.exchange
 
-    def _ensure_routed_exchanges(self, taskcs: list[TaskConfig]) -> None:
-        need_spot = any(tc.ttype == TaskType.TRADER and not task_requires_short_capability(tc) for tc in taskcs)
-        need_margin = any(tc.ttype == TaskType.TRADER and task_requires_short_capability(tc) for tc in taskcs)
-        if need_spot:
-            _ = self._exchange_by_mode.get(MarginMode.SPOT.value) or self._exchange_for_mode(MarginMode.SPOT)
-        if need_margin:
-            _ = self._exchange_by_mode.get(MarginMode.CROSS_MARGIN.value) or self._exchange_for_mode(MarginMode.CROSS_MARGIN)
+    async def _exchange_for_user_mode(self, user_id: int, mode: MarginMode) -> BinanceExchange:
+        cache_key = f"user:{user_id}:{mode.value}"
+        cached = self._exchange_by_mode.get(cache_key)
+        if cached is not None:
+            return cached
+        if not self.db_manager or not getattr(self.db_manager, "exchange_credential", None):
+            raise RuntimeError("live trading requires a user exchange credential store")
+        service_key = getattr(self.cfg, "secret_key", None)
+        if not service_key_available(service_key):
+            raise RuntimeError("TRADER_SECRET_KEY is required to start user-owned live trading tasks")
+        credential = await self.db_manager.exchange_credential.get_default(user_id, "BINANCE")
+        if credential is None:
+            raise RuntimeError(f"missing BINANCE API credential for user_id={user_id}")
+        base_cfg = getattr(self.exchange, "cfg", None)
+        if base_cfg is None:
+            raise RuntimeError("default exchange config is required to derive user exchange config")
+        payload = base_cfg.model_dump()
+        payload["api_key"] = decrypt_secret(service_key, credential.encrypted_api_key)
+        payload["api_secret"] = decrypt_secret(service_key, credential.encrypted_api_secret)
+        payload["margin_mode"] = mode
+        routed = BinanceExchange(type(base_cfg)(**payload), self.log)
+        self._exchange_by_mode[cache_key] = routed
+        return routed
+
+    async def _ensure_routed_exchanges(self, taskcs: list[TaskConfig]) -> None:
+        for tc in taskcs:
+            if tc.ttype != TaskType.TRADER:
+                continue
+            target_mode = MarginMode.CROSS_MARGIN if task_requires_short_capability(tc) else MarginMode.SPOT
+            if getattr(tc, "user_id", None) is not None:
+                await self._exchange_for_user_mode(tc.user_id, target_mode)
+                continue
+            _ = self._exchange_by_mode.get(target_mode.value) or self._exchange_for_mode(target_mode)
 
     def _exchange_for_mode(self, mode: MarginMode) -> BinanceExchange:
         cached = self._exchange_by_mode.get(mode.value)
@@ -597,38 +626,48 @@ class TaskManager:
                 return ret
         return None
 
-    def close_task(self, id: int):
+    def close_task(self, id: int, user_id: int | None = None):
         task = self.get_task(id)
         if task:
+            if user_id is not None and getattr(task.ts, "user_id", None) != user_id:
+                return False
             task.close()
             return True
         return False
 
-    def del_task(self, id: int):
+    def del_task(self, id: int, user_id: int | None = None):
         task = self.get_task(id)
         if task:
+            if user_id is not None and getattr(task.ts, "user_id", None) != user_id:
+                return False
             task.close()
             while self.has_task(id):
                 sleep(self.log, 1)
 
         return self.db_manager.task.del_task(id)
 
-    def get_task_state(self, id: int) -> TaskState | None:
+    async def get_task_state(self, id: int, user_id: int | None = None) -> TaskState | None:
         task = self.get_task(id)
         if task:
+            if user_id is not None and getattr(task.ts, "user_id", None) != user_id:
+                return None
             return task.ts
         if self.db_manager:
-            return self.db_manager.task.get_task(id)
+            if user_id is not None:
+                return await self.db_manager.task.get_task_for_user(id, user_id)
+            return await self.db_manager.task.get_task(id)
 
         return None
 
-    async def get_all_task_state(self) -> list[TaskState]:
+    async def get_all_task_state(self, user_id: int | None = None) -> list[TaskState]:
         ret: list[TaskState] = []
         for ts in self.tasks.values():
+            if user_id is not None and getattr(ts.ts, "user_id", None) != user_id:
+                continue
             ret.append(ts.ts)
 
         if self.db_manager:
-            tss = await self.db_manager.task.get_all_tasks()
+            tss = await self.db_manager.task.get_all_tasks_for_user(user_id) if user_id is not None else await self.db_manager.task.get_all_tasks()
             for ts in tss:
                 if self.has_task(ts.id):
                     continue

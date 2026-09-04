@@ -45,6 +45,7 @@ def test_execution_state_store_reserves_idempotency_key_before_order_submit():
         )
         record = ExecutionStateRecord.from_order_intent(
             intent,
+            task_id=11,
             gateway=GatewayMode.BINANCE_LIVE,
             staged_execution_mode="small_live_auto",
             status=ExecutionStatus.SUBMITTED,
@@ -88,6 +89,7 @@ def test_execution_state_store_persists_protection_state_for_reconciliation():
         )
         record = ExecutionStateRecord.from_risk_intent(
             risk,
+            task_id=22,
             gateway=GatewayMode.BINANCE_LIVE,
             staged_execution_mode="small_live_auto",
             status=ExecutionStatus.ACCEPTED,
@@ -107,5 +109,12 @@ def test_execution_state_store_persists_protection_state_for_reconciliation():
         assert saved.stop_price == 95000.0
         assert saved.take_profit_price == 110000.0
         assert saved.raw_payload["idempotency_key"] == risk.idempotency_key
+        assert saved.task_id == 22
+
+        active_by_task = await store.list_open_by_task(22)
+        assert len(active_by_task) == 1
+        assert active_by_task[0].idempotency_key == risk.idempotency_key
+
+        assert await store.list_open_by_task(9999) == []
 
     asyncio.run(_with_db(run))

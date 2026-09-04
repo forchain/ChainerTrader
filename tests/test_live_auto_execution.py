@@ -184,6 +184,7 @@ def test_small_live_auto_places_native_protection_for_stop_and_take_profit():
     assert [event["event_type"] for event in outcome.execution_events][-1] == "protection_armed"
     assert [record.order_role for record in outcome.execution_state_records] == ["entry", "bracket"]
     assert [record.status.value for record in outcome.execution_state_records] == ["submitted", "accepted"]
+    assert all(record.task_id == 9 for record in outcome.execution_state_records)
 
 
 def test_small_live_auto_spot_close_uses_router_position_not_account_total_balance():

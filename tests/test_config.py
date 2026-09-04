@@ -133,6 +133,24 @@ def test_new_and_env_env_when_cli_absent(monkeypatch):
     assert cfg.commission == 0.003
 
 
+def test_live_warmup_candles_defaults_to_500():
+    cfg = Config()
+    assert cfg.live_warmup_candles == 500
+
+
+def test_new_and_env_reads_live_warmup_candles_from_env(monkeypatch):
+    monkeypatch.setenv("TRADER_LIVE_WARMUP_CANDLES", "321")
+    cfg = new_and_env()
+    assert cfg.live_warmup_candles == 321
+
+
+def test_new_and_env_cli_live_warmup_candles_overrides_env(monkeypatch):
+    monkeypatch.setenv("TRADER_LIVE_WARMUP_CANDLES", "321")
+    ns = argparse.Namespace(live_warmup_candles=789)
+    cfg = new_and_env(ns)
+    assert cfg.live_warmup_candles == 789
+
+
 def test_new_and_env_log_file_accepts_path(monkeypatch):
     monkeypatch.setenv("TRADER_LOG_FILE", "./logs/trader.log")
 

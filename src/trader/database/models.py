@@ -33,6 +33,7 @@ class KlineModel(Model):
 
 class TaskStateModel(Model):
     task_id = fields.IntField(primary_key=True)
+    user_id = fields.IntField(null=True)
     state = fields.CharField(max_length=32)
     name = fields.CharField(max_length=255, null=True)
     start_time = fields.DatetimeField()
@@ -45,6 +46,68 @@ class TaskStateModel(Model):
 
     class Meta:
         table = "tasks"
+        indexes = (("user_id",),)
+
+
+class UserModel(Model):
+    id = fields.IntField(primary_key=True)
+    username = fields.CharField(max_length=32, unique=True)
+    password_hash = fields.TextField()
+    role = fields.CharField(max_length=16, default="user")
+    status = fields.CharField(max_length=16, default="active")
+    must_change_password = fields.BooleanField(default=False)
+    created_at = fields.DatetimeField(auto_now_add=True)
+    updated_at = fields.DatetimeField(auto_now=True)
+    last_login_at = fields.DatetimeField(null=True)
+
+    class Meta:
+        table = "users"
+        indexes = (("role",), ("status",))
+
+
+class SessionModel(Model):
+    id = fields.IntField(primary_key=True)
+    session_hash = fields.CharField(max_length=64, unique=True)
+    user_id = fields.IntField()
+    expires_at = fields.DatetimeField()
+    created_at = fields.DatetimeField(auto_now_add=True)
+
+    class Meta:
+        table = "sessions"
+        indexes = (("user_id",), ("expires_at",))
+
+
+class ExchangeCredentialModel(Model):
+    id = fields.IntField(primary_key=True)
+    user_id = fields.IntField()
+    exchange = fields.CharField(max_length=32)
+    label = fields.CharField(max_length=64, default="default")
+    encrypted_api_key = fields.TextField()
+    encrypted_api_secret = fields.TextField()
+    masked_api_key = fields.CharField(max_length=64, default="")
+    created_at = fields.DatetimeField(auto_now_add=True)
+    updated_at = fields.DatetimeField(auto_now=True)
+
+    class Meta:
+        table = "exchange_credentials"
+        unique_together = (("user_id", "exchange", "label"),)
+        indexes = (("user_id", "exchange"),)
+
+
+class StrategyConfigModel(Model):
+    id = fields.IntField(primary_key=True)
+    user_id = fields.IntField()
+    name = fields.CharField(max_length=128)
+    strategy_name = fields.CharField(max_length=128)
+    symbol = fields.CharField(max_length=32)
+    interval = fields.CharField(max_length=16)
+    params = fields.JSONField(null=True)
+    created_at = fields.DatetimeField(auto_now_add=True)
+    updated_at = fields.DatetimeField(auto_now=True)
+
+    class Meta:
+        table = "strategy_configs"
+        indexes = (("user_id",), ("user_id", "strategy_name"))
 
 
 class AvailabilityModel(Model):
@@ -64,6 +127,7 @@ class AvailabilityModel(Model):
 
 class ExecutionStateModel(Model):
     id = fields.IntField(primary_key=True)
+    task_id = fields.IntField(null=True)
     idempotency_key = fields.CharField(max_length=255, unique=True)
     intent_id = fields.CharField(max_length=128)
     operation_id = fields.CharField(max_length=128)
@@ -85,4 +149,4 @@ class ExecutionStateModel(Model):
 
     class Meta:
         table = "execution_states"
-        indexes = (("symbol", "trade_id"), ("gateway", "staged_execution_mode"), ("intent_id", "operation_id"))
+        indexes = (("task_id", "symbol", "trade_id"), ("gateway", "staged_execution_mode"), ("intent_id", "operation_id"))

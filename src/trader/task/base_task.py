@@ -42,6 +42,7 @@ class BaseTask:
             strategy_end_time=tcfg.end_time,
             initial_cash=cfg.cash if tcfg.free < 0 else tcfg.free,
             config_json=config_json,
+            user_id=getattr(tcfg, "user_id", None),
         )
 
     def _generate_config_json(self) -> str:
@@ -85,6 +86,8 @@ class BaseTask:
             config_dict["strategy_params"] = self.tcfg.strategy_params
         if getattr(self.tcfg, "requires_short_capability", False):
             config_dict["requires_short_capability"] = True
+        if getattr(self.tcfg, "user_id", None) is not None:
+            config_dict["user_id"] = self.tcfg.user_id
 
         return json.dumps([config_dict], indent=2, ensure_ascii=False)
 

@@ -38,6 +38,7 @@ class ExecutionStateRecord:
     raw_payload: dict[str, Any] = field(default_factory=dict)
     created_at: int = 0
     updated_at: int = 0
+    task_id: int | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "gateway", _normalize_gateway(self.gateway))
@@ -52,12 +53,15 @@ class ExecutionStateRecord:
             raise ValueError("symbol is required")
         if not self.order_role:
             raise ValueError("order_role is required")
+        if self.task_id is not None and int(self.task_id) <= 0:
+            raise ValueError("task_id must be positive when provided")
 
     @classmethod
     def from_order_intent(
         cls,
         intent: OrderIntent,
         *,
+        task_id: int | None = None,
         gateway: GatewayMode | str,
         staged_execution_mode: str,
         status: ExecutionStatus | str,
@@ -65,6 +69,7 @@ class ExecutionStateRecord:
         timestamp: int = 0,
     ) -> "ExecutionStateRecord":
         return cls(
+            task_id=task_id,
             idempotency_key=intent.idempotency_key,
             intent_id=intent.intent_id,
             operation_id=intent.operation_id,
@@ -87,6 +92,7 @@ class ExecutionStateRecord:
         cls,
         intent: RiskIntent,
         *,
+        task_id: int | None = None,
         gateway: GatewayMode | str,
         staged_execution_mode: str,
         status: ExecutionStatus | str,
@@ -95,6 +101,7 @@ class ExecutionStateRecord:
         timestamp: int = 0,
     ) -> "ExecutionStateRecord":
         return cls(
+            task_id=task_id,
             idempotency_key=intent.idempotency_key,
             intent_id=intent.intent_id,
             operation_id=intent.operation_id,
@@ -135,4 +142,7 @@ class ExecutionStateStore(Protocol):
         ...
 
     async def list_open_by_symbol(self, symbol: str) -> list[ExecutionStateRecord]:
+        ...
+
+    async def list_open_by_task(self, task_id: int) -> list[ExecutionStateRecord]:
         ...

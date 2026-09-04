@@ -75,6 +75,13 @@ def main():
         default=argparse.SUPPRESS,
     )
     parser.add_argument(
+        "--live-warmup-candles",
+        help="Max realtime warmup candles loaded at startup (default: 500)",
+        action="store",
+        type=int,
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
         "--tasks",
         help="Tasks config:TRADER,BACK_TRADER,UPDATE_KLINES,CHECK_KLINES,IMPORT_CSV",
         type=str,
@@ -102,20 +109,38 @@ def main():
     )
     parser.add_argument(
         "--auth-username",
-        help="Username for HTTP Basic Authentication (optional)",
+        help="Bootstrap administrator username for the web login system (optional)",
         type=str,
         default=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--auth-password",
-        help="Password for HTTP Basic Authentication (optional)",
+        help="Bootstrap administrator password for the web login system (optional)",
         type=str,
         default=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--protected-paths",
-        help="Comma-separated list of path prefixes that require authentication (e.g., '/admin,/api/admin'). Default: all paths are public",
+        help="Deprecated legacy Basic Auth option; session auth protects the web console when bootstrap credentials are configured",
         type=str,
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--secret-key",
+        help="Service-level key used to encrypt per-user exchange API credentials",
+        type=str,
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--session-cookie-secure",
+        help="Mark session cookies as Secure; enable behind HTTPS",
+        action="store_true",
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--session-ttl-hours",
+        help="Web login session lifetime in hours",
+        type=int,
         default=argparse.SUPPRESS,
     )
 

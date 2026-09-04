@@ -133,6 +133,7 @@ def test_risk_overlay_events_include_stop_take_profit_and_breakeven_movement():
     events = build_risk_overlay_events(strategy_id=7, op=op)
 
     assert [event.event_type for event in events] == ["risk_overlay", "risk_overlay", "risk_overlay"]
+    assert events[0].payload["time"] == BASE
     assert events[0].payload["overlay_type"] == "stop_loss"
     assert events[0].payload["price"] == 97.0
     assert events[0].payload["source"] == "local_strategy_reference"
@@ -151,6 +152,7 @@ def test_risk_overlay_events_infer_stop_loss_from_signal_metadata():
     events = build_risk_overlay_events(strategy_id=7, op=op)
 
     assert len(events) == 1
+    assert events[0].payload["time"] == BASE
     assert events[0].payload["overlay_type"] == "stop_loss"
     assert events[0].payload["price"] == 97.0
     assert events[0].payload["source"] == "signal_metadata"

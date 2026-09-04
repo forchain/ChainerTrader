@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}我的账户{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-5">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">账户</h5>
+            </div>
+            <div class="card-body">
+                <dl class="row mb-0">
+                    <dt class="col-4">用户名</dt>
+                    <dd class="col-8">{{ user.username }}</dd>
+                    <dt class="col-4">角色</dt>
+                    <dd class="col-8">{{ user.role }}</dd>
+                </dl>
+                <a class="btn btn-outline-primary mt-3" href="/change-password">修改密码</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-7">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">交易所 API Key</h5>
+            </div>
+            <div class="card-body">
+                {% if credential_error %}
+                <div class="alert alert-danger">{{ credential_error }}</div>
+                {% endif %}
+                {% if not secret_key_ready %}
+                <div class="alert alert-warning">TRADER_SECRET_KEY 未配置，当前不能保存 API key 或启动实盘交易。</div>
+                {% endif %}
+                <form method="post" action="/account/exchange-credentials">
+                    <div class="mb-3">
+                        <label class="form-label" for="exchange">交易所</label>
+                        <input class="form-control" id="exchange" name="exchange" value="BINANCE" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="api_key">API Key</label>
+                        <input class="form-control" id="api_key" name="api_key" autocomplete="off" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="api_secret">API Secret</label>
+                        <input class="form-control" id="api_secret" name="api_secret" type="password" autocomplete="off" required>
+                    </div>
+                    <button class="btn btn-primary" type="submit" {% if not secret_key_ready %}disabled{% endif %}>保存</button>
+                </form>
+
+                <hr>
+
+                <h6>已保存凭证</h6>
+                {% if credentials %}
+                <ul class="list-group">
+                    {% for credential in credentials %}
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span>{{ credential.exchange }}</span>
+                        <span class="font-monospace">{{ credential.masked_api_key }}</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="text-muted mb-0">暂无 API key。</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
