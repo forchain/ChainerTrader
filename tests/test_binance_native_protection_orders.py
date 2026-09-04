@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import pytest
 
 from trader.exchange.binance.exchange import BinanceExchange
+from trader.exchange.driver import ExchangeDriverType
 from trader.exchange.binance.margin import MarginTradingManager
 from trader.exchange.exchange_config import ExchangeConfig, MarginMode
 from trader.utils.operate import OperateType
@@ -81,8 +82,10 @@ class _MarginRestApi:
 def _exchange(mode=MarginMode.SPOT, rest_api=None):
     exchange = BinanceExchange.__new__(BinanceExchange)
     exchange.log = _Log()
-    exchange.cfg = ExchangeConfig(margin_mode=mode)
+    exchange.cfg = ExchangeConfig(margin_mode=mode, driver=ExchangeDriverType.BINANCE_NATIVE)
     exchange.margin_mode = mode
+    exchange.driver_type = ExchangeDriverType.BINANCE_NATIVE
+    exchange.ccxt_driver = None
     exchange.rate_limits = {}
     exchange.spot_client = SimpleNamespace(rest_api=rest_api or _SpotRestApi())
     exchange.has_rate_limit = lambda *_args, **_kwargs: False

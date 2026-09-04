@@ -83,7 +83,7 @@ def test_stoploss_atr_mult_applies_even_when_cfg_atr_disabled():
     assert float(st.entry_ctx.initial_stop_price) < float(st.entry_ctx.key_kline_ref.low)
 
 
-def test_suggested_stop_price_does_not_override_framework_stop_price():
+def test_suggested_stop_price_overrides_framework_stop_price():
     class SuggestedStopIsolationStrategy(BaseStrategy):
         params = (
             ("name", "SUGGESTED_STOP_ISOLATION_TEST"),
@@ -134,5 +134,6 @@ def test_suggested_stop_price_does_not_override_framework_stop_price():
     st = strategies[0]
 
     assert st.entry_ctx is not None
-    assert float(st.entry_ctx.initial_stop_price) == float(st.entry_ctx.key_kline_ref.low)
+    # framework default would be key_low (95.0), but suggested_stop_price (70.0) should override
+    assert float(st.entry_ctx.initial_stop_price) == 70.0
     assert st.entry_ctx.signal_metadata.get("suggested_stop_price") == 70.0

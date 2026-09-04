@@ -145,6 +145,7 @@ reports
 tmp
 data
 artifacts
+skills-lock.json
 
 # Local notification credentials
 configs/notices/notice.json

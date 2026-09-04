@@ -107,7 +107,7 @@ def test_download_range_basic():
         klines_payload = [kline1]
 
         kline_mock = SimpleNamespace(
-            add_klines=MagicMock(return_value=1),
+            add_klines=AsyncMock(return_value=1),
         )
         db_manager = SimpleNamespace(kline=kline_mock)
 
@@ -278,7 +278,7 @@ def test_download_range_backward_updates_confirmed_earliest_metadata():
 
         availability = SimpleNamespace(update_earliest_known_open_time=AsyncMock())
         db_manager = SimpleNamespace(
-            kline=SimpleNamespace(add_klines=MagicMock(side_effect=[2, 2])),
+            kline=SimpleNamespace(add_klines=AsyncMock(side_effect=[2, 2])),
             availability=availability,
         )
         exchange = SimpleNamespace(
@@ -322,7 +322,7 @@ def test_download_range_backward_does_not_confirm_earliest_when_request_start_re
 
         availability = SimpleNamespace(update_earliest_known_open_time=MagicMock())
         db_manager = SimpleNamespace(
-            kline=SimpleNamespace(add_klines=MagicMock(return_value=2)),
+            kline=SimpleNamespace(add_klines=AsyncMock(return_value=2)),
             availability=availability,
         )
         exchange = SimpleNamespace(
@@ -452,20 +452,27 @@ class TestDeleteKlinesInRange:
     def test_delete_range_called_on_force_update(self):
         """Verify delete is called when force_update is True."""
         from trader.database.kline import KlineCol
-
-        mock_db = MagicMock()
-        mock_collection = MagicMock()
-        mock_collection.delete_many.return_value = SimpleNamespace(deleted_count=10)
-        mock_db.list_collection_names.return_value = ["klines-BTCUSDT-1h"]
-        mock_db.__getitem__ = MagicMock(return_value=mock_collection)
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock, patch
 
         log = DummyLog()
-        kline_col = KlineCol(mock_db, log)
+        kline_col = KlineCol(log)
 
-        result = kline_col.delete_klines_in_range("BTCUSDT-1h", 1000, 2000)
+        async def _test():
+            # Mock the chain: _base_query().filter().delete()
+            mock_query = MagicMock()
+            mock_filter_result = MagicMock()
+            mock_filter_result.delete = AsyncMock(return_value=10)
+            mock_query.filter.return_value = mock_filter_result
 
-        assert result == 10
-        mock_collection.delete_many.assert_called_once()
+            with patch.object(kline_col, "_base_query", return_value=mock_query):
+                result = await kline_col.delete_klines_in_range("BTCUSDT-1h", 1000, 2000)
+
+                assert result == 10
+                mock_query.filter.assert_called_once()
+                mock_filter_result.delete.assert_called_once()
+
+        asyncio.run(_test())
 
 
 class TestTaskConfigForceUpdate:

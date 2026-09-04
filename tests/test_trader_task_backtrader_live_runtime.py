@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import threading
 from types import SimpleNamespace
 
@@ -209,10 +210,10 @@ def _update(open_time, closed):
 
 
 @pytest.mark.anyio
-async def test_trader_task_realtime_uses_backtrader_live_runner_for_warmup_and_closed_updates(monkeypatch):
+async def test_trader_task_realtime_uses_backtrader_live_runner_for_warmup_and_closed_updates(monkeypatch, caplog):
     FakeRunner.instances = []
     fetched = [_kline(BASE + i * 60, close=100 + i) for i in range(3)]
-    cfg = Config(window=500)
+    cfg = Config(window=500, log_level="DEBUG")
     tcfg = TaskConfig(
         77,
         TaskType.TRADER,
@@ -228,7 +229,8 @@ async def test_trader_task_realtime_uses_backtrader_live_runner_for_warmup_and_c
     monkeypatch.setattr("trader.task.trader_task.BacktraderLiveRunner", FakeRunner)
     monkeypatch.setattr("trader.task.trader_task.GLOBAL_MARKET_STREAM_HUB", hub)
 
-    await task.start_realtime(asyncio.Queue(), [NoopStrategy])
+    with caplog.at_level(logging.DEBUG):
+        await task.start_realtime(asyncio.Queue(), [NoopStrategy])
 
     runner = FakeRunner.instances[0]
     assert "live_operation_sink" not in runner.kwargs["strategy_kwargs"]
@@ -237,6 +239,15 @@ async def test_trader_task_realtime_uses_backtrader_live_runner_for_warmup_and_c
     assert [kline.open_time for kline in runner.put_klines] == [BASE + 180]
     assert runner.stopped is True
     assert hub.subscription.unsubscribed is True
+    assert "Realtime kline accepted" in caplog.text
+    assert "Realtime kline persisted" in caplog.text
+    assert "Realtime strategy tick completed" in caplog.text
+    assert "operations=0" in caplog.text
+    assert "Realtime startup backfill started" in caplog.text
+    assert "Realtime startup backfill completed" in caplog.text
+    assert "Realtime live warmup started" in caplog.text
+    assert "Realtime stream subscribed" in caplog.text
+    assert "Realtime waiting for next closed kline" in caplog.text
 
 
 @pytest.mark.anyio
@@ -531,6 +542,56 @@ async def test_trader_task_realtime_publishes_warmup_operations_for_dashboard_wi
     assert "notification" not in event_types
     stat_msg = await queue.get()
     assert stat_msg.data.manual_trade_notifications == []
+
+
+@pytest.mark.anyio
+async def test_trader_task_realtime_warmup_operations_do_not_route_auto_execution(monkeypatch):
+    class WarmupOperationRunner(FakeRunner):
+        def start(self, warmup=None):
+            super().start(warmup=warmup)
+            operation_handler = self.kwargs["operation_handler"]
+            first = self.started_warmup[0]
+            op = SimpleNamespace(
+                otype=OperateType.BUY,
+                dtime=first.open_time,
+                price=first.close,
+                feed_phase="warmup",
+                signal_event_id="warmup-auto-sig-1",
+                to_dict=lambda: {"type": "BUY", "datetime": first.open_time, "price": first.close},
+            )
+            operation_handler(op)
+
+    class QuitOnSubscribeHub(FakeHub):
+        async def subscribe(self, key, reconnect_callback=None):
+            subscription = await super().subscribe(key, reconnect_callback=reconnect_callback)
+            self.quit_event.set()
+            return subscription
+
+    class RouteMustNotBeCalled:
+        def route(self, op):
+            raise AssertionError("warmup operation must not route to auto execution")
+
+    FakeRunner.instances = []
+    fetched = [_kline(BASE + i * 60, close=100 + i) for i in range(2)]
+    cfg = Config(window=500)
+    tcfg = TaskConfig(
+        801,
+        TaskType.TRADER,
+        SymbolInterval("BTC-USDT", Interval.INTERVAL_1m),
+        strategies=["macd_triple_divergence"],
+        free=1000,
+        live_execution_mode="small_live_auto",
+        live_trade_max_notional=11,
+        live_data_mode="realtime",
+    )
+    task = TraderTask(tcfg, cfg, Logger(cfg), FakeDb(), FakeExchange(fetched))
+    task._auto_execution_router = RouteMustNotBeCalled()
+    hub = QuitOnSubscribeHub([], task.quit)
+
+    monkeypatch.setattr("trader.task.trader_task.BacktraderLiveRunner", WarmupOperationRunner)
+    monkeypatch.setattr("trader.task.trader_task.GLOBAL_MARKET_STREAM_HUB", hub)
+
+    await task.start_realtime(asyncio.Queue(), [NoopStrategy])
 
 
 @pytest.mark.anyio

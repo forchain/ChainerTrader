@@ -4,12 +4,12 @@ from dotenv import load_dotenv
 
 from trader.app.app import App, version
 from trader.common.config import new_and_env
-from trader.rpc.rpc import start
+from trader.rpc.app import start
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Implement TradvingView Algorithms of Youtube Channel Shi Hun",
+        description="Implement TradingView Algorithms of Youtube Channel Shi Hun",
         epilog="Chainer Labs",
         fromfile_prefix_chars="@",
     )
@@ -39,7 +39,7 @@ def main():
         const="127.0.0.1:8000",
         default=argparse.SUPPRESS,
     )
-    parser.add_argument("--log_file", help="Write log to file", action="store_true", default=argparse.SUPPRESS)
+    parser.add_argument("--log_file", help="Write log to file (optional path)", nargs="?", const=True, type=str, default=argparse.SUPPRESS)
     parser.add_argument("--plot", help="Plot data", action="store_true", default=argparse.SUPPRESS)
     parser.add_argument("--mode", help="trend type: NORMAL UP DOWN", type=str, default=argparse.SUPPRESS)
     parser.add_argument(

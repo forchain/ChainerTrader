@@ -1,31 +1,54 @@
 
-import backtrader as bt
 from trader.strategy.base_strategy import BaseStrategy
 from trader.utils.operate import OperateType
 
 class SmokeTestStrategy(BaseStrategy):
     params = (
         ("name", "SmokeTest"),
+        ("smoke_sequence", "long_short"),
+        ("smoke_trigger_steps", "1,2,3,4"),
     )
 
+    def __init__(self):
+        super().__init__()
+        self._session_step = 0
+        self._trigger_steps = self._parse_trigger_steps(self.params.smoke_trigger_steps)
+
+    def _parse_trigger_steps(self, raw):
+        text = str(raw or "1,2,3,4")
+        values = []
+        for part in text.split(","):
+            item = part.strip()
+            if not item:
+                continue
+            try:
+                step = int(item)
+            except ValueError:
+                continue
+            if step > 0:
+                values.append(step)
+        if len(values) < 4:
+            values = [1, 2, 3, 4]
+        return values[:4]
+
     def next(self):
-        # We use a simple counter based on bars processed in this session
-        bar_count = len(self)
-        
-        # bar_count starts at 1 in Backtrader
-        if bar_count == 5:
-            self.log.info("SmokeTest: Triggering LONG entry")
+        self._session_step += 1
+        long_entry, long_exit, short_entry, short_exit = self._trigger_steps
+        sequence = str(self.params.smoke_sequence or "long_short").strip().lower()
+
+        if self._session_step == long_entry and sequence in {"long_only", "long_short"}:
+            self.log_info(f"SmokeTest: Triggering LONG entry at session_step={self._session_step}")
             self.buy_signal(reason="smoke_test_long")
-        elif bar_count == 10:
-            self.log.info("SmokeTest: Triggering SELL exit")
+        elif self._session_step == long_exit and sequence in {"long_only", "long_short"}:
+            self.log_info(f"SmokeTest: Triggering SELL exit at session_step={self._session_step}")
             self.sell_signal(reason="smoke_test_long_exit")
-        elif bar_count == 15:
-            self.log.info("SmokeTest: Triggering SHORT entry")
+        elif self._session_step == short_entry and sequence in {"short_only", "long_short"}:
+            self.log_info(f"SmokeTest: Triggering SHORT entry at session_step={self._session_step}")
             self.short_signal(reason="smoke_test_short")
-        elif bar_count == 20:
-            self.log.info("SmokeTest: Triggering CLOSE exit")
+        elif self._session_step == short_exit and sequence in {"short_only", "long_short"}:
+            self.log_info(f"SmokeTest: Triggering CLOSE exit at session_step={self._session_step}")
             self.close_signal(reason="smoke_test_short_exit")
-        
+
     def buy_signal(self, reason):
         if self.params.live_operation_sink:
             from trader.utils.operate import Operate

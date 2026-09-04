@@ -247,16 +247,25 @@ class BinanceLiveExecutionGateway(ExecutionGateway):
 
     @property
     def capabilities(self) -> GatewayCapabilities:
-        supported = {GatewayCapability.MARKET_ENTRY, GatewayCapability.MARKET_CLOSE, GatewayCapability.CANCEL_ORDER, GatewayCapability.RECONCILE}
-        if hasattr(self.exchange, "new_stop_order"):
-            supported.add(GatewayCapability.PROTECTIVE_STOP)
-        if hasattr(self.exchange, "new_take_profit_order"):
-            supported.add(GatewayCapability.TAKE_PROFIT_LIMIT)
-        if hasattr(self.exchange, "new_oco_order"):
-            supported.add(GatewayCapability.OCO_PROTECTION)
-        if hasattr(self.exchange, "replace_stop_order"):
-            supported.add(GatewayCapability.BREAKEVEN_REPLACEMENT)
-        return GatewayCapabilities(gateway=GatewayMode.BINANCE_LIVE, supported=supported, native_protection=True, local_guardian=False)
+        supported = getattr(self.exchange, "supported_gateway_capabilities", None)
+        if callable(supported):
+            supported = set(supported())
+        else:
+            supported = {GatewayCapability.MARKET_ENTRY, GatewayCapability.MARKET_CLOSE, GatewayCapability.CANCEL_ORDER, GatewayCapability.RECONCILE}
+            if hasattr(self.exchange, "new_stop_order"):
+                supported.add(GatewayCapability.PROTECTIVE_STOP)
+            if hasattr(self.exchange, "new_take_profit_order"):
+                supported.add(GatewayCapability.TAKE_PROFIT_LIMIT)
+            if hasattr(self.exchange, "new_oco_order"):
+                supported.add(GatewayCapability.OCO_PROTECTION)
+            if hasattr(self.exchange, "replace_stop_order"):
+                supported.add(GatewayCapability.BREAKEVEN_REPLACEMENT)
+        return GatewayCapabilities(
+            gateway=GatewayMode.BINANCE_LIVE,
+            supported=supported,
+            native_protection=GatewayCapability.PROTECTIVE_STOP in supported or GatewayCapability.OCO_PROTECTION in supported,
+            local_guardian=False,
+        )
 
     def open_position(self, intent: OrderIntent) -> ExecutionResult:
         op = OperateType.BUY if intent.side == ExecutionSide.LONG else OperateType.SHORT
@@ -265,32 +274,103 @@ class BinanceLiveExecutionGateway(ExecutionGateway):
     def place_protection(self, intent: RiskIntent) -> ExecutionResult:
         symbol = _symbol_arg(intent.symbol)
         side = self._protection_side(intent)
-        if intent.stop_price is not None and intent.take_profit_price is not None:
-            method = getattr(self.exchange, "new_oco_order", None)
-            capability = GatewayCapability.OCO_PROTECTION
-            if method is None:
-                return _unsupported(intent.intent_id, intent.operation_id, capability, GatewayMode.BINANCE_LIVE)
-            payload = method(symbol, side, intent.quantity, intent.stop_price, intent.take_profit_price)
-        elif intent.stop_price is not None:
-            method = getattr(self.exchange, "new_stop_order", None)
-            capability = GatewayCapability.PROTECTIVE_STOP
-            if method is None:
-                return _unsupported(intent.intent_id, intent.operation_id, capability, GatewayMode.BINANCE_LIVE)
-            payload = method(symbol, side, intent.quantity, intent.stop_price)
-        else:
-            method = getattr(self.exchange, "new_take_profit_order", None)
-            capability = GatewayCapability.TAKE_PROFIT_LIMIT
-            if method is None:
-                return _unsupported(intent.intent_id, intent.operation_id, capability, GatewayMode.BINANCE_LIVE)
-            payload = method(symbol, side, intent.quantity, intent.take_profit_price)
+        try:
+            if intent.stop_price is not None and intent.take_profit_price is not None:
+                method = getattr(self.exchange, "new_oco_order", None)
+                capability = GatewayCapability.OCO_PROTECTION
+                if method is None:
+                    return _unsupported(intent.intent_id, intent.operation_id, capability, GatewayMode.BINANCE_LIVE)
+                payload = method(symbol, side, intent.quantity, intent.stop_price, intent.take_profit_price)
+            elif intent.stop_price is not None:
+                method = getattr(self.exchange, "new_stop_order", None)
+                capability = GatewayCapability.PROTECTIVE_STOP
+                if method is None:
+                    return _unsupported(intent.intent_id, intent.operation_id, capability, GatewayMode.BINANCE_LIVE)
+                payload = method(symbol, side, intent.quantity, intent.stop_price)
+            else:
+                method = getattr(self.exchange, "new_take_profit_order", None)
+                capability = GatewayCapability.TAKE_PROFIT_LIMIT
+                if method is None:
+                    return _unsupported(intent.intent_id, intent.operation_id, capability, GatewayMode.BINANCE_LIVE)
+                payload = method(symbol, side, intent.quantity, intent.take_profit_price)
+        except Exception as exc:
+            event = ExecutionEvent(
+                event_type=ExecutionEventType.PROTECTION_MISSING,
+                gateway=GatewayMode.BINANCE_LIVE,
+                staged_execution_mode=self.staged_execution_mode,
+                intent_id=intent.intent_id,
+                operation_id=intent.operation_id,
+                symbol=intent.symbol,
+                trade_id=intent.trade_id,
+                status=ExecutionStatus.FAILED,
+                reason=ExecutionReason.GATEWAY_REJECTED,
+                quantity=intent.quantity,
+                price=intent.stop_price or intent.take_profit_price,
+                metadata={"native": True, "exception": str(exc)},
+            )
+            return ExecutionResult(
+                intent_id=intent.intent_id,
+                operation_id=intent.operation_id,
+                status=ExecutionStatus.FAILED,
+                reason=ExecutionReason.GATEWAY_REJECTED,
+                events=[event],
+                metadata={"exception": str(exc)},
+            )
         return self._native_protection_result(intent, payload, event_type=ExecutionEventType.PROTECTION_ARMED)
 
     def replace_protection(self, intent: RiskIntent) -> ExecutionResult:
         method = getattr(self.exchange, "replace_stop_order", None)
         if method is None:
             return _unsupported(intent.intent_id, intent.operation_id, GatewayCapability.BREAKEVEN_REPLACEMENT, GatewayMode.BINANCE_LIVE)
+        if not str(intent.replacement_of_order_id or "").strip():
+            event = ExecutionEvent(
+                event_type=ExecutionEventType.PROTECTION_MISSING,
+                gateway=GatewayMode.BINANCE_LIVE,
+                staged_execution_mode=self.staged_execution_mode,
+                intent_id=intent.intent_id,
+                operation_id=intent.operation_id,
+                symbol=intent.symbol,
+                trade_id=intent.trade_id,
+                status=ExecutionStatus.FAILED,
+                reason=ExecutionReason.PROTECTION_MISSING,
+                quantity=intent.quantity,
+                price=intent.stop_price,
+                metadata={"native": True, "missing": "replacement_of_order_id"},
+            )
+            return ExecutionResult(
+                intent_id=intent.intent_id,
+                operation_id=intent.operation_id,
+                status=ExecutionStatus.FAILED,
+                reason=ExecutionReason.PROTECTION_MISSING,
+                events=[event],
+                metadata={"missing": "replacement_of_order_id"},
+            )
         side = self._protection_side(intent)
-        payload = method(_symbol_arg(intent.symbol), side, intent.replacement_of_order_id, intent.quantity, intent.stop_price)
+        try:
+            payload = method(_symbol_arg(intent.symbol), side, intent.replacement_of_order_id, intent.quantity, intent.stop_price)
+        except Exception as exc:
+            event = ExecutionEvent(
+                event_type=ExecutionEventType.PROTECTION_MISSING,
+                gateway=GatewayMode.BINANCE_LIVE,
+                staged_execution_mode=self.staged_execution_mode,
+                intent_id=intent.intent_id,
+                operation_id=intent.operation_id,
+                symbol=intent.symbol,
+                trade_id=intent.trade_id,
+                status=ExecutionStatus.FAILED,
+                reason=ExecutionReason.GATEWAY_REJECTED,
+                quantity=intent.quantity,
+                price=intent.stop_price,
+                metadata={"native": True, "exception": str(exc)},
+            )
+            return ExecutionResult(
+                intent_id=intent.intent_id,
+                operation_id=intent.operation_id,
+                status=ExecutionStatus.FAILED,
+                reason=ExecutionReason.GATEWAY_REJECTED,
+                events=[event],
+                metadata={"exception": str(exc)},
+            )
         return self._native_protection_result(intent, payload, event_type=ExecutionEventType.PROTECTION_REPLACED)
 
     def close_position(self, intent: OrderIntent) -> ExecutionResult:

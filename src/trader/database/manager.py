@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import inspect
+
 from tortoise import Tortoise
 from tortoise.exceptions import OperationalError
 
@@ -31,7 +33,10 @@ class DatabaseManager:
         self.execution_state = None
 
     async def start(self):
-        await Tortoise.init(config=build_tortoise_config(self.db_url))
+        init_kwargs = {"config": build_tortoise_config(self.db_url)}
+        if _supports_tortoise_global_fallback():
+            init_kwargs["_enable_global_fallback"] = True
+        await Tortoise.init(**init_kwargs)
         await self._ensure_schema_ready()
         exchange = self._default_exchange()
         self.kline = KlineCol(self.log, exchange=exchange)
@@ -62,3 +67,10 @@ class DatabaseManager:
                     f"database schema is not initialized for {self.db_url}; missing table '{table}'. "
                     "Run `uv run trader-db migrate` before starting DB-backed workflows."
                 ) from exc
+
+
+def _supports_tortoise_global_fallback() -> bool:
+    parameters = inspect.signature(Tortoise.init).parameters
+    return "_enable_global_fallback" in parameters or any(
+        parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in parameters.values()
+    )

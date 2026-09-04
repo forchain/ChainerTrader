@@ -402,25 +402,27 @@ class BaseStrategy(bt.Strategy):
         )
 
     def log_info(self, msg):
+        cur_time = self.cur_datetime()
+        if self.bar_idx() < 0:
+            cur_time = "not_started"
         if self.params.log is None:
-            cur_time = self.cur_datetime()
             print(f"[{cur_time}] {msg}")
             return
-        cur_time = self.cur_datetime()
         self.params.log.info(
             f"[{cur_time}] {msg}, [{self.name()}][{self.bar_idx()}/{self.total_bars-1}]",
             LogTag.STRATEGY,
         )
 
     def log_debug(self, msg):
+        cur_time = self.cur_datetime()
+        if self.bar_idx() < 0:
+            cur_time = "not_started"
         if self.params.log is None:
-            cur_time = self.cur_datetime()
             print(f"[{cur_time}] {msg}")
             return
         bars_info = ""
         if self.total_bars > 0:
             bars_info = f"[{self.bar_idx()}/{self.total_bars-1}]"
-        cur_time = self.cur_datetime()
         self.params.log.debug(
             f"[{cur_time}] {msg}, [{self.name()}]{bars_info}",
             LogTag.STRATEGY,

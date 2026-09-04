@@ -1,8 +1,9 @@
 import asyncio
-from asyncio import Queue
-from concurrent.futures import ProcessPoolExecutor, TimeoutError as FutureTimeoutError
 import inspect
 import os
+from asyncio import Queue
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from pathlib import Path
 
 from trader.common.common import sleep
@@ -12,17 +13,19 @@ from trader.common.logger import Logger
 from trader.common.message import new_add_tasks_msg, new_exit_msg, new_stat_msg
 from trader.database.manager import DatabaseManager
 from trader.exchange.binance.exchange import BinanceExchange
+from trader.exchange.exchange_config import MarginMode
 from trader.statistics.stat import BackTraderStat
 from trader.strategy.trader_result import parse_trader_result
-from trader.task.backtrader_task import BackTraderTask, BacktestSampleResult, build_backtest_sample_spec, run_backtest_sample
+from trader.task.backtrader_task import BacktestSampleResult, BackTraderTask, build_backtest_sample_spec, run_backtest_sample
 from trader.task.base_task import BaseTask
 from trader.task.check_klines_num_task import CheckKlinesNumTask
 from trader.task.check_klines_task import CheckKlinesTask
-from trader.task.debug_task import DebugTask
 from trader.task.dataset_resolver import DatasetPreparationFailure, DatasetPreparationResult, DatasetResolver
+from trader.task.debug_task import DebugTask
 from trader.task.import_csv_task import ImportCSVTask
-from trader.task.optimization_runtime import OptimizationRuntimeStatus, evaluate_abort_reason
+from trader.task.live_startup_self_check import infer_required_margin_mode, task_requires_short_capability
 from trader.task.optimization_report import write_optimization_artifacts
+from trader.task.optimization_runtime import OptimizationRuntimeStatus, evaluate_abort_reason
 from trader.task.task_config import TaskConfig, parse_task_config
 from trader.task.task_type import TaskType
 from trader.task.trader_task import TraderTask
@@ -43,15 +46,26 @@ class TaskManager:
         self.cfg = cfg
         self.db_manager = db_manager
         self.exchange = exchange
+        self._exchange_by_mode: dict[str, BinanceExchange] = {}
+        if getattr(exchange, "margin_mode", None) is not None:
+            self._exchange_by_mode[exchange.margin_mode.value] = exchange
         self.log.info("Init TaskManager")
         self.tasks: dict[int, BaseTask] = {}
         self.async_tasks = []
         self.latest_si: SymbolInterval | None = None
 
-    def start(self):
+    def start(self, taskcs: list[TaskConfig] | None = None):
         self.log.info("TaskManager start")
-        if self.cfg.tasks:
+        if taskcs is None and self.cfg.tasks:
             taskcs = parse_task_config(self.cfg.tasks)
+        if taskcs is not None:
+            required_margin_mode = infer_required_margin_mode(taskcs)
+            if getattr(self.exchange, "margin_mode", None) is not None and required_margin_mode.value != self.exchange.margin_mode.value:
+                self.log.info(
+                    f"TaskManager mixed-mode detected: required_margin_mode={required_margin_mode.value}, "
+                    f"default_exchange_margin_mode={self.exchange.margin_mode.value}. Per-task exchange routing enabled."
+                )
+        if taskcs:
             if len(taskcs) <= 0:
                 return None
             return new_add_tasks_msg(taskcs)
@@ -86,6 +100,7 @@ class TaskManager:
             return
 
         self.log.info(f"Try to add tasks:{len(taskcs)}")
+        self._ensure_routed_exchanges(taskcs)
 
         async_tasks = []
         bttaskcs = []
@@ -131,18 +146,19 @@ class TaskManager:
 
     async def add_task(self, cfg, queue: Queue):
         task = None
+        task_exchange = self._exchange_for_task(cfg)
         if cfg.ttype == TaskType.TRADER:
-            task = TraderTask(cfg, self.cfg, self.log, self.db_manager, self.exchange)
+            task = TraderTask(cfg, self.cfg, self.log, self.db_manager, task_exchange)
         elif cfg.ttype == TaskType.BACK_TRADER:
-            task = BackTraderTask(cfg, self.cfg, self.log, self.db_manager, self.exchange)
+            task = BackTraderTask(cfg, self.cfg, self.log, self.db_manager, task_exchange)
         elif cfg.ttype == TaskType.UPDATE_KLINES:
-            task = UpdateKlinesTask(cfg, self.cfg, self.log, self.db_manager, self.exchange)
+            task = UpdateKlinesTask(cfg, self.cfg, self.log, self.db_manager, task_exchange)
         elif cfg.ttype == TaskType.CHECK_KLINES:
-            task = CheckKlinesTask(cfg, self.cfg, self.log, self.db_manager, self.exchange)
+            task = CheckKlinesTask(cfg, self.cfg, self.log, self.db_manager, task_exchange)
         elif cfg.ttype == TaskType.IMPORT_CSV:
-            task = ImportCSVTask(cfg, self.cfg, self.log, self.db_manager, self.exchange)
+            task = ImportCSVTask(cfg, self.cfg, self.log, self.db_manager, task_exchange)
         elif cfg.ttype == TaskType.CHECK_KLINES_NUM:
-            task = CheckKlinesNumTask(cfg, self.cfg, self.log, self.db_manager, self.exchange)
+            task = CheckKlinesNumTask(cfg, self.cfg, self.log, self.db_manager, task_exchange)
         elif cfg.ttype == TaskType.DEBUG:
             task = DebugTask(cfg, self.cfg, self.log, self.db_manager)
 
@@ -152,6 +168,45 @@ class TaskManager:
         self.tasks[task.id()] = task
 
         await task.start(queue)
+
+    def _exchange_for_task(self, cfg: TaskConfig) -> BinanceExchange:
+        if cfg.ttype != TaskType.TRADER:
+            return self.exchange
+        target_mode = MarginMode.CROSS_MARGIN if task_requires_short_capability(cfg) else MarginMode.SPOT
+        cached = self._exchange_by_mode.get(target_mode.value)
+        if cached is not None:
+            return cached
+        try:
+            routed = self._exchange_for_mode(target_mode)
+            self.log.info(
+                f"TaskManager created routed exchange for mode={target_mode.value} task_id={cfg.id} strategy={cfg.strategy_name()}"
+            )
+            return routed
+        except Exception as exc:
+            self.log.warning(
+                f"TaskManager failed to create routed exchange for mode={target_mode.value}, falling back to default exchange: {exc}"
+            )
+            return self.exchange
+
+    def _ensure_routed_exchanges(self, taskcs: list[TaskConfig]) -> None:
+        need_spot = any(tc.ttype == TaskType.TRADER and not task_requires_short_capability(tc) for tc in taskcs)
+        need_margin = any(tc.ttype == TaskType.TRADER and task_requires_short_capability(tc) for tc in taskcs)
+        if need_spot:
+            _ = self._exchange_by_mode.get(MarginMode.SPOT.value) or self._exchange_for_mode(MarginMode.SPOT)
+        if need_margin:
+            _ = self._exchange_by_mode.get(MarginMode.CROSS_MARGIN.value) or self._exchange_for_mode(MarginMode.CROSS_MARGIN)
+
+    def _exchange_for_mode(self, mode: MarginMode) -> BinanceExchange:
+        cached = self._exchange_by_mode.get(mode.value)
+        if cached is not None:
+            return cached
+        base_cfg = getattr(self.exchange, "cfg", None)
+        if base_cfg is None or not hasattr(base_cfg, "with_margin_mode"):
+            return self.exchange
+        cloned_cfg = base_cfg.with_margin_mode(mode)
+        routed = BinanceExchange(cloned_cfg, self.log)
+        self._exchange_by_mode[mode.value] = routed
+        return routed
 
     async def add_backtrader_task(self, cfgs, queue: Queue):
         runtimes = self._optimization_runtimes(cfgs)
@@ -367,7 +422,10 @@ class TaskManager:
         dataset_timeout_seconds = self._optimization_dataset_prepare_timeout_seconds()
         if dataset_jobs:
             self.log.info(
-                f"Optimization dataset preparation: datasets={len(dataset_jobs)} max_workers={self._dataset_prepare_max_workers()} timeout={dataset_timeout_seconds:.1f}s"
+                "Optimization dataset preparation: "
+                f"datasets={len(dataset_jobs)} "
+                f"max_workers={self._dataset_prepare_max_workers()} "
+                f"timeout={dataset_timeout_seconds:.1f}s"
             )
 
         async def run_job(dataset_key, job):
@@ -376,7 +434,9 @@ class TaskManager:
                 symbol_interval, start_time, end_time, allow_download, allow_incomplete_coverage = job
                 status_dataset_key = f"{symbol_interval.name()}|{start_time}|{end_time}"
                 self.log.info(
-                    f"Dataset preparation started: {status_dataset_key} allow_download={bool(allow_download)} allow_incomplete_coverage={bool(allow_incomplete_coverage)}"
+                    f"Dataset preparation started: {status_dataset_key} "
+                    f"allow_download={bool(allow_download)} "
+                    f"allow_incomplete_coverage={bool(allow_incomplete_coverage)}"
                 )
                 for run_id in dataset_run_ids.get(dataset_key, set()):
                     runtime = (runtimes or {}).get(run_id)
@@ -562,13 +622,13 @@ class TaskManager:
 
         return None
 
-    def get_all_task_state(self) -> list[TaskState]:
+    async def get_all_task_state(self) -> list[TaskState]:
         ret: list[TaskState] = []
         for ts in self.tasks.values():
             ret.append(ts.ts)
 
         if self.db_manager:
-            tss = self.db_manager.task.get_all_tasks()
+            tss = await self.db_manager.task.get_all_tasks()
             for ts in tss:
                 if self.has_task(ts.id):
                     continue

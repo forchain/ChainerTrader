@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from trader.exchange.binance.exchange import BinanceExchange
+from trader.exchange.driver import ExchangeDriverType
 from trader.exchange.exchange_config import ExchangeConfig
 
 
@@ -33,7 +34,7 @@ def test_start_skips_margin_summary_when_base_path_is_blank(monkeypatch):
     monkeypatch.setattr(BinanceExchange, "time", lambda self: datetime(2026, 4, 13, 20, 54, 33))
     monkeypatch.setattr(BinanceExchange, "server_time_offset", lambda self: 0.0)
 
-    exchange = BinanceExchange(ExchangeConfig(base_path=""), DummyLog())
+    exchange = BinanceExchange(ExchangeConfig(base_path="", driver=ExchangeDriverType.BINANCE_NATIVE), DummyLog())
 
     assert exchange.start() is True
     assert margin_calls == []

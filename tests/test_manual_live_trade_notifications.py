@@ -130,6 +130,45 @@ def test_parse_task_config_accepts_staged_auto_trade_options():
     assert tasks[0].to_dict()["live_short_execution"] == "margin_cross"
 
 
+def test_parse_task_config_defaults_notional_to_global_min_when_missing(monkeypatch):
+    monkeypatch.setenv("TRADER_MIN_LIVE_TRADE_NOTIONAL", "11")
+    tasks = parse_task_config(
+        json.dumps(
+            [
+                {
+                    "task_type": "TRADER",
+                    "symbol": "BTC-USDT",
+                    "interval": "1m",
+                    "strategy": "macd_triple_divergence",
+                    "live_execution_mode": "small_live_auto",
+                }
+            ]
+        )
+    )
+
+    assert len(tasks) == 1
+    assert tasks[0].live_trade_max_notional == 11.0
+
+
+def test_parse_task_config_rejects_notional_below_global_min(monkeypatch):
+    monkeypatch.setenv("TRADER_MIN_LIVE_TRADE_NOTIONAL", "11")
+    with pytest.raises(ValueError, match="below global minimum TRADER_MIN_LIVE_TRADE_NOTIONAL"):
+        parse_task_config(
+            json.dumps(
+                [
+                    {
+                        "task_type": "TRADER",
+                        "symbol": "BTC-USDT",
+                        "interval": "1m",
+                        "strategy": "macd_triple_divergence",
+                        "live_execution_mode": "small_live_auto",
+                        "live_trade_max_notional": 10,
+                    }
+                ]
+            )
+        )
+
+
 def test_normalize_live_execution_mode_preserves_staged_modes_and_rejects_unknown():
     assert normalize_live_execution_mode("small_live_auto") == "small_live_auto"
     assert normalize_live_execution_mode("full_live_auto") == "full_live_auto"

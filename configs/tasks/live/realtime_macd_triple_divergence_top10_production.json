@@ -5,15 +5,15 @@
     "interval": "1m",
     "strategy": "macd_triple_divergence",
     "free": 10000,
-    "manual_start_position": 0,
-    "live_execution_mode": "manual_notify",
+    "live_execution_mode": "small_live_auto",
     "live_data_mode": "realtime",
+    "live_margin_borrow_block_policy": "repay_all",
     "strategy_params": {
       "chainer_mode": "BOTH",
       "chainer_stoploss_atr_mult": 1,
       "chainer_enable_breakeven": true,
       "chainer_risk_reward_ratio": 0,
-      "chainer_need_confirm": true,
+      "chainer_need_confirm": false,
       "macd_stop_enabled": true
     }
   },
@@ -23,15 +23,15 @@
     "interval": "1d",
     "strategy": "macd_triple_divergence",
     "free": 10000,
-    "manual_start_position": 0,
-    "live_execution_mode": "manual_notify",
+    "live_execution_mode": "small_live_auto",
     "live_data_mode": "realtime",
+    "live_margin_borrow_block_policy": "repay_single",
     "strategy_params": {
       "chainer_mode": "BOTH",
       "chainer_stoploss_atr_mult": 1,
       "chainer_enable_breakeven": true,
       "chainer_risk_reward_ratio": 0,
-      "chainer_need_confirm": true,
+      "chainer_need_confirm": false,
       "macd_stop_enabled": true
     }
   },
@@ -41,15 +41,15 @@
     "interval": "1d",
     "strategy": "macd_triple_divergence",
     "free": 10000,
-    "manual_start_position": 0,
-    "live_execution_mode": "manual_notify",
+    "live_execution_mode": "small_live_auto",
     "live_data_mode": "realtime",
+    "live_margin_borrow_block_policy": "repay_single",
     "strategy_params": {
       "chainer_mode": "BOTH",
       "chainer_stoploss_atr_mult": 1,
       "chainer_enable_breakeven": true,
       "chainer_risk_reward_ratio": 0,
-      "chainer_need_confirm": true,
+      "chainer_need_confirm": false,
       "macd_stop_enabled": true
     }
   },
@@ -59,15 +59,15 @@
     "interval": "1d",
     "strategy": "macd_triple_divergence",
     "free": 10000,
-    "manual_start_position": 0,
-    "live_execution_mode": "manual_notify",
+    "live_execution_mode": "small_live_auto",
     "live_data_mode": "realtime",
+    "live_margin_borrow_block_policy": "repay_single",
     "strategy_params": {
       "chainer_mode": "BOTH",
       "chainer_stoploss_atr_mult": 1,
       "chainer_enable_breakeven": true,
       "chainer_risk_reward_ratio": 0,
-      "chainer_need_confirm": true,
+      "chainer_need_confirm": false,
       "macd_stop_enabled": true
     }
   },
@@ -77,15 +77,15 @@
     "interval": "1d",
     "strategy": "macd_triple_divergence",
     "free": 10000,
-    "manual_start_position": 0,
-    "live_execution_mode": "manual_notify",
+    "live_execution_mode": "small_live_auto",
     "live_data_mode": "realtime",
+    "live_margin_borrow_block_policy": "repay_single",
     "strategy_params": {
       "chainer_mode": "BOTH",
       "chainer_stoploss_atr_mult": 1,
       "chainer_enable_breakeven": true,
       "chainer_risk_reward_ratio": 0,
-      "chainer_need_confirm": true,
+      "chainer_need_confirm": false,
       "macd_stop_enabled": true
     }
   },
@@ -95,15 +95,15 @@
     "interval": "1d",
     "strategy": "macd_triple_divergence",
     "free": 10000,
-    "manual_start_position": 0,
-    "live_execution_mode": "manual_notify",
+    "live_execution_mode": "small_live_auto",
     "live_data_mode": "realtime",
+    "live_margin_borrow_block_policy": "repay_single",
     "strategy_params": {
       "chainer_mode": "BOTH",
       "chainer_stoploss_atr_mult": 1,
       "chainer_enable_breakeven": true,
       "chainer_risk_reward_ratio": 0,
-      "chainer_need_confirm": true,
+      "chainer_need_confirm": false,
       "macd_stop_enabled": true
     }
   },
@@ -113,15 +113,15 @@
     "interval": "1d",
     "strategy": "macd_triple_divergence",
     "free": 10000,
-    "manual_start_position": 0,
-    "live_execution_mode": "manual_notify",
+    "live_execution_mode": "small_live_auto",
     "live_data_mode": "realtime",
+    "live_margin_borrow_block_policy": "repay_single",
     "strategy_params": {
       "chainer_mode": "BOTH",
       "chainer_stoploss_atr_mult": 1,
       "chainer_enable_breakeven": true,
       "chainer_risk_reward_ratio": 0,
-      "chainer_need_confirm": true,
+      "chainer_need_confirm": false,
       "macd_stop_enabled": true
     }
   },
@@ -131,15 +131,15 @@
     "interval": "1d",
     "strategy": "macd_triple_divergence",
     "free": 10000,
-    "manual_start_position": 0,
-    "live_execution_mode": "manual_notify",
+    "live_execution_mode": "small_live_auto",
     "live_data_mode": "realtime",
+    "live_margin_borrow_block_policy": "repay_single",
     "strategy_params": {
       "chainer_mode": "BOTH",
       "chainer_stoploss_atr_mult": 1,
       "chainer_enable_breakeven": true,
       "chainer_risk_reward_ratio": 0,
-      "chainer_need_confirm": true,
+      "chainer_need_confirm": false,
       "macd_stop_enabled": true
     }
   },
@@ -149,15 +149,15 @@
     "interval": "1d",
     "strategy": "macd_triple_divergence",
     "free": 10000,
-    "manual_start_position": 0,
-    "live_execution_mode": "manual_notify",
+    "live_execution_mode": "small_live_auto",
     "live_data_mode": "realtime",
+    "live_margin_borrow_block_policy": "repay_single",
     "strategy_params": {
       "chainer_mode": "BOTH",
       "chainer_stoploss_atr_mult": 1,
       "chainer_enable_breakeven": true,
       "chainer_risk_reward_ratio": 0,
-      "chainer_need_confirm": true,
+      "chainer_need_confirm": false,
       "macd_stop_enabled": true
     }
   },
@@ -167,15 +167,15 @@
     "interval": "1d",
     "strategy": "macd_triple_divergence",
     "free": 10000,
-    "manual_start_position": 0,
-    "live_execution_mode": "manual_notify",
+    "live_execution_mode": "small_live_auto",
     "live_data_mode": "realtime",
+    "live_margin_borrow_block_policy": "repay_single",
     "strategy_params": {
       "chainer_mode": "BOTH",
       "chainer_stoploss_atr_mult": 1,
       "chainer_enable_breakeven": true,
       "chainer_risk_reward_ratio": 0,
-      "chainer_need_confirm": true,
+      "chainer_need_confirm": false,
       "macd_stop_enabled": true
     }
   },
@@ -185,15 +185,15 @@
     "interval": "1d",
     "strategy": "macd_triple_divergence",
     "free": 10000,
-    "manual_start_position": 0,
-    "live_execution_mode": "manual_notify",
+    "live_execution_mode": "small_live_auto",
     "live_data_mode": "realtime",
+    "live_margin_borrow_block_policy": "repay_single",
     "strategy_params": {
       "chainer_mode": "BOTH",
       "chainer_stoploss_atr_mult": 1,
       "chainer_enable_breakeven": true,
       "chainer_risk_reward_ratio": 0,
-      "chainer_need_confirm": true,
+      "chainer_need_confirm": false,
       "macd_stop_enabled": true
     }
   }

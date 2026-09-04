@@ -453,7 +453,7 @@ python -m trader \
   --notice configs/notices/notice.json
 ```
 
-When `live_data_mode` is `realtime`, the live task creates one persistent Backtrader `Cerebro` runtime and advances it through a live K-line data feed. Startup REST backfill is capped at the latest 500 closed candles and is delivered through the same strategy instance as warmup. During development validation, warmup strategy events use the same dashboard and `manual_notify` path as later live candles, so startup signals appear on the chart and can send email. After the feed transitions to LIVE, each unique closed WebSocket candle is persisted and delivered once to the same strategy instance; reconnect catch-up candles are fetched from REST and delivered through that same feed in chronological order. Open candles are pushed to the dashboard for drawing only and never advance Backtrader strategy execution.
+When `live_data_mode` is `realtime`, the live task creates one persistent Backtrader `Cerebro` runtime and advances it through a live K-line data feed. Startup REST backfill is capped at the latest 500 closed candles and is delivered through the same strategy instance as warmup. During development validation, warmup strategy events use the same dashboard and `manual_notify` path as later live candles, so startup signals appear on the chart and can send email. After the feed transitions to LIVE, the default market-data stream uses CCXT-backed REST polling instead of Binance SDK WebSocket subscriptions. Each newly closed polled candle is persisted and delivered once to the same strategy instance. Open candles are dashboard-only when available and never advance Backtrader strategy execution.
 
 Manual notification emails include the market, interval, strategy id, strategy name, action, side, suggested amount or quantity, signal price and time, local simulated cash and position, trigger reason, and dashboard correlation fields such as signal event id when available. Risk references such as stop loss, take profit, breakeven stop movement, or risk/reward are rendered as local strategy guidance only; the email is not an exchange fill confirmation and does not mean ChainerTrader submitted a stop-loss, take-profit, OCO, or other advanced order.
 
@@ -466,7 +466,7 @@ Realtime live tasks also support staged automatic execution modes:
 
 The execution boundary is modeled as a gateway contract shared by Backtrader and Binance live execution. `live_execution_mode` remains the authoritative safety switch: `manual_notify` is notification-only, and live gateway execution is available only through live-capable modes such as `small_live_auto` and `full_live_auto`. A gateway setting must not be used to upgrade a safer staged mode.
 
-Execution outcomes published to the live dashboard include normalized execution event traces such as `order_submitted`, `order_accepted`, `order_filled`, `protection_armed`, `protection_replaced`, and `protection_missing`. Binance live protection is native-first: ChainerTrader should treat `protection_armed` as valid only when exchange-native protection order identifiers are accepted and verified. Local WebSocket or guardian monitoring is a separate fallback/monitoring state, not proof that the exchange owns the stop-loss or take-profit order.
+Execution outcomes published to the live dashboard include normalized execution event traces such as `order_submitted`, `order_accepted`, `order_filled`, `protection_armed`, `protection_replaced`, and `protection_missing`. Binance live protection is exchange-order-first: ChainerTrader should treat `protection_armed` as valid only when exchange protection order identifiers are accepted and verified. Local monitoring is a separate fallback/monitoring state, not proof that the exchange owns the stop-loss or take-profit order.
 
 Backtrader is the no-live-order test engine for strategy development. It uses broker-managed stop, limit, and OCO-style behavior within the available data feed, but OHLC bars cannot prove tick-level ordering inside a candle. Use lower timeframe or tick data when the exact ordering between stop-loss and take-profit hits matters.
 
@@ -480,6 +480,15 @@ On restart or reconnect, automatic live modes load open execution state for the 
 
 Real short execution is disabled unless `live_short_execution` is explicitly set to `margin_cross`. In the first implementation, real shorts use Binance cross margin only; isolated margin and futures are separate future integrations. Operators must ensure exchange credentials, cross-margin account readiness, and any borrow/repay risk are understood before enabling cross-margin short execution.
 
+Cross-margin live execution includes borrow-risk controls for orders that may require Binance margin borrowing. When `live_margin_borrow_precheck` is enabled, ChainerTrader checks Binance max-borrow capacity before cross-margin long or short entries and skips orders that clearly cannot borrow enough. If Binance still returns `-3006 EXCEED_MAX_BORROWABLE`, `live_margin_borrow_block_policy` controls the response:
+
+- `skip_continue`: skip the blocked signal and keep the task running.
+- `repay_single`: repay current symbol liabilities, then retry once.
+- `repay_all`: repay all repayable cross-margin liabilities within configured caps, then retry once.
+- `stop_task`: surface the blocked order as a hard execution failure.
+
+`repay_all` is explicit opt-in and should be used with conservative caps such as `live_margin_auto_repay_max_total`, `live_margin_auto_repay_max_per_asset`, and `live_margin_auto_repay_excluded_assets`. Auto-repay outcomes include structured `margin_borrow_control` metadata in execution outcomes and dashboard payloads so operators can audit which assets were checked, repaid, skipped, or retried.
+
 Small-live example with a 10 USDT per-order cap:
 
 ```bash
@@ -489,21 +498,35 @@ python -m trader \
   --exchange=BINANCE
 ```
 
-For real-order smoke testing, use a dedicated exchange key, a minimal notional, and explicit operator opt-in. The end-to-end Binance live smoke test places real orders through the same live gateway used by `small_live_auto`; it covers Chainer-style entry, native stop/take-profit protection, breakeven stop replacement, close, execution-state records, and MACD triple divergence style signal/framework metadata. Spot long testing is enabled by default; cross-margin short testing is disabled unless explicitly opted in.
+For real-order smoke testing, use a dedicated exchange key, a minimal notional, and explicit operator opt-in. The end-to-end Binance live smoke test places real orders through the same live gateway used by `small_live_auto`; it covers Chainer-style entry, stop/take-profit protection, breakeven stop replacement, close, execution-state records, and MACD triple divergence style signal/framework metadata. The smoke defaults to the CCXT driver; set `CHAINERTRADER_LIVE_SMOKE_DRIVER=binance_native` only when deliberately testing the legacy Binance SDK path.
+
+The black-box acceptance contract is strict:
+- single run must cover both spot long and cross-margin short flows
+- `TRADER_DB` must be configured because execution-state closure is part of acceptance
+- short verification must run with `live_short_execution=margin_cross`
+- report output must be validated against Binance Web order/trade history
 
 ```bash
 export BINANCE_API_KEY="..."
 export BINANCE_API_SECRET="..."
+export TRADER_DB="sqlite://data/trader.db"
 export CHAINERTRADER_SMALL_LIVE_MAX_NOTIONAL=11
 export CHAINERTRADER_SMALL_LIVE_HARD_LIMIT=25
 export CHAINERTRADER_LIVE_SMOKE_SYMBOL=BTC-USDT
+export CHAINERTRADER_LIVE_SMOKE_DRIVER=ccxt
+export CHAINERTRADER_LIVE_SMOKE_ENABLE_SPOT=1
+export CHAINERTRADER_LIVE_SMOKE_ENABLE_MARGIN=1
 
-# Spot long only: BUY -> native bracket -> replace stop -> cancel protection -> SELL.
+# Required dual-flow acceptance: spot long + margin short in one run.
 scripts/run_binance_live_smoke_e2e.sh
-
-# Optional cross-margin short flow: SHORT -> native buy-side bracket -> replace stop -> cancel protection -> CLOSE.
-CHAINERTRADER_LIVE_SMOKE_ENABLE_MARGIN=1 scripts/run_binance_live_smoke_e2e.sh
 ```
+
+Manual Binance Web checks after the run:
+- Spot Order History contains `spot_long_entry` and `spot_long_close` `order_id`.
+- Margin Order History contains `margin_short_entry` and `margin_short_close` `order_id`.
+- Open Orders for the symbol has no residual protection orders after cancel steps.
+- Trade/Fee history has fills and fees matching submitted entry/close orders.
+- The run report includes execution-state records for entry/protection/replace/close.
 
 The legacy guard-only smoke remains available through `CHAINERTRADER_ENABLE_SMALL_LIVE_SMOKE=1`, but it only validates opt-in and configuration gates; use `scripts/run_binance_live_smoke_e2e.sh` for real exchange behavior.
 
@@ -547,7 +570,7 @@ uv run pytest tests/test_manual_live_trade_notifications.py::test_real_email_smo
 
 Without `TRADER_MANUAL_NOTIFY_E2E_NOTICE`, the smoke test is skipped so normal test runs do not accidentally send real email.
 
-To run the credential-gated Binance WebSocket smoke test, explicitly opt in with:
+The Binance SDK WebSocket smoke test is retained only as a legacy/diagnostic check. To run it, explicitly opt in with:
 
 ```bash
 TRADER_BINANCE_WS_SMOKE=1 uv run pytest tests/test_realtime_smoke_paths.py::test_binance_kline_websocket_smoke_receives_one_message -q -s

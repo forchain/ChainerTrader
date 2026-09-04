@@ -11,15 +11,18 @@ import csv
 import logging
 import math
 import os
+import asyncio
 from datetime import datetime
 
 import backtrader as bt
 import matplotlib.pyplot as plt
+import pytest
 from dotenv import load_dotenv
 from matplotlib.ticker import ScalarFormatter
-from pymongo import MongoClient
 
 from trader.database.kline import KlineCol
+from trader.database.manager import build_tortoise_config
+from tortoise import Tortoise
 from trader.exchange.binance.data import BinanceData
 from trader.indicators.super_trend import SuperTrend
 
@@ -57,22 +60,17 @@ class SuperTrendStrategy(bt.Strategy):
         pass
 
 
-def get_klines_from_db():
-    """Load klines from MongoDB."""
-    db_uri = os.environ.get("TRADER_DB", "mongodb://localhost:27017/")
-    db_name = os.environ.get("TRADER_DB_NAME", "trader")
-
-    client = MongoClient(db_uri)
-    db = client[db_name]
+async def get_klines_from_db():
+    """Load klines from Tortoise ORM."""
+    db_url = os.environ.get("TRADER_DB_URL", "sqlite://:memory:")
+    await Tortoise.init(config=build_tortoise_config(db_url))
+    await Tortoise.generate_schemas()
 
     log = logging.getLogger(__name__)
-    kline_col = KlineCol(db, log)
+    kline_col = KlineCol(log)
 
-    klines = kline_col.get_klines(SYMBOL_INTERVAL, START_TIME, END_TIME)
-    client.close()
-
+    klines = await kline_col.get_klines(SYMBOL_INTERVAL, START_TIME, END_TIME)
     return klines
-
 
 def _line_to_list(line, length):
     """Convert backtrader line buffer to list of floats."""
@@ -151,15 +149,17 @@ def save_super_trend_csv(path, klines, series):
 
 def test_super_trend(main=False):
     """Test SuperTrend indicator with BTC-USDT 1h data."""
-    klines = get_klines_from_db()
 
-    if klines is None or len(klines) == 0:
-        print(f"No klines found for {SYMBOL_INTERVAL}. Please download data first.")
-        print(
-            "Run: python -m trader --exchange '{\"ty\":\"BINANCE\"}' --db mongodb://localhost:27017/ "
-            f"--tasks '[{{\"task_type\":\"UPDATE_KLINES\",\"symbol\":\"BTC-USDT\",\"interval\":\"1h\",\"start_time\":{START_TIME}}}]'"
-        )
-        return
+    async def _run():
+        klines = await get_klines_from_db()
+        if klines is None or len(klines) == 0:
+            pytest.skip(f"No klines found for {SYMBOL_INTERVAL}. Please download data first.")
+        return klines
+
+    try:
+        klines = asyncio.run(_run())
+    finally:
+        asyncio.run(Tortoise.close_connections())
 
     print(f"Loaded {len(klines)} klines from {SYMBOL_INTERVAL}")
     print(f"Date range: {klines[0].open_datetime()} - {klines[-1].open_datetime()}")

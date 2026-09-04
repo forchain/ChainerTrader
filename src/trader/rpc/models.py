@@ -1,10 +1,12 @@
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel
 
-from trader.app.app import App
 from trader.exchange.balance import Balance
 from trader.utils.task_state import TaskStateType
+
+if TYPE_CHECKING:
+    from trader.app.app import App
 
 
 class TasksInfo(BaseModel):
@@ -29,8 +31,8 @@ class KlinesInfo(BaseModel):
     klines: list[dict[str, Any]]
 
 
-def get_taskinfo(app: App) -> TasksInfo:
-    tss = app.task_manager.get_all_task_state()
+async def get_taskinfo(app: "App") -> TasksInfo:
+    tss = await app.task_manager.get_all_task_state()
     completed = 0
     tasks: list[dict[str, Any]] = []
     for ts in tss:
@@ -44,19 +46,19 @@ def get_taskinfo(app: App) -> TasksInfo:
     return TasksInfo(total=len(tss), completed=completed, tasks=tasks)
 
 
-def get_accounts_info(app: App) -> AcctsInfo:
+def get_accounts_info(app: "App") -> AcctsInfo:
     balances = app.exchange.get_account_balances()
 
     return AcctsInfo(total=len(balances), balances=balances)
 
 
-def get_logs_info(app: App) -> LogsInfo:
+def get_logs_info(app: "App") -> LogsInfo:
     logs = app.logger.get_buffer_str()
 
     return LogsInfo(total=len(logs), logs=logs)
 
 
-async def get_klines_info(app: App) -> KlinesInfo:
+async def get_klines_info(app: "App") -> KlinesInfo:
     if not app.task_manager.latest_si:
         return KlinesInfo(total=0, klines=[], name="")
 

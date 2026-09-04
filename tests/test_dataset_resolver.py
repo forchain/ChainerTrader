@@ -5,6 +5,8 @@ from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 
 def _ensure_pymongo_stub():
     if "pymongo" in sys.modules:
@@ -119,7 +121,48 @@ def test_prepare_uses_db_and_materializes_cache_without_downloading(tmp_path: Pa
     asyncio.run(_test())
 
 
-def test_prepare_detects_internal_gap_and_repairs_before_export(tmp_path: Path):
+def test_materialize_cache_leaves_no_tmp_staging_file(tmp_path: Path):
+    resolver = DatasetResolver(
+        db_manager=None,
+        exchange=None,
+        log=DummyLog(),
+        cache_dir=tmp_path,
+        range_downloader=None,
+    )
+    out = tmp_path / "bucket.csv"
+    bars = [make_kline(1_700_000_000)]
+    resolver._materialize_cache(out, bars)
+    assert out.exists()
+    assert list(tmp_path.glob("*.tmp")) == []
+
+
+def test_materialize_cache_removes_tmp_when_replace_fails(tmp_path: Path, monkeypatch):
+    resolver = DatasetResolver(
+        db_manager=None,
+        exchange=None,
+        log=DummyLog(),
+        cache_dir=tmp_path,
+        range_downloader=None,
+    )
+    out = tmp_path / "bucket.csv"
+    bars = [make_kline(1_700_000_000)]
+
+    real_replace = Path.replace
+
+    def boom(self, target):
+        if str(target) == str(out):
+            raise OSError("simulated replace failure")
+        return real_replace(self, target)
+
+    monkeypatch.setattr(Path, "replace", boom)
+    with pytest.raises(OSError, match="simulated replace failure"):
+        resolver._materialize_cache(out, bars)
+    assert not out.exists()
+    assert list(tmp_path.glob("*.tmp")) == []
+
+
+
+def test_prepare_ignores_internal_gap_without_downloading(tmp_path: Path):
     async def _test():
         start_time = 1_700_000_000
         start_time = start_time - (start_time % 86400)
@@ -130,9 +173,10 @@ def test_prepare_detects_internal_gap_and_repairs_before_export(tmp_path: Path):
         ]
         full_bars = [
             make_kline(start_time, 100.0),
+            make_kline(start_time + 3600, 101.0),
             make_kline(end_time, 102.0),
         ]
-        kline_store = SimpleNamespace(get_klines=MagicMock(side_effect=[initial_bars, full_bars]))
+        kline_store = SimpleNamespace(get_klines=AsyncMock(side_effect=[initial_bars, full_bars]))
         db_manager = SimpleNamespace(kline=kline_store)
         requested_ranges = []
 
@@ -166,7 +210,7 @@ def test_prepare_allows_incomplete_coverage_when_enabled(tmp_path: Path):
             make_kline(start_time, 100.0),
             make_kline(end_time, 102.0),
         ]
-        kline_store = SimpleNamespace(get_klines=MagicMock(return_value=initial_bars))
+        kline_store = SimpleNamespace(get_klines=AsyncMock(return_value=initial_bars))
         db_manager = SimpleNamespace(kline=kline_store)
         requested_ranges = []
 
@@ -231,6 +275,57 @@ def test_prepare_allows_incomplete_coverage_when_downloading_disabled(tmp_path: 
     asyncio.run(_test())
 
 
+def test_prepare_refreshes_disk_cache_when_db_returns_more_rows_than_csv(tmp_path: Path):
+    async def _test():
+        start_time = 1_700_000_000
+        start_time = start_time - (start_time % 86400)
+        end_time = start_time + 23 * 3600
+        partial_bars = [make_kline(start_time, 100.0)]
+        full_bars = [
+            make_kline(start_time, 100.0),
+            make_kline(start_time + 3600, 101.0),
+            make_kline(end_time, 102.0),
+        ]
+        sym = SymbolInterval("BTC-USDT", Interval.INTERVAL_1h)
+
+        kline_store_1 = SimpleNamespace(get_klines=AsyncMock(return_value=partial_bars))
+
+        async def reject_download(*args, **kwargs):
+            raise AssertionError("downloader should not run in first prepare")
+
+        resolver1 = DatasetResolver(
+            db_manager=SimpleNamespace(kline=kline_store_1),
+            exchange=SimpleNamespace(),
+            log=DummyLog(),
+            cache_dir=tmp_path,
+            range_downloader=reject_download,
+        )
+        first = await resolver1.prepare(sym, start_time, end_time, allow_download=False, allow_incomplete_coverage=True)
+        assert first.ok is True
+        csv_path = Path(first.dataset_ref.path)
+        assert csv_path.exists()
+        with csv_path.open(encoding="utf-8") as handle:
+            row_count_after_first = sum(1 for _ in csv.reader(handle))
+        assert row_count_after_first == 1
+
+        kline_store_2 = SimpleNamespace(get_klines=AsyncMock(return_value=full_bars))
+        resolver2 = DatasetResolver(
+            db_manager=SimpleNamespace(kline=kline_store_2),
+            exchange=SimpleNamespace(),
+            log=DummyLog(),
+            cache_dir=tmp_path,
+            range_downloader=reject_download,
+        )
+        second = await resolver2.prepare(sym, start_time, end_time, allow_download=False, allow_incomplete_coverage=True)
+        assert second.ok is True
+        with csv_path.open(encoding="utf-8") as handle:
+            row_count_after_second = sum(1 for _ in csv.reader(handle))
+        assert row_count_after_second == 3
+        assert kline_store_2.get_klines.await_count >= 1
+
+    asyncio.run(_test())
+
+
 def test_prepare_reuses_same_dataset_ref_for_duplicate_requests(tmp_path: Path):
     async def _test():
         start_time = 1_700_000_000
@@ -274,7 +369,7 @@ def test_prepare_hits_cache_when_end_time_differs_within_same_bar(tmp_path: Path
             make_kline(start_time + 3600, 101.0),
             make_kline(aligned_end, 102.0),
         ]
-        kline_store = SimpleNamespace(get_klines=MagicMock(return_value=bars))
+        kline_store = SimpleNamespace(get_klines=AsyncMock(return_value=bars))
 
         resolver = DatasetResolver(
             db_manager=SimpleNamespace(kline=kline_store),
@@ -297,7 +392,7 @@ def test_prepare_hits_cache_when_end_time_differs_within_same_bar(tmp_path: Path
         second = await resolver2.prepare(SymbolInterval("BTC-USDT", Interval.INTERVAL_1h), start_time, requested_end_2)
         assert second.ok is True
         assert second.cache_hit is True
-        assert kline_store.get_klines.call_count == 1
+        assert kline_store.get_klines.call_count == 2
 
     asyncio.run(_test())
 
@@ -314,10 +409,10 @@ def test_prepare_skips_leading_gap_before_first_available_kline(tmp_path: Path):
             make_kline(end_time, 102.0),
         ]
         kline_store = SimpleNamespace(
-            get_klines=MagicMock(return_value=bars),
+            get_klines=AsyncMock(return_value=bars),
         )
         availability_store = SimpleNamespace(
-            get_earliest_known_open_time=MagicMock(return_value=listed_start),
+            get_earliest_known_open_time=AsyncMock(return_value=listed_start),
         )
         db_manager = SimpleNamespace(kline=kline_store)
 
@@ -435,7 +530,7 @@ def test_prepare_repairs_trailing_edge_gap_only(tmp_path: Path):
             make_kline(end_time, 103.0),
         ]
         requested_ranges = []
-        kline_store = SimpleNamespace(get_klines=MagicMock(side_effect=[initial_bars, full_bars]))
+        kline_store = SimpleNamespace(get_klines=AsyncMock(side_effect=[initial_bars, full_bars]))
 
         async def downloader(name, log, db_manager_arg, collection_name, exchange, symbol_interval, range_start, range_end, quit_event):
             requested_ranges.append((collection_name, range_start, range_end))
@@ -460,7 +555,7 @@ def test_prepare_repairs_trailing_edge_gap_only(tmp_path: Path):
 
 def test_aligned_expected_range_falls_back_when_reference_is_after_end(tmp_path: Path):
     resolver = DatasetResolver(
-        db_manager=SimpleNamespace(kline=SimpleNamespace(get_klines=MagicMock(return_value=[]))),
+        db_manager=SimpleNamespace(kline=SimpleNamespace(get_klines=AsyncMock(return_value=[]))),
         exchange=SimpleNamespace(),
         log=DummyLog(),
         cache_dir=tmp_path,
@@ -490,8 +585,8 @@ def test_prepare_downloads_earlier_range_when_no_availability_metadata_exists(tm
             *partial_bars,
         ]
         requested_ranges = []
-        kline_store = SimpleNamespace(get_klines=MagicMock(side_effect=[partial_bars, full_bars]))
-        availability_store = SimpleNamespace(get_earliest_known_open_time=MagicMock(return_value=None))
+        kline_store = SimpleNamespace(get_klines=AsyncMock(side_effect=[partial_bars, full_bars]))
+        availability_store = SimpleNamespace(get_earliest_known_open_time=AsyncMock(return_value=None))
 
         async def downloader(name, log, db_manager_arg, collection_name, exchange, symbol_interval, range_start, range_end, quit_event):
             requested_ranges.append((collection_name, range_start, range_end))
@@ -524,7 +619,7 @@ def test_prepare_accepts_complete_daily_coverage_with_interval_offset(tmp_path: 
             make_kline(aligned_start, 100.0),
             make_kline(aligned_start + 86400, 101.0),
         ]
-        kline_store = SimpleNamespace(get_klines=MagicMock(return_value=bars))
+        kline_store = SimpleNamespace(get_klines=AsyncMock(return_value=bars))
 
         async def downloader(*args, **kwargs):
             raise AssertionError("downloader should not be called for aligned daily coverage")
@@ -557,7 +652,7 @@ def test_prepare_repairs_only_missing_daily_bar_when_interval_is_offset(tmp_path
             make_kline(aligned_start + 2 * 86400, 102.0),
         ]
         requested_ranges = []
-        kline_store = SimpleNamespace(get_klines=MagicMock(return_value=initial_bars))
+        kline_store = SimpleNamespace(get_klines=AsyncMock(return_value=initial_bars))
 
         async def downloader(name, log, db_manager_arg, collection_name, exchange, symbol_interval, range_start, range_end, quit_event):
             requested_ranges.append((collection_name, range_start, range_end))
@@ -590,7 +685,7 @@ def test_prepare_returns_structured_failure_when_gap_download_fails(tmp_path: Pa
             make_kline(start_time, 100.0),
             make_kline(missing_tail_start - 3600, 101.0),
         ]
-        kline_store = SimpleNamespace(get_klines=MagicMock(return_value=initial_bars))
+        kline_store = SimpleNamespace(get_klines=AsyncMock(return_value=initial_bars))
         db_manager = SimpleNamespace(kline=kline_store)
 
         async def downloader(*args, **kwargs):
@@ -625,7 +720,7 @@ def test_prepare_fails_fast_when_missing_ranges_exceed_download_budget(tmp_path:
             make_kline(leading_first_existing, 100.0),
             make_kline(trailing_last_existing, 102.0),
         ]
-        kline_store = SimpleNamespace(get_klines=MagicMock(return_value=initial_bars))
+        kline_store = SimpleNamespace(get_klines=AsyncMock(return_value=initial_bars))
         db_manager = SimpleNamespace(kline=kline_store)
 
         async def downloader(*args, **kwargs):

@@ -125,7 +125,8 @@ def test_e2e_dataset_resolver_repairs_only_missing_edges():
 
         async def downloader(name, log, db_manager_arg, collection_name, exchange, symbol_interval_arg, range_start, range_end, quit_event):
             download_calls.append((range_start, range_end))
-            await db_manager_arg.kline.add_klines(collection_name, [make_kline(range_start, 100.0)])
+            # Simulate downloading the edges of the narrow window
+            await db_manager_arg.kline.add_klines(collection_name, [make_kline(start_time, 100.0), make_kline(end_time, 102.0)])
             return True
 
         resolver = DatasetResolver(
@@ -138,7 +139,12 @@ def test_e2e_dataset_resolver_repairs_only_missing_edges():
         result = await resolver.prepare(symbol_interval, start_time, end_time)
 
         assert result.ok is True
-        assert download_calls == [(start_time, start_time), (end_time, end_time)]
+        # Proactive daily bucket refilling expands the download calls to day boundaries
+        # cache_start: 1699920000 (day start) + 800 (alignment) = 1699920800
+        # cache_end: 1700089200 (day end) - 2800 (alignment) = 1700086400
+        # missing leading edge: [1699920800, second_time - 3600] = [1699920800, 1700000000]
+        # missing trailing edge: [second_time + 3600, 1700086400] = [1700007200, 1700086400]
+        assert download_calls == [(1699920800, 1700000000), (1700007200, 1700086400)]
         assert [item.open_time for item in await store.get_klines(symbol_interval.name(), start_time, end_time)] == [
             start_time,
             second_time,

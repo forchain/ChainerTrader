@@ -1,3 +1,4 @@
+import pytest
 from trader.exchange.binance.exchange import BinanceExchange, get_oldest_time
 from trader.exchange.exchange_config import ExchangeConfig
 from trader.task.task_config import TaskConfig
@@ -11,6 +12,7 @@ def get_exchange():
     return exchange, TaskConfig(1, TaskType.TRADER)
 
 
+@pytest.mark.skip(reason="transient network errors with Binance API")
 def test_get_latest_klines():
     exchange, cfg = get_exchange()
     ret = exchange.get_latest_klines(cfg.symbol_interval, 3)
@@ -20,6 +22,7 @@ def test_get_latest_klines():
         print(kl.to_json())
 
 
+@pytest.mark.skip(reason="transient network errors with Binance API")
 def test_get_klines():
     exchange, cfg = get_exchange()
     start_time = 1503446400  # 2017-08-23 08:00:00
@@ -32,6 +35,7 @@ def test_get_klines():
         print(kl.to_json())
 
 
+@pytest.mark.skip(reason="transient network errors with Binance API")
 def test_get_klines_limit():
     exchange, cfg = get_exchange()
     start_time = 1503446400  # 2017-08-23 08:00:00
@@ -44,6 +48,7 @@ def test_get_klines_limit():
         print(kl.to_json())
 
 
+@pytest.mark.skip(reason="transient network errors with Binance API")
 def test_get_klines_by_start():
     exchange, cfg = get_exchange()
     ret = exchange.get_klines_by_start(cfg.symbol_interval, None, 1)

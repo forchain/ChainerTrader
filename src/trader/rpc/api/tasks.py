@@ -11,8 +11,8 @@ async def add_tasks(request: Request):
 
 
 @router.get("")
-def get_tasks(request: Request):
-    tss = request.app.state.app.task_manager.get_all_task_state()
+async def get_tasks(request: Request):
+    tss = await request.app.state.app.task_manager.get_all_task_state()
     ret = []
     for ts in tss:
         ret.append(ts.to_dict())
