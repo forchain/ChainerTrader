@@ -31,7 +31,7 @@ class BackTraderTask(BaseTask):
     ):
         super().__init__(tcfg, cfg, log, db_manager, exchange)
 
-    async def start(self, queue, quit: Event):
+    async def start(self, queue):
         if not self.tcfg.csv and not self.db_manager:
             self.log.error(f"No config data_file or db for {self.tcfg.to_dict()}")
             return None
@@ -39,7 +39,7 @@ class BackTraderTask(BaseTask):
             self.log.error(f"No config strategy for {self.tcfg.to_dict()}")
             return None
 
-        super().start(queue, quit)
+        super().start(queue)
 
         data = None
         if self.tcfg.csv:
@@ -80,7 +80,7 @@ class BackTraderTask(BaseTask):
                         self.exchange,
                         self.tcfg.symbol_interval,
                         self.tcfg.start_time,
-                        quit,
+                        self.quit,
                     ):
                         self.log.error(f"Fail download for {self.name()}")
                         return None

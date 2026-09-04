@@ -152,11 +152,11 @@ class App:
                 self.notify_mgr.handler(msg)
 
             elif msg.is_add_tasks():
-                await self.task_manager.add_tasks(msg.get_data(), queue, quit)
-                if not self.cfg.is_server():
-                    self.exit_handle(quit)
+                self.task_manager.add_tasks(msg.get_data(), queue)
 
             queue.task_done()
+
+        self.task_manager.close()
 
         self.log().info(f"{self.name()} exit handler")
 

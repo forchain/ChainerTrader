@@ -16,15 +16,15 @@ class DebugTask(BaseTask):
     ):
         super().__init__(tcfg, cfg, log)
 
-    async def start(self, queue: Queue, quit: Event):
-        super().start(queue, quit)
+    async def start(self, queue: Queue):
+        super().start(queue)
 
         count = self.tcfg.limit
 
         while count > 0:
             count -= 1
 
-            if quit.is_set():
+            if self.quit.is_set():
                 self.log.info(f"Exit {self.name()}. process={count}/{self.tcfg.limit}")
                 return False
 
@@ -33,5 +33,3 @@ class DebugTask(BaseTask):
             await sleep(self.log, 1)
 
         return True
-
-        self.stop()

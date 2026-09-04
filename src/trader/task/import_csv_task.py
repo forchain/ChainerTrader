@@ -22,7 +22,7 @@ class ImportCSVTask(BaseTask):
     ):
         super().__init__(tcfg, cfg, log, db_manager, exchange)
 
-    async def start(self, queue: Queue, quit: Event):
+    async def start(self, queue: Queue):
         if not self.tcfg.csv:
             self.log.error(f"No config data_file for {self.tcfg.to_dict()}")
             return
@@ -30,7 +30,7 @@ class ImportCSVTask(BaseTask):
             self.log.error(f"No config db_uri for {self.tcfg.to_dict()}")
             return
 
-        super().start(queue, quit)
+        super().start(queue)
 
         if not self.tcfg.csv:
             self.log.error(f"{self.name()} no data_file")
@@ -95,5 +95,3 @@ class ImportCSVTask(BaseTask):
             self.log.warning(f"{self.name()} add klines to DB: {ret} != {len(kls)}")
         else:
             self.log.info(f"{self.name()} add klines to DB: {ret}")
-
-        self.stop()
