@@ -1,0 +1,9 @@
+[
+  {
+    "task_type": "BACK_TRADER",
+    "symbols": "symbols_top100.txt",
+    "interval": "1d",
+    "strategys":"ShihunMACD,ShihunMACD2,ShihunRSI,ShihunRSI2,ShihunMACDRISBB,MACDRSI,GRID,BOLLMEANREG,TURTLE",
+    "auto_download": true
+  }
+]

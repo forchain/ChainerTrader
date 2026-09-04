@@ -56,7 +56,7 @@ async def download(name,log:Logger,db_manager:DatabaseManager,collection:Collect
                 update_completed = True
                 log.info(f"{name} update klines to DB is completed")
                 continue
-        if len(kls) <= 0:
+        if kls is None or len(kls) <= 0:
             log.error(f"{name} get klines is empty")
             if max_try > 0:
                 await sleep(log, DOWLOAD_SPACE_TIME, f"next try {max_try}, {name}")

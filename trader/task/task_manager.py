@@ -34,11 +34,8 @@ class TaskManager:
 
         ret = []
         bttaskcs = []
-        index = 0
         for taskc in taskcs:
             if taskc.ttype == TaskType.BACK_TRADER:
-                taskc.id=index
-                index+=1
                 bttaskcs.append(taskc)
         if len(bttaskcs) > 0:
             ret.append(asyncio.create_task(self.add_backtrader_task(bttaskcs,queue,quit)))
@@ -46,8 +43,6 @@ class TaskManager:
         for taskc in taskcs:
             if taskc.ttype == TaskType.BACK_TRADER:
                 continue
-            taskc.id = index
-            index += 1
             ret.append(asyncio.create_task(self.add_task(taskc, queue, quit)))
 
         return ret
@@ -81,7 +76,11 @@ class TaskManager:
             tasks = []
             for cfg in cfgs:
                 task = BackTraderTask(cfg,self.cfg,self.log,self.db_manager,self.exchange)
-                strategy,data = task.start(queue,quit)
+                ret = await task.start(queue,quit)
+                if ret is None:
+                    continue
+                strategy=ret[0]
+                data=ret[1]
                 tasks.append(task)
 
                 #parmas = manager.list()
