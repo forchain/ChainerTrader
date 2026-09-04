@@ -33,6 +33,7 @@ class Node:
             if st.__name__ == "SupertrendStrategy" and not data_ha:
                 data_ha = data.clone()
                 data_ha.addfilter(bt.filters.HeikinAshi)
+                data_ha.plotinfo.plot = False
                 self.log.info(f"Build HeikinAshi data for {self.name}")
 
         cerebro.addanalyzer(bt.analyzers.DrawDown, _name="drawdown")
