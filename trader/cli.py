@@ -1,4 +1,6 @@
 import argparse,os
+
+from trader.shihunrsi import shihunRSI
 from trader.utils import path
 from trader.shihunmacd import shihunMACD
 
@@ -10,6 +12,7 @@ def main():
 
     parser.add_argument("-v", "--version",help="Version",action="store_true")
     parser.add_argument( "--shihunmacd", help="Supper MACD from ShiHun", action="store_true")
+    parser.add_argument("--shihunrsi", help="Supper RSI from ShiHun", action="store_true")
 
     args = parser.parse_args()
 
@@ -21,4 +24,6 @@ def main():
             print(content)
     elif args.shihunmacd:
             shihunMACD(True)
+    elif args.shihunrsi:
+            shihunRSI(True)
 

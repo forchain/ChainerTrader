@@ -12,9 +12,13 @@ from trader.utils import path
 
 import backtrader as bt
 
-class ShihunMACDStrategy(bt.Strategy):
+
+class ShihunRSIStrategy(bt.Strategy):
     params = (
         ('confirm', 3),
+        ('period', 14),
+        ('overbought', 70),
+        ('oversold', 30),
     )
 
     def log(self, txt, dt=None):
@@ -31,7 +35,7 @@ class ShihunMACDStrategy(bt.Strategy):
         self.goldenFork = 0
         self.deathFork = 0
 
-        self.macd = bt.indicators.MACD(self.datas[0])
+        self.rsi = bt.indicators.RSI(self.data.close, period=self.params.period)
 
     def notify_order(self, order):
         if order.status in [order.Submitted, order.Accepted]:
@@ -71,37 +75,19 @@ class ShihunMACDStrategy(bt.Strategy):
         if self.order:
             return
 
-        histo2 = self.macd.macd[-2] - self.macd.signal[-2]
-        histo1 = self.macd.macd[-1] - self.macd.signal[-1]
-        histo0 = self.macd.macd[0] - self.macd.signal[0]
-        if histo2 < 0 and histo2 < histo1 and histo1 < histo0 and histo0 > 0:
-           self.goldenFork = self.params.confirm
-           self.deathFork = 0
-
-        if histo2 > 0 and histo2 > histo1 and histo1 > histo0 and histo0 < 0:
-           self.goldenFork = 0
-           self.deathFork = self.params.confirm
-
-        if self.goldenFork > 0:
-            if not self.position and self.macd.signal[-2] > 0 and self.macd.signal[-1] > 0 and self.macd.signal[0] > 0:
-                self.log('创建 买单, %.2f' % self.dataclose[0])
-                self.order = self.buy()
-                self.goldenFork = 0
-            else:
-                self.goldenFork -= 1
+        if not self.position:
+            if self.rsi[0] > self.params.overbought:
+                self.sell()
+        else:
+            if self.rsi[0] < self.params.oversold:
+                self.buy()
 
 
-        if self.deathFork > 0:
-            if self.position and self.macd.signal[-2] > self.macd.signal[-1] and self.macd.signal[-1] > self.macd.signal[0]:
-                self.log('创建 卖单, %.2f' % self.dataclose[0])
-                self.order = self.sell()
-                self.deathFork = 0
 
-
-def shihunMACD(main=False):
+def shihunRSI(main=False):
     cerebro = bt.Cerebro()
 
-    cerebro.addstrategy(ShihunMACDStrategy)
+    cerebro.addstrategy(ShihunRSIStrategy)
 
     datapath = os.path.join(path.GetDatasDir(), 'ETHUSDT-1h-202301-202401.csv')
 
@@ -129,4 +115,4 @@ def shihunMACD(main=False):
         cerebro.plot()
 
 if __name__ == '__main__':
-    shihunMACD(True)
+    shihunRSI(True)
