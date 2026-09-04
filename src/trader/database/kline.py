@@ -124,3 +124,10 @@ class KlineCol:
         for ret in results:
             kls.append(parse_kline(ret))
         return kls
+
+    def delete_klines_in_range(self, name: str, start_time: int, end_time: int) -> int:
+        col = self.get_collection(name)
+        result = col.delete_many({PRIMARY_KEY: {"$gte": start_time, "$lte": end_time}})
+        deleted_count = result.deleted_count
+        self.log.info(f"delete klines in range [{start_time}, {end_time}], deleted: {deleted_count}")
+        return deleted_count

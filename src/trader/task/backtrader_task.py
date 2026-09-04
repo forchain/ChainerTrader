@@ -12,10 +12,10 @@ from trader.exchange.binance.data import BinanceData
 from trader.exchange.binance.exchange import BinanceExchange
 from trader.statistics.stat import BackTraderStat
 from trader.strategy.node import Node
-from trader.strategy.strategy import parse_strategys
+from trader.strategy.strategy import parse_strategies
 from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig
-from trader.task.update_klines_task import download
+from trader.task.update_klines_task import download_range
 
 
 class BackTraderTask(BaseTask):
@@ -33,7 +33,7 @@ class BackTraderTask(BaseTask):
         if not self.tcfg.csv and not self.db_manager:
             self.log.error(f"No config data_file or db for {self.tcfg.to_dict()}")
             return None
-        if not self.tcfg.strategys:
+        if not self.tcfg.strategies:
             self.log.error(f"No config strategy for {self.tcfg.to_dict()}")
             return None
 
@@ -69,7 +69,8 @@ class BackTraderTask(BaseTask):
                     if not self.exchange:
                         self.log.error(f"No exchange config for {self.name()}")
                         return None
-                    if not await download(
+                    end_time = self.tcfg.end_time if self.tcfg.end_time > 0 else int(datetime.now().timestamp())
+                    if not await download_range(
                         self.name(),
                         self.log,
                         self.db_manager,
@@ -77,6 +78,7 @@ class BackTraderTask(BaseTask):
                         self.exchange,
                         self.tcfg.symbol_interval,
                         self.tcfg.start_time,
+                        end_time,
                         self.quit,
                     ):
                         self.log.error(f"Fail download for {self.name()}")
@@ -96,7 +98,7 @@ class BackTraderTask(BaseTask):
         if data is None:
             self.log.error(f"No strategy data for {self.name()}")
             return None
-        strategy = parse_strategys(self.tcfg.strategys)
+        strategy = parse_strategies(self.tcfg.strategies)
         if strategy is None:
             self.log.error(f"Not support strategy:{self.tcfg.strategy_name()}")
             return None

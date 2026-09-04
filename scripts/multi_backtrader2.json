@@ -3,60 +3,60 @@
     "task_type": "BACK_TRADER",
     "symbols": "symbols_top100.txt",
     "interval": "5m",
-    "strategys":"DeviationMACD"
+    "strategies":"DeviationMACD"
   },
   {
     "task_type": "BACK_TRADER",
     "symbols": "symbols_top100.txt",
     "interval": "15m",
-    "strategys":"DeviationMACD"
+    "strategies":"DeviationMACD"
   },
   {
     "task_type": "BACK_TRADER",
     "symbols": "symbols_top100.txt",
     "interval": "30m",
-    "strategys":"DeviationMACD"
+    "strategies":"DeviationMACD"
   },
   {
     "task_type": "BACK_TRADER",
     "symbols": "symbols_top100.txt",
     "interval": "1h",
-    "strategys":"DeviationMACD"
+    "strategies":"DeviationMACD"
   },
   {
     "task_type": "BACK_TRADER",
     "symbols": "symbols_top100.txt",
     "interval": "2h",
-    "strategys":"DeviationMACD"
+    "strategies":"DeviationMACD"
   },
   {
     "task_type": "BACK_TRADER",
     "symbols": "symbols_top100.txt",
     "interval": "4h",
-    "strategys":"DeviationMACD"
+    "strategies":"DeviationMACD"
   },
   {
     "task_type": "BACK_TRADER",
     "symbols": "symbols_top100.txt",
     "interval": "6h",
-    "strategys":"DeviationMACD"
+    "strategies":"DeviationMACD"
   },
   {
     "task_type": "BACK_TRADER",
     "symbols": "symbols_top100.txt",
     "interval": "8h",
-    "strategys":"DeviationMACD"
+    "strategies":"DeviationMACD"
   },
   {
     "task_type": "BACK_TRADER",
     "symbols": "symbols_top100.txt",
     "interval": "12h",
-    "strategys":"DeviationMACD"
+    "strategies":"DeviationMACD"
   },
   {
     "task_type": "BACK_TRADER",
     "symbols": "symbols_top100.txt",
     "interval": "1d",
-    "strategys":"DeviationMACD"
+    "strategies":"DeviationMACD"
   }
 ]

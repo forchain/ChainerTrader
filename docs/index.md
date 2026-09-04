@@ -193,7 +193,7 @@ $ trader --tasks=./scripts/backtrader_strategy.json
 $ trader --tasks=./tasks.json
 ```
 
-## Automatically generate backtesting tasks based on multiple configurations of 'symbols' and 'strategys'
+## Automatically generate backtesting tasks based on multiple configurations of 'symbols' and 'strategies'
 ```bash
 $ cd ./trader/scripts
 $ trader --tasks=./multi_backtrader.json --db --exchange=BINANCE
@@ -202,7 +202,7 @@ $ trader --tasks=./multi_backtrader.json --db --exchange=BINANCE
 ## Run trader with `ShihunMACD` and `ShihunMACD2` strategy for backtesting and share an account
 
 ```bash
-$ trader --tasks='[{"task_type": "BACK_TRADER","symbol":"ETHUSDT","interval":"1h","strategys_bunch":"ShihunMACD,ShihunMACD2","csv":"ETHUSDT-1h-202301-202401.csv"}]'
+$ trader --tasks='[{"task_type": "BACK_TRADER","symbol":"ETHUSDT","interval":"1h","strategies_bunch":"ShihunMACD,ShihunMACD2","csv":"ETHUSDT-1h-202301-202401.csv"}]'
 ```
 
 ## Development

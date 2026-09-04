@@ -24,6 +24,7 @@ class BaseStrategy(bt.Strategy):
         ("takeprofit", False),
         ("position", 0),
         ("trader", False),
+        ("position_percent", 100),  # Position size as percentage of available cash (100 = full position)
     )
 
     def __init__(self):
@@ -172,3 +173,92 @@ class BaseStrategy(bt.Strategy):
                 return True
             return False
         return True
+
+    def _calculate_position_size(self, price=None):
+        """
+        Calculate position size based on position_percent parameter.
+        
+        Args:
+            price: Price to use for calculation. If None, uses current close price.
+            
+        Returns:
+            int: Calculated position size (number of units)
+        """
+        if price is None:
+            price = self.data.close[0]
+        
+        # Validate price is positive before division
+        if price <= 0:
+            self.log_debug(f"Invalid price for position calculation: {price}. Returning 0 position size.")
+            return 0
+        
+        cash = self.broker.getcash()
+        commission_info = self.broker.getcommissioninfo(self.data)
+        commission_rate = commission_info.p.commission
+        
+        # Calculate available cash based on position_percent
+        available_cash = cash * (self.params.position_percent / 100.0)
+        
+        # Calculate position size considering commission
+        # Formula: size = available_cash / (price * (1 + commission_rate))
+        size = available_cash / (price * (1 + commission_rate))
+        
+        return int(size) if size > 0 else 0
+
+    def buy(self, data=None, size=None, price=None, plimit=None, exectype=None, valid=None, tradeid=0, oco=None, trailamount=None, trailpercent=None, parent=None, transmit=True, **kwargs):
+        """
+        Override buy method to automatically apply position_percent when size is not specified.
+        
+        If size is provided, uses it directly (maintains backward compatibility).
+        If size is None, calculates it based on position_percent parameter.
+        """
+        if size is None:
+            size = self._calculate_position_size(price=price)
+            if size <= 0:
+                self.log_debug(f"Calculated position size is 0 or negative, skipping buy order")
+                return None
+        
+        return super().buy(
+            data=data,
+            size=size,
+            price=price,
+            plimit=plimit,
+            exectype=exectype,
+            valid=valid,
+            tradeid=tradeid,
+            oco=oco,
+            trailamount=trailamount,
+            trailpercent=trailpercent,
+            parent=parent,
+            transmit=transmit,
+            **kwargs
+        )
+
+    def sell(self, data=None, size=None, price=None, plimit=None, exectype=None, valid=None, tradeid=0, oco=None, trailamount=None, trailpercent=None, parent=None, transmit=True, **kwargs):
+        """
+        Override sell method to automatically apply position_percent when size is not specified.
+        
+        If size is provided, uses it directly (maintains backward compatibility).
+        If size is None, calculates it based on position_percent parameter.
+        """
+        if size is None:
+            size = self._calculate_position_size(price=price)
+            if size <= 0:
+                self.log_debug(f"Calculated position size is 0 or negative, skipping sell order")
+                return None
+        
+        return super().sell(
+            data=data,
+            size=size,
+            price=price,
+            plimit=plimit,
+            exectype=exectype,
+            valid=valid,
+            tradeid=tradeid,
+            oco=oco,
+            trailamount=trailamount,
+            trailpercent=trailpercent,
+            parent=parent,
+            transmit=transmit,
+            **kwargs
+        )

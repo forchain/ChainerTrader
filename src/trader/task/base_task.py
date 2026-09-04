@@ -62,11 +62,11 @@ class BaseTask:
         if self.tcfg.end_time > 0:
             config_dict["end_time"] = datetime.fromtimestamp(self.tcfg.end_time).strftime("%Y-%m-%d %H:%M:%S")
 
-        if self.tcfg.strategys:
-            if len(self.tcfg.strategys) == 1:
-                config_dict["strategy"] = self.tcfg.strategys[0]
+        if self.tcfg.strategies:
+            if len(self.tcfg.strategies) == 1:
+                config_dict["strategy"] = self.tcfg.strategies[0]
             else:
-                config_dict["strategys"] = ",".join(self.tcfg.strategys)
+                config_dict["strategies"] = ",".join(self.tcfg.strategies)
 
         if self.tcfg.auto_download:
             config_dict["auto_download"] = True

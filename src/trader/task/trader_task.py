@@ -10,11 +10,11 @@ from trader.exchange.binance.data import BinanceData
 from trader.exchange.binance.exchange import BinanceExchange
 from trader.statistics.stat import TraderStat
 from trader.strategy.node import Node
-from trader.strategy.strategy import parse_strategys
+from trader.strategy.strategy import parse_strategies
 from trader.strategy.trader_result import TraderResult
 from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig
-from trader.task.update_klines_task import download
+from trader.task.update_klines_task import download_range
 from trader.utils.operate import OperateType
 from trader.utils.symbol_interval import add_time_duration
 
@@ -33,7 +33,7 @@ class TraderTask(BaseTask):
         super().__init__(tcfg, cfg, log, db_manager, exchange)
 
     async def start(self, queue: Queue):
-        if not self.tcfg.strategys:
+        if not self.tcfg.strategies:
             self.log.error(f"No config strategy for {self.tcfg.to_dict()}")
             return
         if not self.exchange:
@@ -45,7 +45,7 @@ class TraderTask(BaseTask):
 
         super().start(queue)
 
-        strategy = parse_strategys(self.tcfg.strategys)
+        strategy = parse_strategies(self.tcfg.strategies)
         if strategy is None:
             self.log.error(f"Not support strategy:{self.tcfg.strategy_name()}")
             return
@@ -61,15 +61,18 @@ class TraderTask(BaseTask):
             self.log.info(f"set commission for trader task config:{self.cfg.commission}")
             self.ts.commission = commission
 
+        collection_name = self.tcfg.symbol_interval.name()
         while not self.quit.is_set():
-            ret = await download(
+            end_time = int(datetime.now().timestamp())
+            ret = await download_range(
                 self.name(),
                 self.log,
                 self.db_manager,
-                self.collection,
+                collection_name,
                 self.exchange,
                 self.tcfg.symbol_interval,
                 self.tcfg.start_time,
+                end_time,
                 self.quit,
             )
             if not ret:

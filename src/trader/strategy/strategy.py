@@ -3,7 +3,7 @@ from pathlib import Path
 from trader.common.common import dynamic_load
 
 
-def parseStrategy(stype):
+def parse_strategy(stype):
     # 如果 stype 包含., 则.之前的部分为模块，.之后的部分为类名
     groups = stype.split(".")
     if len(groups) > 1:
@@ -22,10 +22,10 @@ def parseStrategy(stype):
     return dynamic_load(mod, get_strategy_class_name(stype))
 
 
-def parse_strategys(stypes: [str]):
+def parse_strategies(stypes: [str]):
     ret = []
     for st in stypes:
-        cl = parseStrategy(st)
+        cl = parse_strategy(st)
         if cl is None:
             continue
         ret.append(cl)
