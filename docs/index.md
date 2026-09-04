@@ -169,8 +169,7 @@ $ trader --tasks='[{"task_type": "TRADER","symbol":"BTC-USDT","interval":"1d"}]'
 ```
 
 ```bash
-$ cd ./trader/scripts
-$ trader --tasks=./scripts/backtrader_strategy.json
+$ trader --tasks=./configs/tasks/examples/backtrader_strategy.json
 ```
 
 ## Run trader with tasks config file for backtesting and config start time or end time
@@ -195,8 +194,7 @@ $ trader --tasks=./tasks.json
 
 ## Automatically generate backtesting tasks based on multiple configurations of 'symbols' and 'strategies'
 ```bash
-$ cd ./trader/scripts
-$ trader --tasks=./multi_backtrader.json --db --exchange=BINANCE
+$ trader --tasks=./configs/tasks/backtests/multi_backtrader.json --db --exchange=BINANCE
 ```
 
 ## Run trader with `ShihunMACD` and `ShihunMACD2` strategy for backtesting and share an account

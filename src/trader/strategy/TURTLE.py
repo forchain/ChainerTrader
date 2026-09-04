@@ -12,8 +12,8 @@ class TURTLEStrategy(BaseStrategy):
     )
 
     def __init__(self):
-        self.params.atr = True
         super().__init__()
+        self.atr = bt.indicators.ATR(self.datas[0], period=14)
         self.highest = bt.indicators.Highest(self.data.high, period=self.params.period)
 
         self.lowest_R = bt.indicators.Lowest(self.data.low, period=self.params.period_R)
@@ -29,9 +29,7 @@ class TURTLEStrategy(BaseStrategy):
             if self.data.close[0] > self.highest[-1]:
                 self.log_info(f"Kline:{self.cur_datetime()}, 创建 买单:{self.data.close[0]:.2f}")
                 self.order = self.buy(size=position_size)
-                self.update_stop_loss_point()
         else:
-
-            if self.need_stop_loss() or self.data.close[0] < self.lowest_R[-1]:
+            if self.data.close[0] < self.lowest_R[-1]:
                 self.log_info(f"Kline:{self.cur_datetime()}, 创建 卖单:{self.data.close[0]:.2f}")
                 self.close()

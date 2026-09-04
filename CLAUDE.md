@@ -62,10 +62,10 @@ python -m trader --api
 python -m trader --api 0.0.0.0:8080 --auth-username admin --auth-password pass --protected-paths "/admin"
 
 # Run with configuration (using @ prefix to load from file)
-python -m trader @scripts/backtrader_strategy.json
+python -m trader @configs/tasks/examples/backtrader_strategy.json
 
 # Run backtesting with specific task configuration
-python -m trader --tasks scripts/backtrader_strategy.json --db mongodb://localhost:27017/ --log_level DEBUG
+python -m trader --tasks configs/tasks/examples/backtrader_strategy.json --db mongodb://localhost:27017/ --log_level DEBUG
 ```
 
 ### Testing
@@ -86,7 +86,7 @@ pytest tests/test_strategy.py::test_function_name
 ### Configuration
 - Environment variables are loaded from `.env` file (copy from `example.env`)
 - All environment variables use `TRADER_` prefix (e.g., `TRADER_LOG_LEVEL`, `TRADER_API`, `TRADER_DB`)
-- Task configurations are JSON files in `scripts/` directory
+- Task configurations are JSON files in `configs/tasks/`
 
 ## Architecture
 
@@ -107,10 +107,10 @@ The application is built around an asynchronous task-based architecture managed 
 - `CHECK_KLINES`: Data validation (`check_klines_task.py`)
 - `IMPORT_CSV`: CSV data import (`import_csv_task.py`)
 
-**Task Configuration**: JSON files in `scripts/` directory define task parameters:
-- `backtrader_strategy.json` - Multiple backtest configurations
-- `update_klines.json` - Data update settings
-- `notice.json` - Notification configuration
+**Task Configuration**: JSON files in `configs/` define task parameters:
+- `configs/tasks/examples/backtrader_strategy.json` - Multiple backtest configurations
+- `configs/tasks/downloads/update_klines.json` - Data update settings
+- `configs/notices/notice.json` - Notification configuration
 
 #### Strategy Framework (`src/trader/strategy/`)
 All strategies inherit from `base_strategy.py`. There is also an intermediate base `TrilogyStrategy` (in `trilogy_strategy.py`) for strategies using inflection-point trend detection.
@@ -197,7 +197,7 @@ FastAPI-based REST API with automatic routing (`fastapi-auto-router`):
 
 - **Source Code**: `src/trader/`
 - **Historical Data**: `data/` (CSV files)
-- **Configuration**: `scripts/` (JSON task configs)
+- **Configuration**: `configs/` (JSON task configs and notices)
 - **Tests**: `tests/`
 - **Documentation**: `docs/`, `docs/strategies/`
 - **Entry Point**: `src/trader/__main__.py`

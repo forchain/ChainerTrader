@@ -10,7 +10,6 @@ class ChainerMacdrsiStrategy(BaseStrategy):
     params = (
         ("overbought", 70),
         ("oversold", 30),
-        ("chainer_auto_signal", True),
     )
 
     def __init__(self):

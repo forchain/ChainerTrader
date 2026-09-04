@@ -29,12 +29,10 @@ def test_stoploss_atr_mult_applies_even_when_cfg_atr_disabled():
     class AtrStopStrategy(BaseStrategy):
         params = (
             ("name", "ATR_STOP_MULT_TEST"),
-            ("atr", False),  # simulate cfg.atr disabled
-            ("atrperiod", 3),
+            ("chainer_atr_period", 3),
             ("chainer_mode", "LONG_ONLY"),  # Support LONG entries
             ("chainer_stoploss_atr_mult", 1.0),
-            ("chainer_enter_need_confirm", False),
-            ("chainer_exit_need_confirm", True),
+            ("chainer_need_confirm", False),
             ("chainer_enable_breakeven", True),
             ("chainer_risk_reward_ratio", 0.0),
         )

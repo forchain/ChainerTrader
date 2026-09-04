@@ -34,10 +34,6 @@ class BOLLMEANREGStrategy(BaseStrategy):
         if not self.position:
             if self.data.low[0] < lowerBand and self.data.close[0] < self.data.open[0]:
                 self.buy()
-                self.update_stop_loss_point()
         else:
-            if self.need_stop_loss():
+            if self.data.high[0] > upperBand and self.data.close[0] > self.data.open[0]:
                 self.sell()
-            else:
-                if self.data.high[0] > upperBand and self.data.close[0] > self.data.open[0]:
-                    self.sell()

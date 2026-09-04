@@ -141,3 +141,4 @@ dmypy.json
 tests/output
 reports/
 .sw*
+.worktrees/

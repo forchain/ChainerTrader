@@ -68,18 +68,15 @@ class ShihunRSI2Strategy(BaseStrategy):
                     willOpt = OperateType.BUY
 
         else:
-            if self.need_stop_loss():
+            if self.rsi.rsi[0] < self.params.oversold:
                 willOpt = OperateType.SELL
-            else:
-                if self.rsi.rsi[0] < self.params.oversold:
-                    willOpt = OperateType.SELL
-                if (
-                    self.rsi.histo[0] < self.rsi.histo[-1]
-                    and self.rsi.histo[-1] < self.rsi.histo[-2]
-                    and self.rsi.histo[-2] > 0
-                    and self.rsi.histo[0] < 0
-                ):
-                    willOpt = OperateType.SELL
+            if (
+                self.rsi.histo[0] < self.rsi.histo[-1]
+                and self.rsi.histo[-1] < self.rsi.histo[-2]
+                and self.rsi.histo[-2] > 0
+                and self.rsi.histo[0] < 0
+            ):
+                willOpt = OperateType.SELL
 
         if not self.can_trade():
             return
@@ -93,6 +90,5 @@ class ShihunRSI2Strategy(BaseStrategy):
         elif willOpt == OperateType.BUY:
             self.log_info(f"Kline:{self.cur_datetime()}, 创建 买单:{self.dataclose[0]:.2f}")
             self.order = self.buy()
-            self.update_stop_loss_point()
             self.criticalBuyK = None
             self.criticalSellK = None

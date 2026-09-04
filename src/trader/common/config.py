@@ -51,6 +51,15 @@ class Config:
         auth_username=None,
         auth_password=None,
         protected_paths=None,
+        optimization_sample_timeout_seconds: float = 60.0,
+        optimization_dataset_prepare_timeout_seconds: float = 15.0,
+        optimization_dataset_download_request_budget: int = 2,
+        optimization_no_progress_timeout_seconds: float = 180.0,
+        optimization_max_failure_rate: float = 0.9,
+        optimization_min_completed_samples_for_abort: int = 50,
+        optimization_min_runnable_ratio: float = 0.1,
+        optimization_parallelism_collapse_ratio: float = 0.25,
+        optimization_worker_cpu_efficiency_threshold: float = 0.1,
     ):
         self.commission = commission
         self.atr = atr
@@ -72,6 +81,15 @@ class Config:
         self.auth_username = auth_username
         self.auth_password = auth_password
         self.protected_paths = protected_paths or []
+        self.optimization_sample_timeout_seconds = optimization_sample_timeout_seconds
+        self.optimization_dataset_prepare_timeout_seconds = optimization_dataset_prepare_timeout_seconds
+        self.optimization_dataset_download_request_budget = optimization_dataset_download_request_budget
+        self.optimization_no_progress_timeout_seconds = optimization_no_progress_timeout_seconds
+        self.optimization_max_failure_rate = optimization_max_failure_rate
+        self.optimization_min_completed_samples_for_abort = optimization_min_completed_samples_for_abort
+        self.optimization_min_runnable_ratio = optimization_min_runnable_ratio
+        self.optimization_parallelism_collapse_ratio = optimization_parallelism_collapse_ratio
+        self.optimization_worker_cpu_efficiency_threshold = optimization_worker_cpu_efficiency_threshold
 
     def export_env(self):
         os.environ[TRADER_COMMISSION] = str(self.commission)
@@ -124,6 +142,15 @@ class Config:
             "auth_username": self.auth_username,
             "auth_password": self.auth_password,
             "protected_paths": self.protected_paths,
+            "optimization_sample_timeout_seconds": self.optimization_sample_timeout_seconds,
+            "optimization_dataset_prepare_timeout_seconds": self.optimization_dataset_prepare_timeout_seconds,
+            "optimization_dataset_download_request_budget": self.optimization_dataset_download_request_budget,
+            "optimization_no_progress_timeout_seconds": self.optimization_no_progress_timeout_seconds,
+            "optimization_max_failure_rate": self.optimization_max_failure_rate,
+            "optimization_min_completed_samples_for_abort": self.optimization_min_completed_samples_for_abort,
+            "optimization_min_runnable_ratio": self.optimization_min_runnable_ratio,
+            "optimization_parallelism_collapse_ratio": self.optimization_parallelism_collapse_ratio,
+            "optimization_worker_cpu_efficiency_threshold": self.optimization_worker_cpu_efficiency_threshold,
         }
 
     def safe_to_dict(self):

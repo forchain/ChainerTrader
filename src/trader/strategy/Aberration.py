@@ -29,10 +29,6 @@ class AberrationStrategy(BaseStrategy):
         if not self.position:
             if self.data.close[0] > self.upper[0]:
                 self.buy()
-                self.update_stop_loss_point()
         else:
-            if self.need_stop_loss():
+            if self.data.close[0] < self.ma[0]:
                 self.sell()
-            else:
-                if self.data.close[0] < self.ma[0]:
-                    self.sell()

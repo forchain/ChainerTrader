@@ -1,7 +1,7 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, Optional, Set, Union
@@ -27,14 +27,9 @@ _DEFAULT_POSITION_PRICE_BUFFER = 0.002  # 0.2% safety buffer for next-open fills
 class BaseStrategy(bt.Strategy):
     params = (
         ("name", "Unkown"),
-        ("atr", False),
-        ("atrperiod", 14),
-        ("atrdist", 5),  # ATR distance for stop price
         ("mode", TrendType.NORMAL),
         ("period", DEFAULT_PERIOD),
         ("log", None),
-        ("stoploss", False),
-        ("takeprofit", False),
         ("position", 0),
         ("trader", False),
         ("position_percent", 100),  # Position size as percentage of available cash (100 = full position)
@@ -44,11 +39,10 @@ class BaseStrategy(bt.Strategy):
         # - SHORT_ONLY: short signal opens short, long signal closes short
         # - BOTH: long signal opens long, short signal opens short, exit via stop/breakeven/TP
         ("chainer_mode", "LONG_ONLY"),  # LONG_ONLY, SHORT_ONLY, BOTH
-        ("chainer_auto_signal", False),  # Enable auto signal processing via get_long_signal/get_short_signal
         # Entry/Exit engine defaults (can be overridden per call)
+        ("chainer_atr_period", 14),
         ("chainer_stoploss_atr_mult", 0.0),
-        ("chainer_enter_need_confirm", True),  # Require confirmation for entry signal
-        ("chainer_exit_need_confirm", True),   # Require confirmation for exit signal
+        ("chainer_need_confirm", True),  # Require confirmation for both entry and exit
         ("chainer_enable_breakeven", True),
         ("chainer_risk_reward_ratio", 0.0),
         # When equity falls below this percentage of initial account value, new entries are disabled.
@@ -107,24 +101,25 @@ class BaseStrategy(bt.Strategy):
         stop_order: Optional[bt.Order] = None
         tp_order: Optional[bt.Order] = None
 
+    @dataclass
+    class SignalSnapshot:
+        bar_index: int
+        long_signal: bool
+        short_signal: bool
+        long_context: Dict[str, Any] = field(default_factory=dict)
+        short_context: Dict[str, Any] = field(default_factory=dict)
+
     def __init__(self):
         super().__init__()
         self.order = None
         self._initial_equity: Optional[float] = None
 
-        # Stop loss point
-        if self.params.stoploss:
-            self.stopLossPoint = 0
-
-        # take profit
-        if self.params.takeprofit:
-            self.takeProfitPoint = 0
-
         # ATR must be initialized early if any logic depends on historical ATR values.
         # Backtrader indicators created later won't backfill history, which would make
         # stoploss_atr_mult ineffective for the first atrperiod bars after creation.
-        if bool(self.params.atr) or float(self.params.chainer_stoploss_atr_mult) != 0.0:
-            self.atr = bt.indicators.ATR(self.datas[0], period=self.params.atrperiod)
+        self.atr = None
+        if float(self.params.chainer_stoploss_atr_mult) != 0.0:
+            self.atr = bt.indicators.ATR(self.datas[0], period=self.params.chainer_atr_period)
 
         # Entry/Exit engine state (lazy-activated when enter_trade/exit_trade is used)
         self._trade_seq: int = 0
@@ -133,6 +128,7 @@ class BaseStrategy(bt.Strategy):
         self._trades_by_key: Dict[str, BaseStrategy.TradeContext] = {}
         self._banned_entry_key_bar_index: Set[int] = set()
         self._banned_exit_key_bar_index: Set[int] = set()
+        self._signal_snapshot: Optional[BaseStrategy.SignalSnapshot] = None
 
         self.start_time = datetime.fromtimestamp(0)
         self.end_time = datetime.fromtimestamp(0)
@@ -190,9 +186,7 @@ class BaseStrategy(bt.Strategy):
 
         self.log_debug(f"Kline:{cur} 收盘价, {self.data.close[0]:.2f}")
 
-        # Auto signal processing (if enabled)
-        if self.params.chainer_auto_signal:
-            self._process_signals()
+        self._process_signals()
 
         # Drive entry/exit engine if a trade exists
         self._process_trade_engine()
@@ -443,7 +437,7 @@ class BaseStrategy(bt.Strategy):
     def _ensure_atr_indicator(self):
         if hasattr(self, "atr") and self.atr is not None:
             return
-        self.atr = bt.indicators.ATR(self.datas[0], period=self.params.atrperiod)
+        self.atr = bt.indicators.ATR(self.datas[0], period=self.params.chainer_atr_period)
 
     def _kline_ref_by_bar_index(self, key_bar_index: int) -> "BaseStrategy.KlineRef":
         if key_bar_index is None:
@@ -609,15 +603,15 @@ class BaseStrategy(bt.Strategy):
             key = f"{base_key}-{trade_id}"
 
         sl_atr_mult = float(self.params.chainer_stoploss_atr_mult if stoploss_atr_mult is None else stoploss_atr_mult)
-        # Entry confirmation (independent of direction/mode, controlled by chainer_enter_need_confirm)
+        # Entry confirmation (independent of direction/mode, controlled by chainer_need_confirm)
         if need_confirm is not None:
             entry_need_confirm = bool(need_confirm)
         else:
-            entry_need_confirm = bool(self.params.chainer_enter_need_confirm)
+            entry_need_confirm = bool(self.params.chainer_need_confirm)
         breakeven_on = bool(self.params.chainer_enable_breakeven if enable_breakeven is None else enable_breakeven)
         rr = float(self.params.chainer_risk_reward_ratio if risk_reward_ratio is None else risk_reward_ratio)
-        # Exit confirmation (independent of direction/mode, controlled by chainer_exit_need_confirm)
-        exit_need_confirm = bool(self.params.chainer_exit_need_confirm)
+        # Exit confirmation (independent of direction/mode, controlled by chainer_need_confirm)
+        exit_need_confirm = bool(self.params.chainer_need_confirm)
 
         ctx = BaseStrategy.TradeContext(
             trade_id=trade_id,
@@ -733,7 +727,7 @@ class BaseStrategy(bt.Strategy):
         if need_confirm is not None:
             exit_need_confirm = bool(need_confirm)
         else:
-            exit_need_confirm = bool(self.params.chainer_exit_need_confirm)
+            exit_need_confirm = bool(self.params.chainer_need_confirm)
         exit_key_ref = self._kline_ref_by_bar_index(key_bar_index)
         ctx.exit_need_confirm = exit_need_confirm
         ctx.exit_key_bar_index = int(key_bar_index)
@@ -808,6 +802,50 @@ class BaseStrategy(bt.Strategy):
         """Override in subclass to provide structured metadata for a SHORT signal."""
         return {}
 
+    def on_signal_lifecycle_event(
+        self,
+        event_type: str,
+        direction: str,
+        signal_context: Optional[Dict[str, Any]] = None,
+        **payload: Any,
+    ) -> None:
+        """Override in subclass to observe framework-managed signal lifecycle events."""
+        return None
+
+    def _emit_signal_lifecycle_event(
+        self,
+        event_type: str,
+        direction: str,
+        signal_context: Optional[Dict[str, Any]] = None,
+        **payload: Any,
+    ) -> None:
+        self.on_signal_lifecycle_event(
+            event_type,
+            direction,
+            dict(signal_context or {}),
+            **payload,
+        )
+
+    def _signal_snapshot_for_current_bar(self) -> "BaseStrategy.SignalSnapshot":
+        bar_index = self.bar_idx()
+        snapshot = self._signal_snapshot
+        if snapshot is not None and snapshot.bar_index == bar_index:
+            return snapshot
+
+        long_signal = bool(self.get_long_signal())
+        short_signal = bool(self.get_short_signal())
+        long_context = dict(self.get_long_signal_context() or {}) if long_signal else {}
+        short_context = dict(self.get_short_signal_context() or {}) if short_signal else {}
+        snapshot = BaseStrategy.SignalSnapshot(
+            bar_index=bar_index,
+            long_signal=long_signal,
+            short_signal=short_signal,
+            long_context=long_context,
+            short_context=short_context,
+        )
+        self._signal_snapshot = snapshot
+        return snapshot
+
     def _process_signals(self) -> None:
         """
         Process long/short signals based on trading mode.
@@ -817,9 +855,9 @@ class BaseStrategy(bt.Strategy):
         - SHORT_ONLY: short signal opens short, long signal closes short
         - BOTH: long signal opens long, short signal opens short, exit via stop/breakeven/TP
         """
-        # Get signals from subclass (fixed semantics)
-        long_signal = self.get_long_signal()
-        short_signal = self.get_short_signal()
+        snapshot = self._signal_snapshot_for_current_bar()
+        long_signal = snapshot.long_signal
+        short_signal = snapshot.short_signal
 
         # Check whether new entries are allowed based on equity protection
         can_open_new_position = self._can_open_new_position()
@@ -832,6 +870,10 @@ class BaseStrategy(bt.Strategy):
         # Debug log when signals are triggered
         if long_signal or short_signal:
             self.log_debug(f"信号触发: mode={mode} long_signal={long_signal} short_signal={short_signal}")
+        if long_signal:
+            self._emit_signal_lifecycle_event("detected", "LONG", snapshot.long_context)
+        if short_signal:
+            self._emit_signal_lifecycle_event("detected", "SHORT", snapshot.short_context)
 
         # Check current state
         no_active_trade = self._active_trade is None or self._active_trade.status in (
@@ -849,67 +891,181 @@ class BaseStrategy(bt.Strategy):
         if mode == "LONG_ONLY":
             # Long signal opens long
             if long_signal and no_active_trade and can_open_new_position:
-                self.log_info(f"LONG_ONLY模式: 检测到做多信号，尝试开多仓")
+                self.log_info("LONG_ONLY模式: 检测到做多信号，尝试开多仓")
                 try:
-                    self.enter_trade(
+                    ctx = self.enter_trade(
                         direction="LONG",
                         key_bar_index=self.bar_idx(),
-                        signal_metadata=self.get_long_signal_context(),
+                        signal_metadata=snapshot.long_context,
+                    )
+                    event_type = "entry_context_cancelled" if ctx.status == BaseStrategy.TradeStatus.CANCELLED else "entry_context_created"
+                    self._emit_signal_lifecycle_event(
+                        event_type,
+                        "LONG",
+                        snapshot.long_context,
+                        reason=ctx.cancel_reason,
+                        trade_context=ctx,
+                        trade_id=int(ctx.trade_id),
                     )
                 except (ValueError, RuntimeError) as e:
                     self.log_debug(f"_process_signals: enter_trade LONG failed: {e}")
+            elif long_signal and not no_active_trade:
+                active_trade = self._active_trade
+                self._emit_signal_lifecycle_event(
+                    "blocked",
+                    "LONG",
+                    snapshot.long_context,
+                    reason="active_trade",
+                    active_trade={
+                        "trade_id": int(getattr(active_trade, "trade_id", 0)),
+                        "direction": getattr(active_trade, "direction", None),
+                        "entry_time": getattr(getattr(active_trade, "key_kline_ref", None), "dt", None).isoformat()
+                        if getattr(active_trade, "key_kline_ref", None) is not None
+                        else None,
+                        "status": getattr(getattr(active_trade, "status", None), "value", str(getattr(active_trade, "status", None))),
+                    },
+                )
+            elif long_signal and not can_open_new_position:
+                self._emit_signal_lifecycle_event("blocked", "LONG", snapshot.long_context, reason="equity")
 
             # Short signal closes long
             if short_signal and trade_is_active and has_long_position:
-                self.log_info(f"LONG_ONLY模式: 检测到做空信号，尝试平多仓")
+                self.log_info("LONG_ONLY模式: 检测到做空信号，尝试平多仓")
                 try:
+                    self._emit_signal_lifecycle_event("exit_requested", "SHORT", snapshot.short_context, reason="signal")
                     self.exit_trade(key_bar_index=self.bar_idx())
                 except (ValueError, RuntimeError) as e:
                     self.log_debug(f"_process_signals: exit_trade failed: {e}")
+            elif short_signal:
+                self._emit_signal_lifecycle_event("blocked", "SHORT", snapshot.short_context, reason="mode")
 
         elif mode == "SHORT_ONLY":
             # Short signal opens short
             if short_signal and no_active_trade and can_open_new_position:
-                self.log_info(f"SHORT_ONLY模式: 检测到做空信号，尝试开空仓")
+                self.log_info("SHORT_ONLY模式: 检测到做空信号，尝试开空仓")
                 try:
-                    self.enter_trade(
+                    ctx = self.enter_trade(
                         direction="SHORT",
                         key_bar_index=self.bar_idx(),
-                        signal_metadata=self.get_short_signal_context(),
+                        signal_metadata=snapshot.short_context,
+                    )
+                    event_type = "entry_context_cancelled" if ctx.status == BaseStrategy.TradeStatus.CANCELLED else "entry_context_created"
+                    self._emit_signal_lifecycle_event(
+                        event_type,
+                        "SHORT",
+                        snapshot.short_context,
+                        reason=ctx.cancel_reason,
+                        trade_context=ctx,
+                        trade_id=int(ctx.trade_id),
                     )
                 except (ValueError, RuntimeError) as e:
                     self.log_debug(f"_process_signals: enter_trade SHORT failed: {e}")
+            elif short_signal and not no_active_trade:
+                active_trade = self._active_trade
+                self._emit_signal_lifecycle_event(
+                    "blocked",
+                    "SHORT",
+                    snapshot.short_context,
+                    reason="active_trade",
+                    active_trade={
+                        "trade_id": int(getattr(active_trade, "trade_id", 0)),
+                        "direction": getattr(active_trade, "direction", None),
+                        "entry_time": getattr(getattr(active_trade, "key_kline_ref", None), "dt", None).isoformat()
+                        if getattr(active_trade, "key_kline_ref", None) is not None
+                        else None,
+                        "status": getattr(getattr(active_trade, "status", None), "value", str(getattr(active_trade, "status", None))),
+                    },
+                )
+            elif short_signal and not can_open_new_position:
+                self._emit_signal_lifecycle_event("blocked", "SHORT", snapshot.short_context, reason="equity")
 
             # Long signal closes short
             if long_signal and trade_is_active and has_short_position:
-                self.log_info(f"SHORT_ONLY模式: 检测到做多信号，尝试平空仓")
+                self.log_info("SHORT_ONLY模式: 检测到做多信号，尝试平空仓")
                 try:
+                    self._emit_signal_lifecycle_event("exit_requested", "LONG", snapshot.long_context, reason="signal")
                     self.exit_trade(key_bar_index=self.bar_idx())
                 except (ValueError, RuntimeError) as e:
                     self.log_debug(f"_process_signals: exit_trade failed: {e}")
+            elif long_signal:
+                self._emit_signal_lifecycle_event("blocked", "LONG", snapshot.long_context, reason="mode")
 
         elif mode == "BOTH":
             # Long signal opens long
             if long_signal and no_active_trade and can_open_new_position:
                 try:
-                    self.enter_trade(
+                    ctx = self.enter_trade(
                         direction="LONG",
                         key_bar_index=self.bar_idx(),
-                        signal_metadata=self.get_long_signal_context(),
+                        signal_metadata=snapshot.long_context,
+                    )
+                    event_type = "entry_context_cancelled" if ctx.status == BaseStrategy.TradeStatus.CANCELLED else "entry_context_created"
+                    self._emit_signal_lifecycle_event(
+                        event_type,
+                        "LONG",
+                        snapshot.long_context,
+                        reason=ctx.cancel_reason,
+                        trade_context=ctx,
+                        trade_id=int(ctx.trade_id),
                     )
                 except (ValueError, RuntimeError) as e:
                     self.log_debug(f"_process_signals: enter_trade LONG failed: {e}")
+            elif long_signal and not no_active_trade:
+                active_trade = self._active_trade
+                self._emit_signal_lifecycle_event(
+                    "blocked",
+                    "LONG",
+                    snapshot.long_context,
+                    reason="active_trade",
+                    active_trade={
+                        "trade_id": int(getattr(active_trade, "trade_id", 0)),
+                        "direction": getattr(active_trade, "direction", None),
+                        "entry_time": getattr(getattr(active_trade, "key_kline_ref", None), "dt", None).isoformat()
+                        if getattr(active_trade, "key_kline_ref", None) is not None
+                        else None,
+                        "status": getattr(getattr(active_trade, "status", None), "value", str(getattr(active_trade, "status", None))),
+                    },
+                )
+            elif long_signal and not can_open_new_position:
+                self._emit_signal_lifecycle_event("blocked", "LONG", snapshot.long_context, reason="equity")
 
             # Short signal opens short
             if short_signal and no_active_trade and can_open_new_position:
                 try:
-                    self.enter_trade(
+                    ctx = self.enter_trade(
                         direction="SHORT",
                         key_bar_index=self.bar_idx(),
-                        signal_metadata=self.get_short_signal_context(),
+                        signal_metadata=snapshot.short_context,
+                    )
+                    event_type = "entry_context_cancelled" if ctx.status == BaseStrategy.TradeStatus.CANCELLED else "entry_context_created"
+                    self._emit_signal_lifecycle_event(
+                        event_type,
+                        "SHORT",
+                        snapshot.short_context,
+                        reason=ctx.cancel_reason,
+                        trade_context=ctx,
+                        trade_id=int(ctx.trade_id),
                     )
                 except (ValueError, RuntimeError) as e:
                     self.log_debug(f"_process_signals: enter_trade SHORT failed: {e}")
+            elif short_signal and not no_active_trade:
+                active_trade = self._active_trade
+                self._emit_signal_lifecycle_event(
+                    "blocked",
+                    "SHORT",
+                    snapshot.short_context,
+                    reason="active_trade",
+                    active_trade={
+                        "trade_id": int(getattr(active_trade, "trade_id", 0)),
+                        "direction": getattr(active_trade, "direction", None),
+                        "entry_time": getattr(getattr(active_trade, "key_kline_ref", None), "dt", None).isoformat()
+                        if getattr(active_trade, "key_kline_ref", None) is not None
+                        else None,
+                        "status": getattr(getattr(active_trade, "status", None), "value", str(getattr(active_trade, "status", None))),
+                    },
+                )
+            elif short_signal and not can_open_new_position:
+                self._emit_signal_lifecycle_event("blocked", "SHORT", snapshot.short_context, reason="equity")
             # In BOTH mode, exit is handled by stop/breakeven/take-profit mechanisms only
 
     def _process_trade_engine(self) -> None:
@@ -927,8 +1083,9 @@ class BaseStrategy(bt.Strategy):
 
             # If opposing signal appears before confirmation, cancel this trade.
             # This matches TradingView behavior: confirmation is invalid once an opposing signal appears.
-            long_signal = self.get_long_signal()
-            short_signal = self.get_short_signal()
+            snapshot = self._signal_snapshot_for_current_bar()
+            long_signal = snapshot.long_signal
+            short_signal = snapshot.short_signal
             mode = str(self.params.chainer_mode).upper()
             if mode not in ("LONG_ONLY", "SHORT_ONLY", "BOTH"):
                 mode = "LONG_ONLY"
@@ -1094,40 +1251,6 @@ class BaseStrategy(bt.Strategy):
         # Ensure a standing TP exists during ACTIVE trade when enabled.
         if ctx.tp_price is not None and (ctx.tp_order is None or not getattr(ctx.tp_order, "alive", lambda: False)()):
             self._place_or_replace_tp_order(ctx)
-
-    def need_stop_loss(self):
-        if not self.params.stoploss:
-            return False
-
-        if self.data.close[0] < self.stopLossPoint:
-            return True
-        return False
-
-    def update_stop_loss_point(self):
-        if not self.params.stoploss:
-            return
-
-        pdist = 0
-        if self.params.atr:
-            pdist = self.atr[0] * self.params.atrdist
-        self.stopLossPoint = self.datas[0].close[0] - pdist
-
-    def need_takeprofit(self):
-        if not self.params.takeprofit:
-            return False
-
-        if self.data.close[0] > self.takeProfitPoint:
-            return True
-        return False
-
-    def update_takeprofit_point(self):
-        if not self.params.takeprofit:
-            return
-
-        pdist = 0
-        if self.params.atr:
-            pdist = self.atr[0] * self.params.atrdist
-        self.takeProfitPoint = self.datas[0].close[0] + pdist
 
     def name(self):
         return self.params.name

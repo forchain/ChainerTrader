@@ -33,8 +33,10 @@ fmt:              ## Format code using black & isort.
 lint:             ## Run linters.
 	@if [ "$(USING_UV)" ]; then \
 		uv run ruff check .; \
+		uv run python scripts/check_repo_layout.py $$(git ls-files --cached --others --exclude-standard -- '*.json' 'tests/output/*'); \
 	else \
 		$(ENV_PREFIX)ruff check .; \
+		$(ENV_PREFIX)python scripts/check_repo_layout.py $$(git ls-files --cached --others --exclude-standard -- '*.json' 'tests/output/*'); \
 	fi
 
 .PHONY: test

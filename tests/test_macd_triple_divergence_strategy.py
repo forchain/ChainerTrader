@@ -9,7 +9,7 @@ from trader.strategy.macd_triple_divergence import MacdTripleDivergenceStrategy,
 
 
 class _SignalProbeStrategy(MacdTripleDivergenceStrategy):
-    params = (("chainer_auto_signal", False),)
+    params = ()
 
     def __init__(self):
         super().__init__()

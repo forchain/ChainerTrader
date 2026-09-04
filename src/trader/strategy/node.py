@@ -15,6 +15,21 @@ from trader.utils.operation_state import MaxDrawdownAnalyzer, OptStatAnalyzer
 from trader.utils.symbol_interval import SymbolInterval, get_time_duration
 
 
+def build_strategy_kwargs(cfg: Config, log: Logger, position: float, trader: bool, strategy_params: dict | None = None) -> dict:
+    kwargs = {
+        "stoploss": cfg.stoploss,
+        "atr": cfg.atr,
+        "mode": cfg.mode,
+        "period": cfg.period,
+        "log": log,
+        "position": position,
+        "trader": trader,
+    }
+    if strategy_params:
+        kwargs.update(strategy_params)
+    return kwargs
+
+
 class Node:
     def __init__(
             self,
@@ -27,12 +42,17 @@ class Node:
             position: float = 0,
             trader: bool = False,
             free: float = 0,
+            strategy_params: dict | None = None,
+            report_context: dict | None = None,
     ):
         self.log = log
         self.name = name
         self.cfg = cfg
         self.si = si
         self.free = free
+        self.report_context = report_context or {}
+        self.backtest_report = None
+        self.backtest_report_path = None
 
         log.info("New node", LogTag.STRATEGY)
 
@@ -40,16 +60,11 @@ class Node:
 
         cerebro = bt.Cerebro()
         for st in strategy:
+            strategy_kwargs = build_strategy_kwargs(cfg, log, position, trader, strategy_params)
             cerebro.addstrategy(
                 st,
-                stoploss=cfg.stoploss,
-                atr=cfg.atr,
-                mode=cfg.mode,
-                period=cfg.period,
-                log=log,
                 name=st.__name__,
-                position=position,
-                trader=trader,
+                **strategy_kwargs,
             )
 
         cerebro.addanalyzer(bt.analyzers.DrawDown, _name="drawdown")
@@ -66,6 +81,7 @@ class Node:
             strategy_name=name,
             symbol=si.symbol(),
             interval=si.interval.value,
+            report_context=self.report_context,
         )
 
         self.cerebro = cerebro
@@ -120,6 +136,13 @@ class Node:
 
         rets = self.cerebro.run()
         ret = rets[0]
+        try:
+            analyzer = ret.analyzers.backtest_report
+            self.backtest_report = analyzer.report
+            self.backtest_report_path = analyzer.report_path
+        except AttributeError:
+            self.backtest_report = None
+            self.backtest_report_path = None
 
         finalFund = self.cerebro.broker.getvalue()
         totalReturnRate = (finalFund - self.free) / self.cfg.cash * 100

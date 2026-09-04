@@ -4,13 +4,34 @@
 # Creates symlinks for .venv and .env pointing to the main repo, so that
 # uv run and python-dotenv work transparently without re-installing anything.
 #
-# Usage: bash scripts/setup_worktree.sh
+# Usage: bash scripts/setup_worktree.sh [--profile <name>] [--require-env KEY ...]
 # Safe to run multiple times (idempotent).
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+PROFILE="base"
+EXTRA_REQUIRE_ENVS=()
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --profile)
+            PROFILE="${2:-}"
+            shift 2
+            ;;
+        --require-env)
+            EXTRA_REQUIRE_ENVS+=("${2:-}")
+            shift 2
+            ;;
+        *)
+            echo "✗  Unknown argument: $1"
+            echo "   Usage: bash scripts/setup_worktree.sh [--profile <name>] [--require-env KEY ...]"
+            exit 1
+            ;;
+    esac
+done
 
 # ── 1. Detect worktree ────────────────────────────────────────────────────────
 GIT_PATH="$REPO_ROOT/.git"
@@ -67,16 +88,49 @@ else
     else
         [ -e "$ENV_LINK" ] || [ -L "$ENV_LINK" ] && rm -f "$ENV_LINK"
         ln -sfn "$ENV_TARGET" "$ENV_LINK"
-        echo "✓  Created .env  → $ENV_TARGET"
     fi
 fi
 
-# ── 5. Verify ─────────────────────────────────────────────────────────────────
+# ── 5. Symlink Shared Directories (reports, .cache) ───────────────────────────
+SHARED_DIRS=("reports" ".cache")
+for dir in "${SHARED_DIRS[@]}"; do
+    TARGET="$MAIN_REPO/$dir"
+    LINK="$REPO_ROOT/$dir"
+
+    [ ! -d "$TARGET" ] && mkdir -p "$TARGET"
+
+    if [ -L "$LINK" ] && [ -d "$LINK" ]; then
+        if [ "$(readlink "$LINK")" = "$TARGET" ]; then
+            echo "✓  $dir symlink already set up — skipping."
+            continue
+        fi
+    fi
+
+    if [ -d "$LINK" ] && [ ! -L "$LINK" ]; then
+        echo "⚠  Worktree has its own '$dir' directory. Moving to '${dir}_backup' to create symlink."
+        mv "$LINK" "${LINK}_backup"
+    elif [ -e "$LINK" ] || [ -L "$LINK" ]; then
+        rm -rf "$LINK"
+    fi
+
+    ln -sfn "$TARGET" "$LINK"
+    echo "✓  Created $dir  → $TARGET"
+done
+
+# ── 6. Verify ─────────────────────────────────────────────────────────────────
 echo ""
 PYTHON_BIN="$REPO_ROOT/.venv/bin/python"
 if [ -x "$PYTHON_BIN" ]; then
     PYTHON_VER=$("$PYTHON_BIN" --version 2>&1)
     echo "✓  Python available: $PYTHON_VER"
+    echo ""
+    CHECK_CMD=("$PYTHON_BIN" "$REPO_ROOT/scripts/check_runtime_context.py" --profile "$PROFILE" --env-file "$REPO_ROOT/.env")
+    for key in "${EXTRA_REQUIRE_ENVS[@]}"; do
+        CHECK_CMD+=(--require-env "$key")
+    done
+
+    echo "Validating runtime context..."
+    "${CHECK_CMD[@]}"
     echo ""
     echo "Environment ready. You can now run: uv run python -m trader -h"
 else

@@ -1,21 +1,27 @@
 import asyncio
 from asyncio import Queue
-from multiprocessing import Manager, Process
+from concurrent.futures import ProcessPoolExecutor, TimeoutError as FutureTimeoutError
+import os
+from pathlib import Path
 
 from trader.common.common import sleep
 from trader.common.config import Config
 from trader.common.log_tag import LogTag
 from trader.common.logger import Logger
-from trader.common.message import new_add_tasks_msg, new_exit_msg
+from trader.common.message import new_add_tasks_msg, new_exit_msg, new_stat_msg
 from trader.database.manager import DatabaseManager
 from trader.exchange.binance.exchange import BinanceExchange
 from trader.statistics.stat import BackTraderStat
-from trader.task.backtrader_task import BackTraderTask, process_backtrader
+from trader.strategy.trader_result import parse_trader_result
+from trader.task.backtrader_task import BackTraderTask, BacktestSampleResult, build_backtest_sample_spec, run_backtest_sample
 from trader.task.base_task import BaseTask
 from trader.task.check_klines_num_task import CheckKlinesNumTask
 from trader.task.check_klines_task import CheckKlinesTask
 from trader.task.debug_task import DebugTask
+from trader.task.dataset_resolver import DatasetPreparationFailure, DatasetPreparationResult, DatasetResolver
 from trader.task.import_csv_task import ImportCSVTask
+from trader.task.optimization_runtime import OptimizationRuntimeStatus, evaluate_abort_reason
+from trader.task.optimization_report import write_optimization_artifacts
 from trader.task.task_config import TaskConfig, parse_task_config
 from trader.task.task_type import TaskType
 from trader.task.trader_task import TraderTask
@@ -134,48 +140,356 @@ class TaskManager:
         await task.start(queue)
 
     async def add_backtrader_task(self, cfgs, queue: Queue):
-        with Manager() as manager:
-            result = manager.list()
-            processes = []
-            for cfg in cfgs:
-                task = BackTraderTask(cfg, self.cfg, self.log, self.db_manager, self.exchange)
-                self.tasks[task.id()] = task
+        runtimes = self._optimization_runtimes(cfgs)
+        for runtime in runtimes.values():
+            runtime.start()
 
-                ret = await task.start(queue)
-                if ret is None:
+        failures = await self._prepare_backtest_datasets(cfgs, runtimes)
+        failed_task_ids = {failure["task_id"] for failure in failures}
+        cfg_by_id = {cfg.id: cfg for cfg in cfgs}
+        for failure in failures:
+            cfg = cfg_by_id.get(failure["task_id"])
+            runtime = runtimes.get(cfg.optimization_run_id) if cfg else None
+            if runtime:
+                runtime.sample_skipped(
+                    failure["task_id"],
+                    reason=failure.get("reason", "dataset_failed"),
+                    dataset_key=failure.get("dataset_key"),
+                    message=failure.get("message"),
+                )
+
+        aborted_run_ids = self._abort_unhealthy_runtimes(runtimes)
+        for run_id in aborted_run_ids:
+            failures.append(
+                {
+                    "task_id": None,
+                    "optimization_run_id": run_id,
+                    "dataset_key": None,
+                    "reason": "run_aborted",
+                    "message": runtimes[run_id].status.get("abort_reason") or "optimization run aborted",
+                }
+            )
+        sample_specs = []
+        task_by_id = {}
+        for cfg in cfgs:
+            if cfg.id in failed_task_ids:
+                continue
+            if cfg.optimization_run_id in aborted_run_ids:
+                continue
+            task = BackTraderTask(cfg, self.cfg, self.log, self.db_manager, self.exchange)
+            self.tasks[task.id()] = task
+            BaseTask.start(task, queue)
+            task_by_id[task.id()] = task
+            sample_specs.append(build_backtest_sample_spec(self.cfg, cfg))
+
+        sample_records = []
+        execution_failures = []
+        for sample_spec in sample_specs:
+            runtime = runtimes.get(sample_spec.optimization_run_id)
+            if runtime:
+                runtime.sample_started(sample_spec.task_id)
+
+        sample_results = await self._execute_sample_specs(sample_specs) if sample_specs else []
+        for sample_result in sample_results:
+            task = task_by_id.get(sample_result.task_id)
+            if task is None:
+                continue
+            runtime = runtimes.get(task.tcfg.optimization_run_id)
+
+            for log_str in sample_result.logs:
+                self.log.add_log_buffer(log_str, LogTag.STRATEGY)
+
+            if not sample_result.ok or sample_result.trader_result is None:
+                self.log.error(
+                    f"Backtest sample failed: task_id={sample_result.task_id}, error={sample_result.error}",
+                    LogTag.STRATEGY,
+                )
+                failure_reason = "sample_timeout" if getattr(sample_result, "timed_out", False) else "execution_failed"
+                execution_failures.append(
+                    {
+                        "task_id": sample_result.task_id,
+                        "dataset_key": getattr(task.tcfg.dataset_ref, "dataset_key", None),
+                        "reason": failure_reason,
+                        "message": sample_result.error or "backtest execution failed",
+                    }
+                )
+                if runtime:
+                    if getattr(sample_result, "timed_out", False):
+                        runtime.sample_timed_out(
+                            sample_result.task_id,
+                            message=sample_result.error or "sample execution exceeded timeout budget",
+                        )
+                    else:
+                        runtime.sample_failed(
+                            sample_result.task_id,
+                            reason="execution_failed",
+                            message=sample_result.error or "backtest execution failed",
+                        )
+                continue
+
+            task.ts.tret = parse_trader_result(sample_result.trader_result)
+            msg = new_stat_msg(
+                BackTraderStat(task.tcfg.strategy_name(), task.tcfg.symbol_interval.name(), task.ts),
+                task.id(),
+            )
+            self.log.info(f"Relay process queue message:{msg.name()}", LogTag.STRATEGY)
+            await queue.put(msg)
+            sample_records.append(
+                {
+                    "task_id": sample_result.task_id,
+                    "report": sample_result.report,
+                    "report_path": sample_result.report_path,
+                }
+            )
+            if runtime:
+                runtime.sample_succeeded(sample_result.task_id)
+
+        self._finalize_optimization_runs(cfgs, sample_records, failures + execution_failures)
+        for runtime in runtimes.values():
+            if runtime.status["stage"] != "aborted":
+                runtime.finish()
+
+    def _abort_unhealthy_runtimes(self, runtimes: dict[str, OptimizationRuntimeStatus]) -> set[str]:
+        aborted = set()
+        for run_id, runtime in runtimes.items():
+            reason = evaluate_abort_reason(
+                runtime.status,
+                max_failure_rate=float(getattr(self.cfg, "optimization_max_failure_rate", 0.9)),
+                min_completed_samples=int(getattr(self.cfg, "optimization_min_completed_samples_for_abort", 50)),
+                no_progress_timeout_seconds=float(getattr(self.cfg, "optimization_no_progress_timeout_seconds", 180.0)),
+                min_runnable_ratio=float(getattr(self.cfg, "optimization_min_runnable_ratio", 0.1)),
+                parallelism_collapse_ratio=float(getattr(self.cfg, "optimization_parallelism_collapse_ratio", 0.25)),
+                worker_cpu_efficiency_threshold=float(getattr(self.cfg, "optimization_worker_cpu_efficiency_threshold", 0.1)),
+            )
+            if reason:
+                runtime.abort(reason)
+                aborted.add(run_id)
+        return aborted
+
+    def _optimization_runtimes(self, cfgs: list[TaskConfig]) -> dict[str, OptimizationRuntimeStatus]:
+        runtimes = {}
+        for run_id in sorted({cfg.optimization_run_id for cfg in cfgs if cfg.optimization_run_id}):
+            run_cfgs = [cfg for cfg in cfgs if cfg.optimization_run_id == run_id]
+            dataset_keys = {
+                (cfg.symbol_interval.name(), cfg.start_time, cfg.end_time)
+                for cfg in run_cfgs
+                if cfg.ttype == TaskType.BACK_TRADER and not cfg.csv
+            }
+            runtimes[run_id] = OptimizationRuntimeStatus(
+                Path.cwd() / "tmp" / "optimization_runs" / run_id,
+                run_id,
+                total_samples=len(run_cfgs),
+                total_datasets=len(dataset_keys),
+                configured_workers=self._sample_max_workers(),
+            )
+        return runtimes
+
+    def _dataset_prepare_max_workers(self) -> int:
+        cpu_count = os.cpu_count() or 1
+        return max(1, min(4, cpu_count))
+
+    def _sample_max_workers(self) -> int:
+        return max(1, os.cpu_count() or 1)
+
+    def _optimization_dataset_prepare_timeout_seconds(self) -> float:
+        return float(getattr(self.cfg, "optimization_dataset_prepare_timeout_seconds", 15.0))
+
+    def _optimization_dataset_download_request_budget(self) -> int:
+        return int(getattr(self.cfg, "optimization_dataset_download_request_budget", 2))
+
+    def _optimization_sample_timeout_seconds(self) -> float:
+        return float(getattr(self.cfg, "optimization_sample_timeout_seconds", 60.0))
+
+    def _prepare_dataset_job_sync(
+        self,
+        resolver: DatasetResolver,
+        symbol_interval,
+        start_time: int,
+        end_time: int,
+        allow_download: bool,
+        max_download_ranges: int | None = None,
+    ):
+        return asyncio.run(
+            resolver.prepare(
+                symbol_interval,
+                start_time,
+                end_time,
+                allow_download=allow_download,
+                max_download_ranges=max_download_ranges,
+            )
+        )
+
+    async def _prepare_dataset_job(
+        self,
+        resolver: DatasetResolver,
+        symbol_interval,
+        start_time: int,
+        end_time: int,
+        allow_download: bool,
+        max_download_ranges: int | None = None,
+    ):
+        return await asyncio.to_thread(
+            self._prepare_dataset_job_sync,
+            resolver,
+            symbol_interval,
+            start_time,
+            end_time,
+            allow_download,
+            max_download_ranges,
+        )
+
+    async def _prepare_backtest_datasets(
+        self,
+        cfgs: list[TaskConfig],
+        runtimes: dict[str, OptimizationRuntimeStatus] | None = None,
+    ) -> list[dict]:
+        if not cfgs:
+            return []
+
+        prepared_results = {}
+        failures = []
+        dataset_jobs = {}
+        dataset_run_ids = {}
+
+        for cfg in cfgs:
+            if cfg.ttype != TaskType.BACK_TRADER or cfg.csv:
+                continue
+            dataset_key = (cfg.symbol_interval.name(), cfg.start_time, cfg.end_time)
+            if dataset_key not in dataset_jobs:
+                dataset_jobs[dataset_key] = (
+                    cfg.symbol_interval,
+                    cfg.start_time,
+                    cfg.end_time,
+                    cfg.auto_download or cfg.optimization_run_id is not None,
+                )
+            if cfg.optimization_run_id:
+                dataset_run_ids.setdefault(dataset_key, set()).add(cfg.optimization_run_id)
+
+        semaphore = asyncio.Semaphore(self._dataset_prepare_max_workers())
+
+        async def run_job(dataset_key, job):
+            async with semaphore:
+                resolver = DatasetResolver(self.db_manager, self.exchange, self.log)
+                symbol_interval, start_time, end_time, allow_download = job
+                status_dataset_key = f"{symbol_interval.name()}|{start_time}|{end_time}"
+                for run_id in dataset_run_ids.get(dataset_key, set()):
+                    runtime = (runtimes or {}).get(run_id)
+                    if runtime:
+                        runtime.dataset_started(status_dataset_key)
+                try:
+                    prepared_results[dataset_key] = await asyncio.wait_for(
+                        self._prepare_dataset_job(
+                            resolver,
+                            symbol_interval,
+                            start_time,
+                            end_time,
+                            allow_download,
+                            self._optimization_dataset_download_request_budget() if allow_download else None,
+                        ),
+                        timeout=self._optimization_dataset_prepare_timeout_seconds() if allow_download else None,
+                    )
+                except TimeoutError:
+                    prepared_results[dataset_key] = DatasetPreparationResult(
+                        ok=False,
+                        failure=DatasetPreparationFailure(
+                            dataset_key=f"{symbol_interval.name()}|{start_time}|{end_time}",
+                            reason="dataset_timeout",
+                            message="dataset preparation exceeded optimization timeout budget",
+                        ),
+                    )
+                result = prepared_results[dataset_key]
+                for run_id in dataset_run_ids.get(dataset_key, set()):
+                    runtime = (runtimes or {}).get(run_id)
+                    if not runtime:
+                        continue
+                    if result.ok:
+                        runtime.dataset_succeeded(status_dataset_key)
+                    elif result.failure and result.failure.reason == "dataset_timeout":
+                        runtime.dataset_timed_out(status_dataset_key, message=result.failure.message)
+                    else:
+                        runtime.dataset_failed(
+                            status_dataset_key,
+                            reason=result.failure.reason if result.failure else "dataset_failed",
+                            message=result.failure.message if result.failure else None,
+                        )
+
+        await asyncio.gather(*(run_job(dataset_key, job) for dataset_key, job in dataset_jobs.items()))
+
+        for cfg in cfgs:
+            if cfg.ttype != TaskType.BACK_TRADER or cfg.csv:
+                continue
+            dataset_key = (cfg.symbol_interval.name(), cfg.start_time, cfg.end_time)
+            result = prepared_results[dataset_key]
+            if result.ok:
+                cfg.dataset_ref = result.dataset_ref
+                continue
+
+            failures.append(
+                {
+                    "task_id": cfg.id,
+                    "dataset_key": result.failure.dataset_key,
+                    "reason": result.failure.reason,
+                    "message": result.failure.message,
+                }
+            )
+
+        return failures
+
+    async def _execute_sample_specs(self, sample_specs):
+        if not sample_specs:
+            return []
+        return await asyncio.to_thread(self._execute_sample_specs_sync, sample_specs)
+
+    def _execute_sample_specs_sync(self, sample_specs):
+        results = []
+        with ProcessPoolExecutor(max_workers=self._sample_max_workers()) as executor:
+            futures = [(spec, executor.submit(run_backtest_sample, spec)) for spec in sample_specs]
+            for spec, future in futures:
+                try:
+                    results.append(future.result(timeout=self._optimization_sample_timeout_seconds()))
+                except FutureTimeoutError:
+                    future.cancel()
+                    results.append(
+                        BacktestSampleResult(
+                            ok=False,
+                            task_id=spec.task_id,
+                            trader_result=None,
+                            logs=[],
+                            report=None,
+                            report_path=None,
+                            error="sample execution exceeded timeout budget",
+                            timed_out=True,
+                        )
+                    )
+        return results
+
+    def _finalize_optimization_runs(self, cfgs: list[TaskConfig], sample_records: list[dict], failures: list[dict]):
+        task_by_id = {cfg.id: cfg for cfg in cfgs}
+        run_ids = sorted({cfg.optimization_run_id for cfg in cfgs if cfg.optimization_run_id})
+        if not run_ids:
+            return
+
+        for run_id in run_ids:
+            run_reports = []
+            for record in sample_records:
+                report = record.get("report")
+                if not report or report.get("optimization_run_id") != run_id:
                     continue
-                strategy = ret[0]
-                data = ret[1]
+                enriched_report = dict(report)
+                if record.get("report_path"):
+                    enriched_report["report_path"] = record["report_path"]
+                run_reports.append(enriched_report)
 
-                # parmas = manager.list()
-                parmas = []
-                parmas.append(self.cfg)
-                parmas.append(data)
-                parmas.append(strategy)
-                parmas.append(cfg)
-                parmas.append(task.ts)
+            run_failures = []
+            for failure in failures:
+                if failure.get("optimization_run_id") == run_id:
+                    run_failures.append(failure)
+                    continue
+                task = task_by_id.get(failure.get("task_id"))
+                if task and task.optimization_run_id == run_id:
+                    run_failures.append(failure)
 
-                proc = Process(target=process_backtrader, args=(parmas, result))
-                processes.append(proc)
-
-            for p in processes:
-                p.start()
-            for p in processes:
-                p.join()
-
-            for reArr in result:
-                msg = reArr[0]
-                logs = reArr[1]
-                for log_str in logs:
-                    self.log.add_log_buffer(log_str, LogTag.STRATEGY)
-
-                self.log.info(f"Relay process queue message:{msg.name()}", LogTag.STRATEGY)
-                bts: BackTraderStat = msg.get_data()
-                task = self.get_task(bts.ts.id)
-                if task:
-                    task.ts = bts.ts
-
-                await queue.put(msg)
+            write_optimization_artifacts(Path.cwd(), run_id, run_reports, run_failures)
 
     def get_task(self, id: int) -> BaseTask | None:
         if id in self.tasks:

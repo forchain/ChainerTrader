@@ -36,7 +36,6 @@ class DeviationMACDStrategy(BaseStrategy):
 
     def __init__(self):
         super().__init__()
-        self.params.atrdist = 15
         self.set_default_period(12)
         self.macd_hist = bt.indicators.MACDHisto(self.data)
 
@@ -99,14 +98,10 @@ class DeviationMACDStrategy(BaseStrategy):
                 if size > 0:
                     self.order = self.buy(size=size)
                     self.log_info(f"Kline:{self.cur_datetime()}, 创建 买单:{self.data.close[0]:.2f}")
-                    self.update_stop_loss_point()
 
         else:
             if willOpt == OperateType.SELL:
                 self.log_info(f"Kline:{self.cur_datetime()}, 创建 卖单:{self.data.close[0]:.2f}")
-                self.order = self.close()
-            elif self.need_stop_loss():
-                self.log_info(f"Kline:{self.cur_datetime()}, 创建 清单:{self.data.close[0]:.2f}")
                 self.order = self.close()
 
     def _check_divergence(

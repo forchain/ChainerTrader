@@ -1,21 +1,212 @@
-from datetime import datetime
+from dataclasses import dataclass
+from datetime import datetime, timezone
+import json
+import os
+from pathlib import Path
+from typing import Any
 
 from trader.common import path
-from trader.common.common import MIN_RECORDS_NUM
 from trader.common.config import Config
 from trader.common.log_tag import LogTag
 from trader.common.logger import Logger
 from trader.common.message import new_stat_msg
 from trader.database.manager import DatabaseManager
 from trader.exchange.binance.csvdata import BinanceCSVData
-from trader.exchange.binance.data import BinanceData
 from trader.exchange.binance.exchange import BinanceExchange
 from trader.statistics.stat import BackTraderStat
+from trader.strategy.trader_result import TraderResult, parse_trader_result
 from trader.strategy.node import Node
 from trader.strategy.strategy import parse_strategies
 from trader.task.base_task import BaseTask
+from trader.task.dataset_resolver import DatasetResolver
 from trader.task.task_config import TaskConfig
 from trader.task.update_klines_task import download_range
+from trader.utils.symbol_interval import Interval, SymbolInterval
+
+
+@dataclass(frozen=True)
+class BacktestSampleSpec:
+    task_id: int
+    strategy_name: str
+    strategy_names: list[str]
+    symbol: str
+    interval: str
+    start_time: int
+    end_time: int
+    data_path: str
+    use_data_range: bool
+    free_cash: float
+    cfg: dict[str, Any]
+    strategy_params: dict[str, Any]
+    optimization_run_id: str | None
+    param_id: str | None
+    dataset_key: str | None
+
+
+@dataclass(frozen=True)
+class BacktestSampleResult:
+    ok: bool
+    task_id: int
+    trader_result: dict[str, Any] | None
+    logs: list[str]
+    report: dict[str, Any] | None
+    report_path: str | None
+    error: str | None = None
+    timed_out: bool = False
+
+
+def build_backtest_sample_spec(cfg: Config, tcfg: TaskConfig) -> BacktestSampleSpec:
+    data_path = None
+    use_data_range = False
+    dataset_key = getattr(tcfg.dataset_ref, "dataset_key", None) if tcfg.dataset_ref else None
+
+    if tcfg.csv:
+        data_path = path.get_file_path(tcfg.csv)
+        use_data_range = tcfg.start_time > 0 or tcfg.end_time > 0
+    elif tcfg.dataset_ref is not None:
+        data_path = tcfg.dataset_ref.path
+
+    if data_path is None:
+        raise ValueError(f"missing data source for backtest sample task_id={tcfg.id}")
+
+    free_cash = cfg.cash if tcfg.free < 0 else tcfg.free
+    symbol = f"{tcfg.symbol_interval.sy.base}-{tcfg.symbol_interval.sy.quote}"
+    return BacktestSampleSpec(
+        task_id=tcfg.id,
+        strategy_name=tcfg.strategy_name(),
+        strategy_names=list(tcfg.strategies or []),
+        symbol=symbol,
+        interval=tcfg.symbol_interval.interval.value,
+        start_time=tcfg.start_time,
+        end_time=tcfg.end_time,
+        data_path=data_path,
+        use_data_range=use_data_range,
+        free_cash=free_cash,
+        cfg=cfg.to_dict(),
+        strategy_params=dict(tcfg.strategy_params),
+        optimization_run_id=tcfg.optimization_run_id,
+        param_id=tcfg.param_id,
+        dataset_key=dataset_key,
+    )
+
+
+def _build_csv_data_for_spec(spec: BacktestSampleSpec):
+    if not spec.use_data_range:
+        return BinanceCSVData(dataname=spec.data_path)
+    if spec.start_time <= 0 and spec.end_time <= 0:
+        return BinanceCSVData(dataname=spec.data_path)
+    if spec.start_time <= 0:
+        return BinanceCSVData(
+            dataname=spec.data_path,
+            todate=datetime.fromtimestamp(spec.end_time),
+        )
+    if spec.end_time <= 0:
+        return BinanceCSVData(
+            dataname=spec.data_path,
+            fromdate=datetime.fromtimestamp(spec.start_time),
+        )
+    return BinanceCSVData(
+        dataname=spec.data_path,
+        fromdate=datetime.fromtimestamp(spec.start_time),
+        todate=datetime.fromtimestamp(spec.end_time),
+    )
+
+
+def _write_worker_pid(run_id: str | None, task_id: int) -> Path | None:
+    """Write a <pid>.json mapping file so the dashboard knows which task this process is running."""
+    if not run_id:
+        return None
+    pid = os.getpid()
+    workers_dir = Path.cwd() / "tmp" / "optimization_runs" / run_id / "workers"
+    workers_dir.mkdir(parents=True, exist_ok=True)
+    pid_file = workers_dir / f"{pid}.json"
+    payload = {
+        "pid": pid,
+        "task_id": task_id,
+        "run_id": run_id,
+        "started_at": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
+    }
+    tmp = pid_file.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(pid_file)
+    return pid_file
+
+
+def run_backtest_sample(spec: BacktestSampleSpec) -> BacktestSampleResult:
+    cfg = Config(**spec.cfg)
+    logger = Logger(cfg, 10000, True)
+    pid_file = _write_worker_pid(spec.optimization_run_id, spec.task_id)
+    try:
+        strategy = parse_strategies(spec.strategy_names)
+        if strategy is None:
+            return BacktestSampleResult(
+                ok=False,
+                task_id=spec.task_id,
+                trader_result=None,
+                logs=logger.get_buffer_str(),
+                report=None,
+                report_path=None,
+                error=f"Not support strategy:{spec.strategy_name}",
+            )
+
+        data = _build_csv_data_for_spec(spec)
+        symbol_interval = SymbolInterval(spec.symbol, Interval(spec.interval))
+        report_context = {
+            "optimization_run_id": spec.optimization_run_id,
+            "param_id": spec.param_id,
+            "params": spec.strategy_params,
+            "dataset_ref": spec.dataset_key,
+        }
+        node = Node(
+            spec.strategy_name,
+            strategy,
+            symbol_interval,
+            cfg,
+            logger,
+            data,
+            position=0,
+            trader=False,
+            free=spec.free_cash,
+            strategy_params=spec.strategy_params,
+            report_context=report_context,
+        )
+        ret: TraderResult | None = node.start()
+        if ret is None:
+            return BacktestSampleResult(
+                ok=False,
+                task_id=spec.task_id,
+                trader_result=None,
+                logs=logger.get_buffer_str(),
+                report=node.backtest_report,
+                report_path=node.backtest_report_path,
+                error="backtest returned no result",
+            )
+
+        return BacktestSampleResult(
+            ok=True,
+            task_id=spec.task_id,
+            trader_result=ret.to_dict(),
+            logs=logger.get_buffer_str(),
+            report=node.backtest_report,
+            report_path=node.backtest_report_path,
+        )
+    except Exception as exc:
+        logger.error(f"backtest sample failed: task_id={spec.task_id}, error={exc}")
+        return BacktestSampleResult(
+            ok=False,
+            task_id=spec.task_id,
+            trader_result=None,
+            logs=logger.get_buffer_str(),
+            report=None,
+            report_path=None,
+            error=str(exc),
+        )
+    finally:
+        if pid_file and pid_file.exists():
+            try:
+                pid_file.unlink()
+            except OSError:
+                pass
 
 
 class BackTraderTask(BaseTask):
@@ -62,38 +253,22 @@ class BackTraderTask(BaseTask):
                     fromdate=datetime.fromtimestamp(self.tcfg.start_time),
                     todate=datetime.fromtimestamp(self.tcfg.end_time),
                 )
+        if data is None and self.tcfg.dataset_ref is not None:
+            data = BinanceCSVData(dataname=self.tcfg.dataset_ref.path)
         if self.db_manager and data is None:
-            kls_cache = self.db_manager.kline.get_klines(self.tcfg.symbol_interval.name(), self.tcfg.start_time, self.tcfg.end_time)
-            if kls_cache is None or len(kls_cache) <= 0:
-                if self.tcfg.auto_download:
-                    if not self.exchange:
-                        self.log.error(f"No exchange config for {self.name()}")
-                        return None
-                    end_time = self.tcfg.end_time if self.tcfg.end_time > 0 else int(datetime.now().timestamp())
-                    if not await download_range(
-                        self.name(),
-                        self.log,
-                        self.db_manager,
-                        self.tcfg.symbol_interval.name(),
-                        self.exchange,
-                        self.tcfg.symbol_interval,
-                        self.tcfg.start_time,
-                        end_time,
-                        self.quit,
-                    ):
-                        self.log.error(f"Fail download for {self.name()}")
-                        return None
-                    kls_cache = self.db_manager.kline.get_klines(self.tcfg.symbol_interval.name(), self.tcfg.start_time, self.tcfg.end_time)
-
-            if kls_cache is None or len(kls_cache) <= 0:
-                self.log.error(f"No klines for {self.name()}")
+            resolver = DatasetResolver(self.db_manager, self.exchange, self.log)
+            allow_download = self.tcfg.auto_download or self.tcfg.optimization_run_id is not None
+            prepare_result = await resolver.prepare(
+                self.tcfg.symbol_interval,
+                self.tcfg.start_time,
+                self.tcfg.end_time,
+                allow_download=allow_download,
+            )
+            if not prepare_result.ok:
+                self.log.error(f"Dataset preparation failed for {self.name()}: {prepare_result.failure.message}")
                 return None
-            if len(kls_cache) < MIN_RECORDS_NUM:
-                self.log.error(f"The current number of records {len(kls_cache)} is lower than the minimum number {MIN_RECORDS_NUM}")
-                return None
-
-            self.log.info(f"Create BinanceData({len(kls_cache)}) ")
-            data = BinanceData(kls_cache)
+            self.tcfg.dataset_ref = prepare_result.dataset_ref
+            data = BinanceCSVData(dataname=self.tcfg.dataset_ref.path)
 
         if data is None:
             self.log.error(f"No strategy data for {self.name()}")
@@ -111,19 +286,54 @@ def process_backtrader(parmas, result):
     strategy = parmas[2]
     tcfg = parmas[3]
     ts = parmas[4]
-
-    logger = Logger(cfg, 10000, True)
-
-    logger.info(f"start do backtrader: {tcfg.id}", LogTag.STRATEGY)
-    # Calculate free cash: use tcfg.free if set, otherwise use config cash
-    free_cash = cfg.cash if tcfg.free < 0 else tcfg.free
-    node = Node(tcfg.strategy_name(), strategy, tcfg.symbol_interval, cfg, logger, data, position=0, trader=False, free=free_cash)
-    ret = node.start()
-    logger.info(f"end do backtrader: {tcfg.id}", LogTag.STRATEGY)
-    if ret is None:
+    if (tcfg.dataset_ref is None or not getattr(tcfg.dataset_ref, "path", None)) and data is not None and strategy is not None:
+        logger = Logger(cfg, 10000, True)
+        free_cash = cfg.cash if tcfg.free < 0 else tcfg.free
+        report_context = {
+            "optimization_run_id": tcfg.optimization_run_id,
+            "param_id": tcfg.param_id,
+            "params": tcfg.strategy_params,
+            "dataset_ref": getattr(tcfg.dataset_ref, "dataset_key", None) if tcfg.dataset_ref else None,
+        }
+        node = Node(
+            tcfg.strategy_name(),
+            strategy,
+            tcfg.symbol_interval,
+            cfg,
+            logger,
+            data,
+            position=0,
+            trader=False,
+            free=free_cash,
+            strategy_params=tcfg.strategy_params,
+            report_context=report_context,
+        )
+        ret = node.start()
+        if ret is None:
+            return
+        ts.tret = ret
+        result.append(
+            [
+                new_stat_msg(
+                    BackTraderStat(tcfg.strategy_name(), tcfg.symbol_interval.name(), ts),
+                    tcfg.id,
+                ),
+                logger.log_buffer.get_logs(),
+                {
+                    "task_id": tcfg.id,
+                    "report": node.backtest_report,
+                    "report_path": node.backtest_report_path,
+                },
+            ]
+        )
         return
 
-    ts.tret = ret
+    sample_spec = build_backtest_sample_spec(cfg, tcfg)
+    sample_result = run_backtest_sample(sample_spec)
+    if not sample_result.ok or sample_result.trader_result is None:
+        return
+
+    ts.tret = parse_trader_result(sample_result.trader_result)
 
     result.append(
         [
@@ -131,6 +341,11 @@ def process_backtrader(parmas, result):
                 BackTraderStat(tcfg.strategy_name(), tcfg.symbol_interval.name(), ts),
                 tcfg.id,
             ),
-            logger.log_buffer.get_logs(),
+            sample_result.logs,
+            {
+                "task_id": tcfg.id,
+                "report": sample_result.report,
+                "report_path": sample_result.report_path,
+            },
         ]
     )

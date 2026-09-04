@@ -27,11 +27,8 @@ def test_stop_order_triggers_on_low_even_if_close_above_stop():
     class StopOrderStrategy(BaseStrategy):
         params = (
             ("name", "STOP_ORDER_INTRABAR_TEST"),
-            ("atr", False),
-            ("chainer_allow_short", True),
             ("chainer_stoploss_atr_mult", 0.0),
-            ("chainer_entry_need_confirm", False),
-            ("chainer_exit_need_confirm", True),
+            ("chainer_need_confirm", False),
             ("chainer_enable_breakeven", False),
             ("chainer_risk_reward_ratio", 0.0),
         )
@@ -84,4 +81,3 @@ def test_stop_order_triggers_on_low_even_if_close_above_stop():
     # Stop should have closed the trade even though close(106) > stop(95)
     assert ctx.exit_price is not None
     assert abs(float(ctx.exit_price) - 95.0) < 1e-9
-

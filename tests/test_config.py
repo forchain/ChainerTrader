@@ -1,7 +1,7 @@
 import os
 
 from trader.common.config import Config, new_and_env
-from trader.common.path import GetScriptsDir
+from trader.common.path import GetConfigsDir
 from trader.exchange.exchange_config import ExchangeConfig, parse_exchange_config
 from trader.exchange.exchange_type import parse_ex_type
 from trader.task.task_config import TaskConfig, get_symbols, parse_task_config
@@ -32,21 +32,21 @@ def test_symbols_intervals():
 
 
 def test_taskconfig():
-    file = os.path.join(GetScriptsDir(), "multi_backtrader.json")
+    file = os.path.join(GetConfigsDir(), "tasks", "backtests", "multi_backtrader.json")
     tcfgs = parse_task_config(file)
     for tcfg in tcfgs:
         print(tcfg.to_dict())
 
 
 def test_taskconfig_uk():
-    file = os.path.join(GetScriptsDir(), "update_klines.json")
+    file = os.path.join(GetConfigsDir(), "tasks", "downloads", "update_klines.json")
     tcfgs = parse_task_config(file)
     for tcfg in tcfgs:
         print(tcfg.to_dict())
 
 
 def test_taskconfig_ckn():
-    file = os.path.join(GetScriptsDir(), "check_klines_num.json")
+    file = os.path.join(GetConfigsDir(), "tasks", "downloads", "check_klines_num.json")
     tcfgs = parse_task_config(file)
     for tcfg in tcfgs:
         print(tcfg.to_dict())

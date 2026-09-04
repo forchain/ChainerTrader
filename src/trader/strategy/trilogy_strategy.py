@@ -53,8 +53,6 @@ class TrilogyStrategy(BaseStrategy):
         """canSell
         Can sell based on the current framework
         """
-        if self.need_stop_loss():
-            return True
         return False
 
     def getInflectionPoints(self):
@@ -117,7 +115,6 @@ class TrilogyStrategy(BaseStrategy):
         """buy
         Process buy
         """
-        self.update_stop_loss_point()
         super().buy(
             data=data,
             size=size,

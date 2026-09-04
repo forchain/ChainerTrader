@@ -1,6 +1,7 @@
 from pymongo import MongoClient
 
 from trader.common.logger import Logger
+from trader.database.availability import AvailabilityCol
 from trader.database.kline import KlineCol
 from trader.database.task import TaskCol
 
@@ -23,12 +24,14 @@ class DatabaseManager:
         self.client = None
         self.task = None
         self.kline = None
+        self.availability = None
 
     def start(self):
         self.client = MongoClient(self.cfg.db)
         db = self.get_database(self.cfg.db_name)
         self.kline = KlineCol(db, self.log)
         self.task = TaskCol(db, self.log)
+        self.availability = AvailabilityCol(db, self.log)
 
     def stop(self):
         self.client.close()
