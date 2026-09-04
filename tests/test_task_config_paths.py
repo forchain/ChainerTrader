@@ -62,3 +62,58 @@ def test_parse_task_config_expands_migrated_optimization_config_with_param_grid_
         task.strategy_params["chainer_need_confirm"]
         for task in tasks
     } == {False, True}
+
+
+def test_parse_task_config_supports_relative_start_time():
+    config = json.dumps(
+        [
+            {
+                "task_type": "BACK_TRADER",
+                "symbol": "BTC-USDT",
+                "interval": "4h",
+                "strategy": "macd_triple_divergence",
+                "start_time": "1y",
+            }
+        ]
+    )
+
+    tasks = parse_task_config(config)
+
+    assert len(tasks) == 1
+    diff_days = (tasks[0].end_time - tasks[0].start_time) / 86400
+    assert 364 <= diff_days <= 367
+
+
+def test_parse_task_config_supports_relative_start_and_end_time():
+    config = json.dumps(
+        [
+            {
+                "task_type": "BACK_TRADER",
+                "symbol": "BTC-USDT",
+                "interval": "1h",
+                "strategy": "macd_triple_divergence",
+                "start_time": "30d",
+                "end_time": "1d",
+            }
+        ]
+    )
+
+    tasks = parse_task_config(config)
+
+    assert len(tasks) == 1
+    diff_days = (tasks[0].end_time - tasks[0].start_time) / 86400
+    assert 29.9 <= diff_days <= 30.1
+
+
+def test_parse_task_config_loads_btc_4h_relative_config():
+    repo_root = Path(__file__).resolve().parents[1]
+    config_path = repo_root / "configs" / "tasks" / "backtests" / "btc_4h_macd_triple_divergence_single.json"
+
+    tasks = parse_task_config(str(config_path))
+
+    assert len(tasks) == 1
+    assert tasks[0].strategy_name() == "macd_triple_divergence"
+    assert tasks[0].symbol_interval.interval.value == "4h"
+    diff_days = (tasks[0].end_time - tasks[0].start_time) / 86400
+    assert 364 <= diff_days <= 367
+

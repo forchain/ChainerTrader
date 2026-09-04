@@ -3,16 +3,17 @@ import os
 from datetime import datetime
 
 from trader.common import path
-from trader.common.common import parse_datetime
+from trader.common.common import parse_datetime  # noqa: F401
 from trader.common.config import TRADER_MIN_LIVE_TRADE_NOTIONAL
+from trader.common.time_range import resolve_time_range
 from trader.live.auto_execution import (
     normalize_live_execution_mode,
     normalize_margin_borrow_block_policy,
 )
+from trader.task.optimization import expand_parameter_space, has_parameter_search, make_optimization_run_id, make_param_id
 from trader.task.persisted_live_config_migration import (
     PERSISTED_LEGACY_LIVE_EXECUTION_MODE,
 )
-from trader.task.optimization import expand_parameter_space, has_parameter_search, make_optimization_run_id, make_param_id
 from trader.task.task_type import TaskType, parse_task_type
 from trader.utils.symbol_interval import Interval, SymbolInterval
 from trader.utils.symbols_interval import SymbolsInterval
@@ -282,17 +283,7 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
         if len(sis) <= 0:
             continue
 
-        if "start_time" in tcd:
-            stime = parse_datetime(tcd["start_time"])
-            start_time = int(stime.timestamp())
-        else:
-            start_time = int(parse_datetime("2000-01-01 00:00:00").timestamp())
-
-        if "end_time" in tcd:
-            etime = parse_datetime(tcd["end_time"])
-            end_time = int(etime.timestamp())
-        else:
-            end_time = int(datetime.now().timestamp())
+        start_time, end_time = resolve_time_range(tcd.get("start_time"), tcd.get("end_time"))
 
         free = -1
         if "free" in tcd:
