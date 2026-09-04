@@ -12,8 +12,11 @@ from trader.utils import path
 
 import backtrader as bt
 
+from trader.utils.chainerstrategy import ChainerStrategy
 
-class ShihunRSIStrategy(bt.Strategy):
+
+# Shihun RSI strategy
+class ShihunRSIStrategy(ChainerStrategy):
     params = (
         ('confirm', 3),
         ('period', 14),
@@ -27,6 +30,8 @@ class ShihunRSIStrategy(bt.Strategy):
         print(f"{dat}, {txt}")
 
     def __init__(self):
+        super().__init__()
+
         self.dataclose = self.datas[0].close
 
         self.order = None
@@ -35,7 +40,7 @@ class ShihunRSIStrategy(bt.Strategy):
         self.goldenFork = 0
         self.deathFork = 0
 
-        self.rsi = bt.indicators.RSI(self.data.close, period=self.params.period)
+        self.rsi = bt.indicators.RSI(self.datas[0], period=self.params.period)
 
     def notify_order(self, order):
         if order.status in [order.Submitted, order.Accepted]:
@@ -76,11 +81,12 @@ class ShihunRSIStrategy(bt.Strategy):
             return
 
         if not self.position:
-            if self.rsi[0] > self.params.overbought:
+            if self.rsi[0] > self.params.overbought or self.canSell():
                 self.sell()
         else:
             if self.rsi[0] < self.params.oversold:
-                self.buy()
+                if self.canBuy():
+                    self.buy()
 
 
 
