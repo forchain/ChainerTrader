@@ -2,6 +2,7 @@ import asyncio
 from asyncio import Queue
 from multiprocessing import Manager, Process
 
+from trader.common.common import sleep
 from trader.common.config import Config
 from trader.common.log_tag import LogTag
 from trader.common.logger import Logger
@@ -166,7 +167,7 @@ class TaskManager:
                 msg = reArr[0]
                 logs = reArr[1]
                 for log_str in logs:
-                    self.log.info(log_str, LogTag.STRATEGY)
+                    self.log.add_log_buffer(log_str, LogTag.STRATEGY)
 
                 self.log.info(f"Relay process queue message:{msg.name()}", LogTag.STRATEGY)
                 bts: BackTraderStat = msg.get_data()
@@ -198,6 +199,15 @@ class TaskManager:
             task.close()
             return True
         return False
+
+    def del_task(self, id: int):
+        task = self.get_task(id)
+        if task:
+            task.close()
+            while self.has_task(id):
+                sleep(self.log, 1)
+
+        return self.db_manager.task.del_task(id)
 
     def get_task_state(self, id: int) -> TaskState | None:
         task = self.get_task(id)

@@ -1,6 +1,6 @@
 [project]
 name = "trader"
-version = "0.51.5"
+version = "0.52.5"
 description = "Awesome trader created by socoldlight"
 authors = [
     {name = "socoldlight", email = "socoldlight@example.com"},

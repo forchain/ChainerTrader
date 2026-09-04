@@ -36,12 +36,18 @@ class TaskConfig:
         self.id = id
 
     def to_dict(self):
-        s_time = ""
+        s_time = "not speicifed"
         if self.start_time > 0:
-            s_time = datetime.fromtimestamp(self.start_time)
-        e_time = ""
+            s_time = f"{datetime.fromtimestamp(self.start_time)}({self.start_time})"
+
+        e_time = "not speicifed"
         if self.end_time > 0:
-            e_time = datetime.fromtimestamp(self.end_time)
+            e_time = f"{datetime.fromtimestamp(self.end_time)}({self.end_time})"
+
+        limit_str = "not speicifed"
+        if self.limit > 0:
+            limit_str = f"{self.limit}"
+
         if self.ttype == TaskType.DEBUG:
             return {
                 "id": self.id,
@@ -53,9 +59,9 @@ class TaskConfig:
             "type": self.ttype,
             "symbol_interval": self.symbol_interval.name(),
             "csv": self.csv,
-            "start_time": f"{s_time}({self.start_time})",
-            "end_time": f"{e_time}({self.end_time})",
-            "limit": self.limit,
+            "start_time": f"{s_time}",
+            "end_time": f"{e_time}",
+            "limit": f"{limit_str}",
             "strategys": self.strategys,
             "auto_download": self.auto_download,
             "free": self.free,

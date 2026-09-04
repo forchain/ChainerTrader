@@ -42,6 +42,21 @@ class TaskCol:
         self.log.debug(f"add tasks, total:{total}")
         return total
 
+    def del_task(self, id: int) -> bool:
+        col = self.get_collection()
+        try:
+            result = col.delete_one({"_id": id})
+            if result.deleted_count != 1:
+                self.log.error(f"Can't find task-{id}")
+                return False
+
+        except Exception as e:
+            self.log.error(e)
+            return False
+
+        self.log.debug(f"del task, id:{id}")
+        return True
+
     def get_task(self, id: int) -> TaskState | None:
         col = self.get_collection()
 
