@@ -39,6 +39,8 @@ class ShihunMACDStrategy(ChainerStrategy):
 
         self.macd = bt.indicators.MACD(self.datas[0])
 
+        self.mcross = bt.indicators.CrossOver(self.macd.macd, self.macd.signal)
+
     def notify_order(self, order):
         if order.status in [order.Submitted, order.Accepted]:
             return
@@ -77,14 +79,14 @@ class ShihunMACDStrategy(ChainerStrategy):
         if self.order:
             return
 
-        histo2 = self.macd.macd[-2] - self.macd.signal[-2]
-        histo1 = self.macd.macd[-1] - self.macd.signal[-1]
-        histo0 = self.macd.macd[0] - self.macd.signal[0]
-        if histo2 < 0 and histo2 < histo1 and histo1 < histo0 and histo0 > 0:
+        # histo2 = self.macd.macd[-2] - self.macd.signal[-2]
+        # histo1 = self.macd.macd[-1] - self.macd.signal[-1]
+        # histo0 = self.macd.macd[0] - self.macd.signal[0]
+        if self.mcross[0] > 0:
            self.goldenFork = self.params.confirm
            self.deathFork = 0
 
-        if histo2 > 0 and histo2 > histo1 and histo1 > histo0 and histo0 < 0:
+        if self.mcross[0] < 0:
            self.goldenFork = 0
            self.deathFork = self.params.confirm
 
@@ -104,7 +106,7 @@ class ShihunMACDStrategy(ChainerStrategy):
                 self.deathFork = 0
 
 
-def shihunMACD(main=False):
+def shihunMACD(main=False,commission=0.001):
     cerebro = bt.Cerebro()
 
     cerebro.addstrategy(ShihunMACDStrategy)
@@ -123,7 +125,7 @@ def shihunMACD(main=False):
 
     cerebro.addsizer(bt.sizers.FixedSize, stake=10)
 
-    cerebro.broker.setcommission(commission=0.0)
+    cerebro.broker.setcommission(commission=commission)
 
     print('\n初始资产: %.2f' % cerebro.broker.getvalue())
 

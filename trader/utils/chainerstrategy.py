@@ -12,10 +12,17 @@ from trader.utils.trend import TrendType
 
 # chainer basic framework strategy
 class ChainerStrategy(bt.Strategy):
+    params = (
+        ('atrperiod', 14),
+        ('atrdist', 1.5),  # ATR distance for stop price
+    )
+
     def __init__(self):
         super().__init__()
         # Stop loss point
         self.stopLossPoint=0
+        # To set the stop price
+        self.atr = bt.indicators.ATR(self.datas[0], period=self.params.atrperiod)
 
     def canBuy(self):
         """canBuy
@@ -113,7 +120,8 @@ class ChainerStrategy(bt.Strategy):
             Process buy
         """
         if self.datas[0].close[0] > self.stopLossPoint:
-            self.stopLossPoint=self.datas[0].close[0]
+            pdist = self.atr[0] * self.params.atrdist
+            self.stopLossPoint=self.datas[0].close[0] - pdist
         super().buy()
 
     def sell(self):
