@@ -52,7 +52,7 @@ class Statistics:
                                format(bts.tret.total_return_rate, '.2f') + "%",
                                (f"{bts.tret.hold_rate:.2f}%"),
                                (f"{bts.tret.max_drawdown:.2f}%"),
-                               (f"{bts.tret.max_drawdown_duration:.2f}"),
+                               (f"{bts.tret.max_drawdown_duration}"),
                                (f"{bts.tret.volatility:.2f}%"),
                                (f"{bts.tret.win_rate:.2f}%"),
                                (f"{bts.tret.plr:.2f}"),

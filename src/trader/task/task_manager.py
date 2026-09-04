@@ -9,7 +9,7 @@ from trader.task.import_csv_task import ImportCSVTask
 from trader.task.task_config import parse_task_config
 from trader.task.trader_task import TraderTask
 from trader.task.backtrader_task import BackTraderTask, process_backtrader
-from trader.binance.exchange import BinanceExchange
+from trader.binance_exchange.exchange import BinanceExchange
 from trader.common.config import Config
 from trader.task.task_type import TaskType
 from trader.task.update_klines_task import UpdateKlinesTask

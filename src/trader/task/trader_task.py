@@ -2,8 +2,8 @@ from datetime import datetime
 from logging import Logger
 
 from trader.app.database_manager import DatabaseManager
-from trader.binance.data import BinanceData
-from trader.binance.exchange import BinanceExchange
+from trader.binance_exchange.data import BinanceData
+from trader.binance_exchange.exchange import BinanceExchange
 from trader.common.common import Context, sleep
 from trader.common.config import Config
 from trader.common.message import new_stat_msg
@@ -55,7 +55,7 @@ class TraderTask(BaseTask):
             if len(kls_cache) <= 0:
                 continue
             latest_kline = kls_cache[len(kls_cache) - 1]
-            node = Node(self.tcfg.strategy_name(),strategy, self.cfg, self.log,BinanceData(kls_cache))
+            node = Node(self.tcfg.strategy_name(),strategy,self.tcfg.symbol_interval.interval,self.cfg, self.log,BinanceData(kls_cache))
             ret=node.start()
             await queue.put(new_stat_msg(TraderStat(self.tcfg.strategy_name(), self.tcfg.symbol_interval.name(), ret),self.tcfg.id))
 

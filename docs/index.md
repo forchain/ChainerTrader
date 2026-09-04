@@ -43,9 +43,19 @@ $ trader --atr ... ...
 ## Start the Web API service
 
 ```bash
-$ trader --api ... ...
+# Default binding (127.0.0.1:8000)
+$ trader --api
+
+# Custom port only (e.g. 8080)
+$ trader --api :8080
+
+# Custom host only (e.g. 0.0.0.0)
+$ trader --api 0.0.0.0
+
+# Custom host and port (e.g. 0.0.0.0:8080)
+$ trader --api 0.0.0.0:8080
 ```
-* Then you can access http://127.0.0.1:8000/ through a browser
+* Then you can access the API through your browser at the configured address and port (e.g. http://127.0.0.1:8000/)
 
 ## Output logs to file
 

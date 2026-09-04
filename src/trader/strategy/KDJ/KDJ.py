@@ -1,6 +1,9 @@
 from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
 
+from dns.asyncbackend import set_default_backend
+
+from trader.common.config import DEFAULT_PERIOD
 from trader.strategy.base_strategy import BaseStrategy
 from trader.utils.kdj import KDJIndicator
 from trader.utils.operate import OperateType
@@ -10,11 +13,13 @@ class KDJStrategy(BaseStrategy):
     params = (
         ("smooth", 3),
         ("upper",80),
-        ("lower",20)
+        ("lower",20),
+        ("range", 10)
     )
 
     def __init__(self):
         super().__init__()
+        self.set_default_period(9)
         self.kdj = KDJIndicator(self.data, period=self.params.period, smooth=self.params.smooth)
 
     def next(self):
@@ -25,14 +30,14 @@ class KDJStrategy(BaseStrategy):
         willOpt = OperateType.UNKNOWN
 
         if not self.position:
-            if self.kdj.K[0] > self.kdj.D[0] and self.kdj.J[0] > self.params.lower:
+            if self.kdj.K[0] > self.kdj.D[0] and abs(self.kdj.J[0]-self.params.lower) < self.params.range:
                 willOpt = OperateType.BUY
 
         else:
             if self.need_stop_loss():
                 willOpt = OperateType.SELL
             else:
-                if self.kdj.K[0] < self.kdj.D[0] and self.kdj.J[0] < self.params.upper:
+                if self.kdj.K[0] < self.kdj.D[0] and abs(self.kdj.J[0] - self.params.upper) < self.params.range:
                     willOpt = OperateType.SELL
 
 

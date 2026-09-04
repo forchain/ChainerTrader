@@ -7,7 +7,7 @@ import os
 import backtrader
 from backtrader import num2date
 
-from trader.binance.csvdata import BinanceCSVData
+from trader.binance_exchange.csvdata import BinanceCSVData
 from trader.common import path
 
 

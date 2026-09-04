@@ -1,9 +1,9 @@
 from datetime import datetime
 
 from trader.app.database_manager import DatabaseManager
-from trader.binance.csvdata import BinanceCSVData
-from trader.binance.data import BinanceData
-from trader.binance.exchange import BinanceExchange
+from trader.binance_exchange.csvdata import BinanceCSVData
+from trader.binance_exchange.data import BinanceData
+from trader.binance_exchange.exchange import BinanceExchange
 from trader.common import path
 from trader.common.config import Config
 from trader.common.logger import Logger
@@ -90,7 +90,7 @@ def process_backtrader(parmas,result):
     logger = Logger(cfg)
 
     logger.log().info(f"start do backtrader: {tcfg.id}")
-    node = Node(tcfg.strategy_name(),strategy, cfg, logger.log(), data)
+    node = Node(tcfg.strategy_name(),strategy,tcfg.symbol_interval.interval, cfg, logger.log(), data)
     ret = node.start()
     logger.log().info(f"end do backtrader: {tcfg.id}")
     if ret.operate:

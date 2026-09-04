@@ -2,39 +2,39 @@ from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
 
 import logging
+from datetime import timedelta
 
 from backtrader import num2date
 
 import backtrader as bt
-import backtrader.analyzers as btanalyzers
 
 from prettytable import PrettyTable
 
 from trader.common.config import Config
 from trader.strategy.trader_result import TraderResult
 from trader.utils.operation_state import OptStatAnalyzer
-from trader.utils.profitlossratio import ProfitLossRatioAnalyzer
-from trader.utils.volatility import VolatilityAnalyzer
-from trader.utils.winrate import WinRateAnalyzer
+from trader.utils.symbol_interval import Interval, get_time_duration
 
 class Node:
-    def __init__(self,name,strategy,cfg:Config=None,log:logging.Logger=None,data=None):
+    def __init__(self,name,strategy,interval:Interval,cfg:Config=None,log:logging.Logger=None,data=None):
         self.log=log
         self.name=name
         self.cfg=cfg
+        self.interval=interval
 
         log.info(f"New node")
 
         cerebro = bt.Cerebro()
         for st in strategy:
-            cerebro.addstrategy(st, atr=cfg.atr, mode=cfg.mode, period=cfg.period, log=log,name=st.__name__)
+            cerebro.addstrategy(st, stoploss=cfg.stoploss,atr=cfg.atr, mode=cfg.mode, period=cfg.period, log=log,name=st.__name__)
 
-        cerebro.addanalyzer(btanalyzers.SharpeRatio, _name='sharpeRatio')
-        cerebro.addanalyzer(btanalyzers.DrawDown, _name="drawdown")
-        cerebro.addanalyzer(VolatilityAnalyzer, _name="volatility", cerebro=cerebro)
-        cerebro.addanalyzer(WinRateAnalyzer, _name="winRate")
-        cerebro.addanalyzer(ProfitLossRatioAnalyzer, _name="profitLossRatio")
+        cerebro.addanalyzer(bt.analyzers.DrawDown, _name="drawdown")
+        cerebro.addanalyzer(bt.analyzers.SharpeRatio, _name='sharpe', riskfreerate=0.02)
+        cerebro.addanalyzer(bt.analyzers.VWR, _name='volatility')
+        cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name='trade_analyzer')
+
         cerebro.addanalyzer(OptStatAnalyzer, _name="optstat")
+
         self.cerebro=cerebro
 
         cerebro.adddata(data)
@@ -44,6 +44,40 @@ class Node:
 
         cerebro.broker.setcommission(commission=cfg.commission)
 
+    def get_win_rate(self,strategy:bt.Strategy):
+        trade_analysis = strategy.analyzers.trade_analyzer.get_analysis()
+        total_trades = trade_analysis.total.closed if 'closed' in trade_analysis.total else 0
+        win_trades = trade_analysis.won.total if 'won' in trade_analysis and 'total' in trade_analysis.won else 0
+
+        if total_trades > 0:
+            win_rate = (win_trades / total_trades) * 100
+            return win_rate
+        else:
+            return 0
+
+    def get_profit_loss(self,strategy:bt.Strategy):
+        trade_analysis = strategy.analyzers.trade_analyzer.get_analysis()
+        avg_win = trade_analysis.won.pnl.average if 'won' in trade_analysis and 'pnl' in trade_analysis.won else None
+        avg_loss = trade_analysis.lost.pnl.average if 'lost' in trade_analysis and 'pnl' in trade_analysis.lost else None
+
+        if avg_win is not None and avg_loss is not None and avg_loss != 0:
+            profit_loss_ratio = abs(avg_win / avg_loss)
+            return profit_loss_ratio,avg_win,avg_loss
+        else:
+            if avg_win is None:
+                avg_win=0
+            if avg_loss is None:
+                avg_loss=0
+
+            return 0,avg_win,avg_loss
+
+    def get_hold_rate(self):
+        data_len = len(self.cerebro.datas[0])
+        start_price = self.cerebro.datas[0].open[1 - data_len]
+        end_price = self.cerebro.datas[0].close[0]
+        hold_rate = end_price / start_price * 100
+        return hold_rate
+
     def start(self):
         self.log.info(f"start node")
 
@@ -51,18 +85,22 @@ class Node:
         ret = rets[0]
 
         finalFund = self.cerebro.broker.getvalue()
-        sharpeRatio = ret.analyzers.sharpeRatio.get_analysis()
         totalReturnRate = (finalFund - self.cfg.cash) / self.cfg.cash * 100
+
+        hold_rate=self.get_hold_rate()
 
         drawdown = ret.analyzers.drawdown.get_analysis()
         maxDrawdown = drawdown.max.drawdown
-        maxDrawdownDuration = drawdown.max.len
-        volatility = ret.analyzers.volatility.get_analysis()
-        winRate = ret.analyzers.winRate.get_analysis()
-        profitLossRatio = ret.analyzers.profitLossRatio.get_analysis()
-        plr = profitLossRatio['profitLossRatio']
-        avgProfit = profitLossRatio['avgProfit']
-        avgLoss = profitLossRatio['avgLoss']
+
+        maxDrawdownLen = drawdown.max.len
+        maxDrawdownLen = get_time_duration(self.interval)*maxDrawdownLen
+        maxDrawdownDuration = timedelta(seconds=maxDrawdownLen)
+
+        sharpeRatio = ret.analyzers.sharpe.get_analysis()
+        volatility = ret.analyzers.volatility.get_analysis()['vwr']
+        winRate = self.get_win_rate(ret)
+
+        plr,avgProfit,avgLoss = self.get_profit_loss(ret)
 
         optstat = ret.analyzers.optstat.get_analysis()
 
@@ -73,34 +111,34 @@ class Node:
         end_time = num2date(self.cerebro.datas[0].datetime[0])
         start_time = num2date(self.cerebro.datas[0].datetime[1 - data_len])
 
-        start_price = self.cerebro.datas[0].open[1-data_len]
-        end_price=self.cerebro.datas[0].close[0]
-        hold_rate=end_price/start_price*100
-
         # statistics
         table = PrettyTable()
         table.field_names = ["Name", "Value"]
         table.add_row(["策略", f"{self.name}"])
-        table.add_row(["手续费率", self.cfg.commission])
-        table.add_row(["ATR", self.cfg.atr])
-        table.add_row(["初始资金", format(self.cfg.cash, '.2f')])
-        table.add_row(["最终资金", format(finalFund, '.2f')])
+
+
         table.add_row(["总收益率", format(totalReturnRate, '.2f') + "%"])
+        table.add_row(["持有增长率:", (f"{hold_rate:.2f}%")])
         if sharpeRatio['sharperatio']:
-            table.add_row(["夏普比率", format(sharpeRatio['sharperatio'], '.2f')])
+            table.add_row(["夏普比率", (f"{sharpeRatio['sharperatio']:.2f}")])
         table.add_row(["最大回撤:", (f"{maxDrawdown:.2f}%")])
-        table.add_row(["回撤持续:", (f"{maxDrawdownDuration:.2f}")])
+        table.add_row(["回撤时长:", (f"{maxDrawdownDuration}")])
         table.add_row(["波动率:", (f"{volatility:.2f}%")])
         table.add_row(["胜率:", (f"{winRate:.2f}%")])
         table.add_row(["平均盈亏比:", (f"{plr:.2f}")])
         table.add_row(["平均盈利:", (f"{avgProfit:.2f}")])
         table.add_row(["平均亏损:", (f"{avgLoss:.2f}")])
+
         table.add_row(["开始时间", (f"{start_time}")])
         table.add_row(["结束时间", (f"{end_time}")])
         table.add_row(["数据量", data_len])
+        table.add_row(["手续费率", self.cfg.commission])
+        table.add_row(["ATR", self.cfg.atr])
+        table.add_row(["初始资金", format(self.cfg.cash, '.2f')])
+        table.add_row(["最终资金", format(finalFund, '.2f')])
         table.add_row(["操作买单数", optstat['buys']])
         table.add_row(["操作卖单数", optstat['sells']])
-        table.add_row(["持有增长率:", (f"{hold_rate:.2f}%")])
+
 
         print("\n")
         print(table)

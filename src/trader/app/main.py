@@ -1,8 +1,10 @@
 import argparse
+import time
 
 from trader.app.app import App, version
 from trader.common.config import Config
 from trader.rpc.rpc import start
+from multiprocessing import Process, Manager
 
 
 def main():
@@ -15,7 +17,8 @@ def main():
     parser.add_argument('--period', help='Period for the moving average',action='store',type=int, default=14,required=False)
     parser.add_argument('--commission', help='Transaction commission', action='store', type=float, default=0.001,required=False)
     parser.add_argument("--atr", help="Use atr for stop-loss-point", action="store_true")
-    parser.add_argument("--api", help="Start the Web API service", action="store_true")
+    parser.add_argument("--stoploss", help="Use stop-loss-point", action="store_true")
+    parser.add_argument("--api", help="Start the Web API service with optional binding address and port (e.g. 127.0.0.1:8000, :8000, 127.0.0.1)", type=str, const="127.0.0.1:8000", nargs="?")
     parser.add_argument("--log_file", help="Write log to file", action="store_true")
     parser.add_argument("--plot", help="Plot data", action="store_true")
     parser.add_argument("--mode", help="trend type: NORMAL UP DOWN",type=str)
@@ -37,6 +40,7 @@ def main():
 
     cfg = Config(args.commission,
                  args.atr,
+                 args.stoploss,
                  args.period,
                  args.log_file,
                  args.plot,
@@ -53,10 +57,22 @@ def main():
     if args.version:
         print(version())
         return
-    if args.api:
-        start(cfg)
-        return
 
     app = App(cfg)
-    if app.start():
-        app.stop()
+    if args.api:
+        manager=Manager()
+        shared_dict = manager.dict()
+        shared_dict['app'] = app
+        shared_dict['api'] = args.api
+        proc = Process(target=start, args=(shared_dict,))
+        proc.start()
+        if app.start():
+            app.stop()
+
+        time.sleep(1)
+        proc.terminate()
+        proc.join()
+
+    else:
+        if app.start():
+            app.stop()

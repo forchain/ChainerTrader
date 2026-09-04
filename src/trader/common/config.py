@@ -4,11 +4,13 @@ import os
 from trader.common.common import NAME
 from trader.utils.trend import parseTrendType
 
+DEFAULT_PERIOD = 14
 
 class Config:
     def __init__(self,commission=0.001,
                       atr=True,
-                      period=14,
+                      stoploss=False,
+                      period=DEFAULT_PERIOD,
                       log_file=False,
                       plot=False,
                       mode=None,
@@ -24,6 +26,7 @@ class Config:
         self.mode=parseTrendType(mode)
         self.commission=commission
         self.atr=atr
+        self.stoploss=stoploss
         self.period=period
         self.log_file=log_file
         self.plot=plot
@@ -40,6 +43,7 @@ class Config:
     def exportEnv(self):
         os.environ['commission'] = str(self.commission)
         os.environ['atr'] = str(self.atr)
+        os.environ['stoploss'] = str(self.stoploss)
         os.environ['period'] = str(self.period)
         os.environ['log_file'] = str(self.log_file)
         os.environ['plot'] = str(self.plot)
@@ -62,6 +66,7 @@ class Config:
         return {
             'commission':self.commission,
             'atr':self.atr,
+            'stoploss':self.stoploss,
             'period':self.period,
             'log_file':self.log_file,
             'plot':self.plot,
@@ -94,6 +99,7 @@ def NewConfigFromEnv():
     return Config(
         float(commission),
         bool(os.environ.get('atr')),
+        bool(os.environ.get('stoploss')),
         int(period),
         bool(os.environ.get('log_file')),
         bool(os.environ.get('plot')),

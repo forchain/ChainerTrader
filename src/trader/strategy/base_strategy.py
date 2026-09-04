@@ -5,6 +5,7 @@ from datetime import datetime
 
 import backtrader as bt
 
+from trader.common.config import DEFAULT_PERIOD
 from trader.utils.trend import TrendType
 from backtrader import num2date
 
@@ -16,7 +17,7 @@ class BaseStrategy(bt.Strategy):
         ('atrperiod', 14),
         ('atrdist', 5),  # ATR distance for stop price
         ('mode', TrendType.NORMAL),
-        ('period', 14),
+        ('period', DEFAULT_PERIOD),
         ('log', None),
         ('stoploss', False),
         ('takeprofit', False),
@@ -124,3 +125,7 @@ class BaseStrategy(bt.Strategy):
 
     def name(self):
         return self.params.name
+
+    def set_default_period(self,period):
+        if self.params.period == DEFAULT_PERIOD:
+            self.params.period = period
