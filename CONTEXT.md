@@ -35,3 +35,15 @@ _Avoid_: Server mode, web mode
 **console模式**:
 A one-shot runtime mode that runs startup work and then exits.
 _Avoid_: CLI mode, batch mode
+
+**候选币种集合**:
+A curated set of market symbols that a backtest or optimization run may expand into executable tasks.
+_Avoid_: Watchlist, coin list, symbol list
+
+**任务模板**:
+A reusable task definition that fixes non-symbol parameters while leaving the candidate symbols to be injected by a generator.
+_Avoid_: Preset, sample config
+
+**选币结果任务配置**:
+A concrete task file generated from optimization rankings, containing the selected symbols and their winning strategy parameters.
+_Avoid_: Top list, portfolio file

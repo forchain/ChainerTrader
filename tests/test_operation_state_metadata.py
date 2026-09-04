@@ -18,6 +18,7 @@ def test_enrich_operation_from_trade_context_copies_framework_risk_references():
         exit_reason_code=None,
         exit_reason_label=None,
         exit_reason_detail=None,
+        replacement_trade_id=13,
         stop_multiple_r=None,
         exit_risk_reward_ratio=None,
     )
@@ -40,6 +41,7 @@ def test_enrich_operation_from_trade_context_copies_framework_risk_references():
         "exit_reason_code": None,
         "exit_reason_label": None,
         "exit_reason_detail": None,
+        "replacement_trade_id": 13,
         "stop_multiple_r": None,
         "exit_risk_reward_ratio": None,
     }

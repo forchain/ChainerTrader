@@ -6,6 +6,8 @@ from datetime import datetime
 from decimal import ROUND_DOWN, Decimal
 from typing import Any
 
+import requests
+
 try:
     import ccxt  # type: ignore
 except Exception:  # pragma: no cover - optional until dependency is installed
@@ -24,6 +26,7 @@ from trader.utils.symbol_interval import Symbol, SymbolInterval, get_time_durati
 class CcxtExchangeDriver:
     KLINE_LIMIT_MAX = 1000
     KLINE_LIMIT_DEFAULT = 500
+    BINANCE_PUBLIC_DATA_API_BASE = "https://data-api.binance.vision"
 
     def __init__(
         self,
@@ -129,9 +132,21 @@ class CcxtExchangeDriver:
         if start_time is not None and start_time > 0:
             since_ms = start_time * 1000
         elif end_time is not None and end_time > 0:
-            since_ms = max(0, (end_time - max(r_limit, 1) * step * 2) * 1000)
+            since_ms = max(0, (end_time - max(r_limit - 1, 0) * step) * 1000)
 
-        rows = self.client.fetch_ohlcv(market_symbol, timeframe, since=since_ms, limit=r_limit)
+        try:
+            rows = self.client.fetch_ohlcv(market_symbol, timeframe, since=since_ms, limit=r_limit)
+        except Exception as exc:
+            if not self._should_use_binance_public_data_api_fallback(exc):
+                raise
+            self.log.warning(f"ccxt market-data request failed, using Binance public data API fallback: {exc}")
+            rows = self._fetch_binance_public_data_api_klines(
+                market_symbol,
+                timeframe,
+                since_ms=since_ms,
+                end_time=end_time,
+                limit=r_limit,
+            )
         return self._rows_to_klines(rows, step, start_time=start_time, end_time=end_time, limit=r_limit)
 
     def get_latest_klines(self, si: SymbolInterval, limit: int = KLINE_LIMIT_DEFAULT) -> list[Kline]:
@@ -542,6 +557,44 @@ class CcxtExchangeDriver:
         if load_markets is not None:
             load_markets()
 
+    def _should_use_binance_public_data_api_fallback(self, exc: Exception) -> bool:
+        disabled = str(os.getenv("CHAINERTRADER_DISABLE_BINANCE_DATA_API_FALLBACK", "")).strip().lower()
+        if disabled in {"1", "true", "yes"}:
+            return False
+        if self.name() != ExchangeType.BINANCE.name:
+            return False
+        text = str(exc).lower()
+        exc_name = exc.__class__.__name__.lower()
+        return "451" in text or "restricted location" in text or "exchangenotavailable" in exc_name
+
+    def _fetch_binance_public_data_api_klines(
+        self,
+        market_symbol: str,
+        timeframe: str,
+        *,
+        since_ms: int | None,
+        end_time: int | None,
+        limit: int,
+    ) -> list[list[Any]]:
+        params: dict[str, Any] = {
+            "symbol": market_symbol.replace("/", ""),
+            "interval": timeframe,
+            "limit": max(1, min(int(limit or self.KLINE_LIMIT_DEFAULT), self.KLINE_LIMIT_MAX)),
+        }
+        if since_ms is not None:
+            params["startTime"] = int(since_ms)
+        if end_time is not None and end_time > 0:
+            params["endTime"] = int(end_time * 1000)
+
+        response = requests.get(
+            f"{self.BINANCE_PUBLIC_DATA_API_BASE}/api/v3/klines",
+            params=params,
+            timeout=20,
+        )
+        response.raise_for_status()
+        rows = response.json()
+        return rows if isinstance(rows, list) else []
+
     def _balance_params(self) -> dict[str, Any]:
         if self.cfg.margin_mode.value == "spot":
             return {}
@@ -678,7 +731,7 @@ class CcxtExchangeDriver:
                 continue
             if end_time is not None and open_time > end_time:
                 continue
-            close_time = open_time + step - 1
+            close_time = int(float(row[6]) / 1000) if len(row) > 6 and row[6] is not None else open_time + step - 1
             klines.append(
                 Kline(
                     open_time,

@@ -42,6 +42,7 @@ class ChainerTraderStrategy(BaseStrategy):
         # Chainer Framework parameters
         ("chainer_mode", "LONG_ONLY"),  # LONG_ONLY, SHORT_ONLY, BOTH
         ("chainer_stoploss_atr_mult", 1.0),  # Stop loss ATR multiple (0 = disabled)
+        ("chainer_trailing_stop_ratio", 0.0),  # Moving stop ratio (0 = disabled)
         ("chainer_need_confirm", True),  # Require confirmation for both entry and exit
         ("chainer_enable_breakeven", True),  # Enable breakeven
         ("chainer_risk_reward_ratio", 2.0),  # Risk/reward ratio (0 = disabled)

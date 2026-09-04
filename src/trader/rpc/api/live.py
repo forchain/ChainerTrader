@@ -475,7 +475,7 @@ async def current_task_workspace(request: Request, task_id: int | None = None):
         if task is not None and int(getattr(getattr(task, "tcfg", None), "id", 0) or 0) != selected_item["task_id"]:
             task = None
         cfg = getattr(rpc_app, "cfg", None)
-        limit = max(1, int(getattr(cfg, "live_warmup_candles", 500) or 500))
+        limit = max(1, int(getattr(cfg, "warmup_candles", 500) or 500))
         if task is not None:
             snapshot = await build_initial_snapshot(task, rpc_app.db_manager, limit=limit)
             can_stream = True
@@ -487,7 +487,7 @@ async def current_task_workspace(request: Request, task_id: int | None = None):
             snapshot = await _build_historical_chart_snapshot(selected, rpc_app.db_manager, limit=limit)
     elif renderer == "backtest":
         cfg = getattr(rpc_app, "cfg", None)
-        limit = max(1, int(getattr(cfg, "live_warmup_candles", 500) or 500))
+        limit = max(1, int(getattr(cfg, "warmup_candles", 500) or 500))
         snapshot = await _build_historical_chart_snapshot(selected, rpc_app.db_manager, limit=limit)
 
     return {
@@ -590,7 +590,7 @@ async def live_strategy_snapshot(strategy_id: int, request: Request):
     if task is None or not _can_access_task(user, task):
         raise HTTPException(status_code=404, detail="live strategy not found")
     cfg = getattr(app, "cfg", None)
-    limit = max(1, int(getattr(cfg, "live_warmup_candles", 500) or 500))
+    limit = max(1, int(getattr(cfg, "warmup_candles", 500) or 500))
     return await build_initial_snapshot(task, app.db_manager, limit=limit)
 
 

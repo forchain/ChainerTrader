@@ -12,6 +12,7 @@ class SignalRouteActionType(str, Enum):
     BLOCKED = "blocked"
     ENTER = "enter"
     EXIT = "exit"
+    REPLACE = "replace"
 
 
 @dataclass(frozen=True)
@@ -147,6 +148,16 @@ class SignalRouter:
         if no_active_trade and can_open_new_position:
             return [SignalRouteAction(SignalRouteActionType.ENTER, direction, dict(context))]
         if not no_active_trade:
+            if can_open_new_position:
+                return [
+                    SignalRouteAction(
+                        SignalRouteActionType.REPLACE,
+                        direction,
+                        dict(context),
+                        reason="new_signal",
+                        active_trade=self._active_trade_payload(active_trade),
+                    )
+                ]
             return [
                 SignalRouteAction(
                     SignalRouteActionType.BLOCKED,

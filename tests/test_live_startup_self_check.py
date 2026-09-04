@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
-from trader.exchange.exchange_config import ExchangeConfig, MarginMode
-from trader.task.live_startup_self_check import infer_required_margin_mode, evaluate_live_startup_self_check
+from trader.exchange.exchange_config import MarginMode
+from trader.task.live_startup_self_check import evaluate_live_startup_self_check, infer_required_margin_mode
 from trader.task.task_config import TaskConfig
 from trader.task.task_type import TaskType
 from trader.utils.symbol_interval import Interval, SymbolInterval
@@ -23,6 +23,18 @@ def test_infer_required_margin_mode_defaults_to_spot_for_long_only():
 
 def test_infer_required_margin_mode_promotes_short_capable_tasks_to_cross_margin():
     assert infer_required_margin_mode([_task("BOTH"), _task("SHORT_ONLY")]) == MarginMode.CROSS_MARGIN
+
+
+def test_infer_required_margin_mode_ignores_short_capable_backtests():
+    task = TaskConfig(
+        1,
+        TaskType.BACK_TRADER,
+        SymbolInterval("BTC-USDT", Interval("1d")),
+        strategies=["macd_triple_divergence"],
+        strategy_params={"chainer_mode": "BOTH"},
+    )
+
+    assert infer_required_margin_mode([task]) == MarginMode.SPOT
 
 
 def test_live_startup_self_check_reports_exchange_and_kline_and_short_capability():
@@ -58,3 +70,34 @@ def test_live_startup_self_check_reports_exchange_and_kline_and_short_capability
     assert result.short_capable is True
     assert exchange.ping_calls == 1
     assert exchange.latest_klines_calls == 1
+
+
+def test_live_startup_self_check_skips_kline_probe_for_backtests():
+    class FakeExchange:
+        margin_mode = MarginMode.SPOT
+
+        def ping(self):
+            return True
+
+        def time(self):
+            return SimpleNamespace()
+
+        def get_latest_klines(self, symbol_interval, limit):
+            raise AssertionError("backtests should not use live startup kline probes")
+
+    task = TaskConfig(
+        1,
+        TaskType.BACK_TRADER,
+        SymbolInterval("BTC-USDT", Interval("1d")),
+        strategies=["macd_triple_divergence"],
+        strategy_params={"chainer_mode": "BOTH"},
+    )
+
+    result = evaluate_live_startup_self_check(
+        exchange=FakeExchange(),
+        tasks=[task],
+    )
+
+    assert result.passed
+    assert result.kline_checks == []
+    assert result.klines_available is True

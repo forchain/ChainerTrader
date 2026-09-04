@@ -28,7 +28,7 @@ TRADER_AUTH_USERNAME = "TRADER_AUTH_USERNAME"
 TRADER_AUTH_PASSWORD = "TRADER_AUTH_PASSWORD"
 TRADER_PROTECTED_PATHS = "TRADER_PROTECTED_PATHS"
 TRADER_MIN_LIVE_TRADE_NOTIONAL = "TRADER_MIN_LIVE_TRADE_NOTIONAL"
-TRADER_LIVE_WARMUP_CANDLES = "TRADER_LIVE_WARMUP_CANDLES"
+TRADER_WARMUP_CANDLES = "TRADER_WARMUP_CANDLES"
 TRADER_LIVE_ORDER_CLEANUP_SYMBOLS = "TRADER_LIVE_ORDER_CLEANUP_SYMBOLS"
 TRADER_SECRET_KEY = "TRADER_SECRET_KEY"
 TRADER_SESSION_COOKIE_SECURE = "TRADER_SESSION_COOKIE_SECURE"
@@ -105,7 +105,7 @@ class Config:
         optimization_parallelism_collapse_ratio: float = 0.25,
         optimization_worker_cpu_efficiency_threshold: float = 0.1,
         min_live_trade_notional: float = 11.0,
-        live_warmup_candles: int = 500,
+        warmup_candles: int = 500,
         live_order_cleanup_symbols=None,
         **kwargs,
     ):
@@ -142,7 +142,7 @@ class Config:
         self.optimization_parallelism_collapse_ratio = optimization_parallelism_collapse_ratio
         self.optimization_worker_cpu_efficiency_threshold = optimization_worker_cpu_efficiency_threshold
         self.min_live_trade_notional = float(min_live_trade_notional)
-        self.live_warmup_candles = int(live_warmup_candles)
+        self.warmup_candles = int(warmup_candles)
         self.live_order_cleanup_symbols = parse_string_list_config(live_order_cleanup_symbols)
 
     def export_env(self):
@@ -177,7 +177,7 @@ class Config:
         os.environ[TRADER_SESSION_TTL_HOURS] = str(self.session_ttl_hours)
         os.environ[TRADER_LEVERAGE_RATIO] = str(self.leverage_ratio)
         os.environ[TRADER_MIN_LIVE_TRADE_NOTIONAL] = str(self.min_live_trade_notional)
-        os.environ[TRADER_LIVE_WARMUP_CANDLES] = str(self.live_warmup_candles)
+        os.environ[TRADER_WARMUP_CANDLES] = str(self.warmup_candles)
         if self.live_order_cleanup_symbols:
             os.environ[TRADER_LIVE_ORDER_CLEANUP_SYMBOLS] = ",".join(self.live_order_cleanup_symbols)
 
@@ -215,7 +215,7 @@ class Config:
             "optimization_parallelism_collapse_ratio": self.optimization_parallelism_collapse_ratio,
             "optimization_worker_cpu_efficiency_threshold": self.optimization_worker_cpu_efficiency_threshold,
             "min_live_trade_notional": self.min_live_trade_notional,
-            "live_warmup_candles": self.live_warmup_candles,
+            "warmup_candles": self.warmup_candles,
             "live_order_cleanup_symbols": self.live_order_cleanup_symbols,
         }
 
@@ -238,7 +238,7 @@ class Config:
             "session_ttl_hours": self.session_ttl_hours,
             "leverage_ratio": self.leverage_ratio,
             "min_live_trade_notional": self.min_live_trade_notional,
-            "live_warmup_candles": self.live_warmup_candles,
+            "warmup_candles": self.warmup_candles,
             "live_order_cleanup_symbols": self.live_order_cleanup_symbols,
         }
 
@@ -306,7 +306,7 @@ def new_and_env(cli: Namespace | None = None) -> Config:
     session_ttl_hours = 24
     leverage_ratio = 1.0
     min_live_trade_notional = 11.0
-    live_warmup_candles = 500
+    warmup_candles = 500
     live_order_cleanup_symbols: list[str] = []
 
     commission = float(os.environ.get(TRADER_COMMISSION, commission))
@@ -331,7 +331,7 @@ def new_and_env(cli: Namespace | None = None) -> Config:
     session_ttl_hours = int(os.environ.get(TRADER_SESSION_TTL_HOURS, session_ttl_hours))
     leverage_ratio = parse_leverage_ratio_config(os.environ.get(TRADER_LEVERAGE_RATIO, leverage_ratio))
     min_live_trade_notional = float(os.environ.get(TRADER_MIN_LIVE_TRADE_NOTIONAL, min_live_trade_notional))
-    live_warmup_candles = int(os.environ.get(TRADER_LIVE_WARMUP_CANDLES, live_warmup_candles))
+    warmup_candles = int(os.environ.get(TRADER_WARMUP_CANDLES, warmup_candles))
     live_order_cleanup_symbols = parse_string_list_config(os.environ.get(TRADER_LIVE_ORDER_CLEANUP_SYMBOLS, ""))
 
     protected_paths_env = os.environ.get(TRADER_PROTECTED_PATHS, "")
@@ -386,8 +386,8 @@ def new_and_env(cli: Namespace | None = None) -> Config:
             session_ttl_hours = int(a["session_ttl_hours"])
         if "min_live_trade_notional" in a:
             min_live_trade_notional = float(a["min_live_trade_notional"])
-        if "live_warmup_candles" in a:
-            live_warmup_candles = int(a["live_warmup_candles"])
+        if "warmup_candles" in a:
+            warmup_candles = int(a["warmup_candles"])
         if "live_order_cleanup_symbols" in a:
             live_order_cleanup_symbols = parse_string_list_config(a["live_order_cleanup_symbols"])
 
@@ -415,6 +415,6 @@ def new_and_env(cli: Namespace | None = None) -> Config:
         session_ttl_hours=session_ttl_hours,
         leverage_ratio=leverage_ratio,
         min_live_trade_notional=min_live_trade_notional,
-        live_warmup_candles=live_warmup_candles,
+        warmup_candles=warmup_candles,
         live_order_cleanup_symbols=live_order_cleanup_symbols,
     )

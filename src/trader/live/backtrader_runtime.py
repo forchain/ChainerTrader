@@ -61,6 +61,16 @@ class LiveOperationAnalyzer(bt.Analyzer):
             return None
 
 
+class LiveProgressAnalyzer(bt.Analyzer):
+    params = (("progress_handler", None),)
+
+    def next(self):
+        if self.p.progress_handler is None:
+            return
+        open_time = int(self.strategy.data.datetime.datetime(0).timestamp())
+        self.p.progress_handler(open_time)
+
+
 class BacktraderLiveRunner:
     def __init__(
         self,
@@ -90,11 +100,17 @@ class BacktraderLiveRunner:
             self.cerebro.addstrategy(strategy_cls, **self.strategy_kwargs)
         if self.operation_handler is not None:
             self.cerebro.addanalyzer(LiveOperationAnalyzer, _name="live_operation", operation_handler=self._handle_operation)
+        self.cerebro.addanalyzer(
+            LiveProgressAnalyzer,
+            _name="live_progress",
+            progress_handler=self._handle_processed_bar,
+        )
         self.cerebro.broker.setcash(self.cash)
         self.cerebro.broker.setcommission(commission=self.commission, commtype=bt.CommInfoBase.COMM_PERC, stocklike=True)
         self._thread: threading.Thread | None = None
         self._exception: BaseException | None = None
         self._seen_operation_keys: set[tuple] = set()
+        self._latest_processed_open_time: int | None = None
 
     def start(self, warmup: Iterable[Kline] | None = None) -> None:
         if self._thread is not None:
@@ -115,6 +131,7 @@ class BacktraderLiveRunner:
                 "running": self._thread is not None and self._thread.is_alive(),
                 "legacy_fallback": False,
                 "last_error": str(self._exception) if self._exception is not None else None,
+                "latest_processed_open_time": self._latest_processed_open_time,
             }
         )
         return payload
@@ -144,6 +161,9 @@ class BacktraderLiveRunner:
             return
         self._seen_operation_keys.add(key)
         self.operation_handler(operation)
+
+    def _handle_processed_bar(self, open_time: int) -> None:
+        self._latest_processed_open_time = int(open_time)
 
     def _tag_operation_phase(self, operation) -> None:
         phase = getattr(self.feed, "current_bar_phase", None)

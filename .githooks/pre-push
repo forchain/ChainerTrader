@@ -1,0 +1,19 @@
+#!/bin/sh
+
+branch=$(git symbolic-ref --quiet --short HEAD) || exit 0
+
+case "$branch" in
+  main|master|fix/*|feat/*|feature/*|docs/*|refactor/*|chore/*|codex/*)
+    exit 0
+    ;;
+esac
+
+cat >&2 <<EOF
+Push blocked: "$branch" is not an approved branch name.
+
+Rename it before opening a pull request, for example:
+  git branch -m fix/short-description
+
+Allowed names: main, master, fix/*, feat/*, feature/*, docs/*, refactor/*, chore/*, codex/*
+EOF
+exit 1

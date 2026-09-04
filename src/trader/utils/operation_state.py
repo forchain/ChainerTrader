@@ -41,6 +41,7 @@ def enrich_operation_from_trade_context(op: Operate, ctx) -> Operate:
         "exit_reason_code": _ctx_value(ctx, "exit_reason_code"),
         "exit_reason_label": _ctx_value(ctx, "exit_reason_label"),
         "exit_reason_detail": _ctx_value(ctx, "exit_reason_detail"),
+        "replacement_trade_id": _ctx_value(ctx, "replacement_trade_id"),
         "stop_multiple_r": _ctx_value(ctx, "stop_multiple_r"),
         "exit_risk_reward_ratio": _ctx_value(ctx, "exit_risk_reward_ratio"),
     }

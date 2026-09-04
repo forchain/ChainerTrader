@@ -18,6 +18,12 @@ def _normalize_status(value: ExecutionStatus | str) -> ExecutionStatus:
     return ExecutionStatus(str(value))
 
 
+def _state_idempotency_key(task_id: int | None, intent_key: str) -> str:
+    if task_id is None:
+        return intent_key
+    return f"task:{int(task_id)}:{intent_key}"
+
+
 @dataclass(frozen=True)
 class ExecutionStateRecord:
     idempotency_key: str
@@ -68,9 +74,11 @@ class ExecutionStateRecord:
         exchange_order_id: str | None = None,
         timestamp: int = 0,
     ) -> "ExecutionStateRecord":
+        idempotency_key = _state_idempotency_key(task_id, intent.idempotency_key)
+        raw_payload = intent.to_dict()
         return cls(
             task_id=task_id,
-            idempotency_key=intent.idempotency_key,
+            idempotency_key=idempotency_key,
             intent_id=intent.intent_id,
             operation_id=intent.operation_id,
             gateway=gateway,
@@ -82,7 +90,7 @@ class ExecutionStateRecord:
             exchange_order_id=exchange_order_id,
             quantity=float(intent.quantity or 0.0),
             price=intent.price,
-            raw_payload=intent.to_dict(),
+            raw_payload=raw_payload,
             created_at=timestamp,
             updated_at=timestamp,
         )
@@ -100,9 +108,11 @@ class ExecutionStateRecord:
         protection_id: str | None = None,
         timestamp: int = 0,
     ) -> "ExecutionStateRecord":
+        idempotency_key = _state_idempotency_key(task_id, intent.idempotency_key)
+        raw_payload = intent.to_dict()
         return cls(
             task_id=task_id,
-            idempotency_key=intent.idempotency_key,
+            idempotency_key=idempotency_key,
             intent_id=intent.intent_id,
             operation_id=intent.operation_id,
             gateway=gateway,
@@ -116,7 +126,7 @@ class ExecutionStateRecord:
             quantity=float(intent.quantity or 0.0),
             stop_price=intent.stop_price,
             take_profit_price=intent.take_profit_price,
-            raw_payload=intent.to_dict(),
+            raw_payload=raw_payload,
             created_at=timestamp,
             updated_at=timestamp,
         )

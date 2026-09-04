@@ -11,6 +11,7 @@ from trader.task.optimization_audit import group_id
 OBSERVABLE_PARAMETERS = [
     "chainer_need_confirm",
     "chainer_stoploss_atr_mult",
+    "chainer_trailing_stop_ratio",
     "chainer_risk_reward_ratio",
     "chainer_enable_breakeven",
     "chainer_min_equity_percent",
@@ -167,13 +168,33 @@ def _build_parameter_observation(parameter: str, value: Any, trades: list[dict],
     if parameter == "chainer_stoploss_atr_mult":
         stop_count = sum(1 for trade in trades if trade.get("framework_initial_stop_price") is not None)
         framework_stop_hits = sum(1 for trade in trades if trade.get("exit_reason_code") == "framework_stop")
-        status = "has_evidence" if stop_count > 0 else _status_from_machine(machine_status, has_signal=bool(trades))
+        if machine_status == "effective":
+            status = "effective"
+        else:
+            status = "has_evidence" if stop_count > 0 else _status_from_machine(machine_status, has_signal=bool(trades))
         return _observation(parameter, value, status, [
             f"{stop_count} 笔交易记录了初始止损价",
             f"{framework_stop_hits} 笔交易由框架止损退出",
         ], {
             "stop_context_count": stop_count,
             "framework_stop_hit_count": framework_stop_hits,
+        })
+
+    if parameter == "chainer_trailing_stop_ratio":
+        trailing_update_trade_count = sum(
+            1
+            for trade in trades
+            if int(trade.get("framework_trailing_update_count") or 0) > 0
+        )
+        trailing_update_count = sum(int(trade.get("framework_trailing_update_count") or 0) for trade in trades)
+        status = "effective" if machine_status == "effective" else (
+            "has_evidence" if trailing_update_count > 0 else _status_from_machine(machine_status, has_signal=bool(trades))
+        )
+        return _observation(parameter, value, status, [
+            f"{trailing_update_trade_count} 笔交易更新过移动止损",
+        ], {
+            "trailing_update_trade_count": trailing_update_trade_count,
+            "trailing_update_count": trailing_update_count,
         })
 
     if parameter == "chainer_risk_reward_ratio":

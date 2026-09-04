@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 
 import pytest
@@ -275,7 +276,17 @@ async def test_rpc_app_recovery_limits_concurrent_task_starts(monkeypatch):
     )
     monkeypatch.setattr(app.task_manager, "start", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(app.task_manager, "recover_task", fake_recover_task)
-    monkeypatch.setattr("trader.app.app.parse_task_config", lambda cfg: [TaskConfig(id=1, ttype=TaskType.DEBUG, symbol_interval=SymbolInterval("BTC-USDT", Interval("1h")), strategies=[])])
+    monkeypatch.setattr(
+        "trader.app.app.parse_task_config",
+        lambda cfg: [
+            TaskConfig(
+                id=1,
+                ttype=TaskType.DEBUG,
+                symbol_interval=SymbolInterval("BTC-USDT", Interval("1h")),
+                strategies=[],
+            )
+        ],
+    )
     monkeypatch.setattr("trader.app.app.RECOVERY_TASK_CONCURRENCY", 2)
     app.db_manager = FakeDbManager()
 
@@ -291,6 +302,86 @@ async def test_rpc_app_recovery_limits_concurrent_task_starts(monkeypatch):
 
     release_recover.set()
     await asyncio.wait_for(app.recovery_task, timeout=1)
+
+
+@pytest.mark.anyio
+async def test_rpc_app_recovery_skips_bad_running_rows_and_recovers_valid_rows(monkeypatch, caplog):
+    app = RpcApp(Config(tasks="[]", api="0.0.0.0:8000"))
+    legacy_state = type(
+        "State",
+        (),
+        {
+            "id": 21,
+            "state": type("TaskState", (), {"name": "RUNNING"})(),
+            "config_json": (
+                '[{"task_type":"TRADER","symbol":"BTC-USDT","interval":"1m","strategy":"macd_triple_divergence",'
+                '"live_execution_mode":"small_live_auto","live_data_mode":"realtime","run_id":"run-21"}]'
+            ),
+            "user_id": 7,
+        },
+    )()
+    valid_state = type(
+        "State",
+        (),
+        {
+            "id": 22,
+            "state": type("TaskState", (), {"name": "RUNNING"})(),
+            "config_json": '[{"task_type":"DEBUG","limit":1,"user_id":8,"run_id":"run-22"}]',
+            "user_id": 8,
+        },
+    )()
+    recovered_calls = []
+
+    class FakeTaskRepo:
+        async def get_all_tasks(self):
+            return [legacy_state, valid_state]
+
+    class FakeDbManager:
+        started = True
+        task = FakeTaskRepo()
+
+    async def fake_recover_task(taskc, queue):
+        recovered_calls.append((taskc.id, taskc.user_id, taskc.run_id))
+
+    monkeypatch.setattr(app.notify_mgr, "start", lambda: None)
+    monkeypatch.setattr(
+        app,
+        "process",
+        lambda msgs: (
+            setattr(app, "queue", asyncio.Queue()),
+            app._mark_handler_ready(),
+            app._schedule_recovery_tasks(),
+        ),
+    )
+    monkeypatch.setattr(app.task_manager, "start", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(app.task_manager, "recover_task", fake_recover_task)
+    app.db_manager = FakeDbManager()
+
+    with caplog.at_level(logging.ERROR, logger="trader"):
+        result = await app.start_async()
+        await asyncio.wait_for(app.recovery_task, timeout=1)
+
+    assert result is True
+    assert recovered_calls == [(22, 8, "run-22")]
+    assert "persisted live task(21) recovery failed" in caplog.text
+
+
+@pytest.mark.anyio
+async def test_rpc_app_logs_background_recovery_task_failure(monkeypatch, caplog):
+    app = RpcApp(Config(tasks="[]", api="0.0.0.0:8000"))
+    error = RuntimeError("recovery exploded")
+
+    async def fail_recovery():
+        raise error
+
+    monkeypatch.setattr(app, "_recover_running_tasks_in_background", fail_recovery)
+
+    with caplog.at_level(logging.ERROR, logger="trader"):
+        app._schedule_recovery_tasks()
+        with pytest.raises(RuntimeError, match="recovery exploded"):
+            await asyncio.wait_for(app.recovery_task, timeout=1)
+
+    assert "Running task recovery failed" in caplog.text
 
 
 @pytest.mark.anyio

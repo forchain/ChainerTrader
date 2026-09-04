@@ -68,6 +68,25 @@ def test_user_repository_creates_and_deletes_sessions():
     asyncio.run(_with_db(run))
 
 
+def test_user_repository_deletes_sessions_for_user():
+    async def run():
+        users = UserCol(_Log())
+        first = await users.create_user("first", "hash-1", role="user")
+        second = await users.create_user("second", "hash-2", role="user")
+        expires_at = datetime.now(UTC) + timedelta(hours=1)
+
+        await users.create_session(first.id, "first-session-1", expires_at)
+        await users.create_session(first.id, "first-session-2", expires_at)
+        await users.create_session(second.id, "second-session", expires_at)
+
+        assert await users.delete_sessions_for_user(first.id) == 2
+        assert await users.get_session("first-session-1") is None
+        assert await users.get_session("first-session-2") is None
+        assert await users.get_session("second-session") is not None
+
+    asyncio.run(_with_db(run))
+
+
 def test_exchange_credential_repository_upserts_by_user_and_exchange():
     async def run():
         users = UserCol(_Log())

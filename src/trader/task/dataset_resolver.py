@@ -106,6 +106,15 @@ class DatasetResolver:
             supports_cached_range = self._supports_cached_open_time_range()
             if supports_cached_range:
                 cached_open_time_range = await self._get_cached_open_time_range(symbol_interval)
+        if first_available_open_time is None:
+            archive_start = await self._get_daily_archive_start_time(symbol_interval)
+            if archive_start is not None and cache_start < archive_start:
+                self.log.info(
+                    "update dataset start_time to Binance daily archive boundary: "
+                    f"symbol_interval={symbol_interval.name()} requested_start={datetime.fromtimestamp(cache_start)} "
+                    f"archive_start={datetime.fromtimestamp(archive_start)}"
+                )
+                cache_start = archive_start
         if first_available_open_time is not None and cache_start < first_available_open_time:
             self.log.info(
                 "update dataset start_time to first available kline: "
@@ -140,6 +149,13 @@ class DatasetResolver:
                 cache_end,
                 cached_open_time_range,
             )
+            if not missing_ranges and not klines:
+                self.log.warning(
+                    "cached dataset coverage has no persisted klines; treating cache metadata as stale: "
+                    f"symbol_interval={symbol_interval.name()} range={datetime.fromtimestamp(cache_start)}.."
+                    f"{datetime.fromtimestamp(cache_end)}"
+                )
+                missing_ranges = [(cache_start, cache_end)]
         else:
             missing_ranges = self._detect_missing_ranges(
                 symbol_interval,
@@ -206,12 +222,15 @@ class DatasetResolver:
                 klines = list(await self.db_manager.kline.get_klines(symbol_interval.name(), cache_start, cache_end) or [])
                 first_available_open_time = await self._get_first_available_open_time(symbol_interval)
                 if supports_cached_range:
-                    await self._update_cached_open_time_range(symbol_interval, cache_start, cache_end)
-                    missing_ranges = []
+                    if klines:
+                        await self._update_cached_open_time_range(symbol_interval, cache_start, cache_end)
+                        missing_ranges = []
+                    else:
+                        missing_ranges = [(cache_start, cache_end)]
                 else:
                     missing_ranges = self._detect_missing_ranges(
                         symbol_interval,
-                        start_time,
+                        cache_start,
                         end_time,
                         klines,
                         first_available_open_time=first_available_open_time,
@@ -283,14 +302,15 @@ class DatasetResolver:
         if step <= 0 or start_time > end_time:
             return start_time, end_time
 
-        # Cache buckets are day-granular so repeated runs within the same day reuse the same dataset export.
-        # We still align to the interval step to avoid asking for impossible open_time values.
+        # Historical requests can reuse a full day cache bucket. Cap the current
+        # day's bucket at now so an exchange is never asked for future candles.
         day_seconds = 86400
         day_start = start_time - (start_time % day_seconds)
         day_end = ((end_time // day_seconds) + 1) * day_seconds - 1
-        aligned = self._aligned_expected_range(day_start, day_end, step, reference_open_time=0)
+        cache_end = min(day_end, int(time.time()))
+        aligned = self._aligned_expected_range(day_start, cache_end, step, reference_open_time=0)
         if aligned is None:
-            return day_start, day_end
+            return day_start, cache_end
         return aligned
 
     async def _get_first_available_open_time(self, symbol_interval: SymbolInterval) -> int | None:
@@ -303,6 +323,19 @@ class DatasetResolver:
             symbol_interval.symbol(),
             symbol_interval.interval.value,
         )
+
+    async def _get_daily_archive_start_time(self, symbol_interval: SymbolInterval) -> int | None:
+        lookup = getattr(self.exchange, "get_earliest_daily_archive_open_time", None)
+        if lookup is None:
+            return None
+        try:
+            return await asyncio.to_thread(lookup, symbol_interval)
+        except Exception as exc:
+            self.log.warning(
+                "Binance daily archive lookup failed; falling back to reverse kline discovery: "
+                f"symbol_interval={symbol_interval.name()} error={exc}"
+            )
+            return None
 
     def _supports_cached_open_time_range(self) -> bool:
         availability_store = getattr(self.db_manager, "availability", None)

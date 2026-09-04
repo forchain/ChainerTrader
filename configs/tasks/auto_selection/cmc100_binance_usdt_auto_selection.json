@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "task_type": "AUTO_SELECTION",
+  "name": "CMC100 Binance USDT auto-selection",
+  "description": "Evaluate CMC100 coins with Binance USDT spot markets on the one-hour interval, optimize their strategy parameters, and generate live tasks for the highest-ranked symbols.",
+  "market_data": {
+    "index": "CMC100",
+    "binance_pairs": "data/market_universes/binance_usdt_pairs.json",
+    "constituents": "data/market_universes/cmc100_constituents.json",
+    "refresh_market_data": false
+  },
+  "universe": "configs/market_universes/cmc100_binance_usdt_universe.json",
+  "optimization": {
+    "output": "configs/tasks/optimizations/cmc100_binance_usdt_auto_select_all.json",
+    "run_id": "cmc100-binance-usdt-auto-select",
+    "profiles": {
+      "1h": "1M"
+    }
+  },
+  "selection": {
+    "live_output": "configs/tasks/live/cmc100_binance_usdt_top10_selected.json",
+    "top": 10,
+    "rank_field": "avg_total_return_pct",
+    "min_return_pct": 0
+  },
+  "task_template": {
+    "task_type": "TRADER",
+    "strategy": "macd_triple_divergence",
+    "auto_download": true,
+    "free": 100000,
+    "param_combinations": [
+      {
+        "chainer_mode": ["BOTH"],
+        "chainer_need_confirm": [false],
+        "chainer_stoploss_atr_mult": [1],
+        "chainer_enable_breakeven": [true],
+        "chainer_min_equity_percent": [0.1]
+      }
+    ]
+  }
+}

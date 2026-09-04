@@ -9,6 +9,7 @@ from typing import Any
 
 KEY_PARAMETERS = {
     "chainer_stoploss_atr_mult",
+    "chainer_trailing_stop_ratio",
     "chainer_risk_reward_ratio",
     "chainer_need_confirm",
     "chainer_enable_breakeven",
@@ -341,6 +342,8 @@ def _evaluate_parameter_for_group(parameter: str, group_items: list[dict], finge
         right_value = right.get("params", {}).get(parameter)
         if left_value == right_value:
             continue
+        if not _other_parameters_match(parameter, left, right):
+            continue
         diff_fields = _parameter_diff_fields(parameter, left, right, fingerprint_map)
         if diff_fields:
             effect_count += 1
@@ -366,6 +369,20 @@ def _evaluate_parameter_for_group(parameter: str, group_items: list[dict], finge
     }
 
 
+def _other_parameters_match(parameter: str, left: dict, right: dict) -> bool:
+    left_params = {
+        key: value
+        for key, value in left.get("params", {}).items()
+        if key != parameter
+    }
+    right_params = {
+        key: value
+        for key, value in right.get("params", {}).items()
+        if key != parameter
+    }
+    return left_params == right_params
+
+
 def _parameter_has_opportunity(parameter: str, item: dict) -> bool:
     trades = _flatten_trades(item)
     if parameter == "chainer_min_equity_percent":
@@ -373,7 +390,13 @@ def _parameter_has_opportunity(parameter: str, item: dict) -> bool:
         return float(item.get("avg_max_dd_pct", 0.0)) >= threshold
     if parameter == "chainer_need_confirm":
         return _total_signals(item) > 0
-    if parameter in {"chainer_stoploss_atr_mult", "chainer_risk_reward_ratio", "chainer_enable_breakeven", "macd_stop_enabled"}:
+    if parameter in {
+        "chainer_stoploss_atr_mult",
+        "chainer_trailing_stop_ratio",
+        "chainer_risk_reward_ratio",
+        "chainer_enable_breakeven",
+        "macd_stop_enabled",
+    }:
         return any(trade.get("framework_initial_stop_price") is not None for trade in trades) or bool(trades)
     return bool(trades) or _total_signals(item) > 0
 
@@ -382,6 +405,8 @@ def _parameter_triggered(parameter: str, item: dict) -> bool:
     trades = _flatten_trades(item)
     if parameter == "chainer_stoploss_atr_mult":
         return any(trade.get("framework_initial_stop_price") is not None for trade in trades)
+    if parameter == "chainer_trailing_stop_ratio":
+        return any(int(trade.get("framework_trailing_update_count") or 0) > 0 for trade in trades)
     if parameter == "chainer_risk_reward_ratio":
         return any(
             trade.get("framework_tp_price") is not None or trade.get("exit_reason_code") == "risk_reward_take_profit"
@@ -412,6 +437,15 @@ def _parameter_diff_fields(parameter: str, left: dict, right: dict, fingerprint_
             changed.add("framework_initial_stop_price")
         if _field_values(left_trades, "framework_final_stop_price") != _field_values(right_trades, "framework_final_stop_price"):
             changed.add("framework_final_stop_price")
+    elif parameter == "chainer_trailing_stop_ratio":
+        for field in (
+            "framework_final_stop_price",
+            "framework_trailing_best_price",
+            "framework_trailing_stop_price",
+            "framework_trailing_update_count",
+        ):
+            if _field_values(left_trades, field) != _field_values(right_trades, field):
+                changed.add(field)
     elif parameter == "chainer_risk_reward_ratio":
         if _field_values(left_trades, "framework_tp_price") != _field_values(right_trades, "framework_tp_price"):
             changed.add("framework_tp_price")
@@ -531,6 +565,9 @@ def _exact_fingerprint_payload(item: dict) -> list[dict]:
                         "exit_reason_code": trade.get("exit_reason_code"),
                         "framework_initial_stop_price": trade.get("framework_initial_stop_price"),
                         "framework_final_stop_price": trade.get("framework_final_stop_price"),
+                        "framework_trailing_best_price": trade.get("framework_trailing_best_price"),
+                        "framework_trailing_stop_price": trade.get("framework_trailing_stop_price"),
+                        "framework_trailing_update_count": trade.get("framework_trailing_update_count"),
                         "framework_tp_price": trade.get("framework_tp_price"),
                         "strategy_suggested_stop_price": trade.get("strategy_suggested_stop_price"),
                     }

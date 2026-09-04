@@ -1,0 +1,18 @@
+[
+  {
+    "task_type": "BACK_TRADER",
+    "symbol": "BTC-USDT",
+    "interval": "1d",
+    "strategy": "macd_triple_divergence",
+    "auto_download": true,
+    "param_combinations": [
+      {
+        "chainer_need_confirm": [false],
+        "chainer_stoploss_atr_mult": [0, 1],
+        "chainer_enable_breakeven": [true],
+        "chainer_min_equity_percent": [0.1],
+        "chainer_mode": ["BOTH"]
+      }
+    ]
+  }
+]

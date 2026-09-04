@@ -578,6 +578,7 @@ async def admin_reset_user_password(request: Request, user_id: int):
         raise HTTPException(status_code=404, detail="user not found")
     temporary_password = generate_temporary_password()
     await users_repo.update_password(user_id, hash_password(temporary_password), must_change_password=True)
+    await users_repo.delete_sessions_for_user(user_id)
     users = await users_repo.list_users()
     return templates.TemplateResponse(
         request,

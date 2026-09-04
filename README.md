@@ -326,6 +326,12 @@ Representative config locations:
 - `configs/tasks/backtests/multi_backtrader.json`
 - `configs/tasks/downloads/update_klines.json`
 - `configs/tasks/optimizations/macd_triple_divergence_engine_optimization.json`
+- `configs/tasks/auto_selection/cmc20_binance_usdt_mixed_auto_selection.json`
+- `configs/tasks/auto_selection/cmc100_binance_usdt_auto_selection.json`
+- `configs/tasks/optimizations/cmc20_binance_usdt_mixed_auto_select_all.json`
+- `configs/tasks/live/cmc20_binance_usdt_mixed_top10_selected.json`
+- `configs/market_universes/cmc20_binance_usdt_universe.json`
+- `data/market_universes/`
 - `configs/notices/notice.sample.json`
 
 ## Deployment
@@ -414,6 +420,46 @@ python scripts/run_optimization_background.py \
 
 ```bash
 python scripts/check_optimization_status.py --run-id <run-id>
+```
+
+### Generate CMC20 Binance Mixed-Interval Auto-Selection Tasks
+
+The auto-selection tool uses the [`CMC20 mixed-interval AUTO_SELECTION task`](configs/tasks/auto_selection/cmc20_binance_usdt_mixed_auto_selection.json) by default. It is the single source of truth for market snapshots, the optimization output, the selected live-task output, and the embedded live-task template. `market_data.index` selects `CMC20` or `CMC100`; Binance USDT-pair and the selected CMC index snapshots are stored under `data/market_universes/`. Existing snapshots are reused by default so routine executions do not repeatedly call either provider. Set `market_data.refresh_market_data` to `true`, or pass `--refresh-market-data`, only when an explicit refresh is wanted.
+
+Generate the all-symbol backtest tasks and CMC20/Binance intersection with:
+
+```bash
+python scripts/generate_auto_coin_selection.py
+```
+
+Use the retained CMC100 single-hour configuration explicitly when needed:
+
+```bash
+python scripts/generate_auto_coin_selection.py \
+  --config configs/tasks/auto_selection/cmc100_binance_usdt_auto_selection.json
+```
+
+Command-line options override the task configuration, for example `--top 20` or `--refresh-market-data`.
+
+`optimization.profiles` maps each interval to its lookback: the default uses `1h: 1M`, `4h: 1Y`, and `1d: *`. Relative durations use a number and unit: `1H`, `7D`, `1W`, `1M`, or `1Y`; `*` requests all available history. The generated daily task writes the framework's `2000-01-01` lower bound, while the data resolver starts each symbol at its actual exchange availability. Backtests reserve the configured `TRADER_WARMUP_CANDLES` before the strategy start so indicators are initialized before the evaluation window.
+
+Each interval profile is emitted as an all-symbol `BACK_TRADER` task with the same optimization run ID. Ranking candidates are unique by `(symbol, interval)`, so a coin may be selected on more than one interval. The selected top-symbol task preserves the template's `task_type`, carries the chosen interval and parameters, and omits the historical backtest window. `selection.min_return_pct` is a strict `avg_total_return_pct` floor; with its default of `0`, only positive-return candidates are emitted and the final task count may be below `top`.
+
+Run the generated task through the existing optimization worker:
+
+```bash
+python scripts/run_optimization_background.py \
+  --tasks configs/tasks/optimizations/cmc20_binance_usdt_mixed_auto_select_all.json \
+  --stat 500
+```
+
+After the optimization run writes `reports/optimizations/<run-id>/rankings/by_score.json`, generate the selected top-10 task config:
+
+```bash
+python scripts/generate_auto_coin_selection.py \
+  --ranking reports/optimizations/<run-id>/rankings/by_score.json \
+  --top 10 \
+  --rank-field avg_total_return_pct
 ```
 
 ### Validate Runtime Context

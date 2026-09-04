@@ -103,6 +103,7 @@ class MacdTripleDivergenceStrategy(BaseStrategy):
         # Chainer Framework parameters
         ("chainer_mode", "BOTH"),  # LONG_ONLY, SHORT_ONLY, BOTH
         ("chainer_stoploss_atr_mult", 0.0),
+        ("chainer_trailing_stop_ratio", 0.0),
         ("chainer_need_confirm", False),
         ("chainer_enable_breakeven", False),
         ("chainer_risk_reward_ratio", 0.0),
@@ -157,10 +158,6 @@ class MacdTripleDivergenceStrategy(BaseStrategy):
             f"trigger_latest_leg_min_ratio={self.params.trigger_latest_leg_min_ratio} "
             f"chainer_mode={self.params.chainer_mode}"
         )
-
-    def start(self):
-        super().start()
-        self.broker.set_coc(True)
 
     def _get_sign(self, hist_val: float) -> SegmentSign:
         """Determine the sign of a histogram value."""
@@ -682,15 +679,24 @@ class MacdTripleDivergenceStrategy(BaseStrategy):
         between_start = left.extreme_idx + 1
         between_end = right.start_idx - 1
         if between_end >= between_start:
-            best_idx = None
-            for idx in range(between_start, between_end + 1):
-                shift = self._shift_from_bar_index(idx)
-                abs_hist = abs(float(self.macd_hist[shift]))
-                if separator_abs is None or abs_hist < separator_abs:
-                    separator_abs = abs_hist
-                    best_idx = idx
-            if best_idx is not None:
-                separator_time = self._bar_snapshot(best_idx)["time"]
+            if mode == "opposite_color":
+                for idx in range(between_start, between_end + 1):
+                    shift = self._shift_from_bar_index(idx)
+                    hist = float(self.macd_hist[shift])
+                    if self._get_sign(hist) not in (left.sign, SegmentSign.ZERO):
+                        separator_abs = abs(hist)
+                        separator_time = self._bar_snapshot(idx)["time"]
+                        break
+            else:
+                best_idx = None
+                for idx in range(between_start, between_end + 1):
+                    shift = self._shift_from_bar_index(idx)
+                    abs_hist = abs(float(self.macd_hist[shift]))
+                    if separator_abs is None or abs_hist < separator_abs:
+                        separator_abs = abs_hist
+                        best_idx = idx
+                if best_idx is not None:
+                    separator_time = self._bar_snapshot(best_idx)["time"]
 
         reference_abs = abs(float(left.extreme_val))
         if separator_abs is not None and reference_abs > 0:
@@ -1125,6 +1131,7 @@ class MacdTripleDivergenceStrategy(BaseStrategy):
         signal_id = self._store_signal_event(event)
         self._long_signal_meta = {
             "suggested_stop_price": float(r3.price_extreme),
+            "key_bar_index": int(r3.price_extreme_idx),
             "signal_time": event["signal_time"],
             "signal_bar_index": current_bar,
             "signal_event_id": signal_id,
@@ -1184,6 +1191,7 @@ class MacdTripleDivergenceStrategy(BaseStrategy):
         signal_id = self._store_signal_event(event)
         self._short_signal_meta = {
             "suggested_stop_price": float(g3.price_extreme),
+            "key_bar_index": int(g3.price_extreme_idx),
             "signal_time": event["signal_time"],
             "signal_bar_index": current_bar,
             "signal_event_id": signal_id,
@@ -1267,8 +1275,26 @@ class MacdTripleDivergenceStrategy(BaseStrategy):
                 f"entry_hist={self._entry_hist_val:.6f} current_hist={hist_val:.6f}"
             )
             return True
-
         return False
+
+    def _process_immediate_strategy_exit(self) -> None:
+        if self.order or len(self) < self.params.macd_slow + self.params.macd_signal:
+            return
+        if not self._check_macd_stop_loss():
+            return
+
+        ctx = getattr(self, "_active_trade", None)
+        if ctx is not None:
+            ctx.requested_exit_reason_code = "strategy_stop"
+            ctx.requested_exit_reason_label = "策略止损逻辑退出"
+            ctx.requested_exit_reason_detail = "MACD 三背离后续走势失效"
+        self.exit_trade(
+            key_bar_index=self.bar_idx(),
+            need_confirm=False,
+            exit_reason_code="strategy_stop",
+            exit_reason_label="策略止损逻辑退出",
+            exit_reason_detail="MACD 三背离后续走势失效",
+        )
 
     def notify_order(self, order):
         """Track entry for MACD stop loss logic."""
@@ -1302,11 +1328,13 @@ class MacdTripleDivergenceStrategy(BaseStrategy):
                     )
                 self.log_info(f"记录入场MACD柱: direction={self._entry_direction} hist={self._entry_hist_val:.6f}")
             elif role == "exit" or role == "stop" or role == "take_profit":
-                # Clear entry tracking on exit
-                self._entry_hist_val = None
-                self._entry_direction = None
-                self._entry_signal_bar_idx = None
-                self._pending_entry_hist_val = None
+                active_trade = getattr(self, "_active_trade", None)
+                if active_trade is None or int(active_trade.trade_id) == int(getattr(order, "tradeid", 0) or 0):
+                    # Do not clear a replacement trade's signal state when the old trade exits.
+                    self._entry_hist_val = None
+                    self._entry_direction = None
+                    self._entry_signal_bar_idx = None
+                    self._pending_entry_hist_val = None
         elif order.status in (order.Canceled, order.Margin, order.Rejected):
             role = getattr(order, "info", {}).get("chainer_role")
             if role == "entry":
@@ -1337,6 +1365,15 @@ class MacdTripleDivergenceStrategy(BaseStrategy):
             self._update_signal_outcome(signal_id, "entry_context_cancelled", reason=payload.get("reason"))
             return
 
+        if event_type == "replacement_scheduled":
+            self._update_signal_outcome(
+                signal_id,
+                "replacement_scheduled",
+                replaced_trade_id=payload.get("replaced_trade_id"),
+                replacement_trade_id=payload.get("replacement_trade_id"),
+            )
+            return
+
         if event_type == "blocked":
             reason = payload.get("reason")
             if reason == "active_trade":
@@ -1359,31 +1396,5 @@ class MacdTripleDivergenceStrategy(BaseStrategy):
 
         # Call parent next() for signal processing
         super().next()
-
-        # Skip if order is pending
-        if self.order:
-            return
-
-        # Skip if not enough data
-        if len(self) < self.params.macd_slow + self.params.macd_signal:
-            return
-
-        # Check for MACD-based stop loss (special exit condition)
-        if self._check_macd_stop_loss():
-            # Always route exits through the framework so exit_reason_code stays classified.
-            # BaseStrategy.exit_trade will no-op safely if a close cannot be placed yet.
-            ctx = getattr(self, "_active_trade", None)
-            if ctx is not None:
-                # Pre-stamp the reason to survive any order-status race.
-                ctx.requested_exit_reason_code = "strategy_stop"
-                ctx.requested_exit_reason_label = "策略止损逻辑退出"
-                ctx.requested_exit_reason_detail = "MACD 三背离后续走势失效"
-            self.exit_trade(
-                key_bar_index=self.bar_idx(),
-                need_confirm=False,
-                exit_reason_code="strategy_stop",
-                exit_reason_label="策略止损逻辑退出",
-                exit_reason_detail="MACD 三背离后续走势失效",
-            )
 
         # Signal processing is handled by BaseStrategy._process_signals()

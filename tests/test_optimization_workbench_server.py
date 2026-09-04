@@ -47,6 +47,7 @@ def test_static_workbench_assets_expect_run_id_and_workbench_json():
     assert 'tabButton("trade_details", "交易明细")' in app_js
     assert 'tabButton("audit_context", "审计上下文")' in app_js
     assert "function formatStopRange(trade)" in app_js
+    assert "function formatPrice(value)" in app_js
     assert "${formatStopRange(trade)}" in app_js
     assert "framework_initial_stop_price ?? \"-\"))} →" not in app_js
     assert ".hidden { display: none !important; }" in style_css

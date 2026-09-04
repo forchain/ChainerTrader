@@ -1,0 +1,19 @@
+[
+  {
+    "task_type": "TRADER",
+    "symbols": "BTC-USDT,ETH-USDT,BNB-USDT,XRP-USDT,SOL-USDT,TRX-USDT,DOGE-USDT,ZEC-USDT,XLM-USDT,LINK-USDT,ADA-USDT,BCH-USDT,GRAM-USDT,LTC-USDT,HBAR-USDT,AVAX-USDT,SUI-USDT",
+    "interval": "1d",
+    "strategy": "macd_triple_divergence",
+    "auto_download": true,
+    "free": 100000,
+    "manual_start_position": 0,
+    "live_execution_mode": "manual_notify",
+    "strategy_params": {
+      "chainer_need_confirm": false,
+      "chainer_stoploss_atr_mult": 1,
+      "chainer_enable_breakeven": true,
+      "chainer_min_equity_percent": 0.1,
+      "chainer_mode": "BOTH"
+    }
+  }
+]

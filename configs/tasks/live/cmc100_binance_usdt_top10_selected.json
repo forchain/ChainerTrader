@@ -1,0 +1,212 @@
+[
+  {
+    "task_type": "TRADER",
+    "interval": "1h",
+    "strategy": "macd_triple_divergence",
+    "start_time": "2026-06-15 16:46:55",
+    "auto_download": true,
+    "free": 100000,
+    "end_time": "2026-07-15 16:46:55",
+    "symbol": "FIL-USDT",
+    "strategy_params": {
+      "chainer_mode": "BOTH",
+      "chainer_need_confirm": false,
+      "chainer_stoploss_atr_mult": 1,
+      "chainer_enable_breakeven": true,
+      "chainer_min_equity_percent": 0.1
+    },
+    "selection_rank": 1,
+    "selection_metric": "avg_total_return_pct",
+    "selection_metric_value": 15.3,
+    "selection_param_id": "c375f3e06cad"
+  },
+  {
+    "task_type": "TRADER",
+    "interval": "1h",
+    "strategy": "macd_triple_divergence",
+    "start_time": "2026-06-15 16:46:55",
+    "auto_download": true,
+    "free": 100000,
+    "end_time": "2026-07-15 16:46:55",
+    "symbol": "PYTH-USDT",
+    "strategy_params": {
+      "chainer_mode": "BOTH",
+      "chainer_need_confirm": false,
+      "chainer_stoploss_atr_mult": 1,
+      "chainer_enable_breakeven": true,
+      "chainer_min_equity_percent": 0.1
+    },
+    "selection_rank": 2,
+    "selection_metric": "avg_total_return_pct",
+    "selection_metric_value": 14.75,
+    "selection_param_id": "c375f3e06cad"
+  },
+  {
+    "task_type": "TRADER",
+    "interval": "1h",
+    "strategy": "macd_triple_divergence",
+    "start_time": "2026-06-15 16:46:55",
+    "auto_download": true,
+    "free": 100000,
+    "end_time": "2026-07-15 16:46:55",
+    "symbol": "GNO-USDT",
+    "strategy_params": {
+      "chainer_mode": "BOTH",
+      "chainer_need_confirm": false,
+      "chainer_stoploss_atr_mult": 1,
+      "chainer_enable_breakeven": true,
+      "chainer_min_equity_percent": 0.1
+    },
+    "selection_rank": 3,
+    "selection_metric": "avg_total_return_pct",
+    "selection_metric_value": 12.02,
+    "selection_param_id": "c375f3e06cad"
+  },
+  {
+    "task_type": "TRADER",
+    "interval": "1h",
+    "strategy": "macd_triple_divergence",
+    "start_time": "2026-06-15 16:46:55",
+    "auto_download": true,
+    "free": 100000,
+    "end_time": "2026-07-15 16:46:55",
+    "symbol": "DEXE-USDT",
+    "strategy_params": {
+      "chainer_mode": "BOTH",
+      "chainer_need_confirm": false,
+      "chainer_stoploss_atr_mult": 1,
+      "chainer_enable_breakeven": true,
+      "chainer_min_equity_percent": 0.1
+    },
+    "selection_rank": 4,
+    "selection_metric": "avg_total_return_pct",
+    "selection_metric_value": 8.2,
+    "selection_param_id": "c375f3e06cad"
+  },
+  {
+    "task_type": "TRADER",
+    "interval": "1h",
+    "strategy": "macd_triple_divergence",
+    "start_time": "2026-06-15 16:46:55",
+    "auto_download": true,
+    "free": 100000,
+    "end_time": "2026-07-15 16:46:55",
+    "symbol": "AVAX-USDT",
+    "strategy_params": {
+      "chainer_mode": "BOTH",
+      "chainer_need_confirm": false,
+      "chainer_stoploss_atr_mult": 1,
+      "chainer_enable_breakeven": true,
+      "chainer_min_equity_percent": 0.1
+    },
+    "selection_rank": 5,
+    "selection_metric": "avg_total_return_pct",
+    "selection_metric_value": 7.56,
+    "selection_param_id": "c375f3e06cad"
+  },
+  {
+    "task_type": "TRADER",
+    "interval": "1h",
+    "strategy": "macd_triple_divergence",
+    "start_time": "2026-06-15 16:46:55",
+    "auto_download": true,
+    "free": 100000,
+    "end_time": "2026-07-15 16:46:55",
+    "symbol": "IMX-USDT",
+    "strategy_params": {
+      "chainer_mode": "BOTH",
+      "chainer_need_confirm": false,
+      "chainer_stoploss_atr_mult": 1,
+      "chainer_enable_breakeven": true,
+      "chainer_min_equity_percent": 0.1
+    },
+    "selection_rank": 6,
+    "selection_metric": "avg_total_return_pct",
+    "selection_metric_value": 6.86,
+    "selection_param_id": "c375f3e06cad"
+  },
+  {
+    "task_type": "TRADER",
+    "interval": "1h",
+    "strategy": "macd_triple_divergence",
+    "start_time": "2026-06-15 16:46:55",
+    "auto_download": true,
+    "free": 100000,
+    "end_time": "2026-07-15 16:46:55",
+    "symbol": "CFX-USDT",
+    "strategy_params": {
+      "chainer_mode": "BOTH",
+      "chainer_need_confirm": false,
+      "chainer_stoploss_atr_mult": 1,
+      "chainer_enable_breakeven": true,
+      "chainer_min_equity_percent": 0.1
+    },
+    "selection_rank": 7,
+    "selection_metric": "avg_total_return_pct",
+    "selection_metric_value": 5.08,
+    "selection_param_id": "c375f3e06cad"
+  },
+  {
+    "task_type": "TRADER",
+    "interval": "1h",
+    "strategy": "macd_triple_divergence",
+    "start_time": "2026-06-15 16:46:55",
+    "auto_download": true,
+    "free": 100000,
+    "end_time": "2026-07-15 16:46:55",
+    "symbol": "BCH-USDT",
+    "strategy_params": {
+      "chainer_mode": "BOTH",
+      "chainer_need_confirm": false,
+      "chainer_stoploss_atr_mult": 1,
+      "chainer_enable_breakeven": true,
+      "chainer_min_equity_percent": 0.1
+    },
+    "selection_rank": 8,
+    "selection_metric": "avg_total_return_pct",
+    "selection_metric_value": 3.79,
+    "selection_param_id": "c375f3e06cad"
+  },
+  {
+    "task_type": "TRADER",
+    "interval": "1h",
+    "strategy": "macd_triple_divergence",
+    "start_time": "2026-06-15 16:46:55",
+    "auto_download": true,
+    "free": 100000,
+    "end_time": "2026-07-15 16:46:55",
+    "symbol": "ETC-USDT",
+    "strategy_params": {
+      "chainer_mode": "BOTH",
+      "chainer_need_confirm": false,
+      "chainer_stoploss_atr_mult": 1,
+      "chainer_enable_breakeven": true,
+      "chainer_min_equity_percent": 0.1
+    },
+    "selection_rank": 9,
+    "selection_metric": "avg_total_return_pct",
+    "selection_metric_value": 3.63,
+    "selection_param_id": "c375f3e06cad"
+  },
+  {
+    "task_type": "TRADER",
+    "interval": "1h",
+    "strategy": "macd_triple_divergence",
+    "start_time": "2026-06-15 16:46:55",
+    "auto_download": true,
+    "free": 100000,
+    "end_time": "2026-07-15 16:46:55",
+    "symbol": "ONDO-USDT",
+    "strategy_params": {
+      "chainer_mode": "BOTH",
+      "chainer_need_confirm": false,
+      "chainer_stoploss_atr_mult": 1,
+      "chainer_enable_breakeven": true,
+      "chainer_min_equity_percent": 0.1
+    },
+    "selection_rank": 10,
+    "selection_metric": "avg_total_return_pct",
+    "selection_metric_value": 3.1,
+    "selection_param_id": "c375f3e06cad"
+  }
+]

@@ -4,7 +4,6 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 from trader.common.config import Config
-from trader.exchange.binance.csvdata import BinanceCSVData
 from trader.exchange.binance.data import BinanceData
 from trader.strategy.node import build_strategy_kwargs
 from trader.task.backtrader_task import BackTraderTask
@@ -120,7 +119,7 @@ def test_backtrader_task_start_uses_dataset_resolver_for_db_backtests(monkeypatc
 
         result = await task.start(None)
 
-        assert prepare_calls == [("BTCUSDT-1h", 1_700_000_000, 1_700_000_000 + 3600, True)]
+        assert prepare_calls == [("BTCUSDT-1h", 1_698_200_000, 1_700_000_000 + 3600, True)]
         assert result[0] == ["fake-strategy"]
         assert isinstance(result[1], BinanceData)
         get_klines.assert_awaited_once_with("BTCUSDT-1h", 1_700_000_000, 1_700_000_000 + 3600)
@@ -196,7 +195,7 @@ def test_task_manager_prepares_shared_dataset_once_for_same_dataset_key(monkeypa
         failures = await task_manager._prepare_backtest_datasets(tasks)
 
         assert failures == []
-        assert prepare_calls == [("BTCUSDT-1h", 1_700_000_000, 1_700_000_000 + 3600, True)]
+        assert prepare_calls == [("BTCUSDT-1h", 1_698_200_000, 1_700_000_000 + 3600, True)]
         assert tasks[0].dataset_ref.dataset_key == "BTCUSDT-1h|1700000000|1700003600"
         assert tasks[1].dataset_ref.dataset_key == "BTCUSDT-1h|1700000000|1700003600"
         assert tasks[0].dataset_ref.path is None

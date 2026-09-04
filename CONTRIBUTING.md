@@ -50,6 +50,14 @@ Example: `fix(package): update setup.py arguments 🎉` (emojis are fine too)
 
 Run `git push origin my_contribution`
 
+Before pushing a pull-request branch, enable the repository hooks once:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+The `pre-push` hook rejects unnamed worktree branches and requires a recognized prefix such as `fix/`, `feat/`, `docs/`, or `chore/`.
+
 ## Submit a pull request
 
 On github interface, click on `Pull Request` button.

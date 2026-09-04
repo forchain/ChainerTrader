@@ -312,9 +312,9 @@ def test_config_dict_serialization_includes_leverage_ratio():
     assert cfg.safe_to_dict()["leverage_ratio"] == 4.0
 
 
-def test_live_warmup_candles_defaults_to_500():
+def test_warmup_candles_defaults_to_500():
     cfg = Config()
-    assert cfg.live_warmup_candles == 500
+    assert cfg.warmup_candles == 500
 
 
 def test_live_order_cleanup_symbols_default_empty():
@@ -339,17 +339,17 @@ def test_new_and_env_cli_live_order_cleanup_symbols_overrides_env(monkeypatch):
     assert cfg.live_order_cleanup_symbols == ["SOL-USDT", "BNBUSDT"]
 
 
-def test_new_and_env_reads_live_warmup_candles_from_env(monkeypatch):
-    monkeypatch.setenv("TRADER_LIVE_WARMUP_CANDLES", "321")
+def test_new_and_env_reads_warmup_candles_from_env(monkeypatch):
+    monkeypatch.setenv("TRADER_WARMUP_CANDLES", "321")
     cfg = new_and_env()
-    assert cfg.live_warmup_candles == 321
+    assert cfg.warmup_candles == 321
 
 
-def test_new_and_env_cli_live_warmup_candles_overrides_env(monkeypatch):
-    monkeypatch.setenv("TRADER_LIVE_WARMUP_CANDLES", "321")
-    ns = argparse.Namespace(live_warmup_candles=789)
+def test_new_and_env_cli_warmup_candles_overrides_env(monkeypatch):
+    monkeypatch.setenv("TRADER_WARMUP_CANDLES", "321")
+    ns = argparse.Namespace(warmup_candles=789)
     cfg = new_and_env(ns)
-    assert cfg.live_warmup_candles == 789
+    assert cfg.warmup_candles == 789
 
 
 def test_new_and_env_log_file_accepts_path(monkeypatch):

@@ -154,7 +154,7 @@ class TraderTask(BaseTask):
             f"stream={key.stream_name()} fetched={len(fetched)}"
         )
 
-        warmup_cap = max(1, int(getattr(self.cfg, "live_warmup_candles", 500) or 500))
+        warmup_cap = max(1, int(getattr(self.cfg, "warmup_candles", 500) or 500))
         warmup_limit = min(int(self.cfg.window), warmup_cap)
         self.log.info(f"Realtime live warmup started: task_id={self.tcfg.id} collection={collection_name} target={warmup_limit}")
         warmup = await _maybe_await(self.db_manager.kline.get_latest_klines(collection_name, warmup_limit)) or []

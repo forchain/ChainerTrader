@@ -26,7 +26,14 @@ from trader.execution.models import ExecutionStatus
 from trader.live.auto_execution import is_real_auto_mode
 from trader.statistics.stat import BackTraderStat
 from trader.strategy.trader_result import parse_trader_result
-from trader.task.backtrader_task import BacktestSampleResult, BackTraderTask, build_backtest_sample_spec, process_backtrader, run_backtest_sample
+from trader.task.backtrader_task import (
+    BacktestSampleResult,
+    BackTraderTask,
+    backtest_data_start_time,
+    build_backtest_sample_spec,
+    process_backtrader,
+    run_backtest_sample,
+)
 from trader.task.base_task import BaseTask
 from trader.task.check_klines_num_task import CheckKlinesNumTask
 from trader.task.check_klines_task import CheckKlinesTask
@@ -726,7 +733,9 @@ class TaskManager:
         for run_id in sorted({cfg.optimization_run_id for cfg in cfgs if cfg.optimization_run_id}):
             run_cfgs = [cfg for cfg in cfgs if cfg.optimization_run_id == run_id]
             dataset_keys = {
-                (cfg.symbol_interval.name(), cfg.start_time, cfg.end_time) for cfg in run_cfgs if cfg.ttype == TaskType.BACK_TRADER and not cfg.csv
+                (cfg.symbol_interval.name(), backtest_data_start_time(self.cfg, cfg), cfg.end_time)
+                for cfg in run_cfgs
+                if cfg.ttype == TaskType.BACK_TRADER and not cfg.csv
             }
             runtimes[run_id] = OptimizationRuntimeStatus(
                 Path.cwd() / "tmp" / "optimization_runs" / run_id,
@@ -792,11 +801,11 @@ class TaskManager:
         for cfg in cfgs:
             if cfg.ttype != TaskType.BACK_TRADER or cfg.csv:
                 continue
-            dataset_key = (cfg.symbol_interval.name(), cfg.start_time, cfg.end_time)
+            dataset_key = (cfg.symbol_interval.name(), backtest_data_start_time(self.cfg, cfg), cfg.end_time)
             if dataset_key not in dataset_jobs:
                 dataset_jobs[dataset_key] = (
                     cfg.symbol_interval,
-                    cfg.start_time,
+                    backtest_data_start_time(self.cfg, cfg),
                     cfg.end_time,
                     bool(cfg.auto_download),
                     cfg.optimization_run_id is not None,
@@ -894,7 +903,7 @@ class TaskManager:
         for cfg in cfgs:
             if cfg.ttype != TaskType.BACK_TRADER or cfg.csv:
                 continue
-            dataset_key = (cfg.symbol_interval.name(), cfg.start_time, cfg.end_time)
+            dataset_key = (cfg.symbol_interval.name(), backtest_data_start_time(self.cfg, cfg), cfg.end_time)
             result = prepared_results[dataset_key]
             if result.ok:
                 cfg.dataset_ref = result.dataset_ref

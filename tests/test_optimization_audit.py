@@ -271,3 +271,102 @@ def test_optimization_audit_and_shortlist_artifacts_are_generated(tmp_path: Path
     assert "Shortlist" in shortlist_html
     assert "SOLUSDT" in shortlist_html
     assert "promote" in shortlist_html
+
+
+def test_trailing_stop_parameter_is_effective_when_stop_updates_differ():
+    def report(param_id: str, ratio: float, trailing_stop: float | None, update_count: int) -> dict:
+        trade = _trade(
+            trade_id=1,
+            entry="2026-01-01T00:00:00",
+            exit="2026-01-02T00:00:00",
+            entry_px=100.0,
+            exit_px=trailing_stop or 90.0,
+            exit_reason_code="framework_stop",
+            exit_reason_label="框架止损退出",
+            framework_initial_stop_price=90.0,
+            framework_final_stop_price=trailing_stop or 90.0,
+        )
+        trade["framework_trailing_best_price"] = 120.0 if trailing_stop is not None else None
+        trade["framework_trailing_stop_price"] = trailing_stop
+        trade["framework_trailing_update_count"] = update_count
+        return _sample_report(
+            strategy="macd_triple_divergence",
+            symbol="BTCUSDT",
+            interval="1d",
+            param_id=param_id,
+            params={"chainer_trailing_stop_ratio": ratio},
+            total_return_pct=10.0,
+            hold_return_pct=5.0,
+            max_dd_pct=8.0,
+            total_trades=1,
+            total_signals=1,
+            dataset_ref="BTCUSDT-1d-trailing",
+            trades=[trade],
+        )
+
+    artifacts = build_optimization_artifacts(
+        "run-trailing",
+        [report("trailing-off", 0.0, None, 0), report("trailing-on", 0.5, 105.0, 1)],
+        [],
+    )
+
+    observation = next(
+        item for item in artifacts["audit"]["parameter_effectiveness"]
+        if item["parameter"] == "chainer_trailing_stop_ratio"
+    )
+    assert observation["status"] == "effective"
+    assert set(observation["changed_fields"]) >= {
+        "framework_final_stop_price",
+        "framework_trailing_stop_price",
+        "framework_trailing_update_count",
+    }
+
+
+def test_parameter_effects_hold_other_optimized_parameters_constant():
+    reports = []
+    for atr_mult, initial_stop in ((0.0, 90.0), (1.0, 80.0)):
+        for trailing_ratio in (0.5, 2 / 3):
+            trade = _trade(
+                trade_id=1,
+                entry="2026-01-01T00:00:00",
+                exit="2026-01-02T00:00:00",
+                entry_px=100.0,
+                exit_px=95.0,
+                exit_reason_code="strategy_stop",
+                exit_reason_label="策略止损逻辑退出",
+                framework_initial_stop_price=initial_stop,
+                framework_final_stop_price=initial_stop,
+            )
+            trade["framework_trailing_best_price"] = 100.0
+            trade["framework_trailing_stop_price"] = None
+            trade["framework_trailing_update_count"] = 0
+            reports.append(
+                _sample_report(
+                    strategy="macd_triple_divergence",
+                    symbol="BTCUSDT",
+                    interval="1d",
+                    param_id=f"atr-{atr_mult}-trailing-{trailing_ratio}",
+                    params={
+                        "chainer_stoploss_atr_mult": atr_mult,
+                        "chainer_trailing_stop_ratio": trailing_ratio,
+                    },
+                    total_return_pct=10.0,
+                    hold_return_pct=5.0,
+                    max_dd_pct=8.0,
+                    total_trades=1,
+                    total_signals=1,
+                    dataset_ref="BTCUSDT-1d-controlled",
+                    trades=[trade],
+                )
+            )
+
+    artifacts = build_optimization_artifacts("run-controlled", reports, [])
+    observations = {
+        item["parameter"]: item
+        for item in artifacts["audit"]["parameter_effectiveness"]
+    }
+
+    assert observations["chainer_stoploss_atr_mult"]["status"] == "effective"
+    assert observations["chainer_trailing_stop_ratio"]["status"] == "inactive"
+    assert observations["chainer_trailing_stop_ratio"]["effect_count"] == 0
+    assert observations["chainer_trailing_stop_ratio"]["trigger_count"] == 0

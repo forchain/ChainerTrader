@@ -12,10 +12,16 @@ from trader.common.log_tag import LogTag
 from trader.common.logger import Logger
 from trader.strategy.trader_result import TraderResult
 from trader.utils.operation_state import MaxDrawdownAnalyzer, OptStatAnalyzer
-from trader.utils.symbol_interval import SymbolInterval, get_time_duration
+from trader.utils.symbol_interval import SymbolInterval
 
 
-def build_strategy_kwargs(cfg: Config, log: Logger, position: float, trader: bool, strategy_params: dict | None = None) -> dict:
+def build_strategy_kwargs(
+    cfg: Config,
+    log: Logger,
+    position: float,
+    trader: bool,
+    strategy_params: dict | None = None,
+) -> dict:
     kwargs = {
         "mode": cfg.mode,
         "period": cfg.period,

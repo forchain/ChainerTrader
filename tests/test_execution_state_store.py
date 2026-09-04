@@ -61,7 +61,7 @@ def test_execution_state_store_reserves_idempotency_key_before_order_submit():
             record.with_updates(status=ExecutionStatus.ACCEPTED, exchange_order_id="should-not-overwrite", updated_at=1_714_281_601)
         )
 
-        saved = await store.get_by_idempotency_key(intent.idempotency_key)
+        saved = await store.get_by_idempotency_key(record.idempotency_key)
         assert first.created is True
         assert duplicate.created is False
         assert saved.intent_id == "intent-1"
@@ -117,9 +117,49 @@ def test_execution_state_store_persists_protection_state_for_reconciliation():
 
         active_by_task = await store.list_open_by_task(22)
         assert len(active_by_task) == 1
-        assert active_by_task[0].idempotency_key == risk.idempotency_key
+        assert active_by_task[0].idempotency_key == record.idempotency_key
 
         assert await store.list_open_by_task(9999) == []
+
+    asyncio.run(_with_db(run))
+
+
+def test_execution_state_store_keeps_matching_intents_from_different_tasks():
+    async def run():
+        store = ExecutionStateCol(_Log())
+        intent = OrderIntent.entry(
+            intent_id="intent:1",
+            operation_id="1",
+            symbol="BTCUSDT",
+            side=ExecutionSide.LONG,
+            quantity=0.25,
+            trade_id="1",
+        )
+        first = ExecutionStateRecord.from_order_intent(
+            intent,
+            task_id=101,
+            gateway=GatewayMode.BINANCE_LIVE,
+            staged_execution_mode="auto_trade",
+            status=ExecutionStatus.SUBMITTED,
+            exchange_order_id="first-order",
+            timestamp=1_714_281_800,
+        )
+        second = ExecutionStateRecord.from_order_intent(
+            intent,
+            task_id=202,
+            gateway=GatewayMode.BINANCE_LIVE,
+            staged_execution_mode="auto_trade",
+            status=ExecutionStatus.SUBMITTED,
+            exchange_order_id="second-order",
+            timestamp=1_714_281_801,
+        )
+
+        await store.save(first)
+        await store.save(second)
+
+        assert first.idempotency_key != second.idempotency_key
+        assert (await store.get_by_idempotency_key(first.idempotency_key)).exchange_order_id == "first-order"
+        assert (await store.get_by_idempotency_key(second.idempotency_key)).exchange_order_id == "second-order"
 
     asyncio.run(_with_db(run))
 

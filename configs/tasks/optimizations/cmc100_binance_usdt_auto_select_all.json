@@ -1,0 +1,32 @@
+[
+  {
+    "task_type": "BACK_TRADER",
+    "symbols": "BTC-USDT,ETH-USDT,BNB-USDT,XRP-USDT,SOL-USDT,TRX-USDT,DOGE-USDT,ZEC-USDT,XLM-USDT,LINK-USDT,ADA-USDT,BCH-USDT,GRAM-USDT,LTC-USDT,DEXE-USDT,SUI-USDT,HBAR-USDT,AVAX-USDT,NEAR-USDT,SHIB-USDT,UNI-USDT,TAO-USDT,PAXG-USDT,WLFI-USDT,ASTER-USDT,AAVE-USDT,ONDO-USDT,WLD-USDT,DOT-USDT,SKY-USDT,ETC-USDT,PEPE-USDT,ICP-USDT,MORPHO-USDT,POL-USDT,JUP-USDT,RENDER-USDT,QNT-USDT,JST-USDT,ALGO-USDT,ATOM-USDT,ENA-USDT,APT-USDT,INJ-USDT,ARB-USDT,NEXO-USDT,NIGHT-USDT,PUMP-USDT,FIL-USDT,VET-USDT,TRUMP-USDT,PYTH-USDT,CAKE-USDT,SUN-USDT,BONK-USDT,LUNC-USDT,TIA-USDT,SEI-USDT,ZRO-USDT,ETHFI-USDT,GNO-USDT,JTO-USDT,DASH-USDT,CRV-USDT,PENGU-USDT,FET-USDT,VIRTUAL-USDT,STX-USDT,PENDLE-USDT,IMX-USDT,KAIA-USDT,CFX-USDT",
+    "interval": "1h",
+    "strategy": "macd_triple_divergence",
+    "start_time": "2026-06-15 16:46:55",
+    "auto_download": true,
+    "free": 100000,
+    "param_combinations": [
+      {
+        "chainer_mode": [
+          "BOTH"
+        ],
+        "chainer_need_confirm": [
+          false
+        ],
+        "chainer_stoploss_atr_mult": [
+          1
+        ],
+        "chainer_enable_breakeven": [
+          true
+        ],
+        "chainer_min_equity_percent": [
+          0.1
+        ]
+      }
+    ],
+    "end_time": "2026-07-15 16:46:55",
+    "optimization_run_id": "cmc100-binance-usdt-auto-select"
+  }
+]

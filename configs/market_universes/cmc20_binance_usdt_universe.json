@@ -1,0 +1,201 @@
+{
+  "schema_version": 1,
+  "market_index": "CMC20",
+  "source_files": [
+    "data/market_universes/cmc20_constituents.json",
+    "data/market_universes/binance_usdt_pairs.json"
+  ],
+  "quote_asset": "USDT",
+  "count": 17,
+  "task_compatible_count": 17,
+  "symbols": "BTC-USDT,ETH-USDT,BNB-USDT,XRP-USDT,SOL-USDT,TRX-USDT,DOGE-USDT,ZEC-USDT,XLM-USDT,LINK-USDT,ADA-USDT,BCH-USDT,GRAM-USDT,LTC-USDT,HBAR-USDT,AVAX-USDT,SUI-USDT",
+  "pairs": [
+    {
+      "symbol": "BTC-USDT",
+      "exchange_symbol": "BTCUSDT",
+      "base_asset": "BTC",
+      "quote_asset": "USDT",
+      "cmc_id": 1,
+      "cmc_name": "Bitcoin",
+      "cmc_weight": 70.7,
+      "margin_trading_allowed": true,
+      "task_symbol_compatible": true
+    },
+    {
+      "symbol": "ETH-USDT",
+      "exchange_symbol": "ETHUSDT",
+      "base_asset": "ETH",
+      "quote_asset": "USDT",
+      "cmc_id": 1027,
+      "cmc_name": "Ethereum",
+      "cmc_weight": 12.5,
+      "margin_trading_allowed": true,
+      "task_symbol_compatible": true
+    },
+    {
+      "symbol": "BNB-USDT",
+      "exchange_symbol": "BNBUSDT",
+      "base_asset": "BNB",
+      "quote_asset": "USDT",
+      "cmc_id": 1839,
+      "cmc_name": "BNB",
+      "cmc_weight": 4.22,
+      "margin_trading_allowed": true,
+      "task_symbol_compatible": true
+    },
+    {
+      "symbol": "XRP-USDT",
+      "exchange_symbol": "XRPUSDT",
+      "base_asset": "XRP",
+      "quote_asset": "USDT",
+      "cmc_id": 52,
+      "cmc_name": "XRP",
+      "cmc_weight": 3.8,
+      "margin_trading_allowed": true,
+      "task_symbol_compatible": true
+    },
+    {
+      "symbol": "SOL-USDT",
+      "exchange_symbol": "SOLUSDT",
+      "base_asset": "SOL",
+      "quote_asset": "USDT",
+      "cmc_id": 5426,
+      "cmc_name": "Solana",
+      "cmc_weight": 2.44,
+      "margin_trading_allowed": true,
+      "task_symbol_compatible": true
+    },
+    {
+      "symbol": "TRX-USDT",
+      "exchange_symbol": "TRXUSDT",
+      "base_asset": "TRX",
+      "quote_asset": "USDT",
+      "cmc_id": 1958,
+      "cmc_name": "TRON",
+      "cmc_weight": 1.69,
+      "margin_trading_allowed": true,
+      "task_symbol_compatible": true
+    },
+    {
+      "symbol": "DOGE-USDT",
+      "exchange_symbol": "DOGEUSDT",
+      "base_asset": "DOGE",
+      "quote_asset": "USDT",
+      "cmc_id": 74,
+      "cmc_name": "Dogecoin",
+      "cmc_weight": 0.62,
+      "margin_trading_allowed": true,
+      "task_symbol_compatible": true
+    },
+    {
+      "symbol": "ZEC-USDT",
+      "exchange_symbol": "ZECUSDT",
+      "base_asset": "ZEC",
+      "quote_asset": "USDT",
+      "cmc_id": 1437,
+      "cmc_name": "Zcash",
+      "cmc_weight": 0.51,
+      "margin_trading_allowed": true,
+      "task_symbol_compatible": true
+    },
+    {
+      "symbol": "XLM-USDT",
+      "exchange_symbol": "XLMUSDT",
+      "base_asset": "XLM",
+      "quote_asset": "USDT",
+      "cmc_id": 512,
+      "cmc_name": "Stellar",
+      "cmc_weight": 0.35,
+      "margin_trading_allowed": true,
+      "task_symbol_compatible": true
+    },
+    {
+      "symbol": "LINK-USDT",
+      "exchange_symbol": "LINKUSDT",
+      "base_asset": "LINK",
+      "quote_asset": "USDT",
+      "cmc_id": 1975,
+      "cmc_name": "Chainlink",
+      "cmc_weight": 0.35,
+      "margin_trading_allowed": true,
+      "task_symbol_compatible": true
+    },
+    {
+      "symbol": "ADA-USDT",
+      "exchange_symbol": "ADAUSDT",
+      "base_asset": "ADA",
+      "quote_asset": "USDT",
+      "cmc_id": 2010,
+      "cmc_name": "Cardano",
+      "cmc_weight": 0.32,
+      "margin_trading_allowed": true,
+      "task_symbol_compatible": true
+    },
+    {
+      "symbol": "BCH-USDT",
+      "exchange_symbol": "BCHUSDT",
+      "base_asset": "BCH",
+      "quote_asset": "USDT",
+      "cmc_id": 1831,
+      "cmc_name": "Bitcoin Cash",
+      "cmc_weight": 0.25,
+      "margin_trading_allowed": true,
+      "task_symbol_compatible": true
+    },
+    {
+      "symbol": "GRAM-USDT",
+      "exchange_symbol": "GRAMUSDT",
+      "base_asset": "GRAM",
+      "quote_asset": "USDT",
+      "cmc_id": 11419,
+      "cmc_name": "Gram (prev. Toncoin)",
+      "cmc_weight": 0.23,
+      "margin_trading_allowed": true,
+      "task_symbol_compatible": true
+    },
+    {
+      "symbol": "LTC-USDT",
+      "exchange_symbol": "LTCUSDT",
+      "base_asset": "LTC",
+      "quote_asset": "USDT",
+      "cmc_id": 2,
+      "cmc_name": "Litecoin",
+      "cmc_weight": 0.19,
+      "margin_trading_allowed": true,
+      "task_symbol_compatible": true
+    },
+    {
+      "symbol": "HBAR-USDT",
+      "exchange_symbol": "HBARUSDT",
+      "base_asset": "HBAR",
+      "quote_asset": "USDT",
+      "cmc_id": 4642,
+      "cmc_name": "Hedera",
+      "cmc_weight": 0.16,
+      "margin_trading_allowed": true,
+      "task_symbol_compatible": true
+    },
+    {
+      "symbol": "AVAX-USDT",
+      "exchange_symbol": "AVAXUSDT",
+      "base_asset": "AVAX",
+      "quote_asset": "USDT",
+      "cmc_id": 5805,
+      "cmc_name": "Avalanche",
+      "cmc_weight": 0.16,
+      "margin_trading_allowed": true,
+      "task_symbol_compatible": true
+    },
+    {
+      "symbol": "SUI-USDT",
+      "exchange_symbol": "SUIUSDT",
+      "base_asset": "SUI",
+      "quote_asset": "USDT",
+      "cmc_id": 20947,
+      "cmc_name": "Sui",
+      "cmc_weight": 0.16,
+      "margin_trading_allowed": true,
+      "task_symbol_compatible": true
+    }
+  ]
+}

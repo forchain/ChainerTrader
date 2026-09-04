@@ -328,7 +328,7 @@ async def test_trader_task_realtime_fetches_latest_configured_warmup_when_local_
     db = FakeDb()
     db.kline.add_klines("BTCUSDT-1m", fetched[-2:])
     exchange = FakeExchange(fetched)
-    cfg = Config(window=1000, live_warmup_candles=400)
+    cfg = Config(window=1000, warmup_candles=400)
     tcfg = TaskConfig(
         81,
         TaskType.TRADER,
