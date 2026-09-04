@@ -1,0 +1,162 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Development Guidelines
+
+This document provides guidelines for developing and contributing to the ChainerTrader project.
+
+## Code Structure
+
+### Package Organization
+- **src/trader/**: Main package containing all trading logic
+- **src/trader/app/**: Application core and entry points
+- **src/trader/common/**: Shared utilities and configuration
+- **src/trader/strategy/**: Trading strategy implementations
+- **src/trader/task/**: Task system and execution
+- **src/trader/utils/**: Technical analysis and utility functions
+
+### Import Conventions
+- Use absolute imports from the `trader` package
+- Group imports: standard library, third-party, local
+- Follow PEP 8 import ordering
+
+## Strategy Development
+
+### Creating New Strategies
+1. Inherit from [src/trader/strategy/base_strategy.py](mdc:src/trader/strategy/base_strategy.py)
+2. Implement the `next()` method for signal generation
+3. Use the provided logging and order management methods
+4. Add proper documentation and type hints
+
+### Strategy Template
+```python
+from trader.strategy.base_strategy import BaseStrategy
+import backtrader as bt
+
+class MyStrategy(BaseStrategy):
+    params = (
+        ('name', 'MyStrategy'),
+        ('period', 14),
+    )
+    
+    def __init__(self):
+        super().__init__()
+        # Add indicators here
+        
+    def next(self):
+        # Implement trading logic here
+        pass
+```
+
+## Testing Guidelines
+
+### Test Structure
+- **tests/**: All test files
+- **tests/conftest.py**: Shared test fixtures
+- **tests/test_*.py**: Unit tests for each module
+
+### Running Tests
+```bash
+# Run all tests
+pytest
+
+# Run with coverage
+pytest --cov=trader
+
+# Run specific test file
+pytest tests/test_strategy.py
+```
+
+### Test Best Practices
+- Use descriptive test names
+- Test both success and failure cases
+- Mock external dependencies (APIs, databases)
+- Use fixtures for common setup
+
+## Configuration Management
+
+### Environment Variables
+- Use [src/trader/common/config.py](mdc:src/trader/common/config.py) for configuration
+- Set default values for all parameters
+- Validate configuration on startup
+- Use environment variables for sensitive data (API keys)
+
+### Configuration Files
+- Store task configurations in `scripts/` directory
+- Use JSON format for readability
+- Include validation schemas where possible
+
+## Logging Standards
+
+### Log Levels
+- **DEBUG**: Detailed debugging information
+- **INFO**: General operational messages
+- **WARNING**: Warning messages for potential issues
+- **ERROR**: Error messages for recoverable errors
+- **CRITICAL**: Critical errors that may cause system failure
+
+### Logging Best Practices
+- Use structured logging with context
+- Include relevant data in log messages
+- Avoid logging sensitive information
+- Use appropriate log levels
+
+## Documentation
+
+### Code Documentation
+- Use docstrings for all public functions and classes
+- Follow Google or NumPy docstring format
+- Include type hints for function parameters and return values
+- Document complex algorithms and business logic
+
+### API Documentation
+- Document all public APIs
+- Include usage examples
+- Specify parameter types and constraints
+- Document error conditions and handling
+
+## Performance Considerations
+
+### Data Handling
+- Use efficient data structures for large datasets
+- Implement proper memory management
+- Cache frequently accessed data
+- Use async operations for I/O-bound tasks
+
+### Strategy Optimization
+- Minimize computational overhead in strategy logic
+- Use vectorized operations where possible
+- Profile strategies for performance bottlenecks
+- Consider using Cython for performance-critical code
+
+## Security Guidelines
+
+### API Key Management
+- Never commit API keys to version control
+- Use environment variables for sensitive data
+- Implement proper key rotation procedures
+- Validate API permissions and limits
+
+### Data Validation
+- Validate all input data
+- Sanitize user inputs
+- Implement proper error handling
+- Use secure communication protocols
+
+## Contributing
+
+### Pull Request Process
+1. Create a feature branch from main
+2. Implement changes with proper tests
+3. Update documentation as needed
+4. Run all tests and ensure they pass
+5. Submit a pull request with clear description
+
+### Code Review Checklist
+- [ ] Code follows project style guidelines
+- [ ] Tests are included and passing
+- [ ] Documentation is updated
+- [ ] No sensitive data is exposed
+- [ ] Performance impact is considered

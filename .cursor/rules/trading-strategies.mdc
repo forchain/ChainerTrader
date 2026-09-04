@@ -1,0 +1,51 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Trading Strategies Architecture
+
+ChainerTrader implements a comprehensive strategy framework based on the backtrader library. All strategies inherit from [src/trader/strategy/base_strategy.py](mdc:src/trader/strategy/base_strategy.py), which provides common functionality for order management, logging, and risk management.
+
+## Base Strategy Features
+
+The `BaseStrategy` class provides:
+- **Order Management**: Buy/sell order handling with commission tracking
+- **Risk Management**: Stop-loss and take-profit functionality with ATR-based calculations
+- **Logging**: Structured logging for debugging and analysis
+- **Trend Analysis**: Support for different trend modes (NORMAL, UP, DOWN)
+- **Time Tracking**: Execution time monitoring
+
+## Available Strategies
+
+### Core Strategies
+- **MACDRSI**: [src/trader/strategy/MACDRSI.py](mdc:src/trader/strategy/MACDRSI.py) - MACD and RSI combination
+- **RSRS**: [src/trader/strategy/RSRS.py](mdc:src/trader/strategy/RSRS.py) - RSI-based strategy
+- **TURTLE**: [src/trader/strategy/TURTLE.py](mdc:src/trader/strategy/TURTLE.py) - Turtle trading system
+
+### Shi Hun Strategies
+- **ShihunMACD**: [src/trader/strategy/ShihunMACD/](mdc:src/trader/strategy/ShihunMACD) - Original MACD strategy
+- **ShihunMACD2**: [src/trader/strategy/ShihunMACD2.py](mdc:src/trader/strategy/ShihunMACD2.py) - Enhanced MACD strategy
+- **ShihunRSI**: [src/trader/strategy/ShihunRSI.py](mdc:src/trader/strategy/ShihunRSI.py) - RSI-based strategy
+- **ShihunRSI2**: [src/trader/strategy/ShihunRSI2.py](mdc:src/trader/strategy/ShihunRSI2.py) - Advanced RSI strategy
+- **ShihunMACDRISBB**: [src/trader/strategy/ShihunMACDRISBB.py](mdc:src/trader/strategy/ShihunMACDRISBB.py) - MACD + RSI + Bollinger Bands
+
+### Advanced Strategies
+- **DeviationMACD**: [src/trader/strategy/DeviationMACD/](mdc:src/trader/strategy/DeviationMACD) - MACD deviation analysis
+- **KDJ**: [src/trader/strategy/KDJ/](mdc:src/trader/strategy/KDJ) - KDJ oscillator strategy
+- **Trilogy Strategy**: [src/trader/strategy/trilogy_strategy.py](mdc:src/trader/strategy/trilogy_strategy.py) - Multi-indicator combination
+
+### Utility Strategies
+- **DUALMA**: [src/trader/strategy/DUALMA.py](mdc:src/trader/strategy/DUALMA.py) - Dual moving average crossover
+- **DUALTHRUST**: [src/trader/strategy/DUALTHRUST.py](mdc:src/trader/strategy/DUALTHRUST.py) - Dual thrust breakout system
+- **GRID**: [src/trader/strategy/GRID.py](mdc:src/trader/strategy/GRID.py) - Grid trading strategy
+- **BOLLMEANREG**: [src/trader/strategy/BOLLMEANREG.py](mdc:src/trader/strategy/BOLLMEANREG.py) - Bollinger Bands mean reversion
+- **Aberration**: [src/trader/strategy/Aberration.py](mdc:src/trader/strategy/Aberration.py) - Price aberration detection
+
+## Strategy Configuration
+
+Strategies are configured through the main application using command-line arguments or configuration files. The [src/trader/strategy/strategy.py](mdc:src/trader/strategy/strategy.py) module provides strategy factory and management functions.
+
+## Pine Script Integration
+
+Many strategies include Pine Script versions (`.pine` files) for TradingView compatibility, allowing easy strategy validation and comparison between platforms.

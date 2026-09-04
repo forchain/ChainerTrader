@@ -1,0 +1,74 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Exchange Integration System
+
+ChainerTrader provides a modular exchange integration system, currently supporting Binance through the [src/trader/binance_exchange/](mdc:src/trader/binance_exchange) module.
+
+## Binance Exchange Module
+
+### Core Components
+- **Exchange Class**: [src/trader/binance_exchange/exchange.py](mdc:src/trader/binance_exchange/exchange.py) - Main exchange interface
+- **REST API**: [src/trader/binance_exchange/restapi.py](mdc:src/trader/binance_exchange/restapi.py) - HTTP API client
+- **Data Management**: [src/trader/binance_exchange/data.py](mdc:src/trader/binance_exchange/data.py) - Market data handling
+- **CSV Data**: [src/trader/binance_exchange/csvdata.py](mdc:src/trader/binance_exchange/csvdata.py) - Historical data import
+
+## Exchange Features
+
+### Market Data
+- **Real-time Klines**: Live candlestick data streaming
+- **Historical Data**: Historical price data retrieval
+- **Symbol Management**: Support for multiple trading pairs
+- **Data Validation**: Quality checks and gap detection
+
+### Trading Operations
+- **Order Management**: Place, cancel, and track orders
+- **Position Tracking**: Real-time position monitoring
+- **Account Information**: Balance and portfolio data
+- **Risk Management**: Position sizing and limits
+
+### Data Sources
+The system supports multiple data sources:
+- **Live Exchange Data**: Real-time from Binance API
+- **CSV Files**: Historical data from [data/](mdc:data) directory
+- **Database**: Cached data from MongoDB
+
+## Configuration
+
+Exchange settings are configured through:
+- **Environment Variables**: API keys and endpoints
+- **Command Line Arguments**: Exchange selection and parameters
+- **Configuration Files**: JSON-based task configurations
+
+## Data Formats
+
+### Kline Data Structure
+```python
+{
+    'symbol': 'BTCUSDT',
+    'interval': '1h',
+    'open_time': timestamp,
+    'open': float,
+    'high': float,
+    'low': float,
+    'close': float,
+    'volume': float,
+    'close_time': timestamp
+}
+```
+
+### Supported Intervals
+- 1m, 3m, 5m, 15m, 30m
+- 1h, 2h, 4h, 6h, 8h, 12h
+- 1d, 3d
+- 1w, 1M
+
+## Error Handling
+
+The exchange module includes comprehensive error handling for:
+- **Network Issues**: Connection timeouts and retries
+- **API Limits**: Rate limiting and quota management
+- **Data Quality**: Invalid or missing data detection
+- **Authentication**: API key validation and security

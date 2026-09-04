@@ -1,0 +1,181 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Command Line Interface and Usage
+
+ChainerTrader provides a comprehensive command-line interface through [src/trader/app/main.py](mdc:src/trader/app/main.py) with extensive configuration options.
+
+## Basic Usage
+
+### Entry Points
+```bash
+# Using Python module
+python -m trader [options]
+
+# Using installed package
+trader [options]
+
+# Using direct script
+python src/trader/__main__.py [options]
+```
+
+## Command Line Options
+
+### Core Parameters
+- `--version`: Display version information
+- `--period <int>`: Period for moving averages (default: 14)
+- `--commission <float>`: Transaction commission rate (default: 0.001)
+- `--cash <int>`: Initial cash for backtesting (default: 100000)
+- `--window <int>`: Window size for backtesting (default: 1000)
+
+### Risk Management
+- `--atr`: Enable ATR-based stop-loss calculations
+- `--stoploss`: Enable stop-loss functionality
+- `--mode <str>`: Trend mode (NORMAL, UP, DOWN)
+
+### Data and Exchange
+- `--exchange <str>`: Exchange selection (BINANCE)
+- `--db`: Enable MongoDB database
+- `--db_uri <str>`: MongoDB connection URI (default: mongodb://localhost:27017/)
+- `--db_name <str>`: Database name (default: trader)
+
+### Task Configuration
+- `--tasks <str>`: Task types to execute
+  - `TRADER`: Live trading
+  - `BACK_TRADER`: Historical backtesting
+  - `UPDATE_KLINES`: Data updates
+  - `CHECK_KLINES`: Data validation
+  - `IMPORT_CSV`: CSV data import
+
+### Output and Logging
+- `--log_file`: Write logs to file
+- `--log_level <str>`: Logging level (CRITICAL, ERROR, WARNING, INFO, DEBUG)
+- `--plot`: Enable data plotting
+- `--stat <int>`: Maximum statistics entries to display (default: 50)
+
+### API and Notifications
+- `--api <str>`: Start Web API service (e.g., 127.0.0.1:8000)
+- `--notice <str>`: Load notification configuration file
+
+## Usage Examples
+
+### Basic Backtesting
+```bash
+# Simple backtesting with default settings
+trader --tasks BACK_TRADER --cash 100000
+
+# Backtesting with custom parameters
+trader --tasks BACK_TRADER --period 20 --commission 0.002 --cash 50000
+```
+
+### Live Trading
+```bash
+# Live trading with Binance
+trader --tasks TRADER --exchange BINANCE --db
+
+# Live trading with custom configuration
+trader --tasks TRADER --exchange BINANCE --atr --stoploss --log_file
+```
+
+### Data Management
+```bash
+# Update market data
+trader --tasks UPDATE_KLINES --exchange BINANCE
+
+# Import CSV data
+trader --tasks IMPORT_CSV
+
+# Check data quality
+trader --tasks CHECK_KLINES
+```
+
+### Multi-Strategy Backtesting
+```bash
+# Run multiple strategies
+trader --tasks BACK_TRADER --window 2000 --stat 100 --plot
+```
+
+### API Mode
+```bash
+# Start with Web API
+trader --api 127.0.0.1:8000 --tasks TRADER
+
+# API on specific port
+trader --api :8080 --tasks BACK_TRADER
+```
+
+## Configuration Files
+
+### Task Configuration
+Tasks can be configured using JSON files in the `scripts/` directory:
+- [scripts/backtrader_task.json](mdc:scripts/backtrader_task.json)
+- [scripts/trader_task.json](mdc:scripts/trader_task.json)
+- [scripts/update_klines.json](mdc:scripts/update_klines.json)
+
+### Notification Configuration
+```bash
+# Load notification settings
+trader --notice scripts/notice.json --tasks TRADER
+```
+
+## Environment Variables
+
+### API Configuration
+```bash
+export BINANCE_API_KEY="your_api_key"
+export BINANCE_SECRET_KEY="your_secret_key"
+```
+
+### Database Configuration
+```bash
+export MONGODB_URI="mongodb://localhost:27017/"
+export DB_NAME="trader"
+```
+
+## Output and Results
+
+### Logging Output
+- Console output for real-time monitoring
+- File logging when `--log_file` is enabled
+- Structured logging with timestamps and levels
+
+### Statistics Output
+- Trade summary with profit/loss
+- Win rate and performance metrics
+- Risk analysis and drawdown information
+- Detailed trade history
+
+### Plotting
+When `--plot` is enabled:
+- Price charts with indicators
+- Trade entry/exit points
+- Performance metrics visualization
+- Strategy comparison charts
+
+## Error Handling
+
+### Common Issues
+- **API Connection**: Check network connectivity and API keys
+- **Database Connection**: Verify MongoDB is running
+- **Data Issues**: Ensure sufficient historical data
+- **Configuration**: Validate JSON configuration files
+
+### Debug Mode
+```bash
+# Enable debug logging
+trader --log_level DEBUG --tasks BACK_TRADER
+```
+
+## Performance Considerations
+
+### Memory Usage
+- Large datasets may require significant memory
+- Use appropriate window sizes for backtesting
+- Monitor system resources during live trading
+
+### Processing Time
+- Backtesting time depends on data size and strategy complexity
+- Live trading requires real-time data processing
+- Consider using appropriate timeframes for your use case

@@ -97,6 +97,9 @@ class BaseStrategy(bt.Strategy):
     def cur_datetime(self):
         return num2date(self.datas[0].datetime[0])
 
+    def bar_idx(self):
+        return len(self)-1
+
     def need_stop_loss(self):
         if not self.params.stoploss:
             return False

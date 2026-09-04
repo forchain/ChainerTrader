@@ -1,0 +1,37 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# ChainerTrader Project Overview
+
+ChainerTrader is a Python-based algorithmic trading system that implements TradingView algorithms from the YouTube channel "Shi Hun". The project provides backtesting, live trading, and analysis capabilities for cryptocurrency markets.
+
+## Core Architecture
+
+The main entry point is [src/trader/__main__.py](mdc:src/trader/__main__.py), which delegates to [src/trader/app/main.py](mdc:src/trader/app/main.py) for command-line argument parsing and application initialization.
+
+The central application class is [src/trader/app/app.py](mdc:src/trader/app/app.py), which orchestrates all components:
+- **Configuration Management**: [src/trader/common/config.py](mdc:src/trader/common/config.py)
+- **Database Management**: [src/trader/app/database_manager.py](mdc:src/trader/app/database_manager.py)
+- **Exchange Integration**: [src/trader/binance_exchange/exchange.py](mdc:src/trader/binance_exchange/exchange.py)
+- **Task Management**: [src/trader/task/task_manager.py](mdc:src/trader/task/task_manager.py)
+- **Statistics & Reporting**: [src/trader/statistics/statistics.py](mdc:src/trader/statistics/statistics.py)
+- **Notification System**: [src/trader/notify/notify_manager.py](mdc:src/trader/notify/notify_manager.py)
+
+## Key Features
+
+- **Multiple Trading Strategies**: Based on backtrader framework
+- **Binance Integration**: Real-time data and trading
+- **MongoDB Support**: Data persistence and analysis
+- **Web API**: RESTful interface for remote control
+- **Backtesting Engine**: Historical strategy validation
+- **Real-time Notifications**: Email and other notification methods
+
+## Project Structure
+
+- `src/trader/`: Main package containing all trading logic
+- `data/`: Sample market data files (CSV format)
+- `docs/`: Documentation and strategy guides
+- `scripts/`: Configuration files for different tasks
+- `tests/`: Unit tests and integration tests

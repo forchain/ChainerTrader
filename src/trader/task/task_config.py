@@ -104,7 +104,7 @@ def parse_task_config(cfg)->[TaskConfig]:
             auto_download = tcd['auto_download']
 
         for si in sis.symbol_intervals:
-            if task_type == TaskType.IMPORT_CSV:
+            if task_type == TaskType.IMPORT_CSV or task_type == TaskType.CHECK_KLINES or task_type == TaskType.UPDATE_KLINES:
                 tc,index=new_TaskConfig(id,index,task_type, si, csv, start_time, end_time, None, auto_download)
                 ret.append(tc)
             else:

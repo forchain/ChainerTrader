@@ -1,0 +1,102 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Utility Functions and Technical Analysis
+
+ChainerTrader provides a comprehensive set of utility functions and technical analysis tools in the [src/trader/utils/](mdc:src/trader/utils) module.
+
+## Technical Analysis Utilities
+
+### Trend Analysis
+- **Trend Detection**: [src/trader/utils/trend.py](mdc:src/trader/utils/trend.py) - Trend identification and classification
+- **Pivot Points**: [src/trader/utils/pivot.py](mdc:src/trader/utils/pivot.py) - Support and resistance calculations
+- **Inflection Points**: [src/trader/utils/inflectionpoint.py](mdc:src/trader/utils/inflectionpoint.py) - Market turning point detection
+
+### Indicator Utilities
+- **RSI Calculations**: [src/trader/utils/chainerrsi.py](mdc:src/trader/utils/chainerrsi.py) - Relative Strength Index implementations
+- **KDJ Oscillator**: [src/trader/utils/kdj.py](mdc:src/trader/utils/kdj.py) - KDJ indicator calculations
+- **RSRS Analysis**: [src/trader/utils/rsrs.py](mdc:src/trader/utils/rsrs.py) - RSRS (Relative Strength of Relative Strength) calculations
+
+### Data Processing
+- **Kline Utilities**: [src/trader/utils/kline.py](mdc:src/trader/utils/kline.py) - Candlestick data processing
+- **Symbol Management**: [src/trader/utils/symbol_interval.py](mdc:src/trader/utils/symbol_interval.py) - Trading pair and interval handling
+- **Top Analysis**: [src/trader/utils/top.py](mdc:src/trader/utils/top.py) - Peak and trough identification
+
+## Performance Analysis
+
+### Profit/Loss Calculations
+- **Profit/Loss Ratio**: [src/trader/utils/profitlossratio.py](mdc:src/trader/utils/profitlossratio.py) - Risk/reward ratio calculations
+- **Win Rate Analysis**: [src/trader/utils/winrate.py](mdc:src/trader/utils/winrate.py) - Trading success rate metrics
+
+### Operation Management
+- **Operation State**: [src/trader/utils/operation_state.py](mdc:src/trader/utils/operation_state.py) - Trade state management
+- **Operation Utilities**: [src/trader/utils/operate.py](mdc:src/trader/utils/operate.py) - Trade execution helpers
+
+## Data Management
+
+### Symbol and Interval Handling
+- **Symbol Interval**: [src/trader/utils/symbol_interval.py](mdc:src/trader/utils/symbol_interval.py) - Individual symbol/interval pairs
+- **Symbols Interval**: [src/trader/utils/symbols_interval.py](mdc:src/trader/utils/symbols_interval.py) - Multiple symbol/interval management
+
+## Common Utilities
+
+### Configuration and Paths
+- **Common Functions**: [src/trader/common/common.py](mdc:src/trader/common/common.py) - Shared utility functions
+- **Path Management**: [src/trader/common/path.py](mdc:src/trader/common/path.py) - File and directory path handling
+- **Logging**: [src/trader/common/logger.py](mdc:src/trader/common/logger.py) - Centralized logging system
+
+### Message System
+- **Message Handling**: [src/trader/common/message.py](mdc:src/trader/common/message.py) - Inter-task communication
+
+## Usage Examples
+
+### Trend Analysis
+```python
+from trader.utils.trend import TrendType, parseTrendType
+
+# Parse trend type from string
+trend = parseTrendType("UP")
+
+# Use in strategy
+if trend == TrendType.UP:
+    # Implement uptrend logic
+    pass
+```
+
+### RSI Calculations
+```python
+from trader.utils.chainerrsi import calculate_rsi
+
+# Calculate RSI for price data
+rsi_values = calculate_rsi(prices, period=14)
+```
+
+### Kline Processing
+```python
+from trader.utils.kline import process_kline_data
+
+# Process raw kline data
+processed_data = process_kline_data(raw_klines)
+```
+
+## Best Practices
+
+### Performance Optimization
+- Use vectorized operations for large datasets
+- Cache frequently calculated indicators
+- Avoid redundant calculations in loops
+- Use appropriate data structures for the task
+
+### Error Handling
+- Validate input data before processing
+- Handle edge cases (empty data, insufficient history)
+- Provide meaningful error messages
+- Use type hints for better code clarity
+
+### Memory Management
+- Clean up large datasets when no longer needed
+- Use generators for large data streams
+- Implement proper resource cleanup
+- Monitor memory usage in long-running processes

@@ -12,12 +12,11 @@ signalLength = input.int(9, title="signal period",group = "MACD")
 [macdLine, signalLine, _] = ta.macd(close, period, slowLength, signalLength)
 
 // stopLoss takeProfit
-takeProfitPerc = input.float(5.0, title="profit", minval=0.1,group = "Stop loss")
-stopLossPerc   = input.float(2.0, title="loss", minval=0.1,group = "Stop loss")
+takeProfitPerc = input.float(15.0, title="profit", minval=0.1,group = "Stop loss")
+stopLossPerc   = input.float(15.0, title="loss", minval=0.1,group = "Stop loss")
 
 // atr
 smoothing = input.string(title = 'Smoothing', defval = 'RMA', options = ['RMA', 'SMA', 'EMA', 'WMA'],group = "ATR")
-m = input(1.5, 'Multiplier',group = "ATR")
 src1 = input(high,group = "ATR")
 src2 = input(low,group = "ATR")
 pline = input(true, 'Show Price Lines',group = "ATR")
@@ -40,12 +39,12 @@ ma_function(source, period) =>
             else
                 ta.wma(source, period)
 
-a = ma_function(ta.tr(true), period) * m
-x = ma_function(ta.tr(true), period) * m + src1
-x2 = src2 - ma_function(ta.tr(true), period) * m
+atr_a = ma_function(ta.tr(true), period)
+atr_x = atr_a * takeProfitPerc + src1
+atr_x2 = src2 - atr_a * stopLossPerc
 
-p1 = plot(x, title = 'ATR Short Stop Loss', color = colshort, trackprice = pline ? true : false)
-p2 = plot(x2, title = 'ATR Long Stop Loss', color = collong, trackprice = pline ? true : false)
+p1 = plot(atr_x, title = 'ATR Short Stop Loss', color = colshort, trackprice = pline ? true : false)
+p2 = plot(atr_x2, title = 'ATR Long Stop Loss', color = collong, trackprice = pline ? true : false)
 
 var table Table = table.new(position.bottom_center, 3, 1, border_width = 3)
 
@@ -57,9 +56,9 @@ f_fillCell(_table, _column, _row, _value, _timeframe) =>
     table.cell_set_text_color(Table, 2, 0, color.new(col2, transp = 0))
 
 if barstate.islast
-    f_fillCell(Table, 0, 0, a, 'ATR: ')
-    f_fillCell(Table, 1, 0, x, 'H: ')
-    f_fillCell(Table, 2, 0, x2, 'L: ')
+    f_fillCell(Table, 0, 0, atr_a, 'ATR: ')
+    f_fillCell(Table, 1, 0, atr_x, 'H: ')
+    f_fillCell(Table, 2, 0, atr_x2, 'L: ')
 
 // deviation
 source = input.string(defval = 'Close', title = 'Source for Pivot Points', options = ['Close', 'High/Low'],group = "Deviation")
@@ -67,7 +66,6 @@ searchdiv = input.string(defval = 'Regular', title = 'Divergence Type', options 
 showlimit = input.int(1, title = 'Minimum Number of Divergence', minval = 1, maxval = 11,group = "Deviation")
 maxpp = input.int(defval = 10, title = 'Maximum Pivot Points to Check', minval = 1, maxval = 20,group = "Deviation")
 maxbars = input.int(defval = 100, title = 'Maximum Bars to Check', minval = 30, maxval = 200,group = "Deviation")
-shownum = input(defval = true, title = 'Show Divergence Number',group = "Deviation")
 showlast = input(defval = false, title = 'Show Only Last Divergence',group = "Deviation")
 dontconfirm = input(defval = false, title = 'Don\'t Wait for Confirmation',group = "Deviation")
 showlines = input(defval = true, title = 'Show Divergence Lines',group = "Deviation")
@@ -93,11 +91,8 @@ var hid_div_l_style = hid_div_l_style_ == 'Solid' ? line.style_solid : hid_div_l
 [macd, signal, deltamacd] = ta.macd(close, 12, 26, 9) // MACD
 
 // keep indicators names and colors in arrays
-var indicators_name = array.new_string(1)
 var div_colors = array.new_color(4)
 if barstate.isfirst
-    // names
-    array.set(indicators_name, 0, 'Hist')
     //colors
     array.set(div_colors, 0, pos_reg_div_col)
     array.set(div_colors, 1, neg_reg_div_col)
@@ -136,7 +131,7 @@ if bool(pl)
 // functions to check Regular Divergences and Hidden Divergences
 
 // function to check positive regular or negative hidden divergence
-// cond == 1 => positive_regular, cond == 2=> negative_hidden
+// cond == 1 => positive_regular, cond == 2=> positive_hidden
 positive_regular_positive_hidden_divergence(src, cond) =>
     divlen = 0
     prsc = source == 'Close' ? close : low
@@ -161,7 +156,6 @@ positive_regular_positive_hidden_divergence(src, cond) =>
                         break
                     virtual_line1 := virtual_line1 - slope1
                     virtual_line2 := virtual_line2 - slope2
-                    virtual_line2
 
                 if arrived
                     divlen := len
@@ -169,7 +163,7 @@ positive_regular_positive_hidden_divergence(src, cond) =>
     divlen
 
 // function to check negative regular or positive hidden divergence
-// cond == 1 => negative_regular, cond == 2=> positive_hidden
+// cond == 1 => negative_regular, cond == 2=> negative_hidden
 negative_regular_negative_hidden_divergence(src, cond) =>
     divlen = 0
     prsc = source == 'Close' ? close : high
@@ -201,7 +195,7 @@ negative_regular_negative_hidden_divergence(src, cond) =>
                     break
     divlen
 
-// calculate 4 types of divergence 
+// calculate 4 types of divergence
 calculate_divs(indicator_1) =>
     divs = array.new_int(4, 0)
     array.set(divs, 0, (searchdiv == 'Regular' or searchdiv == 'Regular/Hidden') ? positive_regular_positive_hidden_divergence(indicator_1, 1) : 0)
@@ -212,13 +206,7 @@ calculate_divs(indicator_1) =>
 
 // array to keep all divergences
 var all_divergences = array.new_int(4)
-// set related array elements
-array_set_divs(div_pointer) =>
-    for i = 0 to 3 by 1
-        array.set(all_divergences, i, array.get(div_pointer, i))
-
-// set divergences array
-array_set_divs(calculate_divs(deltamacd))
+all_divergences:=calculate_divs(deltamacd)
 
 
 // check minimum number of divergence, if less than showlimit then delete all divergence
@@ -357,29 +345,6 @@ for y = 0 to 3 by 1
             pos_hid_div_detected := true
         if y == 3
             neg_hid_div_detected := true
-// get text for labels
-if div_type >= 0
-    divergence_text_top := divergence_text_top + (div_type % 2 == 1 ? array.get(indicators_name, 0) + '\n' : '')
-    divergence_text_bottom := divergence_text_bottom + (div_type % 2 == 0 ? array.get(indicators_name, 0) + '\n' : '')
-
-
-// draw labels
-if shownum
-    if shownum and dnumdiv_top > 0
-        divergence_text_top := divergence_text_top + str.tostring(dnumdiv_top)
-        divergence_text_top
-    if shownum and dnumdiv_bottom > 0
-        divergence_text_bottom := divergence_text_bottom + str.tostring(dnumdiv_bottom)
-        divergence_text_bottom
-    if divergence_text_top != ''
-        if showlast
-            delete_old_neg_div_labels()
-        array.push(neg_div_labels, label.new(x = bar_index, y = math.max(high, high[1]), text = divergence_text_top, color = top_label_col, textcolor = neg_div_text_col, style = label.style_label_down))
-
-    if divergence_text_bottom != ''
-        if showlast
-            delete_old_pos_div_labels()
-        array.push(pos_div_labels, label.new(x = bar_index, y = math.min(low, low[1]), text = divergence_text_bottom, color = bottom_label_col, textcolor = pos_div_text_col, style = label.style_label_up))
 
 
 alertcondition(pos_reg_div_detected, title = 'Positive Regular Divergence Detected', message = 'Positive Regular Divergence Detected')
@@ -390,47 +355,42 @@ alertcondition(neg_hid_div_detected, title = 'Negative Hidden Divergence Detecte
 alertcondition(pos_reg_div_detected or pos_hid_div_detected, title = 'Positive Divergence Detected', message = 'Positive Divergence Detected')
 alertcondition(neg_reg_div_detected or neg_hid_div_detected, title = 'Negative Divergence Detected', message = 'Negative Divergence Detected')
 
-// process
-var float[] low_priceQueue = array.new_float()
-var float[] high_priceQueue = array.new_float()
+// proces
 
-opt_buy= false
+opt_buy = false
 opt_sell = false
 
 if pos_reg_div_detected or pos_hid_div_detected
-    lastQueuedPrice = array.size(low_priceQueue) > 0 ? array.get(low_priceQueue, array.size(low_priceQueue) - 1) : na
-    shouldAdd = na(lastQueuedPrice) ? true : close < lastQueuedPrice
-    if shouldAdd
-        array.push(low_priceQueue, close)
-        if array.size(low_priceQueue) > 5
-            array.shift(low_priceQueue)
-        
-        if array.size(low_priceQueue) >= 3
-            opt_buy:=true 
-    else
-        array.clear(low_priceQueue)
+
+    if strategy.position_size == 0
+        opt_buy := true
 
 if neg_reg_div_detected or neg_hid_div_detected
-    lastQueuedPrice = array.size(high_priceQueue) > 0 ? array.get(high_priceQueue, array.size(high_priceQueue) - 1) : na
-    shouldAdd = na(lastQueuedPrice) ? true : close < lastQueuedPrice
-    if shouldAdd
-        array.push(high_priceQueue, close)
-        if array.size(high_priceQueue) > 5
-            array.shift(high_priceQueue)
+    if strategy.position_size > 0
+        opt_sell := true
 
-        if array.size(high_priceQueue) >= 3
-            opt_sell:=true 
-    else
-        array.clear(high_priceQueue)
-
-if (strategy.position_size > 0)
-    strategy.exit("profit_loss_exit", from_entry="long",profit = takeProfitPerc * 0.01 * close,loss   = stopLossPerc * 0.01 * close)
+var float profit_price = 0
+var float los_price = 0
+if opt_buy
+    strategy.entry('long', strategy.long)
+    //strategy.exit("profit_loss_exit", from_entry="long",profit = atr_x,loss = atr_x2)
+    profit_price := atr_x[0]
+    los_price := atr_x2[0]
 else
-    if opt_buy
-        strategy.entry('long', strategy.long)
+    if opt_sell
+        strategy.close_all()
+        profit_price := 0
+        los_price := 0
 
-if opt_sell
-    strategy.close('long')
+if profit_price > 0 and los_price > 0
+    //if close > profit_price
+        //strategy.close_all('stop profit')
+        //profit_price := 0
+        //los_price := 0
+    if close < los_price
+        strategy.close_all('stop loss')
+        profit_price := 0
+        los_price := 0
 
 
 plotshape(opt_buy, title = 'buy', location = location.belowbar, color = color.green, style = shape.labelup, text = 'buy')

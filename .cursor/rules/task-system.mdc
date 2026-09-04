@@ -1,0 +1,48 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Task System Architecture
+
+ChainerTrader uses a flexible task system for different types of operations. The task management is handled by [src/trader/task/task_manager.py](mdc:src/trader/task/task_manager.py), which coordinates various task types defined in [src/trader/task/task_type.py](mdc:src/trader/task/task_type.py).
+
+## Task Types
+
+### Core Tasks
+- **TRADER**: Live trading execution using [src/trader/task/trader_task.py](mdc:src/trader/task/trader_task.py)
+- **BACK_TRADER**: Historical backtesting using [src/trader/task/backtrader_task.py](mdc:src/trader/task/backtrader_task.py)
+- **UPDATE_KLINES**: Real-time data updates using [src/trader/task/update_klines_task.py](mdc:src/trader/task/update_klines_task.py)
+- **CHECK_KLINES**: Data validation using [src/trader/task/check_klines_task.py](mdc:src/trader/task/check_klines_task.py)
+- **IMPORT_CSV**: Data import from CSV files using [src/trader/task/import_csv_task.py](mdc:src/trader/task/import_csv_task.py)
+
+## Task Configuration
+
+Tasks are configured through JSON files in the `scripts/` directory:
+- [scripts/trader_task.json](mdc:scripts/trader_task.json) - Live trading configuration
+- [scripts/backtrader_task.json](mdc:scripts/backtrader_task.json) - Backtesting configuration
+- [scripts/update_klines.json](mdc:scripts/update_klines.json) - Data update configuration
+- [scripts/multi_backtrader.json](mdc:scripts/multi_backtrader.json) - Multi-strategy backtesting
+
+## Task Base Architecture
+
+All tasks inherit from [src/trader/task/base_task.py](mdc:src/trader/task/base_task.py), which provides:
+- **Async Support**: All tasks run asynchronously
+- **Message Queue**: Communication between tasks via message queues
+- **Configuration Management**: Task-specific configuration handling
+- **Error Handling**: Graceful error recovery and logging
+
+## Task Manager Features
+
+The TaskManager provides:
+- **Task Lifecycle Management**: Start, stop, and monitor tasks
+- **Resource Coordination**: Database and exchange connections
+- **Message Routing**: Distribute messages between tasks
+- **Statistics Collection**: Performance monitoring and reporting
+
+## Task Communication
+
+Tasks communicate through message queues using the message system defined in [src/trader/common/message.py](mdc:src/trader/common/message.py). This allows for:
+- **Decoupled Architecture**: Tasks operate independently
+- **Scalability**: Easy to add new task types
+- **Monitoring**: Centralized message handling and statistics
