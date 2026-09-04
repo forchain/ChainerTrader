@@ -46,7 +46,7 @@ class UpdateKlinesTask(BaseTask):
                     -self.tcfg.limit,
                 )
             else:
-                latest_kline = self.db_manager.kline.get_latest_kline(self.collection)
+                latest_kline = self.db_manager.kline.get_latest_kline(self.tcfg.symbol_interval.name())
                 if latest_kline:
                     start_time = add_time_duration(
                         latest_kline.open_time,
@@ -78,7 +78,7 @@ async def download(
     name,
     log: Logger,
     db_manager: DatabaseManager,
-    collection: Collection,
+    col_name: str,
     exchange: BinanceExchange,
     symbol_interval: SymbolInterval,
     start_time: int,
@@ -92,7 +92,7 @@ async def download(
             log.info(f"exit {name}. total={total_records}")
             return False
 
-        latest_kline = db_manager.kline.get_latest_kline(collection)
+        latest_kline = db_manager.kline.get_latest_kline(col_name)
         if latest_kline is None:
             kls = exchange.get_klines_by_start(symbol_interval, start_time)
         else:
@@ -113,7 +113,7 @@ async def download(
                 log.warning(f"exit {name}, because get empty klines. total={total_records}")
                 return False
 
-        ret = db_manager.kline.add_klines(collection, kls)
+        ret = db_manager.kline.add_klines(col_name, kls)
         total_records += ret
 
         if ret != len(kls):

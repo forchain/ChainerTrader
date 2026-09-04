@@ -75,7 +75,7 @@ class TraderTask(BaseTask):
             if not ret:
                 break
 
-            kls_cache = self.db_manager.kline.get_latest_klines(self.collection, self.cfg.window)
+            kls_cache = self.db_manager.kline.get_latest_klines(self.tcfg.symbol_interval.name(), self.cfg.window)
             if len(kls_cache) <= MIN_RECORDS_NUM:
                 await sleep(self.log, 2, "Try again...")
                 continue
