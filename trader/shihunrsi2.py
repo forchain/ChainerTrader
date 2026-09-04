@@ -89,33 +89,35 @@ class ShihunRSIStrategy(bt.Strategy):
 
         # find criticalK
         find = False
-        if self.rsi.dif[0] > 0 and self.rsi.dif[-1] > 0 and self.rsi.dif[-2] > 0:
-            if  self.rsi.histo[0] < 0 and self.rsi.histo[0] > self.rsi.histo[-1] and self.rsi.histo[-1] < self.rsi.histo[-2] and self.rsi.histo[-2] < 0:
-                self.criticalBuyK = self.datas[0].high[0]
+        if self.rsi.signal[0] > 50:
+            if  self.rsi.histo[0] > 0 and self.rsi.histo[0] > self.rsi.histo[-1] and self.rsi.histo[-1] > self.rsi.histo[-2] and self.rsi.histo[-2] < 0:
+                find=True
+            if self.rsi.rsi[0] > self.params.overbought:
                 find=True
 
-        if self.rsi.dif[0] > 0 and self.rsi.dif[-1] < 0 and self.rsi.dif[-2] < self.rsi.dif[-1]:
-            curIdx = 0
-            adjacentUnderpants = False
-            while self.rsi.histo[curIdx] >= 0:
-                if self.rsi.dif[curIdx] <= 0 and self.rsi.dif[curIdx-1] >= 0:
-                    adjacentUnderpants=True
-                    break
-                curIdx-=1
-            if not adjacentUnderpants:
-                while self.rsi.histo[curIdx] < 0:
-                    if self.rsi.dif[curIdx] <= 0 and self.rsi.dif[curIdx - 1] >= 0:
+            if self.rsi.signal[-1] < 50 and self.rsi.signal[-2] < self.rsi.signal[-1]:
+                curIdx = 0
+                adjacentUnderpants = False
+                while self.rsi.signal[curIdx] > self.rsi.signal[curIdx - 1]:
+                    curIdx -= 1
+                while self.rsi.signal[curIdx] < self.rsi.signal[curIdx - 1]:
+                    if self.rsi.signal[curIdx] > 50:
                         adjacentUnderpants = True
                         break
                     curIdx -= 1
-            if adjacentUnderpants:
-                self.criticalBuyK = self.datas[0].high[0]
-                find = True
+                if adjacentUnderpants:
+                    find = True
+            if find:
+                if self.datas[0].close[0] > self.datas[0].open[0]:
+                    self.criticalBuyK = self.datas[0].high[0]
+                else:
+                    find=False
+
 
         willOpt = OperateType.UNKNOWN
 
         if not self.position:
-            if self.criticalBuyK and self.rsi.dif[0] > 0 and not find:
+            if self.criticalBuyK and self.rsi.signal[0] > 50 and not find:
                 if self.datas[0].close[0] > self.datas[0].open[0] and self.datas[0].close[0] > self.criticalBuyK:
                     willOpt = OperateType.BUY
 
@@ -123,12 +125,10 @@ class ShihunRSIStrategy(bt.Strategy):
             if self.stopLossPoint:
                 if self.dataclose[0] < self.stopLossPoint:
                    willOpt = OperateType.SELL
-
-            if willOpt == OperateType.UNKNOWN:
-                    if self.rsi.histo[0] < self.rsi.histo[-1] and self.rsi.histo[-1] > self.rsi.histo[-2] and self.rsi.histo[-2] > 0:
-                        self.criticalSellK = self.datas[0].low[0]
-                    elif self.criticalSellK and self.datas[0].close[0] < self.datas[0].open[0] and self.datas[0].close[0] < self.criticalSellK:
-                        willOpt = OperateType.SELL
+            if self.rsi.rsi[0] < self.params.oversold:
+                willOpt = OperateType.SELL
+            if self.rsi.histo[0] < self.rsi.histo[-1] and self.rsi.histo[-1] < self.rsi.histo[-2] and self.rsi.histo[-2] > 0 and self.rsi.histo[0] < 0:
+                willOpt = OperateType.SELL
 
 
         if willOpt == OperateType.SELL:
