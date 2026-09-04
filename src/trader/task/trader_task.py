@@ -1,9 +1,9 @@
 from asyncio import Queue
 from datetime import datetime
-from trader.common.logger import Logger
 
 from trader.common.common import MIN_RECORDS_NUM, sleep, sleep_loop
 from trader.common.config import Config
+from trader.common.logger import Logger
 from trader.common.message import new_stat_msg
 from trader.database.manager import DatabaseManager
 from trader.exchange.binance.data import BinanceData
@@ -137,6 +137,6 @@ class TraderTask(BaseTask):
                     self.log.info(f"New order:symbol={self.tcfg.symbol_interval.symbol()},operateType={op.otype},quantity={quantity}")
                     self.exchange.new_order(self.tcfg.symbol_interval.symbol(), op.otype, quantity)
                 else:
-                    self.log.info(f"Due to insufficient balance, we have given up placing orders with the exchange")
+                    self.log.info("Due to insufficient balance, we have given up placing orders with the exchange")
             else:
                 self.exchange.new_order(self.tcfg.symbol_interval.symbol(), op.otype, position)

@@ -16,7 +16,6 @@ from trader.strategy.strategy import parse_strategys
 from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig
 from trader.task.update_klines_task import download
-from trader.utils.symbol_interval import add_time_duration
 
 
 class BackTraderTask(BaseTask):

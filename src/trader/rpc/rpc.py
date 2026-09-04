@@ -12,7 +12,7 @@ from trader.app.app import version
 from trader.common import path
 from trader.common.config import Config
 from trader.rpc.auth import BasicAuthMiddleware
-from trader.rpc.models import get_accounts_info, get_logs_info, get_taskinfo, get_klines_info
+from trader.rpc.models import get_accounts_info, get_klines_info, get_logs_info, get_taskinfo
 from trader.rpc.rpc_app import RpcApp
 
 

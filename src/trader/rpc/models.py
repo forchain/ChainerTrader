@@ -1,6 +1,6 @@
+from typing import Any
+
 from pydantic import BaseModel
-from typing import List, Optional, Dict, Any
-from datetime import datetime
 
 from trader.app.app import App
 from trader.exchange.balance import Balance

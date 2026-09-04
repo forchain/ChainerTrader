@@ -1,11 +1,9 @@
 from asyncio import Event, Queue
 from datetime import datetime
-from trader.common.logger import Logger
-
-from pymongo.synchronous.collection import Collection
 
 from trader.common.common import sleep
 from trader.common.config import Config
+from trader.common.logger import Logger
 from trader.database.manager import DatabaseManager
 from trader.exchange.binance.exchange import BinanceExchange
 from trader.task.base_task import BaseTask

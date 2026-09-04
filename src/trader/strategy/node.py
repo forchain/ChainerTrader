@@ -2,14 +2,13 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 
 from datetime import timedelta
 
-from trader.common.log_tag import LogTag
-from trader.common.logger import Logger
-
 import backtrader as bt
 from backtrader import num2date
 from prettytable import PrettyTable
 
 from trader.common.config import Config
+from trader.common.log_tag import LogTag
+from trader.common.logger import Logger
 from trader.strategy.trader_result import TraderResult
 from trader.utils.operation_state import OptStatAnalyzer
 from trader.utils.symbol_interval import SymbolInterval, get_time_duration

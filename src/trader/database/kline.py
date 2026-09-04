@@ -102,7 +102,7 @@ class KlineCol:
             kls.append(parse_kline(ret))
         return kls
 
-    def get_klines(self, name: str, start_time: int = 0, end_time: int = 0) -> list[Kline]:
+    def get_klines(self, name: str, start_time: int = 0, end_time: int = 0) -> list[Kline] | None:
         if start_time == 0 and end_time == 0:
             return self.get_all_klines(name)
         elif start_time > end_time and end_time > 0:
