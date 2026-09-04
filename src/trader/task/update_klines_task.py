@@ -30,29 +30,40 @@ class UpdateKlinesTask(BaseTask):
         super().start(queue,quit)
 
         self.collection = self.db_manager.get_collection(self.cfg.db_name, self.tcfg.symbol_interval.name())
+        start_time=self.tcfg.start_time
+        if self.tcfg.limit > 0:
+            if self.tcfg.end_time > 0:
+                start_time = add_time_duration(self.tcfg.end_time, self.tcfg.symbol_interval.interval, -self.tcfg.limit)
+            else:
+                latest_kline = self.db_manager.get_latest_kline(self.collection)
+                if latest_kline:
+                    start_time = add_time_duration(latest_kline.open_time, self.tcfg.symbol_interval.interval,-self.tcfg.limit)
+                else:
+                    start_time = add_time_duration(int(datetime.now().timestamp()), self.tcfg.symbol_interval.interval, -self.tcfg.limit)
 
-        await download(self.name(),self.log,self.db_manager,self.collection,self.exchange,self.tcfg.symbol_interval,quit)
+        await download(self.name(),self.log,self.db_manager,self.collection,self.exchange,self.tcfg.symbol_interval,start_time,quit)
 
         self.stop()
 
-async def download(name,log:Logger,db_manager:DatabaseManager,collection:Collection,exchange:BinanceExchange,symbol_interval:SymbolInterval,quit:Event):
+async def download(name,log:Logger,db_manager:DatabaseManager,collection:Collection,exchange:BinanceExchange,symbol_interval:SymbolInterval,start_time:int,quit:Event):
     update_completed = False
     max_try = 5
+    total_records = 0
     while not update_completed:
         if quit.is_set():
-            log.info(f"exit {name}")
+            log.info(f"exit {name}. total={total_records}")
             return False
 
         latest_kline = db_manager.get_latest_kline(collection)
         if latest_kline is None:
-            kls = exchange.get_klines_by_start(symbol_interval)
+            kls = exchange.get_klines_by_start(symbol_interval,start_time)
         else:
             next_time = add_time_duration(latest_kline.open_time, symbol_interval.interval, 1)
             if next_time < int(datetime.now().timestamp()):
                 kls = exchange.get_klines_by_start(symbol_interval, next_time)
             else:
                 update_completed = True
-                log.info(f"{name} update klines to DB is completed")
+                log.info(f"{name} update klines to DB is completed. total={total_records}")
                 continue
         if kls is None or len(kls) <= 0:
             log.error(f"{name} get klines is empty")
@@ -61,15 +72,17 @@ async def download(name,log:Logger,db_manager:DatabaseManager,collection:Collect
                 max_try -= 1
                 continue
             else:
-                log.warning(f"exit {name}, because get empty klines")
+                log.warning(f"exit {name}, because get empty klines. total={total_records}")
                 return False
 
 
         ret = db_manager.add_klines(collection, kls)
+        total_records +=ret
+
         if ret != len(kls):
             log.warning(f"{name} add klines to DB: {ret} != {len(kls)}")
         else:
-            log.info(f"{name} add klines to DB: {ret}")
+            log.info(f"{name} add klines to DB: {ret}/{total_records}")
 
         #await sleep(log,DOWLOAD_SPACE_TIME,name)
 

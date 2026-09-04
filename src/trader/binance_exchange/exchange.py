@@ -98,7 +98,7 @@ class BinanceExchange:
 
     def get_klines_by_start(self,si:SymbolInterval,start_time:int=None,limit:int=KLINE_LIMIT_DEFAULT)->[Kline]:
         r_end_time = int(datetime.now().timestamp())
-        if start_time is None:
+        if start_time is None or start_time == 0:
             start_time = int(get_oldest_time().timestamp())
         return self.get_klines(si,start_time,r_end_time,limit)
 

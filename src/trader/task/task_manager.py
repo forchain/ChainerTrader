@@ -4,6 +4,7 @@ from logging import Logger
 from multiprocessing import Manager, Process
 
 from trader.app.database_manager import DatabaseManager
+from trader.task.check_klines_num_task import CheckKlinesNumTask
 from trader.task.check_klines_task import CheckKlinesTask
 from trader.task.import_csv_task import ImportCSVTask
 from trader.task.task_config import parse_task_config
@@ -57,6 +58,8 @@ class TaskManager:
             task=CheckKlinesTask(cfg,self.cfg, self.log, self.db_manager,self.exchange)
         elif cfg.ttype == TaskType.IMPORT_CSV:
             task =ImportCSVTask(cfg,self.cfg, self.log,self.db_manager,self.exchange)
+        elif cfg.ttype == TaskType.CHECK_KLINES_NUM:
+            task = CheckKlinesNumTask(cfg, self.cfg, self.log, self.db_manager, self.exchange)
 
         if task is None:
             self.log.error(f"Can't add task:{cfg.to_dict()}")

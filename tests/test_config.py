@@ -27,3 +27,15 @@ def test_taskconfig():
     tcfgs=parse_task_config(file)
     for tcfg in tcfgs:
         print(tcfg.to_dict())
+
+def test_taskconfig_uk():
+    file=os.path.join(GetScriptsDir(),"update_klines.json")
+    tcfgs=parse_task_config(file)
+    for tcfg in tcfgs:
+        print(tcfg.to_dict())
+
+def test_taskconfig_ckn():
+    file=os.path.join(GetScriptsDir(),"check_klines_num.json")
+    tcfgs=parse_task_config(file)
+    for tcfg in tcfgs:
+        print(tcfg.to_dict())

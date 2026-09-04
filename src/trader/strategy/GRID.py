@@ -5,7 +5,7 @@ import backtrader as bt
 
 from trader.strategy.base_strategy import BaseStrategy
 
-class GridStrategy(BaseStrategy):
+class GRIDStrategy(BaseStrategy):
     params = (
         ("grid_size", 20),
         ("grid_levels", 10),

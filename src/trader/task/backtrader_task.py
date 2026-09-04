@@ -62,7 +62,7 @@ class BackTraderTask(BaseTask):
                     if not self.exchange:
                         self.log.error(f"No exchange config for {self.name()}")
                         return None
-                    if not await download(self.name(), self.log, self.db_manager, collection, self.exchange,self.tcfg.symbol_interval, quit):
+                    if not await download(self.name(), self.log, self.db_manager, collection, self.exchange,self.tcfg.symbol_interval,self.tcfg.start_time, quit):
                         self.log.error(f"Fail download for {self.name()}")
                         return None
                     kls_cache = self.db_manager.get_klines(collection, self.tcfg.start_time, self.tcfg.end_time)

@@ -1,60 +1,60 @@
 [
   {
-    "task_type": "UPDATE_KLINES",
+    "task_type": "CHECK_KLINES_NUM",
     "symbols": "symbols_top100.txt",
     "interval": "5m",
     "limit": 1000
   },
   {
-    "task_type": "UPDATE_KLINES",
+    "task_type": "CHECK_KLINES_NUM",
     "symbols": "symbols_top100.txt",
     "interval": "15m",
     "limit": 1000
   },
   {
-    "task_type": "UPDATE_KLINES",
+    "task_type": "CHECK_KLINES_NUM",
     "symbols": "symbols_top100.txt",
     "interval": "30m",
     "limit": 1000
   },
   {
-    "task_type": "UPDATE_KLINES",
+    "task_type": "CHECK_KLINES_NUM",
     "symbols": "symbols_top100.txt",
     "interval": "1h",
     "limit": 1000
   },
   {
-    "task_type": "UPDATE_KLINES",
+    "task_type": "CHECK_KLINES_NUM",
     "symbols": "symbols_top100.txt",
     "interval": "2h",
     "limit": 1000
   },
   {
-    "task_type": "UPDATE_KLINES",
+    "task_type": "CHECK_KLINES_NUM",
     "symbols": "symbols_top100.txt",
     "interval": "4h",
     "limit": 1000
   },
   {
-    "task_type": "UPDATE_KLINES",
+    "task_type": "CHECK_KLINES_NUM",
     "symbols": "symbols_top100.txt",
     "interval": "6h",
     "limit": 1000
   },
   {
-    "task_type": "UPDATE_KLINES",
+    "task_type": "CHECK_KLINES_NUM",
     "symbols": "symbols_top100.txt",
     "interval": "8h",
     "limit": 1000
   },
   {
-    "task_type": "UPDATE_KLINES",
+    "task_type": "CHECK_KLINES_NUM",
     "symbols": "symbols_top100.txt",
     "interval": "12h",
     "limit": 1000
   },
   {
-    "task_type": "UPDATE_KLINES",
+    "task_type": "CHECK_KLINES_NUM",
     "symbols": "symbols_top100.txt",
     "interval": "1d",
     "limit": 1000

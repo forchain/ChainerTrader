@@ -35,6 +35,7 @@ class DeviationMACDStrategy(BaseStrategy):
 
     def __init__(self):
         super().__init__()
+        self.params.atrdist=15
         self.set_default_period(12)
         self.macd_hist = bt.indicators.MACDHisto(self.data)
 
@@ -62,9 +63,9 @@ class DeviationMACDStrategy(BaseStrategy):
             return
 
         if not math.isnan(self.ph.middle_value()):
-            self.ph_pivots.appendleft(Pivot(self.ph.middle_value(),self.macd_hist[self.ph.middle_idx()],self.bar_idx()))
+            self.ph_pivots.appendleft(Pivot(self.ph.middle_value(),self.macd_hist[self.ph.middle_idx()],self.bar_idx()+self.ph.middle_idx()))
         if not math.isnan(self.pl.middle_value()):
-            self.pl_pivots.appendleft(Pivot(self.pl.middle_value(),self.macd_hist[self.pl.middle_idx()],self.bar_idx()))
+            self.pl_pivots.appendleft(Pivot(self.pl.middle_value(),self.macd_hist[self.pl.middle_idx()],self.bar_idx()+self.pl.middle_idx()))
 
         willOpt = OperateType.UNKNOWN
 
@@ -74,15 +75,25 @@ class DeviationMACDStrategy(BaseStrategy):
         if self.negative_regular_negative_hidden_divergence(True) or self.negative_regular_negative_hidden_divergence(False):
             willOpt=OperateType.SELL
 
+        price = self.data.close[0]
         if not self.position:
             if willOpt == OperateType.BUY:
-                self.log_info(f'Kline:{self.cur_datetime()}, 创建 买单:{self.data.close[0]:.2f}')
-                self.order = self.buy()
-                self.update_stop_loss_point()
+                commission_info = self.broker.getcommissioninfo(self.data)
+                cash = self.broker.getcash()
+                size = int(cash / (price * (1 + commission_info.p.commission)))
+
+                if size > 0:
+                    self.order = self.buy(size=size)
+                    self.log_info(f'Kline:{self.cur_datetime()}, 创建 买单:{self.data.close[0]:.2f}')
+                    self.update_stop_loss_point()
+
         else:
             if willOpt == OperateType.SELL:
                 self.log_info(f'Kline:{self.cur_datetime()}, 创建 卖单:{self.data.close[0]:.2f}')
-                self.order = self.sell()
+                self.order = self.close()
+            elif self.need_stop_loss():
+                self.log_info(f'Kline:{self.cur_datetime()}, 创建 清单:{self.data.close[0]:.2f}')
+                self.order = self.close()
 
     def positive_regular_positive_hidden_divergence(self,pr:bool) -> bool:
         if self.bar_idx() <=5:
@@ -94,7 +105,8 @@ class DeviationMACDStrategy(BaseStrategy):
         price=self.get_pivot_source()[self.startpoint]
         macdh=self.macd_hist[self.startpoint]
         for item in self.ph_pivots:
-            if (self.bar_idx()-item.bar_idx) > self.params.maxbars:
+            leng = self.bar_idx()+self.ph.middle_idx()-item.bar_idx
+            if leng > self.params.maxbars:
                 break
             need=False
             if pr and macdh > item.macd and price < item.price:
@@ -102,8 +114,6 @@ class DeviationMACDStrategy(BaseStrategy):
             elif (not pr) and macdh < item.macd and price > item.price:
                 need=True
             if need:
-                leng=self.bar_idx()-item.bar_idx
-
                 slope1 = (macdh - price) / (leng - self.startpoint)
                 virtual_line1 = macdh - slope1
                 slope2 = (self.data.close[self.startpoint] - self.data.close[-leng]) / (leng - self.startpoint)
@@ -132,7 +142,8 @@ class DeviationMACDStrategy(BaseStrategy):
         price=self.get_pivot_source()[self.startpoint]
         macdh=self.macd_hist[self.startpoint]
         for item in self.pl_pivots:
-            if (self.bar_idx()-item.bar_idx) > self.params.maxbars:
+            leng = self.bar_idx() + self.ph.middle_idx() - item.bar_idx
+            if leng > self.params.maxbars:
                 break
             need=False
             if pr and macdh < item.macd and price > item.price:
@@ -140,7 +151,6 @@ class DeviationMACDStrategy(BaseStrategy):
             elif (not pr) and macdh > item.macd and price < item.price:
                 need=True
             if need:
-                leng=self.bar_idx()-item.bar_idx
 
                 slope1 = (macdh - price) / (leng - self.startpoint)
                 virtual_line1 = macdh - slope1
