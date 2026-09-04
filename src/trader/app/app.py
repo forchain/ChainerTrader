@@ -77,13 +77,35 @@ class App:
     def start(self):
         self.logger.info(f"Start {self.name()} App, config:{self.cfg.safe_to_dict()}, running mode:{self.get_running_mode()}", LogTag.PRIVATE)
 
-        self._bootstrap_database_for_startup_sync()
-        result = asyncio.run(self._prepare_start_messages())
-        if result is None:
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        async def _run():
+            await self.bootstrap_database_for_startup()
+            msgs = await self._prepare_start_messages()
+            if msgs is None:
+                if self.db_manager and getattr(self.db_manager, "started", False):
+                    await self.db_manager.stop()
+                return False
+            quit = asyncio.Event()
+            for sig in (signal.SIGINT, signal.SIGTERM):
+                loop.add_signal_handler(sig, self.shutdown, quit)
+            await self.handler(msgs, quit)
+            return True
+
+        try:
+            return loop.run_until_complete(_run())
+        except asyncio.CancelledError:
+            self.logger.debug("All tasks have been cancelled.")
             return False
-        msgs = result
-        self.process(msgs)
-        return True
+        finally:
+            loop.run_until_complete(loop.shutdown_asyncgens())
+            loop.run_until_complete(loop.shutdown_default_executor())
+            loop.close()
+            self.logger.info(f"{self.name()} tasks exited.")
 
     async def start_async(self):
         self.logger.info(f"Start {self.name()} App, config:{self.cfg.safe_to_dict()}, running mode:{self.get_running_mode()}", LogTag.PRIVATE)
