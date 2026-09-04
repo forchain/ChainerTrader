@@ -14,6 +14,7 @@ class ExchangeConfig(BaseModel):
     ty: ExchangeType = ExchangeType.BINANCE
     api_key: str = ""
     api_secret: str = ""
+    base_path:str = ""
     margin_mode: MarginMode = MarginMode.SPOT
 
 

@@ -138,7 +138,7 @@ wheels = [
 
 [[package]]
 name = "binance-common"
-version = "1.0.0"
+version = "3.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -149,14 +149,14 @@ dependencies = [
     { name = "ruff" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c3/3b/2397e36134d91b6e7f16271d6b67b0e248f832dedfb1ad72b026198e4bf9/binance_common-1.0.0.tar.gz", hash = "sha256:ed57a836b0ba594604d97415288b74ab405afc7b264bf6ede38780e47b8e297e", size = 17475, upload-time = "2025-07-16T15:07:59.141Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f6/44/6ec0a3b114dbfc8b1cf18fd08563fa529c9e6f502098d1a3986c8c80f9a7/binance_common-3.5.0.tar.gz", hash = "sha256:2b25c7c7dc83713c80d6275e0527db9e0c62d17ac54a24ef6a271753775eacc0", size = 22009, upload-time = "2026-01-29T11:20:36.683Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/40/c1/89f77015dad777e7cb9e1f0caf53e92380fc529a9960371fcdb1cd4040c9/binance_common-1.0.0-py3-none-any.whl", hash = "sha256:702560601523bce8232da4c4714592fb6c586df79368feed08fc6e18346d8bfc", size = 20673, upload-time = "2025-07-16T15:07:57.353Z" },
+    { url = "https://files.pythonhosted.org/packages/98/17/f8958382bb310c4a29a9b349201dda92fd509fc02ef4378765c6a0995aa6/binance_common-3.5.0-py3-none-any.whl", hash = "sha256:eaad9ba41d83cefaa437f131ef628600a7e945584b794d954f5bd821517fce7f", size = 24272, upload-time = "2026-01-29T11:20:37.42Z" },
 ]
 
 [[package]]
-name = "binance-sdk-spot"
-version = "1.0.0"
+name = "binance-sdk-margin-trading"
+version = "5.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -169,9 +169,29 @@ dependencies = [
     { name = "websocket-client" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/0b/c9/506cb07826b142924e583e27223d4d55959f83999c347590492e2a0b66e8/binance_sdk_spot-1.0.0.tar.gz", hash = "sha256:b3904c3162940d790afda474eabe77b59b7f5fca179233c81b042155aba4f8fb", size = 136150, upload-time = "2025-07-17T13:49:12.091Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c9/4f/bb62a86bc820d4e26717e29380f9d80b60642c7723cf34e2b4322c8bdce0/binance_sdk_margin_trading-5.0.0.tar.gz", hash = "sha256:fea5d7bf184c88bc4f3a221358c56092df3dc832d08bb53fc36dd09074b02c14", size = 65749, upload-time = "2026-01-29T11:48:39.334Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4a/5b/68f702c90e05b327404436b1a7667ece392cce68168182bab525a5c7eb5c/binance_sdk_spot-1.0.0-py3-none-any.whl", hash = "sha256:9ef7f4d60e728cce4ac9900f4b6c590e5bfaab3a2ff8b24ca3e5f3344e043670", size = 565415, upload-time = "2025-07-17T13:49:10.758Z" },
+    { url = "https://files.pythonhosted.org/packages/c9/d5/7e593c700dede25a85382276fb8919a3bfe7a9a7e0969c19442b74faf8a5/binance_sdk_margin_trading-5.0.0-py3-none-any.whl", hash = "sha256:250620d848ac51302976957b7519b0a5b4cd6eceafa4a95ee1eaec33c756e247", size = 234612, upload-time = "2026-01-29T11:48:40.945Z" },
+]
+
+[[package]]
+name = "binance-sdk-spot"
+version = "7.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "aiohttp" },
+    { name = "binance-common" },
+    { name = "black" },
+    { name = "pycryptodome" },
+    { name = "pydantic" },
+    { name = "requests" },
+    { name = "ruff" },
+    { name = "websocket-client" },
+    { name = "websockets" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/90/0c/73aff454da37556fc86f1fdad28f68176b1416f6ba053773efadbffbf92a/binance_sdk_spot-7.0.0.tar.gz", hash = "sha256:f16bd721645059abc0dcade7aff83d4ea9e02754662f0ca43b38daaf84d488b7", size = 169124, upload-time = "2026-01-29T11:50:03.082Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/68/b9/b2f17a4bb52f6ab25e0ef403ed844a511601f0ff9ba609c96f5f50089271/binance_sdk_spot-7.0.0-py3-none-any.whl", hash = "sha256:a5d9c5f8c05db0b35481f642b90e7d74d00f6c5edc907238ab07ad20026ec42c", size = 720119, upload-time = "2026-01-29T11:50:04.095Z" },
 ]
 
 [[package]]
@@ -1952,6 +1972,7 @@ source = { editable = "." }
 dependencies = [
     { name = "backtrader" },
     { name = "binance-common" },
+    { name = "binance-sdk-margin-trading" },
     { name = "binance-sdk-spot" },
     { name = "fastapi", extra = ["standard"] },
     { name = "fastapi-auto-router" },
@@ -1976,6 +1997,7 @@ dev = [
 requires-dist = [
     { name = "backtrader" },
     { name = "binance-common", specifier = ">=1.0.0" },
+    { name = "binance-sdk-margin-trading", specifier = ">=5.0.0" },
     { name = "binance-sdk-spot", specifier = ">=1.0.0" },
     { name = "fastapi", extras = ["standard"] },
     { name = "fastapi-auto-router", specifier = ">=0.1.1" },
