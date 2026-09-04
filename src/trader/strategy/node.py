@@ -24,9 +24,15 @@ class Node:
 
         log.info(f"New node")
 
+        data_ha = None
+
         cerebro = bt.Cerebro()
         for st in strategy:
             cerebro.addstrategy(st, stoploss=cfg.stoploss,atr=cfg.atr, mode=cfg.mode, period=cfg.period, log=log,name=st.__name__)
+            if st.__name__ == "SupertrendStrategy" and not data_ha:
+                data_ha = data.clone()
+                data_ha.addfilter(bt.filters.HeikinAshi)
+                self.log.info(f"Build HeikinAshi data for {self.name}")
 
         cerebro.addanalyzer(bt.analyzers.DrawDown, _name="drawdown")
         cerebro.addanalyzer(bt.analyzers.SharpeRatio, _name='sharpe', riskfreerate=0.02)
@@ -38,6 +44,10 @@ class Node:
         self.cerebro=cerebro
 
         cerebro.adddata(data)
+        if data_ha is not None:
+            cerebro.adddata(data_ha)
+            self.log.info(f"Add HeikinAshi data for {self.name}")
+
         cerebro.broker.setcash(cfg.cash)
 
         cerebro.addsizer(bt.sizers.FixedSize, stake=10)
@@ -152,4 +162,5 @@ class Node:
                             optstat['buys'],
                             optstat['sells'],
                             optstat['latest'],
-                            hold_rate)
+                            hold_rate,
+                            data_len)
