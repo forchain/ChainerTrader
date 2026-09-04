@@ -32,7 +32,6 @@ class MACDRSIStrategy(BaseStrategy):
         super().next()
         if self.order:
             return
-        self.log_debug(f'Kline:{self.cur_datetime()} 收盘价, {self.dataclose[0]:.2f}')
 
         willOpt = OperateType.UNKNOWN
 

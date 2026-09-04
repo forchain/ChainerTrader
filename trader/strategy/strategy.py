@@ -1,5 +1,6 @@
 from enum import Enum
 
+from trader.strategy.boll_mean_reg import BollingerMeanRegStrategy
 from trader.strategy.grid import GridStrategy
 from trader.strategy.macdrsi import MACDRSIStrategy
 from trader.strategy.shihunmacd import ShihunMACDStrategy
@@ -7,6 +8,7 @@ from trader.strategy.shihunmacd2 import ShihunMACD2Strategy
 from trader.strategy.shihunmacdrsibb import ShihunMacdRsiBollingerBandStrategy
 from trader.strategy.shihunrsi import ShihunRSIStrategy
 from trader.strategy.shihunrsi2 import ShihunRSI2Strategy
+from trader.strategy.turtle import TurtleStrategy
 
 
 class StrategyType(Enum):
@@ -17,6 +19,8 @@ class StrategyType(Enum):
     ShihunMACDRISBB = 4   # MACD + RSI + BollingerBand from ShiHun
     MACDRSI = 5           # MACD + RSI
     GRID = 6              # GRID
+    BOLLMEANREG = 7       # Bollinger Bands Mean Regression Strategy
+    TURTLE = 8            # Turtle: Richard Dennis and William Eckhardt
 
 def parseStrategyType(name):
     if name == StrategyType.ShihunMACD.name:
@@ -33,7 +37,10 @@ def parseStrategyType(name):
         return StrategyType.MACDRSI
     elif name == StrategyType.GRID.name:
         return StrategyType.GRID
-
+    elif name == StrategyType.BOLLMEANREG.name:
+        return StrategyType.BOLLMEANREG
+    elif name == StrategyType.TURTLE.name:
+        return StrategyType.TURTLE
     return None
 
 def parseStrategy(stype):
@@ -58,5 +65,10 @@ def parseStrategy(stype):
     elif stype == StrategyType.GRID:
         return GridStrategy
 
+    elif stype == StrategyType.BOLLMEANREG:
+        return BollingerMeanRegStrategy
+
+    elif stype == StrategyType.TURTLE:
+        return TurtleStrategy
     else:
         return None
