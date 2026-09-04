@@ -1,6 +1,12 @@
 import sys
+from pathlib import Path
 
 import pytest
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+SRC_DIR = REPO_ROOT / "src"
+# Make src-layout importable during test collection (before any fixtures run).
+sys.path.insert(0, str(SRC_DIR))
 
 
 # each test runs on cwd to its temp dir
