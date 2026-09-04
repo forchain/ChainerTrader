@@ -150,6 +150,21 @@ def main():
         type=int,
         default=argparse.SUPPRESS,
     )
+    registration_group = parser.add_mutually_exclusive_group()
+    registration_group.add_argument(
+        "--registration-enabled",
+        dest="registration_enabled",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help="Enable public user registration",
+    )
+    registration_group.add_argument(
+        "--no-registration",
+        dest="registration_enabled",
+        action="store_false",
+        default=argparse.SUPPRESS,
+        help="Disable public user registration",
+    )
 
     args = parser.parse_args()
     load_dotenv()
