@@ -8,6 +8,7 @@ class TaskType(Enum):
     CHECK_KLINES = 3
     IMPORT_CSV = 4
     CHECK_KLINES_NUM = 5
+    DEBUG = 6
 
 
 def parse_task_type(name):
@@ -23,4 +24,6 @@ def parse_task_type(name):
         return TaskType.IMPORT_CSV
     elif name == TaskType.CHECK_KLINES_NUM.name:
         return TaskType.CHECK_KLINES_NUM
+    elif name == TaskType.DEBUG.name:
+        return TaskType.DEBUG
     return None

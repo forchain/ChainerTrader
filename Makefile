@@ -79,10 +79,18 @@ docs:             ## Build the documentation.
 		open $$URL; \
 	fi
 
-.PHONY: serve
-serve:            ## Run the API server.
-	@if [ "$(USING_UV)" ]; then \
-		uv run trader --api 0.0.0.0:8000; \
+.env:
+	@if [ ! -f .env ]; then \
+		cp example.env .env; \
+		echo "Created .env from example.env"; \
 	else \
-		$(ENV_PREFIX)python -m trader --api 0.0.0.0:8000; \
+		echo ".env already exists, skipping"; \
+	fi
+
+.PHONY: serve
+serve: .env            ## Run the API server.
+	@if [ "$(USING_UV)" ]; then \
+		uv run trader; \
+	else \
+		$(ENV_PREFIX)python -m trader; \
 	fi

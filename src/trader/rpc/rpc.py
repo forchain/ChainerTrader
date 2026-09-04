@@ -2,7 +2,7 @@ import os
 from contextlib import asynccontextmanager
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 
 from trader.common import path
 from trader.common.config import Config
@@ -73,6 +73,13 @@ def read_app_name():
 @rpc.get("/config")
 def read_app_config():
     return rpc.state.app.cfg.to_dict()
+
+
+@rpc.post("/add_tasks")
+async def add_tasks(request: Request):
+    raw_bytes = await request.body()
+    cfg = raw_bytes.decode("utf-8")
+    return rpc.state.app.send_add_tasks_msg(cfg)
 
 
 @rpc.get("/update_klines_task")

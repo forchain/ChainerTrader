@@ -14,8 +14,8 @@ class BaseTask:
         tcfg: TaskConfig,
         cfg: Config,
         log: Logger,
-        db_manager: DatabaseManager,
-        exchange: BinanceExchange,
+        db_manager: DatabaseManager = None,
+        exchange: BinanceExchange = None,
     ):
         self.log = log
         self.cfg = cfg

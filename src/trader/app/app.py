@@ -1,7 +1,7 @@
 import asyncio
 import os
 import signal
-from asyncio import Event, Queue
+from asyncio import Event
 from datetime import datetime
 
 from trader.app.database_manager import DatabaseManager
@@ -9,7 +9,7 @@ from trader.common import path
 from trader.common.common import NAME
 from trader.common.config import Config, default
 from trader.common.logger import Logger
-from trader.common.message import Message, new_exit_msg
+from trader.common.message import Message, new_exit_msg, new_add_tasks_msg
 from trader.exchange.binance.exchange import BinanceExchange
 from trader.exchange.exchange_config import parse_exchange_config
 from trader.exchange.exchange_type import ExchangeType
@@ -27,9 +27,8 @@ class App:
 
         self.db_manager = None
         self.exchange = None
-        self.main_task = None
 
-        if self.cfg.db_uri:
+        if self.cfg.db:
             self.db_manager = DatabaseManager(cfg, self.logger)
 
         if self.cfg.exchange:
@@ -40,11 +39,10 @@ class App:
         self.notify_mgr = NotifyManager(cfg, self.logger)
 
         self.stat = Statistics(self.cfg, self.log())
-        self.task_manager = None
-        if self.cfg.tasks:
-            self.task_manager = TaskManager(self.cfg, self.log(), self.db_manager, self.exchange)
+        self.task_manager = TaskManager(self.cfg, self.log(), self.db_manager, self.exchange)
 
         self.startTime = datetime.now()
+        self.queue = None
 
     def name(self):
         return NAME
@@ -52,12 +50,18 @@ class App:
     def log(self):
         return self.logger.log()
 
-    def start(self):
-        if self.cfg.tasks is None:
-            self.log().warn("No tasks can be executed")
-            return True
+    def get_running_mode(self) -> str:
+        if self.cfg.is_server():
+            return "server"
+        return "CLI"
 
-        self.log().info(f"Start {self.name()} App, config:{self.cfg.to_dict()}")
+    def start(self):
+        self.log().info(f"Start {self.name()} App, config:{self.cfg.to_dict()}, running mode:{self.get_running_mode()}")
+
+        if not self.cfg.is_server():
+            if self.cfg.tasks is None:
+                self.log().warn("No tasks can be executed")
+                return False
 
         self.notify_mgr.start()
 
@@ -66,7 +70,13 @@ class App:
         if self.exchange:
             self.exchange.start()
 
-        self.process()
+        msgs: list[Message] = []
+        if self.task_manager:
+            msg = self.task_manager.start()
+            if msg:
+                msgs.append(msg)
+
+        self.process(msgs)
         return True
 
     def stop(self):
@@ -93,12 +103,13 @@ class App:
             "commission": self.cfg.commission,
             "period": self.cfg.period,
             "atr": self.cfg.atr,
+            "mode": self.get_running_mode(),
         }
 
     def config(self):
         return self.cfg
 
-    def process(self):
+    def process(self, msgs: list[Message]):
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
@@ -109,7 +120,7 @@ class App:
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.add_signal_handler(sig, self.shutdown, quit)
         try:
-            loop.run_until_complete(self.start_handler(quit))
+            loop.run_until_complete(self.handler(msgs, quit))
         except asyncio.CancelledError:
             self.log().debug("All tasks have been cancelled.")
         finally:
@@ -118,24 +129,16 @@ class App:
 
     def shutdown(self, quit: Event):
         self.log().info(f"Received shutdown signal, stopping {self.name()}...")
-        quit.set()
+        self.exit_handle(quit)
 
-    async def start_handler(self, quit: Event):
+    async def handler(self, msgs: list[Message], quit: Event):
         queue = asyncio.Queue()
+        self.queue = queue
 
-        tasks = []
-        if self.task_manager:
-            tasks = tasks + self.task_manager.start(queue, quit)
+        for msg in msgs:
+            await queue.put(msg)
 
-        handlers = asyncio.create_task(self.handler(queue))
-        self.log().info(f"All task is created:{len(tasks)}")
-        await asyncio.gather(*tasks)
-
-        await queue.put(new_exit_msg())
-        await handlers
-
-    async def handler(self, queue: Queue):
-        self.log().info(f"{self.name()} enter listen_to_queue")
+        self.log().info(f"{self.name()} enter handler: init messages={len(msgs)}")
 
         while True:
             msg: Message = await queue.get()
@@ -143,13 +146,41 @@ class App:
             if msg.is_exit():
                 self.log().info("Received exit message, shutting down...")
                 break
-            if msg.is_stat():
+            elif msg.is_stat():
                 self.stat.handler(msg)
                 self.notify_mgr.handler(msg)
 
+            elif msg.is_add_tasks():
+                await self.task_manager.add_tasks(msg.get_data(), queue, quit)
+                if not self.cfg.is_server():
+                    self.exit_handle(quit)
+
             queue.task_done()
 
-        self.log().info(f"{self.name()} exit listen_to_queue")
+        self.log().info(f"{self.name()} exit handler")
+
+    def exit_handle(self, quit: Event):
+        quit.set()
+        self.send_exit_msg()
+
+    def send_exit_msg(self):
+        if self.queue:
+            try:
+                self.queue.put_nowait(new_exit_msg())
+            except asyncio.QueueFull:
+                self.log().error("QueueFull")
+
+    def send_add_tasks_msg(self, tasks_cfg: str):
+        if not tasks_cfg:
+            return {
+                "result": "fail",
+                "error": "The input parameter is empty",
+            }
+        msg = new_add_tasks_msg(tasks_cfg)
+
+        self.queue.put_nowait(msg)
+
+        return {"result": "success", "id": msg.get_id()}
 
 
 def version():

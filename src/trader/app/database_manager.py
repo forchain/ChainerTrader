@@ -21,7 +21,7 @@ class DatabaseManager:
         # log.apply(logging.getLogger("pymongo.command"))
 
     def start(self):
-        self.client = MongoClient(self.cfg.db_uri)
+        self.client = MongoClient(self.cfg.db)
 
     def stop(self):
         self.client.close()

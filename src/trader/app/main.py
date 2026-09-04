@@ -36,9 +36,10 @@ def main():
     parser.add_argument(
         "--api",
         help="Start the Web API service with optional binding address and port (e.g. 127.0.0.1:8000, :8000, 127.0.0.1)",
+        nargs="?",
         type=str,
         const="127.0.0.1:8000",
-        nargs="?",
+        default=None,
     )
     parser.add_argument("--log_file", help="Write log to file", action="store_true")
     parser.add_argument("--plot", help="Plot data", action="store_true")
@@ -54,12 +55,12 @@ def main():
         help="Which remote exchange is connected to.support json:BINANCE or {name:BINANCE,api_key:'',api_secret:''}",
         type=str,
     )
-    parser.add_argument("--db", help="Enable database for MongoDB", action="store_true")
     parser.add_argument(
-        "--db_uri",
-        help="Database URI for MongoDB",
-        type=str,
-        default="mongodb://localhost:27017/",
+        "--db",
+        help="Enable database for MongoDB (optional URI)",
+        nargs="?",
+        const="mongodb://localhost:27017/",
+        default=None,
     )
     parser.add_argument("--db_name", help="Database name for MongoDB", type=str, default="trader")
     parser.add_argument(
@@ -95,10 +96,6 @@ def main():
     )
 
     args = parser.parse_args()
-    db_uri = None
-    if args.db:
-        db_uri = args.db_uri
-
     load_dotenv()
 
     cfg = new_and_env(
@@ -111,7 +108,7 @@ def main():
         args.mode,
         args.log_level,
         args.exchange,
-        db_uri,
+        args.db,
         args.db_name,
         args.window,
         args.tasks,

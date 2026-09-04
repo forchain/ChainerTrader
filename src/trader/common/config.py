@@ -15,7 +15,7 @@ TRADER_PLOT = "TRADER_PLOT"
 TRADER_MODE = "TRADER_MODE"
 TRADER_LOG_LEVEL = "TRADER_LOG_LEVEL"
 TRADER_EXCHANGE = "TRADER_EXCHANGE"
-TRADER_DB_URI = "TRADER_DB_URI"
+TRADER_DB = "TRADER_DB"
 TRADER_DB_NAME = "TRADER_DB_NAME"
 TRADER_WINDOW = "TRADER_WINDOW"
 TRADER_TASKS = "TRADER_TASKS"
@@ -37,7 +37,7 @@ class Config:
         mode=None,
         log_level="INFO",
         exchange=None,
-        db_uri=None,
+        db=None,
         db_name=NAME,
         window=1000,
         tasks=None,
@@ -55,7 +55,7 @@ class Config:
         self.mode = parseTrendType(mode)
         self.log_level = log_level
         self.exchange = exchange
-        self.db_uri = db_uri
+        self.db = db
         self.db_name = db_name
         self.window = window
         self.tasks = tasks
@@ -76,8 +76,8 @@ class Config:
 
         if self.exchange:
             os.environ[TRADER_EXCHANGE] = self.exchange
-        if self.db_uri:
-            os.environ[TRADER_DB_URI] = self.db_uri
+        if self.db:
+            os.environ[TRADER_DB] = self.db
         os.environ[TRADER_DB_NAME] = self.db_name
         os.environ[TRADER_WINDOW] = str(self.window)
         if self.tasks:
@@ -98,7 +98,7 @@ class Config:
             "mode": self.mode.name,
             "log_level": self.log_level,
             "exchange": self.exchange,
-            "db_uri": self.db_uri,
+            "db": self.db,
             "db_name": self.db_name,
             "window": self.window,
             "tasks": self.tasks,
@@ -110,6 +110,9 @@ class Config:
 
     def get_log_level(self) -> int:
         return logging.getLevelName(self.log_level)
+
+    def is_server(self) -> bool:
+        return self.api is not None
 
 
 def default() -> Config:
@@ -126,7 +129,7 @@ def new_and_env(
     mode=None,
     log_level="INFO",
     exchange=None,
-    db_uri=None,
+    db=None,
     db_name=NAME,
     window=1000,
     tasks=None,
@@ -145,7 +148,7 @@ def new_and_env(
     mode = os.environ.get(TRADER_MODE, mode)
     log_level = os.environ.get(TRADER_LOG_LEVEL, log_level)
     exchange = os.environ.get(TRADER_EXCHANGE, exchange)
-    db_uri = os.environ.get(TRADER_DB_URI, db_uri)
+    db = os.environ.get(TRADER_DB, db)
     db_name = os.environ.get(TRADER_DB_NAME, db_name)
     window = int(os.environ.get(TRADER_WINDOW, window))
     tasks = os.environ.get(TRADER_TASKS, tasks)
@@ -164,7 +167,7 @@ def new_and_env(
         mode=mode,
         log_level=log_level,
         exchange=exchange,
-        db_uri=db_uri,
+        db=db,
         db_name=db_name,
         window=window,
         tasks=tasks,

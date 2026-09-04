@@ -121,26 +121,6 @@ async def download(
         else:
             log.info(f"{name} add klines to DB: {ret}/{total_records}")
 
-        # await sleep(log,DOWLOAD_SPACE_TIME,name)
-
-    return True
-
-
-async def download_test(
-    name,
-    log: Logger,
-    db_manager: DatabaseManager,
-    collection: Collection,
-    exchange: BinanceExchange,
-    symbol_interval: SymbolInterval,
-    quit: Event,
-):
-    update_completed = False
-    while not update_completed:
-        if quit.is_set():
-            log.info(f"exit {name}")
-            return False
-
-        await sleep(log, DOWLOAD_SPACE_TIME, name)
+        await sleep(log, 0.1)
 
     return True
