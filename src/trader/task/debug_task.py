@@ -16,6 +16,9 @@ class DebugTask(BaseTask):
     ):
         super().__init__(tcfg, cfg, log)
 
+    def name(self):
+        return f"{self.tcfg.id}.{self.type().name}"
+
     async def start(self, queue: Queue):
         super().start(queue)
 

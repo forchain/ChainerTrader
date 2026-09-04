@@ -41,6 +41,9 @@ class ShihunMACDStrategy(TrilogyStrategy):
             self.goldenFork = 0
             self.deathFork = self.params.confirm
 
+        if not self.can_trade():
+            return
+
         if self.goldenFork > 0:
             if not self.position and self.macd.signal[-2] > 0 and self.macd.signal[-1] > 0 and self.macd.signal[0] > 0 and self.canBuy():
                 self.log_info(f"Kline:{self.cur_datetime()}, 创建 买单:{price:.2f}")

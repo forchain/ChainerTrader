@@ -19,7 +19,10 @@ class SymbolsInterval:
 
         self.symbol_intervals = []
         for sy in symbol_list:
-            self.symbol_intervals.append(SymbolInterval(sy, interval))
+            si = SymbolInterval(sy, interval)
+            if si.is_empty():
+                continue
+            self.symbol_intervals.append(si)
 
     def get(self, index: int):
         if index >= len(self.symbol_intervals):

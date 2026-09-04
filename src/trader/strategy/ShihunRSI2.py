@@ -81,6 +81,9 @@ class ShihunRSI2Strategy(BaseStrategy):
                 ):
                     willOpt = OperateType.SELL
 
+        if not self.can_trade():
+            return
+
         if willOpt == OperateType.SELL:
             self.log_info(f"Kline:{self.cur_datetime()}, 创建 卖单:{self.dataclose[0]:.2f}")
             self.order = self.sell()

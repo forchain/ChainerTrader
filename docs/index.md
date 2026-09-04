@@ -80,7 +80,7 @@ $ trader --log_level=DEBUG ... ...
 ## Run trader with `ShihunMACD` strategy for backtesting and load trader data from local file
 
 ```bash
-$ trader --tasks='[{"task_type": "BACK_TRADER","symbol":"ETHUSDT","interval":"1h","strategy":"ShihunMACD","csv":"ETHUSDT-1h-202301-202401.csv"}]'
+$ trader --tasks='[{"task_type": "BACK_TRADER","symbol":"ETH-USDT","interval":"1h","strategy":"ShihunMACD","csv":"ETH-USDT-1h-202301-202401.csv"}]'
 ```
 
 ## Run trader with tasks config file for backtesting
@@ -89,7 +89,7 @@ $ trader --tasks='[{"task_type": "BACK_TRADER","symbol":"ETHUSDT","interval":"1h
 [
     {
         "task_type": "BACK_TRADER",
-        "symbol": "ETHUSDT",
+        "symbol": "ETH-USDT",
         "interval": "1h",
         "strategy": "ShihunMACD",
         "csv": "ETHUSDT-1h-202301-202401.csv"
@@ -103,28 +103,28 @@ $ trader --tasks=./tasks.json
 
 ## Import CSV data into the mongo database
 ```bash
-$ trader --tasks='[{"task_type": "IMPORT_CSV","symbol":"ETHUSDT","interval":"1h","csv":"ETHUSDT-1h-202301-202401.csv"}]' --db
+$ trader --tasks='[{"task_type": "IMPORT_CSV","symbol":"ETH-USDT","interval":"1h","csv":"ETHUSDT-1h-202301-202401.csv"}]' --db
 ```
 
 ## Run trader with `ShihunMACD` strategy for backtesting and load trader data from mongo database
 
 ```bash
-$ trader --tasks='[{"task_type": "BACK_TRADER","symbol":"ETHUSDT","interval":"1h","strategy":"ShihunMACD"}]' --db
+$ trader --tasks='[{"task_type": "BACK_TRADER","symbol":"ETH-USDT","interval":"1h","strategy":"ShihunMACD"}]' --db
 ```
 
 ## Download the klines data from the exchange according to your own configuration and save it to the mongo database
 ```bash
-$ trader --tasks='[{"task_type": "UPDATE_KLINES","symbol":"BTCUSDT","interval":"1d"}]' --db --exchange=BINANCE
+$ trader --tasks='[{"task_type": "UPDATE_KLINES","symbol":"BTC-USDT","interval":"1d"}]' --db --exchange=BINANCE
 ```
 
 ## Check the integrity of klines data in the mongo database
 ```bash
-$ trader --tasks='[{"task_type": "CHECK_KLINES","symbol":"BTCUSDT","interval":"1d"}]' --db
+$ trader --tasks='[{"task_type": "CHECK_KLINES","symbol":"BTC-USDT","interval":"1d"}]' --db
 ```
 
 ## Connect to the BINANCE exchange and provide real-time backtesting klines data
 ```bash
-$ trader --tasks='[{"task_type": "TRADER","symbol":"BTCUSDT","interval":"1d"}]' --db --exchange=BINANCE
+$ trader --tasks='[{"task_type": "TRADER","symbol":"BTC-USDT","interval":"1d"}]' --db --exchange=BINANCE
 ```
 
 ## Multi strategy multi task concurrent execution klines data backtesting
@@ -132,14 +132,14 @@ $ trader --tasks='[{"task_type": "TRADER","symbol":"BTCUSDT","interval":"1d"}]' 
 [
   {
     "task_type": "BACK_TRADER",
-    "symbol": "ETHUSDT",
+    "symbol": "ETH-USDT",
     "interval": "1h",
     "csv":"ETHUSDT-1h-202301-202401.csv",
     "strategy":"ShihunMACD"
   },
   {
     "task_type": "BACK_TRADER",
-    "symbol": "ETHUSDT",
+    "symbol": "ETH-USDT",
     "interval": "1h",
     "csv":"ETHUSDT-1h-202301-202401.csv",
     "strategy":"ShihunMACD2"

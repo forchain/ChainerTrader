@@ -11,12 +11,15 @@ class Logger:
         self.logger = logging.getLogger(self.name)
 
         self.logger.setLevel(cfg.log_level)
-
+        self.logger.level
         self.initRoot()
 
     def setLevel(self, level):
         self.logger.setLevel(level)
         logging.getLogger("root").setLevel(level)
+
+    def get_level(self) -> str:
+        return logging.getLevelName(logging.getLogger("root").level)
 
     def log(self):
         return self.logger

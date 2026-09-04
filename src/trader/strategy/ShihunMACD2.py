@@ -26,6 +26,9 @@ class ShihunMACD2Strategy(BaseStrategy):
         if self.order:
             return
 
+        if not self.can_trade():
+            return
+
         # find criticalK
         find = False
         if self.macd.macd[0] > 0 and self.macd.macd[-1] > 0 and self.macd.macd[-2] > 0:

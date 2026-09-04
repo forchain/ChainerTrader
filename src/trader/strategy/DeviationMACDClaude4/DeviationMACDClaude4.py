@@ -347,6 +347,9 @@ class DeviationMACDClaude4Strategy(BaseStrategy):
         pos_div_detected = pos_reg_div > 0 or pos_hid_div > 0
         neg_div_detected = neg_reg_div > 0 or neg_hid_div > 0
 
+        if not self.can_trade():
+            return
+
         # Trading logic
         opt_buy = False
         opt_sell = False

@@ -34,6 +34,9 @@ class DUALTHRUSTStrategy(BaseStrategy):
         upper_bound = self.open_price + self.params.upper_track * price_range
         lower_bound = self.open_price - self.params.lower_track * price_range
 
+        if not self.can_trade():
+            return
+
         willOpt = OperateType.UNKNOWN
 
         if not self.position:

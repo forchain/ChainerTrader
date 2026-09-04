@@ -15,13 +15,7 @@ from trader.utils.symbol_interval import SymbolInterval, get_time_duration
 
 class Node:
     def __init__(
-        self,
-        name,
-        strategy,
-        si: SymbolInterval,
-        cfg: Config = None,
-        log: logging.Logger = None,
-        data=None,
+        self, name, strategy, si: SymbolInterval, cfg: Config = None, log: logging.Logger = None, data=None, position: float = 0, trader: bool = False
     ):
         self.log = log
         self.name = name
@@ -42,6 +36,8 @@ class Node:
                 period=cfg.period,
                 log=log,
                 name=st.__name__,
+                position=position,
+                trader=trader,
             )
             if st.__name__ == "SupertrendStrategy" and not data_ha:
                 data_ha = data.clone()
@@ -67,7 +63,7 @@ class Node:
 
         cerebro.addsizer(bt.sizers.FixedSize, stake=10)
 
-        cerebro.broker.setcommission(commission=cfg.commission)
+        cerebro.broker.setcommission(commission=cfg.commission, commtype=bt.CommInfoBase.COMM_PERC, stocklike=True)
 
     def get_win_rate(self, strategy: bt.Strategy):
         trade_analysis = strategy.analyzers.trade_analyzer.get_analysis()

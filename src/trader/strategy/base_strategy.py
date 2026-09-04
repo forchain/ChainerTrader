@@ -21,6 +21,8 @@ class BaseStrategy(bt.Strategy):
         ("log", None),
         ("stoploss", False),
         ("takeprofit", False),
+        ("position", 0),
+        ("trader", False),
     )
 
     def __init__(self):
@@ -41,6 +43,15 @@ class BaseStrategy(bt.Strategy):
 
         self.start_time = datetime.fromtimestamp(0)
         self.end_time = datetime.fromtimestamp(0)
+
+        self.total_bars = len(self.datas[0])
+
+    def start(self):
+        if self.params.position:
+            self.broker._positions[self.data] = bt.position.Position(size=self.params.position)
+            self.log_info(f"set first position:{self.params.position}")
+
+        self.log_info(f"start:total_bars={self.total_bars}")
 
     def next(self):
         cur = self.cur_datetime()
@@ -77,13 +88,13 @@ class BaseStrategy(bt.Strategy):
         if self.params.log is None:
             print(msg)
             return
-        self.params.log.info(f"{msg}, [{self.name()}]")
+        self.params.log.info(f"{msg}, [{self.name()}][{self.bar_idx()}/{self.total_bars-1}]")
 
     def log_debug(self, msg):
         if self.params.log is None:
             print(msg)
             return
-        self.params.log.debug(msg)
+        self.params.log.debug(f"{msg}, [{self.name()}][{self.bar_idx()}/{self.total_bars-1}]")
 
     def cur_datetime(self):
         return num2date(self.datas[0].datetime[0])
@@ -123,3 +134,9 @@ class BaseStrategy(bt.Strategy):
     def set_default_period(self, period):
         if self.params.period == DEFAULT_PERIOD:
             self.params.period = period
+
+    def can_trade(self):
+        if self.params.trader:
+            if self.bar_idx() + 2 >= self.total_bars:
+                return True
+        return False

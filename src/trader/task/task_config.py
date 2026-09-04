@@ -14,7 +14,7 @@ class TaskConfig:
         self,
         id: int,
         ttype: TaskType,
-        symbol_interval=SymbolInterval("BTCUSDT", Interval("1d")),
+        symbol_interval=SymbolInterval("BTC-USDT", Interval("1d")),
         csv=None,
         start_time=0,
         end_time=0,
@@ -70,7 +70,7 @@ class TaskConfig:
         return s
 
 
-# '[{"task_type": "CHECK_KLINES", "start_time": "2023-09-24 14:30:00","end_time":"0","limit":1000,"symbol":"BTCUSDT","interval":"1d",
+# '[{"task_type": "CHECK_KLINES", "start_time": "2023-09-24 14:30:00","end_time":"0","limit":1000,"symbol":"BTC-USDT","interval":"1d",
 # "csv":"ETHUSDT-1h-202301-202401.csv","strategy","ShihunRSI2"}]'
 def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
     file_path = path.get_file_path(cfg)
@@ -104,6 +104,8 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
             sis = SymbolsInterval(tcd["symbols"], Interval(tcd["interval"]))
         else:
             sis = SymbolsInterval(tcd["symbol"], Interval(tcd["interval"]))
+        if len(sis):
+            continue
 
         start_time = 0
 
@@ -195,7 +197,7 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
 def get_symbols(tcfgs: list[TaskConfig]):
     ret = []
     for tcfg in tcfgs:
-        ret.append(tcfg.symbol_interval.symbol)
+        ret.append(tcfg.symbol_interval.symbol())
     return ret
 
 

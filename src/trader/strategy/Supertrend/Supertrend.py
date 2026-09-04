@@ -99,6 +99,9 @@ class SupertrendStrategy(BaseStrategy):
 
         self.update_stop_loss_point()
 
+        if not self.can_trade():
+            return
+
         price = self.data.close[0]
         if not self.position:
             if willOpt == OperateType.BUY:

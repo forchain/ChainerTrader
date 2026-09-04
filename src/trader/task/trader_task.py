@@ -11,9 +11,11 @@ from trader.exchange.binance.exchange import BinanceExchange
 from trader.statistics.stat import TraderStat
 from trader.strategy.node import Node
 from trader.strategy.strategy import parse_strategys
+from trader.strategy.trader_result import TraderResult
 from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig
 from trader.task.update_klines_task import download
+from trader.utils.operate import OperateType
 from trader.utils.symbol_interval import add_time_duration
 
 DOWLOAD_SPACE_TIME = 5
@@ -53,6 +55,11 @@ class TraderTask(BaseTask):
 
         self.collection = self.db_manager.kline.get_collection(self.tcfg.symbol_interval.name())
 
+        commission = self.exchange.get_account_commission(self.tcfg.symbol_interval.symbol)
+        if commission:
+            self.cfg.commission = commission
+            self.log.info(f"set commission for trader task config:{self.cfg.commission}")
+
         while not self.quit.is_set():
             ret = await download(
                 self.name(),
@@ -72,20 +79,17 @@ class TraderTask(BaseTask):
                 await sleep(self.log, 2, "Try again...")
                 continue
             latest_kline = kls_cache[len(kls_cache) - 1]
-            node = Node(
-                self.tcfg.strategy_name(),
-                strategy,
-                self.tcfg.symbol_interval,
-                self.cfg,
-                self.log,
-                BinanceData(kls_cache),
-            )
+
+            position = self.exchange.get_account_balance(self.tcfg.symbol_interval.sy.base)
+
+            node = Node(self.tcfg.strategy_name(), strategy, self.tcfg.symbol_interval, self.cfg, self.log, BinanceData(kls_cache), position, True)
             ret = node.start()
             if ret is None:
                 continue
 
-            self.ts.tret = ret
-            self.db_manager.task.add_tasks(self.ts)
+            self.process_result(ret)
+
+            self.operate_exchange(ret)
 
             await queue.put(
                 new_stat_msg(
@@ -101,4 +105,24 @@ class TraderTask(BaseTask):
                 else:
                     dist = next_time - int(datetime.now().timestamp())
                     dist += 1
-                    await sleep_loop(self.log, dist, quit, "next K-line...")
+                    await sleep_loop(self.log, dist, self.quit, "next K-line...")
+
+    def process_result(self, ret: TraderResult):
+        last_task = self.db_manager.task.get_task(self.tcfg.id)
+        if last_task and last_task.tret:
+            ret.opts.append(last_task.tret.opts)
+
+        self.ts.tret = ret
+        self.db_manager.task.add_tasks(self.ts)
+
+    def operate_exchange(self, ret: TraderResult):
+        if ret.opts:
+            op = ret.opts[-1]
+            if op.otype == OperateType.BUY:
+                cash = self.exchange.get_account_balance(self.tcfg.symbol_interval.sy.quote)
+                if cash > 0:
+                    self.exchange.new_order(self.tcfg.symbol_interval.symbol(), op.otype)
+                else:
+                    self.log.info(f"Due to insufficient balance, we have given up placing orders with the exchange")
+            else:
+                self.exchange.new_order(self.tcfg.symbol_interval.symbol(), op.otype)

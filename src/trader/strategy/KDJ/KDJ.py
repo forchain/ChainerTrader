@@ -18,6 +18,9 @@ class KDJStrategy(BaseStrategy):
         if self.order:
             return
 
+        if not self.can_trade():
+            return
+
         willOpt = OperateType.UNKNOWN
 
         if not self.position:

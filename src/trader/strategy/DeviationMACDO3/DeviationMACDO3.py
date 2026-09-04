@@ -238,6 +238,9 @@ class DeviationMACDO3Strategy(BaseStrategy):
                 self.pl_positions.appendleft(bar_idx)
                 self.pl_values.appendleft(price)
 
+        if not self.can_trade():
+            return
+
         # Evaluate divergences
         divs = self._calc_divergences()
         pos_div = divs[0] > 0 or divs[2] > 0
