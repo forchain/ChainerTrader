@@ -1,7 +1,3 @@
-import logging
-from datetime import datetime
-from tty import IFLAG
-
 from pymongo import MongoClient, ASCENDING, DESCENDING
 from pymongo.synchronous.collection import Collection
 

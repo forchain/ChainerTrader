@@ -1,16 +1,10 @@
 import os
-from datetime import datetime
-import datetime as dt
 
 from trader.app.database_manager import DatabaseManager
-from trader.binance.csvdata import BinanceCSVData
-from trader.binance.data import BinanceData
 from trader.binance.exchange import BinanceExchange
 from trader.common import path
-from trader.strategy.node import Node
 from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig
-from trader.task.task_type import TaskType
 from asyncio import Queue, Event
 import csv
 

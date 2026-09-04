@@ -1,4 +1,4 @@
-import argparse,os
+import argparse
 
 from trader.app.app import App, version
 from trader.common.config import Config
