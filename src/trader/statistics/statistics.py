@@ -6,7 +6,6 @@ from trader.common.config import Config
 from trader.common.message import Message
 from trader.database.manager import DatabaseManager
 from trader.statistics.stat import BackTraderStat, TraderStat
-from trader.utils.task_state import TaskState, TaskStateType
 
 
 class Statistics:
@@ -27,9 +26,6 @@ class Statistics:
         if isinstance(msg.data, TraderStat):
             self.bts_list.append(msg.data)
             add = True
-        if add and self.db_manager:
-            msg.data.ts.state = TaskStateType.DONE
-            self.db_manager.task.add_tasks([msg.data.ts])
 
         if self.cfg.stat == 0:
             return

@@ -1,4 +1,4 @@
-from asyncio import Event, Queue
+from asyncio import Queue
 from logging import Logger
 
 from trader.common.config import Config

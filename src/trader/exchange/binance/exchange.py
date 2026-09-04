@@ -1,7 +1,8 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from binance_common.configuration import ConfigurationRestAPI
 from binance_common.constants import SPOT_REST_API_PROD_URL
+from binance_common.models import RateLimit
 from binance_sdk_spot import Spot
 
 from trader.common.logger import default
@@ -12,7 +13,7 @@ from trader.utils.symbol_interval import SymbolInterval
 
 EXCHANGE_NAME = "BINANCE"
 
-RECV_WINDOW = 5000
+RECV_WINDOW = 5
 
 KLINE_LIMIT_MAX = 1000
 KLINE_LIMIT_DEFAULT = 500
@@ -36,24 +37,18 @@ class BinanceExchange:
         self.spot_client = Spot(config_rest_api=configuration_rest_api)
 
         self.account = None
+        self.commission = None
+        self.rate_limits: dict[str, datetime] = {}
 
     def name(self):
         return ExchangeType.BINANCE.name
 
     def start(self):
-        try:
-            self.spot_client.rest_api.ping()
-            st = self.spot_client.rest_api.time().data().server_time
-            self.server_time = st / 1000
-            offset = self.server_time_offset()
-            if offset >= RECV_WINDOW / 1000:
-                raise Exception(f"server time offset:{offset}")
-
-        except Exception as e:
-            self.log.error(f"Start {self.name()} exchange: {e}")
+        if not self.ping():
             return False
 
-        self.log.info(f"Start {self.name()} exchange: server_time={self.server_datetime()} server_time_offset={self.server_time_offset()}")
+        dt = self.time()
+        self.log.info(f"Start {self.name()} exchange: server_time={dt} server_time_offset={self.server_time_offset()}")
 
         return True
 
@@ -71,11 +66,6 @@ class BinanceExchange:
 
     def server_time_offset(self):
         return self.server_time - datetime.now().timestamp()
-
-    def get_exchange_info(self, symbol):
-        self.log.debug(f"get_exchange_info:{symbol}")
-        exchange_info = self.spot_client.rest_api.exchange_info(symbol=symbol)
-        return exchange_info
 
     def get_klines(
         self,
@@ -130,9 +120,113 @@ class BinanceExchange:
         return self.get_klines(si, start_time, r_end_time, limit)
 
     def get_account(self):
-        self.log.debug("get account")
-        self.account = self.spot_client.rest_api.get_account()
+        if self.has_rate_limit():
+            self.log.error(f"Rate limit")
+            return self.account
+
+        try:
+            response = self.spot_client.rest_api.get_account()
+            rate_limits = response.rate_limits
+            if rate_limits:
+                self.update_rate_limits(rate_limits)
+
+            self.account = response.data()
+            self.log.info(f"set account:{self.account}")
+
+        except Exception as e:
+            self.log.error(e)
+
         return self.account
+
+    def account_commission(self, symbol: str = None):
+        if self.has_rate_limit():
+            self.log.error(f"Rate limit")
+            return self.commission
+
+        try:
+            response = self.spot_client.rest_api.account_commission(symbol=symbol)
+            rate_limits = response.rate_limits
+            if rate_limits:
+                self.update_rate_limits(rate_limits)
+
+            self.commission = response.data()
+            self.log.info(f"set account commission:{self.commission}")
+
+        except Exception as e:
+            self.log.error(e)
+
+        return self.commission
+
+    def ping(self) -> bool:
+        if self.has_rate_limit():
+            self.log.error(f"Rate limit")
+            return False
+
+        try:
+            response = self.spot_client.rest_api.ping()
+            rate_limits = response.rate_limits
+            if rate_limits:
+                self.update_rate_limits(rate_limits)
+
+        except Exception as e:
+            self.log.error(e)
+            return False
+
+        return True
+
+    def time(self) -> datetime:
+        if self.has_rate_limit():
+            self.log.error(f"Rate limit")
+            return self.server_datetime()
+
+        try:
+            response = self.spot_client.rest_api.time()
+            rate_limits = response.rate_limits
+            if rate_limits:
+                self.update_rate_limits(rate_limits)
+
+            st = response.data().server_time
+            self.server_time = st / 1000
+            self.log.info(f"set server time:{self.server_datetime()}")
+
+            offset = self.server_time_offset()
+            if offset >= RECV_WINDOW:
+                raise Exception(f"server time offset:{offset}")
+
+        except Exception as e:
+            self.log.error(e)
+
+        return self.server_datetime()
+
+    def exchange_info(self, symbol: str = None):
+        if self.has_rate_limit():
+            self.log.error(f"Rate limit")
+            return None
+
+        try:
+            response = self.spot_client.rest_api.exchange_info(symbol=symbol)
+            rate_limits = response.rate_limits
+            if rate_limits:
+                self.update_rate_limits(rate_limits)
+
+            return response.data()
+
+        except Exception as e:
+            self.log.error(e)
+
+        return None
+
+    def update_rate_limits(self, rate_limits: list[RateLimit]):
+        for rl in rate_limits:
+            if rl.retryAfter:
+                self.rate_limits[rl.rateLimitType] = datetime.now() + timedelta(seconds=rl.retryAfter)
+                self.log.info(f"Set rate limit:{rl.rateLimitType}={self.rate_limits[rl.rateLimitType]}")
+
+    def has_rate_limit(self, typ: str = "REQUEST_WEIGHT") -> bool:
+        if typ in self.rate_limits:
+            if datetime.now() <= self.rate_limits[typ]:
+                return True
+        return False
 
 
 def on_spot_ws_close(socket_manager):

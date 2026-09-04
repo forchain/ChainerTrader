@@ -1,4 +1,4 @@
-from pymongo import ASCENDING, DESCENDING, MongoClient
+from pymongo import MongoClient
 
 from trader.common.logger import Logger
 from trader.database.kline import KlineCol

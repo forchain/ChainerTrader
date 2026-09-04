@@ -1,4 +1,3 @@
-from asyncio import Event
 from datetime import datetime
 
 from trader.common import path
@@ -17,7 +16,6 @@ from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig
 from trader.task.update_klines_task import download
 from trader.utils.symbol_interval import add_time_duration
-from trader.utils.task_state import TaskState
 
 
 class BackTraderTask(BaseTask):
@@ -111,6 +109,9 @@ def process_backtrader(parmas, result):
     data = parmas[1]
     strategy = parmas[2]
     tcfg = parmas[3]
+    ts = parmas[4]
+    db_manager = parmas[5]
+
     logger = Logger(cfg)
 
     logger.log().info(f"start do backtrader: {tcfg.id}")
@@ -119,7 +120,9 @@ def process_backtrader(parmas, result):
     logger.log().info(f"end do backtrader: {tcfg.id}")
     if ret is None:
         return
-    ts = TaskState(tcfg.id, [ret.operate], ret)
+
+    ts.tret = ret
+    db_manager.task.add_tasks(ts)
 
     if ret.operate:
         next_time = add_time_duration(ret.operate.dtime, tcfg.symbol_interval.interval, 1)

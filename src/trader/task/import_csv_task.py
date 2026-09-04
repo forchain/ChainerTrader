@@ -1,6 +1,6 @@
 import csv
 import os
-from asyncio import Event, Queue
+from asyncio import Queue
 
 from trader.common import path
 from trader.database.manager import DatabaseManager

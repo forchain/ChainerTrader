@@ -1,9 +1,7 @@
 import asyncio
-import time
-from asyncio import Event, Queue
+from asyncio import Queue
 from logging import Logger
 from multiprocessing import Manager, Process
-from typing import Dict
 
 from trader.common.config import Config
 from trader.common.message import new_add_tasks_msg, new_exit_msg
@@ -15,10 +13,11 @@ from trader.task.check_klines_num_task import CheckKlinesNumTask
 from trader.task.check_klines_task import CheckKlinesTask
 from trader.task.debug_task import DebugTask
 from trader.task.import_csv_task import ImportCSVTask
-from trader.task.task_config import parse_task_config, TaskConfig
+from trader.task.task_config import TaskConfig, parse_task_config
 from trader.task.task_type import TaskType
 from trader.task.trader_task import TraderTask
 from trader.task.update_klines_task import UpdateKlinesTask
+from trader.utils.task_state import TaskState
 
 
 class TaskManager:
@@ -88,7 +87,7 @@ class TaskManager:
                 self.tasks.pop(tc.id)
 
         if not self.cfg.is_server():
-            self.log.info(f"Try to actively exit")
+            self.log.info("Try to actively exit")
             await queue.put(new_exit_msg())
 
     async def add_task(self, cfg, queue: Queue):
@@ -135,6 +134,8 @@ class TaskManager:
                 parmas.append(data)
                 parmas.append(strategy)
                 parmas.append(cfg)
+                parmas.append(task.ts)
+                parmas.append(self.db_manager)
 
                 proc = Process(target=process_backtrader, args=(parmas, result))
                 processes.append(proc)
@@ -153,6 +154,9 @@ class TaskManager:
             return self.tasks[id]
         return None
 
+    def has_task(self, id: int) -> bool:
+        return self.get_task(id) is not None
+
     def remove_task(self, id: int) -> BaseTask | None:
         if id in self.tasks:
             ret: BaseTask = self.tasks.pop(id)
@@ -167,3 +171,26 @@ class TaskManager:
             task.close()
             return True
         return False
+
+    def get_task_state(self, id: int) -> TaskState | None:
+        task = self.get_task(id)
+        if task:
+            return task.ts
+        if self.db_manager:
+            return self.db_manager.task.get_task(id)
+
+        return None
+
+    def get_all_task_state(self) -> list[TaskState]:
+        ret: list[TaskState] = []
+        for ts in self.tasks.values():
+            ret.append(ts.ts)
+
+        if self.db_manager:
+            tss = self.db_manager.task.get_all_tasks()
+            for ts in tss:
+                if self.has_task(ts.id):
+                    continue
+                ret.append(ts)
+
+        return ret

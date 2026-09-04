@@ -1,9 +1,10 @@
 from logging import Logger
 
-from pymongo.synchronous.collection import Collection
-from trader.utils.kline import PRIMARY_KEY, Kline, parse_kline
-from trader.database.collection import get_name_for_klines, get_name_for_tasks
 from pymongo import ASCENDING, DESCENDING
+from pymongo.synchronous.collection import Collection
+
+from trader.database.collection import get_name_for_klines
+from trader.utils.kline import PRIMARY_KEY, Kline, parse_kline
 
 
 class KlineCol:
