@@ -48,9 +48,10 @@ class BaseTask:
         """Generate JSON configuration for easy copying"""
         config_dict = {
             "task_type": self.tcfg.ttype.name,
-            "symbol": self.tcfg.symbol_interval.symbol(),
-            "interval": self.tcfg.symbol_interval.interval.value,
         }
+        if self.tcfg.symbol_interval:
+            config_dict["symbol"] = self.tcfg.symbol_interval.symbol()
+            config_dict["interval"] = self.tcfg.symbol_interval.interval.value
 
         if self.tcfg.csv:
             config_dict["csv"] = self.tcfg.csv
