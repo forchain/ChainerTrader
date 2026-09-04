@@ -5,7 +5,7 @@ import datetime
 import os.path
 
 from trader.binance.csvdata import BinanceCSVData
-from trader.utils import path
+from trader.common import path
 
 import backtrader as bt
 import backtrader.analyzers as btanalyzers
@@ -18,13 +18,16 @@ from trader.utils.volatility import VolatilityAnalyzer
 from trader.utils.winrate import WinRateAnalyzer
 
 class Node:
-    def __init__(self,strategy,main=False, commission=0.001, atr=True,mode=TrendType.NORMAL,datafile="ETHUSDT-1h-202301-202401.csv"):
-        self.main=main
-        self.commission=commission
-        self.atr=atr
+    def __init__(self,strategy,cfg=None,log=None,datafile="ETHUSDT-1h-202301-202401.csv"):
+        self.plot=cfg.plot
+        self.commission=cfg.commission
+        self.atr=cfg.atr
+        self.log=log
+
+        log.info(f"New node")
 
         cerebro = bt.Cerebro()
-        cerebro.addstrategy(strategy, atr=atr,mode=mode)
+        cerebro.addstrategy(strategy, atr=cfg.atr,mode=cfg.mode,period=cfg.period,log=log)
         cerebro.addanalyzer(btanalyzers.SharpeRatio, _name='sharpeRatio')
         cerebro.addanalyzer(btanalyzers.DrawDown, _name="drawdown")
         cerebro.addanalyzer(VolatilityAnalyzer, _name="volatility", cerebro=cerebro)
@@ -46,9 +49,11 @@ class Node:
 
         cerebro.addsizer(bt.sizers.FixedSize, stake=10)
 
-        cerebro.broker.setcommission(commission=commission)
+        cerebro.broker.setcommission(commission=cfg.commission)
 
     def start(self):
+        self.log.info(f"start node")
+
         rets = self.cerebro.run()
         ret = rets[0]
 
@@ -66,7 +71,7 @@ class Node:
         avgProfit = profitLossRatio['avgProfit']
         avgLoss = profitLossRatio['avgLoss']
 
-        if self.main:
+        if self.plot:
             self.cerebro.plot()
 
         # statistics

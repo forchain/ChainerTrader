@@ -1,15 +1,12 @@
 import argparse,os
 
 from trader.app.app import App
-from trader.strategy.shihunmacdrsibb import shihunMacdRsiBollingerBand
-from trader.strategy.shihunmacdrsibbup import shihunMacdRsiBollingerBandUp
-from trader.strategy.shihunrsi2 import shihunRSI
-from trader.utils import path
-from trader.strategy.shihunmacd2 import shihunMACD
+from trader.common.config import Config
+from trader.rpc.rpc import start
+
 
 def main():
     app = App()
-    app.start()
 
     parser = argparse.ArgumentParser(
         description="Implement TradvingView Algorithms of Youtube Channel Shi Hun",
@@ -17,29 +14,26 @@ def main():
         fromfile_prefix_chars='@')
 
     parser.add_argument("-v", "--version",help="Version",action="store_true")
-    parser.add_argument( "--shihunmacd", help="Supper MACD from ShiHun", action="store_true")
-    parser.add_argument("--shihunrsi", help="Supper RSI from ShiHun", action="store_true")
-    parser.add_argument("--shihunmacdrsibb", help="MACD + RSI + BollingerBand from ShiHun", action="store_true")
-    parser.add_argument('--period', help=('Period for the moving average'),action='store',type=int, default=14,required=False)
-    parser.add_argument('--commission', help=('Transaction commission'), action='store', type=float, default=0.001,required=False)
+    parser.add_argument("-s", "--strategy", help="strategy type: ShihunMACD, ShihunRSI, ShihunMACD2, ShihunRSI2, ShihunMACDRISBB",type=str)
+    parser.add_argument('--period', help='Period for the moving average',action='store',type=int, default=14,required=False)
+    parser.add_argument('--commission', help='Transaction commission', action='store', type=float, default=0.001,required=False)
     parser.add_argument("--atr", help="Use atr for stop-loss-point", action="store_true")
-    parser.add_argument("--trend", help="Only operate in a market environment that follows the trend", action="store_true")
+    parser.add_argument("--api", help="Start the Web API service", action="store_true")
+    parser.add_argument("--log_file", help="Write log to file", action="store_true")
+    parser.add_argument("--plot", help="Plot data", action="store_true")
+    parser.add_argument("--mode", help="trend type: NORMAL UP DOWN",type=str)
+
     args = parser.parse_args()
-
+    cfg = Config(args.strategy,args.commission,args.atr,args.period,args.log_file,args.plot,args.mode)
     if args.version:
-        filePath = os.path.join(path.GetTraderDir(), 'VERSION')
+        print(app.version())
+        return
+    if args.api:
+        start(cfg)
+        return
+    elif args.strategy is None:
+        app.log().error("You must configure --strategy")
+        return
 
-        with open(filePath, "r", encoding="utf-8") as file:
-            content = file.read()
-            print(content)
-    elif args.shihunmacd:
-        shihunMACD(True,args.commission,args.atr)
-    elif args.shihunrsi:
-        shihunRSI(True,args.commission,args.atr)
-    elif args.shihunmacdrsibb:
-        if args.trend:
-            shihunMacdRsiBollingerBandUp(True,args.commission,args.atr)
-        else:
-            shihunMacdRsiBollingerBand(True,args.commission,args.atr)
-
-    app.stop()
+    if app.start(cfg):
+        app.stop()

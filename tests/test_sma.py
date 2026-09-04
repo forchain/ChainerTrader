@@ -3,19 +3,18 @@ from __future__ import (absolute_import, division, print_function,
 
 import datetime
 import os.path
-import sys
 
 from backtrader import num2date
 
 from trader.binance.csvdata import BinanceCSVData
-from trader.utils import path
+from trader.common import path
 
 import backtrader as bt
 import backtrader.indicators as btind
 
-from trader.utils.chainerstrategy import ChainerStrategy
+from trader.utils.trilogy_strategy import TrilogyStrategy
 
-class SMAStrategy(ChainerStrategy):
+class SMAStrategy(TrilogyStrategy):
     params = (
         ('confirm', 3),
         ('period', 14),

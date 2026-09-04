@@ -2,33 +2,22 @@ from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
 
 import backtrader as bt
-import array as arr
 
-from PIL.TiffImagePlugin import IFDRational
 
+from trader.utils.base_strategy import BaseStrategy
 from trader.utils.inflectionpoint import InflectionType
 from trader.utils.trend import TrendType
 
 
-# chainer basic framework strategy
-class ChainerStrategy(bt.Strategy):
-    params = (
-        ('atrperiod', 14),
-        ('atrdist', 1.5),  # ATR distance for stop price
-    )
-
+# trilogy basic framework strategy
+class TrilogyStrategy(BaseStrategy):
     def __init__(self):
         super().__init__()
-        # Stop loss point
-        self.stopLossPoint=0
-        # To set the stop price
-        self.atr = bt.indicators.ATR(self.datas[0], period=self.params.atrperiod)
 
     def canBuy(self):
         """canBuy
         Can buy based on the current framework
         """
-        return True
         # We only operate when it's a bullish candlestick
         if self.datas[0].close[0] <= self.datas[0].open[0]:
             return False
@@ -48,7 +37,6 @@ class ChainerStrategy(bt.Strategy):
             curTrend=TrendType.UP
         else:
             curTrend = TrendType.NORMAL
-        print(curTrend)
         # We only operate in an upward trend
         if curTrend != TrendType.UP:
             return False
@@ -120,7 +108,9 @@ class ChainerStrategy(bt.Strategy):
             Process buy
         """
         if self.datas[0].close[0] > self.stopLossPoint:
-            pdist = self.atr[0] * self.params.atrdist
+            pdist = 0
+            if self.params.atr:
+                pdist = self.atr[0] * self.params.atrdist
             self.stopLossPoint=self.datas[0].close[0] - pdist
         super().buy()
 

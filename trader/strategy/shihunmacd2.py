@@ -7,17 +7,12 @@ from trader.strategy.node import Node
 
 import backtrader as bt
 
-from trader.utils.basestrategy import BaseStrategy
+from trader.utils.base_strategy import BaseStrategy
 from trader.utils.operate import OperateType
 
 
 # Shihun MACD strategy
-class ShihunMACDStrategy(BaseStrategy):
-
-    def log(self, txt, dt=None):
-        dt = dt or self.datas[0].datetime[0]
-        dat = num2date(dt)
-        print(f"{dat}, {txt}")
+class ShihunMACD2Strategy(BaseStrategy):
 
     def __init__(self):
         super().__init__()
@@ -31,41 +26,10 @@ class ShihunMACDStrategy(BaseStrategy):
         self.criticalBuyK = None
         self.criticalSellK = None
 
-
-    def notify_order(self, order):
-        if order.status in [order.Submitted, order.Accepted]:
-            return
-
-        if order.status in [order.Completed]:
-            if order.isbuy():
-                self.log(
-                    '买入, 价格: %.2f, 花费: %.2f, 手续费: %.2f' %
-                    (order.executed.price,
-                     order.executed.value,
-                     order.executed.comm))
-
-            else:  # Sell
-                self.log('卖出, 价格: %.2f, 花费: %.2f, 手续费: %.2f' %
-                         (order.executed.price,
-                          order.executed.value,
-                          order.executed.comm))
-
-        elif order.status in [order.Canceled, order.Margin, order.Rejected]:
-            self.log('Order Canceled/Margin/Rejected')
-
-        self.order = None
-
-    def notify_trade(self, trade):
-        if not trade.isclosed:
-            return
-
-        self.log('营业利润, 毛利润: %.2f, 净利润: %.2f' %
-                 (trade.pnl, trade.pnlcomm))
-
     def next(self):
         if self.order:
             return
-        # self.log('收盘价, %.2f' % self.dataclose[0])
+        self.log_debug(f'Kline:{self.cur_datetime()} 收盘价, {self.dataclose[0]:.2f}')
 
         # find criticalK
         find = False
@@ -112,13 +76,13 @@ class ShihunMACDStrategy(BaseStrategy):
 
 
         if willOpt == OperateType.SELL:
-            self.log('收盘价: %.2f (创建 卖单)' % self.dataclose[0])
+            self.log_info(f'Kline:{self.cur_datetime()}, 创建 卖单:{self.dataclose[0]:.2f}')
             self.order = self.sell()
             self.criticalBuyK = None
             self.criticalSellK = None
 
         elif willOpt == OperateType.BUY:
-            self.log('收盘价: %.2f (创建 买单)' % self.dataclose[0])
+            self.log_info(f'Kline:{self.cur_datetime()}, 创建 买单:{self.dataclose[0]:.2f}')
             self.order = self.buy()
             pdist=0
             if self.params.atr:
@@ -126,11 +90,3 @@ class ShihunMACDStrategy(BaseStrategy):
             self.stopLossPoint = self.datas[0].close[0] - pdist
             self.criticalBuyK = None
             self.criticalSellK = None
-
-
-def shihunMACD(main=False,commission=0.001,atr=True):
-    node = Node(ShihunMACDStrategy,main,commission,atr)
-    node.start()
-
-if __name__ == '__main__':
-    shihunMACD(True)

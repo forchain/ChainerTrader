@@ -1,8 +1,6 @@
-import logging
-
 from trader.app.app import NAME, App
-from trader.utils import path
-from trader.utils.logger import Logger
+from trader.common import path
+from trader.common.config import Config, NewConfigFromEnv
 
 
 def test_app():
@@ -19,3 +17,13 @@ def test_log():
     app.log().warn("I am test logger by warn")
     app.log().error("I am test logger by error")
     app.log().critical("I am test logger by critical")
+
+def test_version():
+    app = App()
+    print(app.version())
+
+def test_config():
+    cfg = Config()
+    cfg.exportEnv()
+    ncfg=NewConfigFromEnv()
+    print(ncfg.to_dict())
