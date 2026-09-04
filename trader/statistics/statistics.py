@@ -1,10 +1,12 @@
 from logging import Logger
 
+from fastapi.openapi.models import Operation
 from prettytable import PrettyTable
 
 from trader.common.common import sleep
 from trader.common.message import Message
 from trader.statistics.stat import BackTraderStat, TraderStat
+from trader.strategy.trader_result import TraderResult
 
 
 class Statistics:
@@ -16,10 +18,23 @@ class Statistics:
 
     def handler(self,msg:Message):
         self.log.info(f"handle message:{msg.name()}")
+        add=False
         if isinstance(msg.data,BackTraderStat):
             self.bts_list.append(msg.data)
+            add=True
         if isinstance(msg.data,TraderStat):
             self.bts_list.append(msg.data)
+            add=True
+
+        if self.cfg.stat == 0:
+            return
+        elif self.cfg.stat > 0:
+            if len(self.bts_list) > self.cfg.stat:
+                if add and len(self.bts_list) > 1:
+                    self.bts_list.sort(key=lambda bts: bts.tret.total_return_rate)
+                    del_stat = self.bts_list.pop(0)
+                    self.log.info(
+                        f"Remove item form stat list:{del_stat.strategy} {del_stat.symbol_interval} {del_stat.tret.total_return_rate}")
 
     def report(self):
         if len(self.bts_list) > 0:
@@ -47,3 +62,16 @@ class Statistics:
 
             print("\n")
             print(table)
+
+    def get_operates(self,limit:int = 10):
+        ret=[]
+        if len(self.bts_list) <= 0:
+            return ret
+
+        for ts in self.bts_list:
+            if len(ret) >= limit:
+                break
+            if ts.tret.operate is None:
+                continue
+            ret.append(ts.tret.operate.to_dict())
+        return ret
