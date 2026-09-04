@@ -1,13 +1,10 @@
 import asyncio
 import importlib
-import time
 from datetime import datetime
 from logging import Logger
+from asyncio import Event
 
 NAME = "trader"
-
-class Context:
-    running: bool = False
 
 async def sleep(log:Logger,seconds,msg=None):
     if msg:
@@ -15,6 +12,17 @@ async def sleep(log:Logger,seconds,msg=None):
     else:
         log.info(f"Waiting for {seconds} seconds")
     await asyncio.sleep(seconds)
+
+async def sleep_loop(log:Logger,seconds,quit:Event,msg=None):
+    if msg:
+        log.info(f"Waiting for {seconds} seconds for {msg}")
+    else:
+        log.info(f"Waiting for {seconds} seconds")
+
+    cur = seconds
+    while cur > 0 and (not quit.is_set()):
+        await asyncio.sleep(1)
+        cur-=1
 
 def parse_datetime(str)->datetime:
     if str.isdigit():
@@ -40,3 +48,5 @@ def dynamic_load(module_name, class_name):
     except (ModuleNotFoundError, AttributeError) as e:
         print(f"Error: {e}")
         return None
+
+MIN_RECORDS_NUM = 100

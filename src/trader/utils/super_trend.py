@@ -1,50 +1,52 @@
 import backtrader as bt
 
 class SuperTrend(bt.Indicator):
-    lines = ('supertrend', 'direction')
-    params = dict(
-        period=9,
-        multiplier=3.9,
-        change_atr=True
+    lines = ('supertrend', 'direction', 'up', 'down', 'buy_signal', 'sell_signal')
+    params = (
+        ('period', 10),
+        ('multiplier', 3.0),
+        ('use_atr', True),  # True: use ATR, False: use SMA of TR
     )
 
     def __init__(self):
-        hl2 = (self.data.high + self.data.low) / 2.0
-
-        # ATR 选择：True ATR 或 SMA(TR)
-        if self.p.change_atr:
-            self.atr = bt.indicators.ATR(self.data, period=self.p.period)
+        if self.p.use_atr:
+            self.atr = bt.indicators.ATR(period=self.p.period)
         else:
-            tr = bt.indicators.TrueRange(self.data)
-            self.atr = bt.indicators.SimpleMovingAverage(tr, period=self.p.period)
+            self.atr = bt.indicators.SMA(bt.indicators.TrueRange(), period=self.p.period)
 
-        basic_ub = hl2 - (self.p.multiplier * self.atr)
-        basic_lb = hl2 + (self.p.multiplier * self.atr)
 
-        self.bub = basic_ub
-        self.blb = basic_lb
-
-        # 存储最终上下轨线
-        self.ub = self.bub(-1)
-        self.lb = self.blb(-1)
-
-        # 初始化方向线
-        self.l.direction = bt.LineNum(0)
 
     def next(self):
-        prev_close = self.data.close[-1]
-        curr_close = self.data.close[0]
+        hl2 = (self.data.high[0] + self.data.low[0]) / 2
 
-        self.ub[0] = self.bub[0] if self.bub[0] < self.ub[-1] or prev_close > self.ub[-1] else self.ub[-1]
-        self.lb[0] = self.blb[0] if self.blb[0] > self.lb[-1] or prev_close < self.lb[-1] else self.lb[-1]
+        self.l.up[0] = hl2 - self.p.multiplier * self.atr[0]
+        self.l.down[0] = hl2 + self.p.multiplier * self.atr[0]
+        # Smoothing logic
+        if self.data.close[-1] > self.l.up[-1]:
+            if self.l.up[0]<self.l.up[-1]:
+                self.l.up[0]=self.l.up[-1]
 
-        # 判断趋势方向切换
-        prev_dir = self.l.direction[-1]
-        curr_dir = prev_dir
-        if prev_dir == -1 and curr_close > self.ub[-1]:
-            curr_dir = 1
-        elif prev_dir == 1 and curr_close < self.lb[-1]:
-            curr_dir = -1
+        if self.data.close[-1] < self.l.down[-1]:
+            if self.l.down[0]>self.l.down[-1]:
+                self.l.down[0]=self.l.down[-1]
 
-        self.l.direction[0] = curr_dir
-        self.l.supertrend[0] = self.lb[0] if curr_dir == 1 else self.ub[0]
+        if self.data.close[0] > self.l.down[-1]:
+            self.l.direction[0]=1
+        else:
+            if self.data.close[0] < self.l.up[-1]:
+                self.l.direction[0] = -1
+            else:
+                self.l.direction[0] = self.l.direction[-1]
+
+        # Supertrend value
+        if self.l.direction[0] == 1:
+            self.l.supertrend[0] = self.l.up[0]
+        else:
+            self.l.supertrend[0] = self.l.down[0]
+
+        # Signal lines
+        if self.l.direction[0] == 1 and self.l.direction[-1] == -1:
+            self.l.buy_signal[0] = True
+
+        if self.l.direction[0] == -1 and self.l.direction[-1] == 1:
+            self.l.sell_signal[0] = True

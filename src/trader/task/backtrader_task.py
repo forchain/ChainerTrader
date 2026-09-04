@@ -5,6 +5,7 @@ from trader.binance_exchange.csvdata import BinanceCSVData
 from trader.binance_exchange.data import BinanceData
 from trader.binance_exchange.exchange import BinanceExchange
 from trader.common import path
+from trader.common.common import MIN_RECORDS_NUM
 from trader.common.config import Config
 from trader.common.logger import Logger
 from trader.common.message import new_stat_msg
@@ -70,6 +71,10 @@ class BackTraderTask(BaseTask):
             if kls_cache is None or len(kls_cache) <= 0:
                 self.log.error(f"No klines for {self.name()}")
                 return None
+            if len(kls_cache) < MIN_RECORDS_NUM:
+                self.log.error(f"The current number of records {len(kls_cache)} is lower than the minimum number {MIN_RECORDS_NUM}")
+                return None
+
             self.log.info(f"Create BinanceData({len(kls_cache)}) ")
             data = BinanceData(kls_cache)
 
@@ -93,6 +98,8 @@ def process_backtrader(parmas,result):
     node = Node(tcfg.strategy_name(),strategy,tcfg.symbol_interval.interval, cfg, logger.log(), data)
     ret = node.start()
     logger.log().info(f"end do backtrader: {tcfg.id}")
+    if ret is None:
+        return
     if ret.operate:
         next_time = add_time_duration(ret.operate.dtime, tcfg.symbol_interval.interval, 1)
         if next_time < int(datetime.now().timestamp()):

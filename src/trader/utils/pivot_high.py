@@ -13,9 +13,8 @@ class PivotHigh(bt.Indicator):
         self.addminperiod(self.window_size)
 
     def next(self):
-
-        if len(self.data) < self.window_size:
-            self.lines.pivothigh[0] = float('nan')
+        self.lines.pivothigh[0] = float('nan')
+        if len(self.data) <= self.window_size:
             return
 
         mid_idx = self.middle_idx()
