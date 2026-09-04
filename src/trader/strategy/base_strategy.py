@@ -49,8 +49,18 @@ class BaseStrategy(bt.Strategy):
 
     def start(self):
         if self.params.position:
-            self.broker._positions[self.data] = bt.position.Position(size=self.params.position)
-            self.log_info(f"set first position:{self.params.position}")
+            # Note: Setting initial positions directly can cause issues with broker calculations
+            # This feature is experimental and should be used with caution
+            try:
+                # Check if broker has cash set
+                cash = self.broker.getcash()
+                if cash > 0:
+                    self.broker.positions[self.data] = bt.position.Position(size=self.params.position)
+                    self.log_info(f"set first position:{self.params.position}")
+                else:
+                    self.log_info("Cannot set position without broker cash, skipping position initialization")
+            except Exception as e:
+                self.log_info(f"Failed to set initial position: {e}")
 
         self.log_info(f"start:total_bars={self.total_bars}")
 
@@ -140,4 +150,5 @@ class BaseStrategy(bt.Strategy):
         if self.params.trader:
             if self.bar_idx() + 2 >= self.total_bars:
                 return True
-        return False
+            return False
+        return True

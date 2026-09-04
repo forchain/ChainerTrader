@@ -50,7 +50,7 @@ class TraderResult:
             "hold_rate": self.hold_rate,
             "data_len": self.data_len,
         }
-        if not self.opts:
+        if self.opts:
             opts = []
             for opt in self.opts:
                 opts.append(opt.to_dict())

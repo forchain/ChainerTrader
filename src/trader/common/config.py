@@ -20,7 +20,6 @@ TRADER_DB_NAME = "TRADER_DB_NAME"
 TRADER_WINDOW = "TRADER_WINDOW"
 TRADER_TASKS = "TRADER_TASKS"
 TRADER_CASH = "TRADER_CASH"
-TRADER_LOCKED = "TRADER_LOCKED"
 TRADER_STAT = "TRADER_STAT"
 TRADER_NOTICE = "TRADER_NOTICE"
 TRADER_API = "TRADER_API"
@@ -46,7 +45,6 @@ class Config:
         window=1000,
         tasks=None,
         cash: float = 100000.0,
-        locked: float = 0,
         stat=50,
         notice=None,
         api=None,
@@ -68,7 +66,6 @@ class Config:
         self.window = window
         self.tasks = tasks
         self.cash = cash
-        self.locked = locked
         self.stat = stat
         self.notice = notice
         self.api = api
@@ -95,7 +92,6 @@ class Config:
         if self.tasks:
             os.environ[TRADER_TASKS] = self.tasks
         os.environ[TRADER_CASH] = str(self.cash)
-        os.environ[TRADER_LOCKED] = str(self.locked)
         os.environ[TRADER_STAT] = str(self.stat)
         os.environ[TRADER_NOTICE] = str(self.notice)
         os.environ[TRADER_API] = str(self.api)
@@ -122,7 +118,6 @@ class Config:
             "window": self.window,
             "tasks": self.tasks,
             "cash": self.cash,
-            "locked": self.locked,
             "stat": self.stat,
             "notice": self.notice,
             "api": self.api,
@@ -145,7 +140,6 @@ class Config:
             "db_name": self.db_name,
             "window": self.window,
             "cash": self.cash,
-            "locked": self.locked,
             "stat": self.stat,
             "api": self.api,
             "protected_paths": self.protected_paths,
@@ -182,12 +176,6 @@ class Config:
             return False
         return any(path.startswith(protected_path) for protected_path in self.protected_paths)
 
-    def get_free(self) -> float:
-        free = self.cash - self.locked
-        if free < 0:
-            free = 0
-        return free
-
 
 def default() -> Config:
     return Config()
@@ -208,7 +196,6 @@ def new_and_env(
     window=1000,
     tasks=None,
     cash=100000,
-    locked=0,
     stat=50,
     notice=None,
     api=None,
@@ -231,7 +218,6 @@ def new_and_env(
     window = int(os.environ.get(TRADER_WINDOW, window))
     tasks = os.environ.get(TRADER_TASKS, tasks)
     cash = float(os.environ.get(TRADER_CASH, cash))
-    locked = float(os.environ.get(TRADER_LOCKED, locked))
     stat = int(os.environ.get(TRADER_STAT, stat))
     notice = os.environ.get(TRADER_NOTICE, notice)
     api = os.environ.get(TRADER_API, api)
@@ -260,7 +246,6 @@ def new_and_env(
         window=window,
         tasks=tasks,
         cash=cash,
-        locked=locked,
         stat=stat,
         notice=notice,
         api=api,

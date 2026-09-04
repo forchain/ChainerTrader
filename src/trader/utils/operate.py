@@ -36,11 +36,10 @@ class Operate:
         }
 
 
-def parse_opts(cfg: str) -> list[Operate]:
-    if not cfg:
+def parse_opts(parsed_list) -> list[Operate]:
+    if not parsed_list:
         return []
 
-    parsed_list = json.loads(cfg)
     ret = []
     for opc in parsed_list:
         op = Operate(parse_operate_type(opc["type"]), opc["datetime"], opc["price"])

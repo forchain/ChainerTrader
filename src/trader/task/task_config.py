@@ -21,6 +21,7 @@ class TaskConfig:
         limit=0,
         strategys: [str] = None,
         auto_download=False,
+        free: float = -1,
     ):
         self.ttype = ttype
         self.csv = csv
@@ -30,6 +31,7 @@ class TaskConfig:
         self.strategys = strategys
         self.symbol_interval = symbol_interval
         self.auto_download = auto_download
+        self.free = free
 
         self.id = id
 
@@ -56,6 +58,7 @@ class TaskConfig:
             "limit": self.limit,
             "strategys": self.strategys,
             "auto_download": self.auto_download,
+            "free": self.free,
         }
 
     def strategy_name(self):
@@ -71,7 +74,7 @@ class TaskConfig:
 
 
 # '[{"task_type": "CHECK_KLINES", "start_time": "2023-09-24 14:30:00","end_time":"0","limit":1000,"symbol":"BTC-USDT","interval":"1d",
-# "csv":"ETHUSDT-1h-202301-202401.csv","strategy","ShihunRSI2"}]'
+# "csv":"ETHUSDT-1h-202301-202401.csv","strategy":"ShihunRSI2","free":100}]'
 def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
     file_path = path.get_file_path(cfg)
     if os.path.isfile(file_path):
@@ -117,6 +120,11 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
         if "end_time" in tcd:
             etime = parse_datetime(tcd["end_time"])
             end_time = int(etime.timestamp())
+
+        free = -1
+        if "free" in tcd:
+            free = float(tcd["free"])
+
         csv = None
         if "csv" in tcd:
             csv = tcd["csv"]
@@ -157,36 +165,19 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
                     limit,
                     None,
                     auto_download,
+                    free,
                 )
                 ret.append(tc)
                 last_task_id = tc.id
             else:
                 for strategy in strategys:
-                    tc = TaskConfig(
-                        create_task_id(last_task_id),
-                        task_type,
-                        si,
-                        csv,
-                        start_time,
-                        end_time,
-                        limit,
-                        [strategy],
-                        auto_download,
-                    )
+                    tc = TaskConfig(create_task_id(last_task_id), task_type, si, csv, start_time, end_time, limit, [strategy], auto_download, free)
                     ret.append(tc)
                     last_task_id = tc.id
 
                 if len(strategys_bunch) > 0:
                     tc = TaskConfig(
-                        create_task_id(last_task_id),
-                        task_type,
-                        si,
-                        csv,
-                        start_time,
-                        end_time,
-                        limit,
-                        strategys_bunch,
-                        auto_download,
+                        create_task_id(last_task_id), task_type, si, csv, start_time, end_time, limit, strategys_bunch, auto_download, free
                     )
                     ret.append(tc)
                     last_task_id = tc.id

@@ -72,6 +72,9 @@ class TaskManager:
         async_tasks = []
         bttaskcs = []
         for taskc in taskcs:
+            if taskc.free < 0:
+                taskc.free = self.cfg.cash
+
             if taskc.ttype == TaskType.BACK_TRADER:
                 bttaskcs.append(taskc)
             if taskc.symbol_interval:

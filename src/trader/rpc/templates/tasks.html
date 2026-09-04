@@ -16,7 +16,7 @@
                     {% if tasks_info.tasks %}
                         {% for task in tasks_info.tasks %}
                         <div class="task-item border rounded p-3 mb-3" data-task-id="{{ task.task_id }}">
-                            <div class="d-flex align-items-start">
+                            <div class="d-flex align-items-start justify-content-between">
                                 <div class="flex-grow-1">
                                     {% if task.name %}
                                     <p class="text-muted mb-2 small">{{ task.name }}</p>
@@ -25,6 +25,19 @@
                                         <i class="fas fa-calendar me-1"></i>
                                         {{ task.start_time if task.start_time else '未知时间' }}
                                     </small>
+                                </div>
+                                <div class="ms-3">
+                                    <span class="badge task-status-badge" data-state="{{ task.state }}">
+                                        {% if task.state == 'READY' %}
+                                            <i class="fas fa-clock me-1"></i>就绪
+                                        {% elif task.state == 'RUNNING' %}
+                                            <i class="fas fa-play me-1"></i>运行中
+                                        {% elif task.state == 'DONE' %}
+                                            <i class="fas fa-check me-1"></i>已完成
+                                        {% else %}
+                                            <i class="fas fa-question me-1"></i>{{ task.state }}
+                                        {% endif %}
+                                    </span>
                                 </div>
                             </div>
                         </div>
@@ -255,6 +268,40 @@
     background-color: var(--bs-secondary);
     color: white;
 }
+
+/* 任务状态徽章样式 */
+.task-status-badge {
+    font-size: 0.75rem;
+    font-weight: 500;
+    padding: 0.375rem 0.75rem;
+    border-radius: 0.5rem;
+    white-space: nowrap;
+}
+
+.task-status-badge[data-state="READY"] {
+    background-color: var(--bs-secondary);
+    color: white;
+}
+
+.task-status-badge[data-state="RUNNING"] {
+    background-color: var(--bs-info);
+    color: white;
+}
+
+.task-status-badge[data-state="DONE"] {
+    background-color: var(--bs-success);
+    color: white;
+}
+
+.task-status-badge[data-state="ERROR"] {
+    background-color: var(--bs-danger);
+    color: white;
+}
+
+.task-status-badge[data-state="CANCELLED"] {
+    background-color: var(--bs-warning);
+    color: var(--bs-dark);
+}
 </style>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
@@ -356,6 +403,19 @@ function renderTaskDetailTree(container, rawData) {
 function renderBasicInfoSection(data) {
     const stateBadge = getStateBadge(data.state);
     
+    let configJsonSection = '';
+    if (data.config_json) {
+        configJsonSection = `
+            <div class="section-header">配置参数</div>
+            <div style="position: relative;">
+                <pre id="configJsonDisplay" style="background: #f8f9fa; padding: 12px; border-radius: 4px; overflow-x: auto; font-size: 13px; margin: 0;">${escapeHtml(data.config_json)}</pre>
+                <button onclick="copyConfigJson()" class="btn btn-sm btn-outline-primary" style="position: absolute; top: 8px; right: 8px;">
+                    <i class="fas fa-copy"></i> 复制
+                </button>
+            </div>
+        `;
+    }
+    
     return `
         <div class="section-header">基本信息</div>
         <table class="property-table">
@@ -372,10 +432,33 @@ function renderBasicInfoSection(data) {
                 <td>${stateBadge}</td>
             </tr>
             <tr>
-                <th>开始时间</th>
+                <th>任务执行时间</th>
                 <td><span class="property-value">${escapeHtml(String(data.start_time || ''))}</span></td>
             </tr>
+            ${data.strategy_start_time ? `
+            <tr>
+                <th>策略开始时间</th>
+                <td><span class="property-value">${escapeHtml(String(data.strategy_start_time))}</span></td>
+            </tr>
+            ` : ''}
+            ${data.strategy_end_time ? `
+            <tr>
+                <th>策略结束时间</th>
+                <td><span class="property-value">${escapeHtml(String(data.strategy_end_time))}</span></td>
+            </tr>
+            ` : ''}
+            ${data.initial_cash ? `
+            <tr>
+                <th>初始资金</th>
+                <td><span class="property-value">${formatNumber(data.initial_cash)}</span></td>
+            </tr>
+            ` : ''}
+            <tr>
+                <th>手续费率</th>
+                <td><span class="property-value">${formatNumber(data.commission)}</span></td>
+            </tr>
         </table>
+        ${configJsonSection}
     `;
 }
 
@@ -491,10 +574,10 @@ function getStateBadge(state) {
     return `<span class="property-badge ${stateInfo.class}">${stateInfo.text}</span>`;
 }
 
-// 格式化百分比
+// Format percentage (values are already in percentage form 0-100)
 function formatPercentage(value) {
     if (value === null || value === undefined) return 'N/A';
-    return `${(value * 100).toFixed(2)}%`;
+    return `${value.toFixed(2)}%`;
 }
 
 // 格式化数字
@@ -522,6 +605,27 @@ function formatDuration(seconds) {
     if (secs > 0 || parts.length === 0) parts.push(`${secs}秒`);
     
     return parts.join(' ');
+}
+
+// Copy config JSON to clipboard
+function copyConfigJson() {
+    const configText = document.getElementById('configJsonDisplay').textContent;
+    navigator.clipboard.writeText(configText).then(() => {
+        // Show success feedback
+        const btn = event.target.closest('button');
+        const originalHtml = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-check"></i> 已复制';
+        btn.classList.remove('btn-outline-primary');
+        btn.classList.add('btn-success');
+        setTimeout(() => {
+            btn.innerHTML = originalHtml;
+            btn.classList.remove('btn-success');
+            btn.classList.add('btn-outline-primary');
+        }, 2000);
+    }).catch(err => {
+        alert('复制失败，请手动复制');
+        console.error('Copy failed:', err);
+    });
 }
 
 // 格式化日期时间（时间戳）

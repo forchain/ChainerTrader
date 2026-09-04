@@ -82,13 +82,20 @@ def start(cfg: Config):
 @rpc.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
     from fastapi.responses import RedirectResponse
+
     return RedirectResponse(url="/admin")
 
 
 @rpc.get("/admin", response_class=HTMLResponse)
 async def admin_dashboard(request: Request):
     return templates.TemplateResponse(
-        "index.html", {"request": request, "tasks_info": get_taskinfo(request.app.state.app), "accts_info": get_accounts_info(request.app.state.app)}
+        "index.html",
+        {
+            "request": request,
+            "tasks_info": get_taskinfo(request.app.state.app),
+            "accts_info": get_accounts_info(request.app.state.app),
+            "version": request.app.state.app.version(),
+        },
     )
 
 
@@ -99,12 +106,12 @@ async def admin_tasks_page(request: Request):
 
 @rpc.get("/admin/klines", response_class=HTMLResponse)
 async def admin_klines_page(request: Request):
-    return templates.TemplateResponse("klines.html", {"request": request,"klines_info": get_klines_info(request.app.state.app)})
+    return templates.TemplateResponse("klines.html", {"request": request, "klines_info": get_klines_info(request.app.state.app)})
 
 
 @rpc.get("/admin/logs", response_class=HTMLResponse)
 async def admin_logs_page(request: Request):
-    return templates.TemplateResponse("logs.html", {"request": request,"logs_info":get_logs_info(request.app.state.app)})
+    return templates.TemplateResponse("logs.html", {"request": request, "logs_info": get_logs_info(request.app.state.app)})
 
 
 @rpc.get("/.well-known/appspecific/com.chrome.devtools.json")

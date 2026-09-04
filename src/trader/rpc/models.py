@@ -38,6 +38,9 @@ def get_taskinfo(app: App) -> TasksInfo:
             completed += 1
         tasks.append(ts.to_dict())
 
+    # Sort tasks by start_time in descending order (newest first)
+    tasks.sort(key=lambda x: x.get('start_time', ''), reverse=True)
+
     return TasksInfo(total=len(tss), completed=completed, tasks=tasks)
 
 

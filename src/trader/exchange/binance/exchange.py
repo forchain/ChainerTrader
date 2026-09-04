@@ -243,7 +243,7 @@ class BinanceExchange:
 
         return None
 
-    def new_order(self, symbol: str, op: OperateType):
+    def new_order(self, symbol: str, op: OperateType, quantity: float = 0):
         if self.has_rate_limit("ORDERS"):
             self.log.error("Rate limit")
             return None
@@ -253,6 +253,7 @@ class BinanceExchange:
                 symbol=symbol,
                 side=NewOrderSideEnum[op.name].value,
                 type=NewOrderTypeEnum["MARKET"].value,
+                quantity=quantity,
             )
 
             rate_limits = response.rate_limits
