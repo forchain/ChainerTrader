@@ -107,7 +107,6 @@ class App:
             "version": self.version(),
             "commission": self.cfg.commission,
             "period": self.cfg.period,
-            "atr": self.cfg.atr,
             "mode": self.get_running_mode(),
         }
 

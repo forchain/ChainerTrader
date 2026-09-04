@@ -34,16 +34,23 @@ class BacktestReportAnalyzer(bt.Analyzer):
         return self.strategy.datetime.datetime().isoformat()
 
     def notify_trade(self, trade):
+        trade_key = getattr(trade, "tradeid", None)
+        if trade_key is None:
+            trade_key = trade.ref
         if not trade.isclosed:
             if trade.justopened:
-                ctx = getattr(self.strategy, "_trades_by_id", {}).get(trade.ref)
+                ctx = getattr(self.strategy, "_trades_by_id", {}).get(trade_key)
                 entry_px = trade.price
                 direction = "L" if trade.size > 0 else "S"
+                entry_signal_time = None
                 if ctx is not None:
                     if getattr(ctx, "entry_price", None) is not None:
                         entry_px = float(ctx.entry_price)
                     direction = "L" if getattr(ctx, "direction", "LONG") == "LONG" else "S"
-                self._trade_entries[trade.ref] = {
+                    signal_metadata = getattr(ctx, "signal_metadata", None) or {}
+                    entry_signal_time = signal_metadata.get("signal_time")
+                self._trade_entries[trade_key] = {
+                    "entry_signal_time": entry_signal_time,
                     "entry_time": self._current_dt_iso(),
                     "entry_px": entry_px,
                     "size": trade.size,
@@ -51,16 +58,19 @@ class BacktestReportAnalyzer(bt.Analyzer):
                 }
             return
 
-        entry_info = self._trade_entries.pop(trade.ref, {})
+        entry_info = self._trade_entries.pop(trade_key, {})
+        entry_signal_time = entry_info.get("entry_signal_time")
         entry_time = entry_info.get("entry_time", "")
         entry_px = entry_info.get("entry_px", 0)
         entry_size = entry_info.get("size", 0)
-        ctx = getattr(self.strategy, "_trades_by_id", {}).get(trade.ref)
+        ctx = getattr(self.strategy, "_trades_by_id", {}).get(trade_key)
 
         exit_time = self._current_dt_iso()
+        exit_signal_time = None
         exit_px = self.strategy.data.close[0]
         if ctx is not None and getattr(ctx, "exit_price", None) is not None:
             exit_px = float(ctx.exit_price)
+            exit_signal_time = self._exit_signal_time(ctx, fallback=exit_time)
 
         direction = entry_info.get("dir", "L" if entry_size > 0 else "S")
 
@@ -75,18 +85,34 @@ class BacktestReportAnalyzer(bt.Analyzer):
         bars_held = trade.barclose - trade.baropen
 
         self._trades.append({
-            "id": trade.ref,
+            "id": trade_key,
+            "broker_ref": trade.ref,
             "dir": direction,
+            "qty": round(abs(float(entry_size)), 8),
+            "entry_signal_time": entry_signal_time,
             "entry": entry_time,
             "entry_px": round(entry_px, 2),
+            "exit_signal_time": exit_signal_time,
             "exit": exit_time,
             "exit_px": round(float(exit_px), 2),
             "pnl_pct": round(pnl_pct, 2),
             "pnl": round(trade.pnlcomm, 2),
             "bars_held": bars_held,
+            "exit_reason_code": getattr(ctx, "exit_reason_code", None) if ctx is not None else None,
+            "exit_reason_label": getattr(ctx, "exit_reason_label", None) if ctx is not None else None,
+            "exit_reason_detail": getattr(ctx, "exit_reason_detail", None) if ctx is not None else None,
+            "stop_multiple_r": getattr(ctx, "stop_multiple_r", None) if ctx is not None else None,
+            "risk_reward_ratio": getattr(ctx, "exit_risk_reward_ratio", None) if ctx is not None else None,
+            "framework_initial_stop_price": getattr(ctx, "initial_stop_price", None) if ctx is not None else None,
+            "framework_final_stop_price": getattr(ctx, "stop_price", None) if ctx is not None else None,
+            "framework_tp_price": getattr(ctx, "tp_price", None) if ctx is not None else None,
+            "strategy_suggested_stop_price": (
+                getattr(ctx, "signal_metadata", {}).get("suggested_stop_price") if ctx is not None and getattr(ctx, "signal_metadata", None) else None
+            ),
         })
 
     def stop(self):
+        self._enrich_trade_records_from_contexts()
         report = self._build_report()
         self.report = report
         self._write_report(report)
@@ -214,6 +240,42 @@ class BacktestReportAnalyzer(bt.Analyzer):
     def _collect_signals(self):
         events = getattr(self.strategy, "_signal_events", [])
         return list(events)
+
+    def _enrich_trade_records_from_contexts(self):
+        contexts = getattr(self.strategy, "_trades_by_id", {})
+        for trade_record in self._trades:
+            ctx = contexts.get(trade_record.get("id"))
+            if ctx is None:
+                ctx = contexts.get(trade_record.get("trade_id"))
+            if ctx is not None:
+                signal_metadata = getattr(ctx, "signal_metadata", None) or {}
+                trade_record["signal_event_id"] = signal_metadata.get("signal_event_id")
+                trade_record["entry_signal_time"] = signal_metadata.get("signal_time")
+                trade_record["exit_signal_time"] = trade_record.get("exit_signal_time") or self._exit_signal_time(ctx)
+                trade_record["exit_reason_code"] = getattr(ctx, "exit_reason_code", None)
+                trade_record["exit_reason_label"] = getattr(ctx, "exit_reason_label", None)
+                trade_record["exit_reason_detail"] = getattr(ctx, "exit_reason_detail", None)
+                trade_record["stop_multiple_r"] = getattr(ctx, "stop_multiple_r", None)
+                trade_record["risk_reward_ratio"] = getattr(ctx, "exit_risk_reward_ratio", None)
+                trade_record["framework_initial_stop_price"] = getattr(ctx, "initial_stop_price", None)
+                trade_record["framework_final_stop_price"] = getattr(ctx, "stop_price", None)
+                trade_record["framework_tp_price"] = getattr(ctx, "tp_price", None)
+                trade_record["strategy_suggested_stop_price"] = signal_metadata.get("suggested_stop_price")
+
+            if not trade_record.get("exit_reason_code"):
+                trade_record["exit_reason_code"] = "unclassified_exit"
+            if not trade_record.get("exit_reason_label"):
+                trade_record["exit_reason_label"] = "未分类退出"
+
+    def _exit_signal_time(self, ctx, fallback=None):
+        if ctx is None:
+            return None
+        exit_key_ref = getattr(ctx, "exit_key_kline_ref", None)
+        if exit_key_ref is not None and getattr(exit_key_ref, "dt", None) is not None:
+            return exit_key_ref.dt.isoformat()
+        if getattr(ctx, "exit_reason_code", None) in {"framework_stop", "risk_reward_take_profit"} and getattr(ctx, "exit_price", None) is not None:
+            return fallback
+        return None
 
     def _write_report(self, report):
         reports_dir = self._resolve_reports_dir(report)

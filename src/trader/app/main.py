@@ -31,8 +31,6 @@ def main():
         default=0.001,
         required=False,
     )
-    parser.add_argument("--atr", help="Use atr for stop-loss-point", action="store_true")
-    parser.add_argument("--stoploss", help="Use stop-loss-point", action="store_true")
     parser.add_argument(
         "--api",
         help="Start the Web API service with optional binding address and port (e.g. 127.0.0.1:8000, :8000, 127.0.0.1)",
@@ -115,8 +113,6 @@ def main():
 
     cfg = new_and_env(
         args.commission,
-        args.atr,
-        args.stoploss,
         args.period,
         args.log_file,
         args.plot,

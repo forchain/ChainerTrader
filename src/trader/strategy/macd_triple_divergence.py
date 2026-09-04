@@ -1124,6 +1124,7 @@ class MacdTripleDivergenceStrategy(BaseStrategy):
         signal_id = self._store_signal_event(event)
         self._long_signal_meta = {
             "suggested_stop_price": float(r3.price_extreme),
+            "signal_time": event["signal_time"],
             "signal_bar_index": current_bar,
             "signal_event_id": signal_id,
         }
@@ -1177,6 +1178,7 @@ class MacdTripleDivergenceStrategy(BaseStrategy):
         signal_id = self._store_signal_event(event)
         self._short_signal_meta = {
             "suggested_stop_price": float(g3.price_extreme),
+            "signal_time": event["signal_time"],
             "signal_bar_index": current_bar,
             "signal_event_id": signal_id,
         }
@@ -1367,7 +1369,13 @@ class MacdTripleDivergenceStrategy(BaseStrategy):
             pos_size = float(getattr(self.position, "size", 0.0))
             if pos_size != 0.0:
                 try:
-                    self.exit_trade(key_bar_index=self.bar_idx(), need_confirm=False)
+                    self.exit_trade(
+                        key_bar_index=self.bar_idx(),
+                        need_confirm=False,
+                        exit_reason_code="strategy_stop",
+                        exit_reason_label="策略止损逻辑退出",
+                        exit_reason_detail="MACD 三背离后续走势失效",
+                    )
                 except (ValueError, RuntimeError) as e:
                     self.log_debug(f"MACD stop loss exit_trade failed: {e}")
                     # Fallback to direct close

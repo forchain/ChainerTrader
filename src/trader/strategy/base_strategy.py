@@ -100,6 +100,12 @@ class BaseStrategy(bt.Strategy):
         cancel_reason: Optional[str] = None
         stop_order: Optional[bt.Order] = None
         tp_order: Optional[bt.Order] = None
+        pending_exit_reason: Optional[Dict[str, Any]] = None
+        exit_reason_code: Optional[str] = None
+        exit_reason_label: Optional[str] = None
+        exit_reason_detail: Optional[str] = None
+        stop_multiple_r: Optional[float] = None
+        exit_risk_reward_ratio: Optional[float] = None
 
     @dataclass
     class SignalSnapshot:
@@ -263,6 +269,36 @@ class BaseStrategy(bt.Strategy):
                             )
                             self._place_or_replace_tp_order(ctx)
                 else:
+                    if role == _ORDER_ROLE_STOP:
+                        stop_multiple_r = self._calculate_stop_multiple_r(ctx)
+                        detail = f"触发框架止损，止损位达到 {stop_multiple_r:.2f}R" if stop_multiple_r is not None else "触发框架止损"
+                        self._finalize_exit_reason(
+                            ctx,
+                            code="framework_stop",
+                            label="框架止损退出",
+                            detail=detail,
+                            stop_multiple_r=stop_multiple_r,
+                        )
+                    elif role == _ORDER_ROLE_TP:
+                        rr = float(ctx.risk_reward_ratio)
+                        detail = f"达到预设风险收益比 {rr:.2f}R" if rr > 0.0 else "达到预设风险收益比"
+                        self._finalize_exit_reason(
+                            ctx,
+                            code="risk_reward_take_profit",
+                            label="达到预设风险收益比退出",
+                            detail=detail,
+                            risk_reward_ratio=rr if rr > 0.0 else None,
+                        )
+                    else:
+                        pending = dict(ctx.pending_exit_reason or {})
+                        self._finalize_exit_reason(
+                            ctx,
+                            code=str(pending.get("code") or "unclassified_exit"),
+                            label=str(pending.get("label") or "未分类退出"),
+                            detail=pending.get("detail"),
+                            stop_multiple_r=pending.get("stop_multiple_r"),
+                            risk_reward_ratio=pending.get("risk_reward_ratio"),
+                        )
                     ctx.exit_price = float(order.executed.price)
                     ctx.exit_value = float(order.executed.value)  # Store exit value for profit calculation
                     ctx.status = BaseStrategy.TradeStatus.CLOSED
@@ -555,6 +591,58 @@ class BaseStrategy(bt.Strategy):
                 **{_ORDER_ROLE_KEY: _ORDER_ROLE_TP},
             )
         ctx.tp_order = to
+
+    def _calculate_stop_multiple_r(
+        self,
+        ctx: "BaseStrategy.TradeContext",
+        stop_price: Optional[float] = None,
+    ) -> Optional[float]:
+        if ctx.entry_price is None or ctx.initial_stop_price is None:
+            return None
+
+        entry_price = float(ctx.entry_price)
+        initial_stop_price = float(ctx.initial_stop_price)
+        active_stop_price = float(ctx.stop_price if stop_price is None else stop_price)
+        risk = (entry_price - initial_stop_price) if ctx.direction == "LONG" else (initial_stop_price - entry_price)
+        if risk <= 0.0:
+            return None
+
+        multiple = ((active_stop_price - entry_price) / risk) if ctx.direction == "LONG" else ((entry_price - active_stop_price) / risk)
+        return round(float(multiple), 4)
+
+    def _set_pending_exit_reason(
+        self,
+        ctx: "BaseStrategy.TradeContext",
+        code: str,
+        label: str,
+        detail: Optional[str] = None,
+        stop_multiple_r: Optional[float] = None,
+        risk_reward_ratio: Optional[float] = None,
+    ) -> None:
+        ctx.pending_exit_reason = {
+            "code": code,
+            "label": label,
+            "detail": detail,
+            "stop_multiple_r": stop_multiple_r,
+            "risk_reward_ratio": risk_reward_ratio,
+        }
+
+    def _finalize_exit_reason(
+        self,
+        ctx: "BaseStrategy.TradeContext",
+        code: str,
+        label: str,
+        detail: Optional[str] = None,
+        stop_multiple_r: Optional[float] = None,
+        risk_reward_ratio: Optional[float] = None,
+    ) -> None:
+        ctx.exit_reason_code = code
+        ctx.exit_reason_label = label
+        ctx.exit_reason_detail = detail
+        ctx.stop_multiple_r = stop_multiple_r
+        ctx.exit_risk_reward_ratio = risk_reward_ratio
+        ctx.pending_exit_reason = None
+
     def enter_trade(
         self,
         trade_key: Any = None,
@@ -661,9 +749,6 @@ class BaseStrategy(bt.Strategy):
                 stop_price = float(key_ref.low) - (sl_atr_mult * atr_val)
             else:
                 stop_price = float(key_ref.high) + (sl_atr_mult * atr_val)
-        suggested_stop_price = ctx.signal_metadata.get("suggested_stop_price")
-        if suggested_stop_price is not None:
-            stop_price = float(suggested_stop_price)
         ctx.initial_stop_price = stop_price
         ctx.stop_price = stop_price
 
@@ -699,6 +784,9 @@ class BaseStrategy(bt.Strategy):
         trade_ref: Optional[Union[int, str]] = None,
         key_bar_index: int = 0,
         need_confirm: Optional[bool] = None,
+        exit_reason_code: Optional[str] = None,
+        exit_reason_label: Optional[str] = None,
+        exit_reason_detail: Optional[str] = None,
     ) -> Optional["BaseStrategy.TradeContext"]:
         """
         Request exit for a trade by id/key. If trade_ref is None, uses current active trade.
@@ -742,11 +830,15 @@ class BaseStrategy(bt.Strategy):
             f"请求出场: trade_id={ctx.trade_id} key={ctx.key} need_confirm={1 if exit_need_confirm else 0} "
             f"key_time={exit_key_ref.dt} key_high={exit_key_ref.high:.6f} key_low={exit_key_ref.low:.6f}"
         )
+        self._set_pending_exit_reason(
+            ctx,
+            code=exit_reason_code or "unclassified_exit",
+            label=exit_reason_label or "未分类退出",
+            detail=exit_reason_detail,
+        )
 
         if not exit_need_confirm:
-            oco_order = ctx.stop_order if ctx.stop_order is not None and ctx.tp_order is None else None
-            if oco_order is None:
-                self._cancel_stop_order(ctx)
+            oco_order = ctx.stop_order if ctx.stop_order is not None else None
             self._cancel_tp_order(ctx)
             close_size = float(abs(getattr(self.position, "size", 0.0)))
             if close_size <= 0.0:
@@ -933,7 +1025,12 @@ class BaseStrategy(bt.Strategy):
                 self.log_info("LONG_ONLY模式: 检测到做空信号，尝试平多仓")
                 try:
                     self._emit_signal_lifecycle_event("exit_requested", "SHORT", snapshot.short_context, reason="signal")
-                    self.exit_trade(key_bar_index=self.bar_idx())
+                    self.exit_trade(
+                        key_bar_index=self.bar_idx(),
+                        exit_reason_code="signal_exit",
+                        exit_reason_label="信号出场",
+                        exit_reason_detail="LONG_ONLY 模式下出现反向信号",
+                    )
                 except (ValueError, RuntimeError) as e:
                     self.log_debug(f"_process_signals: exit_trade failed: {e}")
             elif short_signal:
@@ -984,7 +1081,12 @@ class BaseStrategy(bt.Strategy):
                 self.log_info("SHORT_ONLY模式: 检测到做多信号，尝试平空仓")
                 try:
                     self._emit_signal_lifecycle_event("exit_requested", "LONG", snapshot.long_context, reason="signal")
-                    self.exit_trade(key_bar_index=self.bar_idx())
+                    self.exit_trade(
+                        key_bar_index=self.bar_idx(),
+                        exit_reason_code="signal_exit",
+                        exit_reason_label="信号出场",
+                        exit_reason_detail="SHORT_ONLY 模式下出现反向信号",
+                    )
                 except (ValueError, RuntimeError) as e:
                     self.log_debug(f"_process_signals: exit_trade failed: {e}")
             elif long_signal:

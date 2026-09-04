@@ -39,7 +39,7 @@ def _write_dataset_csv(csv_path: Path):
 
 def test_build_strategy_kwargs_allows_parameter_overrides():
     kwargs = build_strategy_kwargs(
-        Config(period=14, atr=True, stoploss=False),
+        Config(period=14),
         DummyLog(),
         position=0,
         trader=False,
@@ -48,7 +48,8 @@ def test_build_strategy_kwargs_allows_parameter_overrides():
 
     assert kwargs["period"] == 55
     assert kwargs["fast_period"] == 8
-    assert kwargs["atr"] is True
+    assert "atr" not in kwargs
+    assert "stoploss" not in kwargs
 
 
 def test_backtrader_task_start_uses_dataset_resolver_for_db_backtests(monkeypatch, tmp_path: Path):
@@ -61,7 +62,7 @@ def test_backtrader_task_start_uses_dataset_resolver_for_db_backtests(monkeypatc
             def __init__(self, *args, **kwargs):
                 pass
 
-            async def prepare(self, symbol_interval, start_time, end_time, allow_download=True):
+            async def prepare(self, symbol_interval, start_time, end_time, allow_download=True, max_download_ranges=None):
                 prepare_calls.append((symbol_interval.name(), start_time, end_time, allow_download))
                 return SimpleNamespace(
                     ok=True,
@@ -103,7 +104,7 @@ def test_task_manager_prepares_shared_dataset_once_for_same_dataset_key(monkeypa
             def __init__(self, *args, **kwargs):
                 pass
 
-            async def prepare(self, symbol_interval, start_time, end_time, allow_download=True):
+            async def prepare(self, symbol_interval, start_time, end_time, allow_download=True, max_download_ranges=None):
                 prepare_calls.append((symbol_interval.name(), start_time, end_time, allow_download))
                 return SimpleNamespace(
                     ok=True,

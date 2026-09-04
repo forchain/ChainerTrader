@@ -7,8 +7,6 @@ from trader.utils.trend import parseTrendType
 DEFAULT_PERIOD = 14
 
 TRADER_COMMISSION = "TRADER_COMMISSION"
-TRADER_ATR = "TRADER_ATR"
-TRADER_STOPLOSS = "TRADER_STOPLOSS"
 TRADER_PERIOD = "TRADER_PERIOD"
 TRADER_LOG_FILE = "TRADER_LOG_FILE"
 TRADER_PLOT = "TRADER_PLOT"
@@ -32,8 +30,6 @@ class Config:
     def __init__(
         self,
         commission=0.001,
-        atr=True,
-        stoploss=False,
         period=DEFAULT_PERIOD,
         log_file=False,
         plot=False,
@@ -62,8 +58,6 @@ class Config:
         optimization_worker_cpu_efficiency_threshold: float = 0.1,
     ):
         self.commission = commission
-        self.atr = atr
-        self.stoploss = stoploss
         self.period = period
         self.log_file = log_file
         self.plot = plot
@@ -93,8 +87,6 @@ class Config:
 
     def export_env(self):
         os.environ[TRADER_COMMISSION] = str(self.commission)
-        os.environ[TRADER_ATR] = str(self.atr)
-        os.environ[TRADER_STOPLOSS] = str(self.stoploss)
         os.environ[TRADER_PERIOD] = str(self.period)
         os.environ[TRADER_LOG_FILE] = str(self.log_file)
         os.environ[TRADER_PLOT] = str(self.plot)
@@ -123,8 +115,6 @@ class Config:
     def to_dict(self):
         return {
             "commission": self.commission,
-            "atr": self.atr,
-            "stoploss": self.stoploss,
             "period": self.period,
             "log_file": self.log_file,
             "plot": self.plot,
@@ -157,8 +147,6 @@ class Config:
         """Return configuration dictionary with sensitive information masked for logging"""
         safe_config = {
             "commission": self.commission,
-            "atr": self.atr,
-            "stoploss": self.stoploss,
             "period": self.period,
             "log_file": self.log_file,
             "plot": self.plot,
@@ -210,8 +198,6 @@ def default() -> Config:
 
 def new_and_env(
     commission=0.001,
-    atr=True,
-    stoploss=False,
     period=DEFAULT_PERIOD,
     log_file=False,
     plot=False,
@@ -232,8 +218,6 @@ def new_and_env(
 ) -> Config:
 
     commission = float(os.environ.get(TRADER_COMMISSION, commission))
-    atr = os.environ.get(TRADER_ATR, str(atr)).lower() == "true"
-    stoploss = os.environ.get(TRADER_STOPLOSS, str(stoploss)).lower() == "true"
     period = int(os.environ.get(TRADER_PERIOD, period))
     log_file = os.environ.get(TRADER_LOG_FILE, str(log_file)).lower() == "true"
     plot = os.environ.get(TRADER_PLOT, str(plot)).lower() == "true"
@@ -260,8 +244,6 @@ def new_and_env(
 
     return Config(
         commission=commission,
-        atr=atr,
-        stoploss=stoploss,
         period=period,
         log_file=log_file,
         plot=plot,

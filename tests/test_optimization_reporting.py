@@ -1,6 +1,7 @@
 import json
 import os
 from pathlib import Path
+from types import SimpleNamespace
 
 import backtrader as bt
 
@@ -85,6 +86,23 @@ def test_optimization_artifacts_aggregate_samples_and_write_rankings(tmp_path: P
                 "total_trades": 4,
             },
             "report_path": "reports/optimizations/run-1/runs/a.json",
+            "trades": [
+                {
+                    "id": 1,
+                    "dir": "L",
+                    "entry_signal_time": "2025-12-31T00:00:00",
+                    "entry": "2026-01-01T00:00:00",
+                    "entry_px": 100.0,
+                    "exit_signal_time": "2026-01-02T00:00:00",
+                    "exit": "2026-01-03T00:00:00",
+                    "exit_px": 90.0,
+                    "pnl_pct": -10.0,
+                    "pnl": -10.0,
+                    "bars_held": 2,
+                    "exit_reason_code": "framework_stop",
+                    "exit_reason_label": "框架止损退出",
+                }
+            ],
         },
         {
             "strategy": "macd_triple_divergence",
@@ -154,7 +172,7 @@ def test_optimization_artifacts_aggregate_samples_and_write_rankings(tmp_path: P
     assert artifacts["manifest"]["failure_records"] == 1
     assert artifacts["manifest"]["datasets"] == ["dataset-a", "dataset-b"]
     assert len(aggregate_items[("BTCUSDT", "1d", "param-a")]["sample_details"]) == 2
-    assert aggregate_items[("BTCUSDT", "1d", "param-a")]["sample_details"][0]["trades"] == []
+    assert aggregate_items[("BTCUSDT", "1d", "param-a")]["sample_details"][0]["trades"][0]["exit_reason_label"] == "框架止损退出"
 
     run_dir = write_optimization_artifacts(tmp_path, "run-1", sample_reports, failures)
 
@@ -168,6 +186,7 @@ def test_optimization_artifacts_aggregate_samples_and_write_rankings(tmp_path: P
     assert by_score[0]["param_id"] == "param-a"
     html = (run_dir / "rankings" / "index.html").read_text(encoding="utf-8")
     assert "<table" in html
+    assert "<colgroup" in html
     assert "data-sort-table" in html
     assert "币种" in html
     assert "周期" in html
@@ -176,8 +195,25 @@ def test_optimization_artifacts_aggregate_samples_and_write_rankings(tmp_path: P
     assert "slow_period" in html
     assert "交易列表" in html
     assert "renderDetails(row)" in html
-    assert 'id="detail-panel"' in html
+    assert "applyColumnWidths()" in html
+    assert "computeColumnWidth(spec)" in html
+    assert 'class="drawer-row"' in html
+    assert 'id="prev-page"' in html
+    assert 'id="next-page"' in html
+    assert "第 ${currentPage} / ${totalPages} 页" in html
     assert "持仓K线数" in html
+    assert "退场原因" in html
+    assert "进场信号" in html
+    assert "出场信号" in html
+    assert "框架止损退出" in html
+    assert "renderReportPath(sample.report_path)" in html
+    assert "renderTimeCell(trade.entry_signal_time, trade.entry)" in html
+    assert "renderTimeCell(trade.exit_signal_time, trade.exit)" in html
+    assert "sample-table compact-table" in html
+    assert 'class="sample-columns"' in html
+    assert "columnWidths = [56, 52, 172, 84, 172, 84, 84, 84, 78, 148]" in html
+    assert "样例 #" not in html
+    assert "dataset_ref:" not in html
     assert "BTCUSDT" in html
     assert "1d" in html
     assert "param-a" in html
@@ -254,3 +290,52 @@ def test_optimization_artifacts_preserve_structured_mixed_result_reasons():
     assert artifacts["manifest"]["skipped_samples"] == 1
     assert artifacts["manifest"]["aborted"] is True
     assert artifacts["failures"] == failures
+
+
+def test_backtest_report_enrichment_uses_tradeid_mapping_when_broker_ref_differs():
+    analyzer = BacktestReportAnalyzer.__new__(BacktestReportAnalyzer)
+    analyzer._trades = [
+        {
+            "id": 7,
+            "broker_ref": 58,
+            "entry_signal_time": None,
+            "exit_signal_time": None,
+            "exit_reason_code": None,
+            "exit_reason_label": None,
+            "exit_reason_detail": None,
+            "stop_multiple_r": None,
+            "risk_reward_ratio": None,
+            "framework_initial_stop_price": None,
+            "framework_final_stop_price": None,
+            "framework_tp_price": None,
+            "strategy_suggested_stop_price": None,
+        }
+    ]
+    analyzer.strategy = SimpleNamespace(
+        _trades_by_id={
+            7: SimpleNamespace(
+                exit_reason_code="framework_stop",
+                exit_reason_label="框架止损退出",
+                exit_reason_detail="触发框架止损，止损位达到 -1.00R",
+                stop_multiple_r=-1.0,
+                exit_risk_reward_ratio=None,
+                initial_stop_price=98.0,
+                stop_price=99.5,
+                tp_price=112.0,
+                signal_metadata={"signal_time": "2025-01-01T00:00:00", "suggested_stop_price": 90.0},
+                exit_key_kline_ref=SimpleNamespace(dt=SimpleNamespace(isoformat=lambda: "2025-01-03T00:00:00")),
+            )
+        }
+    )
+
+    analyzer._enrich_trade_records_from_contexts()
+
+    assert analyzer._trades[0]["entry_signal_time"] == "2025-01-01T00:00:00"
+    assert analyzer._trades[0]["exit_signal_time"] == "2025-01-03T00:00:00"
+    assert analyzer._trades[0]["exit_reason_code"] == "framework_stop"
+    assert analyzer._trades[0]["exit_reason_label"] == "框架止损退出"
+    assert analyzer._trades[0]["stop_multiple_r"] == -1.0
+    assert analyzer._trades[0]["framework_initial_stop_price"] == 98.0
+    assert analyzer._trades[0]["framework_final_stop_price"] == 99.5
+    assert analyzer._trades[0]["framework_tp_price"] == 112.0
+    assert analyzer._trades[0]["strategy_suggested_stop_price"] == 90.0

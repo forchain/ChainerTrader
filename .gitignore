@@ -142,3 +142,4 @@ tests/output
 reports/
 .sw*
 .worktrees/
+tmp
