@@ -3,7 +3,7 @@ import contextvars
 from asyncio import Queue
 from datetime import datetime, timedelta
 
-from trader.common.common import MIN_RECORDS_NUM, sleep, sleep_loop
+from trader.common.common import sleep, sleep_loop
 from trader.common.config import Config
 from trader.common.logger import Logger
 from trader.common.message import new_stat_msg
@@ -36,9 +36,7 @@ from trader.strategy.strategy import parse_strategies
 from trader.strategy.trader_result import TraderResult
 from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig
-from trader.task.update_klines_task import download_range
 from trader.utils.operate import OperateType
-from trader.utils.symbol_interval import add_time_duration
 
 DOWLOAD_SPACE_TIME = 5
 REALTIME_STREAM_QUEUE_TIMEOUT_SECONDS = 1.0
@@ -112,10 +110,6 @@ class TraderTask(BaseTask):
         # if self.exchange.spot_ws_client:
         #    self.exchange.spot_ws_client.klines(symbol=self.symbol_interval.symbol, interval=self.symbol_interval.interval.value, limit=1)
 
-        if getattr(self.tcfg, "live_data_mode", "polling") == "realtime":
-            await self.start_realtime(queue, strategy)
-            return
-
         if not self.is_manual_notify_mode():
             commission = self.exchange.get_account_commission(self.tcfg.symbol_interval.symbol())
             if commission:
@@ -123,76 +117,7 @@ class TraderTask(BaseTask):
                 self.log.info(f"set commission for trader task config:{self.cfg.commission}")
                 self.ts.commission = commission
 
-        collection_name = self.tcfg.symbol_interval.name()
-        while not self.quit.is_set():
-            end_time = int(datetime.now().timestamp())
-            ret = await download_range(
-                self.name(),
-                self.log,
-                self.db_manager,
-                collection_name,
-                self.exchange,
-                self.tcfg.symbol_interval,
-                self.tcfg.start_time,
-                end_time,
-                self.quit,
-            )
-            if not ret:
-                break
-
-            kls_cache = await _maybe_await(self.db_manager.kline.get_latest_klines(self.tcfg.symbol_interval.name(), self.cfg.window))
-            if len(kls_cache) <= MIN_RECORDS_NUM:
-                await sleep(self.log, 2, "Try again...")
-                continue
-            latest_kline = kls_cache[len(kls_cache) - 1]
-
-            if self.is_manual_notify_mode():
-                position = self._manual_position
-                free_cash = self._manual_cash
-            else:
-                position = self.exchange.get_account_balance(self.tcfg.symbol_interval.sy.base)
-                free_cash = self.tcfg.free
-
-            node = Node(
-                self.tcfg.strategy_name(),
-                strategy,
-                self.tcfg.symbol_interval,
-                self.cfg,
-                self.log,
-                BinanceData(kls_cache),
-                position,
-                True,
-                free_cash,
-            )
-            ret = node.start()
-            if ret is None:
-                continue
-
-            await self.process_result(ret)
-
-            manual_trade_notifications = []
-            if self.is_manual_notify_mode():
-                manual_trade_notifications = self.handle_manual_trade_notifications(ret)
-            else:
-                self.operate_exchange(ret, position)
-
-            stat = TraderStat(self.tcfg.strategy_name(), self.tcfg.symbol_interval.name(), self.ts)
-            stat.manual_trade_notifications = manual_trade_notifications
-            await queue.put(
-                new_stat_msg(
-                    stat,
-                    self.tcfg.id,
-                )
-            )
-
-            while not self.quit.is_set():
-                next_time = add_time_duration(latest_kline.open_time, self.tcfg.symbol_interval.interval, 1)
-                if next_time < int(datetime.now().timestamp()):
-                    break
-                else:
-                    dist = next_time - int(datetime.now().timestamp())
-                    dist += 1
-                    await sleep_loop(self.log, dist, self.quit, "next K-line...")
+        await self.start_realtime(queue, strategy)
 
     async def start_realtime(self, queue: Queue, strategy):
         async def publish_event(event):

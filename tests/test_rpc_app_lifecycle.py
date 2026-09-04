@@ -59,6 +59,41 @@ async def test_rpc_app_processes_initial_task_message(monkeypatch):
 
 
 @pytest.mark.anyio
+async def test_rpc_app_api_mode_ignores_startup_tasks_and_startup_admin(monkeypatch):
+    app = RpcApp(
+        Config(
+            tasks='[{"task_type":"DEBUG","limit":1}]',
+            api="0.0.0.0:8000",
+        )
+    )
+    process_calls = []
+
+    class FakeDbManager:
+        started = True
+
+        async def start(self):
+            raise AssertionError("db.start should not be called")
+
+        async def get_startup_admin(self):
+            raise AssertionError("startup admin should not be requested in API mode")
+
+    monkeypatch.setattr(app.notify_mgr, "start", lambda: None)
+    monkeypatch.setattr(
+        app.task_manager,
+        "start",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("startup tasks should be ignored in API mode")),
+    )
+    monkeypatch.setattr(app, "process", lambda msgs: process_calls.append(list(msgs)))
+    app.db_manager = FakeDbManager()
+
+    result = await app.start_async()
+
+    assert result is True
+    assert process_calls == [[]]
+    assert not hasattr(app, "startup_self_check")
+
+
+@pytest.mark.anyio
 async def test_rpc_app_waits_until_handler_ready(monkeypatch):
     app = RpcApp(Config(tasks="[]"))
     ready_reached = asyncio.Event()
@@ -256,6 +291,237 @@ async def test_rpc_app_recovery_limits_concurrent_task_starts(monkeypatch):
 
     release_recover.set()
     await asyncio.wait_for(app.recovery_task, timeout=1)
+
+
+@pytest.mark.anyio
+async def test_rpc_app_recovery_fails_loudly_for_legacy_persisted_live_config(monkeypatch):
+    app = RpcApp(Config(tasks="[]", api="0.0.0.0:8000"))
+    running_state = type(
+        "State",
+        (),
+        {
+            "id": 21,
+            "state": type("TaskState", (), {"name": "RUNNING"})(),
+            "config_json": (
+                '[{"task_type":"TRADER","symbol":"BTC-USDT","interval":"1m","strategy":"macd_triple_divergence",'
+                '"live_execution_mode":"small_live_auto","live_data_mode":"realtime","run_id":"run-21"}]'
+            ),
+            "user_id": 7,
+        },
+    )()
+    class FakeTaskRepo:
+        async def get_all_tasks(self):
+            return [running_state]
+
+    class FakeDbManager:
+        started = True
+        task = FakeTaskRepo()
+
+    monkeypatch.setattr(app.notify_mgr, "start", lambda: None)
+    monkeypatch.setattr(
+        app,
+        "process",
+        lambda msgs: (
+            setattr(app, "queue", asyncio.Queue()),
+            app._mark_handler_ready(),
+            app._schedule_recovery_tasks(),
+        ),
+    )
+    monkeypatch.setattr(app.task_manager, "start", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        "trader.app.app.parse_task_config",
+        lambda _cfg: (_ for _ in ()).throw(AssertionError("legacy rows must be rejected before parse_task_config")),
+    )
+    app.db_manager = FakeDbManager()
+
+    result = await app.start_async()
+
+    assert result is True
+    with pytest.raises(RuntimeError, match="persisted live task\\(21\\) recovery failed"):
+        await asyncio.wait_for(app.recovery_task, timeout=1)
+
+
+@pytest.mark.anyio
+async def test_rpc_app_recovery_fails_loudly_for_unmigratable_manual_notify_polling(monkeypatch):
+    app = RpcApp(Config(tasks="[]", api="0.0.0.0:8000"))
+    running_state = type(
+        "State",
+        (),
+        {
+            "id": 23,
+            "state": type("TaskState", (), {"name": "RUNNING"})(),
+            "config_json": (
+                '[{"task_type":"TRADER","symbol":"BTC-USDT","interval":"1m","strategy":"macd_triple_divergence",'
+                '"live_execution_mode":"manual_notify","live_data_mode":"polling","run_id":"run-23"}]'
+            ),
+            "user_id": 7,
+        },
+    )()
+
+    class FakeTaskRepo:
+        async def get_all_tasks(self):
+            return [running_state]
+
+    class FakeDbManager:
+        started = True
+        task = FakeTaskRepo()
+
+    monkeypatch.setattr(app.notify_mgr, "start", lambda: None)
+    monkeypatch.setattr(
+        app,
+        "process",
+        lambda msgs: (
+            setattr(app, "queue", asyncio.Queue()),
+            app._mark_handler_ready(),
+            app._schedule_recovery_tasks(),
+        ),
+    )
+    monkeypatch.setattr(app.task_manager, "start", lambda *_args, **_kwargs: None)
+    app.db_manager = FakeDbManager()
+
+    result = await app.start_async()
+
+    assert result is True
+    with pytest.raises(RuntimeError, match="persisted live task\\(23\\) recovery failed"):
+        await asyncio.wait_for(app.recovery_task, timeout=1)
+
+
+@pytest.mark.anyio
+async def test_rpc_app_recovery_fails_loudly_for_malformed_running_config_json(monkeypatch):
+    app = RpcApp(Config(tasks="[]", api="0.0.0.0:8000"))
+    running_state = type(
+        "State",
+        (),
+        {
+            "id": 24,
+            "state": type("TaskState", (), {"name": "RUNNING"})(),
+            "config_json": '{"task_type":"TRADER"',
+            "user_id": 7,
+        },
+    )()
+
+    class FakeTaskRepo:
+        async def get_all_tasks(self):
+            return [running_state]
+
+    class FakeDbManager:
+        started = True
+        task = FakeTaskRepo()
+
+    monkeypatch.setattr(app.notify_mgr, "start", lambda: None)
+    monkeypatch.setattr(
+        app,
+        "process",
+        lambda msgs: (
+            setattr(app, "queue", asyncio.Queue()),
+            app._mark_handler_ready(),
+            app._schedule_recovery_tasks(),
+        ),
+    )
+    monkeypatch.setattr(app.task_manager, "start", lambda *_args, **_kwargs: None)
+    app.db_manager = FakeDbManager()
+
+    result = await app.start_async()
+
+    assert result is True
+    with pytest.raises(RuntimeError, match="persisted running task\\(24\\) recovery failed"):
+        await asyncio.wait_for(app.recovery_task, timeout=1)
+
+
+@pytest.mark.anyio
+async def test_rpc_app_recovery_fails_loudly_for_missing_running_config_json(monkeypatch):
+    app = RpcApp(Config(tasks="[]", api="0.0.0.0:8000"))
+    running_state = type(
+        "State",
+        (),
+        {
+            "id": 25,
+            "state": type("TaskState", (), {"name": "RUNNING"})(),
+            "config_json": None,
+            "user_id": 7,
+        },
+    )()
+
+    class FakeTaskRepo:
+        async def get_all_tasks(self):
+            return [running_state]
+
+    class FakeDbManager:
+        started = True
+        task = FakeTaskRepo()
+
+    monkeypatch.setattr(app.notify_mgr, "start", lambda: None)
+    monkeypatch.setattr(
+        app,
+        "process",
+        lambda msgs: (
+            setattr(app, "queue", asyncio.Queue()),
+            app._mark_handler_ready(),
+            app._schedule_recovery_tasks(),
+        ),
+    )
+    monkeypatch.setattr(app.task_manager, "start", lambda *_args, **_kwargs: None)
+    app.db_manager = FakeDbManager()
+
+    result = await app.start_async()
+
+    assert result is True
+    with pytest.raises(RuntimeError, match="persisted running task\\(25\\) is missing config_json"):
+        await asyncio.wait_for(app.recovery_task, timeout=1)
+
+
+@pytest.mark.anyio
+async def test_rpc_app_recovery_accepts_already_migrated_persisted_live_config(monkeypatch):
+    app = RpcApp(Config(tasks="[]", api="0.0.0.0:8000"))
+    running_state = type(
+        "State",
+        (),
+        {
+            "id": 22,
+            "state": type("TaskState", (), {"name": "RUNNING"})(),
+            "config_json": (
+                '[{"task_type":"TRADER","symbol":"BTC-USDT","interval":"1m","strategy":"macd_triple_divergence",'
+                '"live_execution_mode":"auto_trade","run_id":"run-22"}]'
+            ),
+            "user_id": 8,
+        },
+    )()
+    recovered_calls = []
+
+    class FakeTaskRepo:
+        async def get_all_tasks(self):
+            return [running_state]
+
+    class FakeDbManager:
+        started = True
+        task = FakeTaskRepo()
+
+    monkeypatch.setattr(app.notify_mgr, "start", lambda: None)
+    monkeypatch.setattr(
+        app,
+        "process",
+        lambda msgs: (
+            setattr(app, "queue", asyncio.Queue()),
+            app._mark_handler_ready(),
+            app._schedule_recovery_tasks(),
+        ),
+    )
+    monkeypatch.setattr(app.task_manager, "start", lambda *_args, **_kwargs: None)
+    async def fake_recover_task(taskc, queue):
+        recovered_calls.append((taskc.id, taskc.user_id, taskc.run_id))
+
+    monkeypatch.setattr(
+        app.task_manager,
+        "recover_task",
+        fake_recover_task,
+    )
+    app.db_manager = FakeDbManager()
+
+    result = await app.start_async()
+
+    assert result is True
+    await asyncio.wait_for(app.recovery_task, timeout=1)
+    assert recovered_calls == [(22, 8, "run-22")]
 
 
 async def _recover_task(taskc, queue, started_event: asyncio.Event, release_event: asyncio.Event):

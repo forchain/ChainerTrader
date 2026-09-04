@@ -28,8 +28,6 @@ AUTO_EXECUTION_EVENT_TYPE = "auto_execution_outcome"
 
 class LiveExecutionMode(str, Enum):
     MANUAL_NOTIFY = MANUAL_NOTIFY_MODE
-    SMALL_LIVE_AUTO = "small_live_auto"
-    FULL_LIVE_AUTO = "full_live_auto"
     AUTO_TRADE = "auto_trade"
 
 
@@ -46,9 +44,8 @@ class AutoExecutionStatus(str, Enum):
     FAILED = "failed"
 
 
-REAL_AUTO_MODES = {LiveExecutionMode.SMALL_LIVE_AUTO.value, LiveExecutionMode.FULL_LIVE_AUTO.value, LiveExecutionMode.AUTO_TRADE.value}
-STAGED_AUTO_MODES = set(REAL_AUTO_MODES)
-SUPPORTED_LIVE_EXECUTION_MODES = {LiveExecutionMode.MANUAL_NOTIFY.value, *STAGED_AUTO_MODES}
+REAL_AUTO_MODES = {LiveExecutionMode.AUTO_TRADE.value}
+SUPPORTED_LIVE_EXECUTION_MODES = {LiveExecutionMode.MANUAL_NOTIFY.value, LiveExecutionMode.AUTO_TRADE.value}
 SUPPORTED_MARGIN_BORROW_BLOCK_POLICIES = {
     MarginBorrowBlockPolicy.SKIP_CONTINUE.value,
     MarginBorrowBlockPolicy.REPAY_SINGLE.value,
@@ -110,10 +107,6 @@ class AutoExecutionOutcome:
 def normalize_live_execution_mode(value: str | LiveExecutionMode | None) -> str:
     raw = value.value if isinstance(value, LiveExecutionMode) else value
     mode = str(raw or LiveExecutionMode.AUTO_TRADE.value).strip().lower()
-    if mode in ("manual", "notify"):
-        mode = LiveExecutionMode.MANUAL_NOTIFY.value
-    if mode == "paper_auto":
-        raise ValueError("paper_auto is no longer supported; use backtest mode for testing or manual_notify for no-order realtime operation")
     if mode not in SUPPORTED_LIVE_EXECUTION_MODES:
         raise ValueError(f"unsupported live_execution_mode: {raw}")
     return mode
@@ -142,10 +135,6 @@ def normalize_margin_borrow_block_policy(value: str | MarginBorrowBlockPolicy | 
 
 def is_manual_notify_mode(value: str | None) -> bool:
     return normalize_live_execution_mode(value) == LiveExecutionMode.MANUAL_NOTIFY.value
-
-
-def is_paper_auto_mode(value: str | None) -> bool:
-    return False
 
 
 def is_real_auto_mode(value: str | None) -> bool:
@@ -177,7 +166,7 @@ class AutoExecutionRouter:
         self.cfg = cfg
         self.log = log
         self._reserved_budget_remaining = self._initial_reserved_budget()
-        self.mode = normalize_live_execution_mode(getattr(tcfg, "live_execution_mode", None))
+        self.mode = self._resolved_runtime_mode()
         self.margin_borrow_block_policy = normalize_margin_borrow_block_policy(
             getattr(tcfg, "live_margin_borrow_block_policy", None)
         )
@@ -187,6 +176,9 @@ class AutoExecutionRouter:
         self._protection_order_ids_by_trade: dict[str, str] = {}
         self._seen_operation_ids: set[str] = set()
         self.outcomes: list[AutoExecutionOutcome] = []
+
+    def _resolved_runtime_mode(self) -> str:
+        return normalize_live_execution_mode(getattr(self.tcfg, "live_execution_mode", None))
 
     @property
     def market(self) -> str:
@@ -375,21 +367,33 @@ class AutoExecutionRouter:
         return self._record(self._outcome(op, AutoExecutionStatus.SKIPPED, reason="unsupported_operation"))
 
     def _requested_notional(self) -> float:
-        if self.mode == LiveExecutionMode.SMALL_LIVE_AUTO.value:
-            return float(getattr(self.tcfg, "live_trade_max_notional", 0.0) or 0.0)
+        max_notional = float(getattr(self.tcfg, "live_trade_max_notional", 0.0) or 0.0)
+        if max_notional > 0:
+            return max_notional
         if getattr(self.tcfg, "free", -1) >= 0:
             return float(self.tcfg.free)
         return float(getattr(self.cfg, "cash", 0.0) or 0.0)
 
     def _route_real_long(self, op, price: float) -> AutoExecutionOutcome:
-        notional = self._requested_notional()
-        if self.mode == LiveExecutionMode.SMALL_LIVE_AUTO.value and notional <= 0:
-            return self._record(self._outcome(op, AutoExecutionStatus.SKIPPED, reason="invalid_live_trade_max_notional"))
-        if notional <= 0 or not isfinite(notional):
+        requested_notional = self._requested_notional()
+        if requested_notional <= 0 or not isfinite(requested_notional):
             return self._record(self._outcome(op, AutoExecutionStatus.SKIPPED, reason="invalid_notional"))
+        requested_quantity = requested_notional / price
+        margin_path = self._uses_margin_for_long_path()
+        leveraged_path = self._is_leverage_capped_entry_path(OperateType.BUY)
+        notional = self._apply_leverage_cap(requested_notional) if leveraged_path else requested_notional
         quantity = notional / price
         if quantity <= 0 or not isfinite(quantity):
-            return self._record(self._outcome(op, AutoExecutionStatus.SKIPPED, reason="invalid_quantity"))
+            reason = "insufficient_leveraged_capital" if leveraged_path else "invalid_quantity"
+            return self._record(
+                self._outcome(
+                    op,
+                    AutoExecutionStatus.SKIPPED,
+                    reason=reason,
+                    requested_notional=requested_notional,
+                    requested_quantity=requested_quantity,
+                )
+            )
         constraint_reason = self._exchange_constraint_reason(op, quantity, notional)
         if constraint_reason:
             return self._record(
@@ -397,8 +401,8 @@ class AutoExecutionRouter:
                     op,
                     AutoExecutionStatus.SKIPPED,
                     reason=constraint_reason,
-                    requested_notional=notional,
-                    requested_quantity=quantity,
+                    requested_notional=requested_notional,
+                    requested_quantity=requested_quantity,
                     effective_notional=notional,
                     effective_quantity=quantity,
                 )
@@ -410,28 +414,36 @@ class AutoExecutionRouter:
                     op,
                     AutoExecutionStatus.SKIPPED,
                     reason=reserved_reason,
-                    requested_notional=notional,
-                    requested_quantity=quantity,
+                    requested_notional=requested_notional,
+                    requested_quantity=requested_quantity,
                     effective_notional=notional,
                     effective_quantity=quantity,
                 )
             )
-        if self.requires_short_capability and self._margin_ready():
+        if margin_path:
             precheck = self._margin_borrow_precheck(op, OperateType.BUY, notional, quantity)
             if precheck is not None:
+                self._log_margin_borrow_rejection(op, precheck)
                 return self._record(
                     self._outcome(
                         op,
                         AutoExecutionStatus.SKIPPED,
                         reason=self._margin_precheck_reason(precheck),
-                        requested_notional=notional,
-                        requested_quantity=quantity,
+                        requested_notional=requested_notional,
+                        requested_quantity=requested_quantity,
                         effective_notional=notional,
                         effective_quantity=quantity,
                         margin_borrow_control=precheck,
                     )
                 )
-            outcome = self._submit_margin(op, notional, quantity, OperateType.BUY)
+            outcome = self._submit_margin(
+                op,
+                notional,
+                quantity,
+                OperateType.BUY,
+                requested_notional=requested_notional,
+                requested_quantity=requested_quantity,
+            )
             return outcome
         cash = self._balance(self.tcfg.symbol_interval.sy.quote)
         if cash < notional:
@@ -440,13 +452,20 @@ class AutoExecutionRouter:
                     op,
                     AutoExecutionStatus.SKIPPED,
                     reason="insufficient_quote_balance",
-                    requested_notional=notional,
-                    requested_quantity=quantity,
+                    requested_notional=requested_notional,
+                    requested_quantity=requested_quantity,
                     effective_notional=notional,
                     effective_quantity=quantity,
                 )
             )
-        outcome = self._submit_spot(op, notional, quantity, op.otype)
+        outcome = self._submit_spot(
+            op,
+            notional,
+            quantity,
+            op.otype,
+            requested_notional=requested_notional,
+            requested_quantity=requested_quantity,
+        )
         if outcome.status == AutoExecutionStatus.SUBMITTED and op.otype in (OperateType.BUY, OperateType.LONG):
             self.real_long_position += quantity
             self._mark_reserved_budget_spent(notional)
@@ -470,7 +489,7 @@ class AutoExecutionRouter:
                     effective_quantity=base_balance,
                 )
             )
-        if self.requires_short_capability and self._margin_ready():
+        if self._uses_margin_for_long_path():
             return self._submit_margin(op, notional, base_balance, OperateType.SELL)
         outcome = self._submit_spot(op, notional, base_balance, OperateType.SELL)
         if outcome.status == AutoExecutionStatus.SUBMITTED and self.real_long_position > 0:
@@ -478,27 +497,35 @@ class AutoExecutionRouter:
         return outcome
 
     def _route_real_short(self, op, price: float) -> AutoExecutionOutcome:
-        notional = self._requested_notional()
+        requested_notional = self._requested_notional()
         if not self.requires_short_capability:
-            quantity = notional / price if price > 0 and notional > 0 else 0.0
+            quantity = requested_notional / price if price > 0 and requested_notional > 0 else 0.0
             return self._record(
                 self._outcome(
                     op,
                     AutoExecutionStatus.SKIPPED,
                     reason="short_capability_not_required",
-                    requested_notional=notional,
+                    requested_notional=requested_notional,
                     requested_quantity=quantity,
-                    effective_notional=notional if notional > 0 else 0.0,
+                    effective_notional=requested_notional if requested_notional > 0 else 0.0,
                     effective_quantity=quantity,
                 )
             )
-        if self.mode == LiveExecutionMode.SMALL_LIVE_AUTO.value and notional <= 0:
-            return self._record(self._outcome(op, AutoExecutionStatus.SKIPPED, reason="invalid_live_trade_max_notional"))
         if not self._margin_ready():
             return self._record(self._outcome(op, AutoExecutionStatus.SKIPPED, reason="margin_not_ready"))
+        requested_quantity = requested_notional / price if requested_notional > 0 else 0.0
+        notional = self._apply_leverage_cap(requested_notional) if self._is_leverage_capped_entry_path(OperateType.SHORT) else requested_notional
         quantity = notional / price
         if quantity <= 0 or not isfinite(quantity):
-            return self._record(self._outcome(op, AutoExecutionStatus.SKIPPED, reason="invalid_quantity"))
+            return self._record(
+                self._outcome(
+                    op,
+                    AutoExecutionStatus.SKIPPED,
+                    reason="insufficient_leveraged_capital",
+                    requested_notional=requested_notional,
+                    requested_quantity=requested_quantity,
+                )
+            )
         constraint_reason = self._exchange_constraint_reason(op, quantity, notional)
         if constraint_reason:
             return self._record(
@@ -506,27 +533,35 @@ class AutoExecutionRouter:
                     op,
                     AutoExecutionStatus.SKIPPED,
                     reason=constraint_reason,
-                    requested_notional=notional,
-                    requested_quantity=quantity,
+                    requested_notional=requested_notional,
+                    requested_quantity=requested_quantity,
                     effective_notional=notional,
                     effective_quantity=quantity,
                 )
             )
         precheck = self._margin_borrow_precheck(op, OperateType.SHORT, notional, quantity)
         if precheck is not None:
+            self._log_margin_borrow_rejection(op, precheck)
             return self._record(
                 self._outcome(
                     op,
                     AutoExecutionStatus.SKIPPED,
                     reason=self._margin_precheck_reason(precheck),
-                    requested_notional=notional,
-                    requested_quantity=quantity,
+                    requested_notional=requested_notional,
+                    requested_quantity=requested_quantity,
                     effective_notional=notional,
                     effective_quantity=quantity,
                     margin_borrow_control=precheck,
                 )
             )
-        outcome = self._submit_margin(op, notional, quantity, OperateType.SHORT)
+        outcome = self._submit_margin(
+            op,
+            notional,
+            quantity,
+            OperateType.SHORT,
+            requested_notional=requested_notional,
+            requested_quantity=requested_quantity,
+        )
         if outcome.status == AutoExecutionStatus.SUBMITTED:
             self.real_short_position += quantity
             self._mark_reserved_budget_spent(notional)
@@ -590,6 +625,46 @@ class AutoExecutionRouter:
         if checker is None:
             return hasattr(self.exchange, "new_margin_order")
         return bool(checker())
+
+    def _uses_margin_for_long_path(self) -> bool:
+        return self.requires_short_capability and self._margin_ready()
+
+    def _is_leverage_capped_entry_path(self, order_type: OperateType) -> bool:
+        if order_type not in (OperateType.BUY, OperateType.LONG, OperateType.SHORT):
+            return False
+        return self._uses_margin_for_long_path()
+
+    def _apply_leverage_cap(self, requested_notional: float) -> float:
+        leverage_ceiling = self._leveraged_available_capital() * self._leverage_ratio()
+        return min(float(requested_notional), float(leverage_ceiling))
+
+    def _leveraged_available_capital(self) -> float:
+        quote_balance = self._read_quote_balance_for_leverage_cap()
+        if quote_balance is not None:
+            return max(float(quote_balance), 0.0)
+        if getattr(self.tcfg, "free", -1) >= 0:
+            return max(float(self.tcfg.free), 0.0)
+        return max(float(getattr(self.cfg, "cash", 0.0) or 0.0), 0.0)
+
+    def _read_quote_balance_for_leverage_cap(self) -> float | None:
+        if self.exchange is None or not hasattr(self.exchange, "get_account_balance"):
+            return None
+        try:
+            balance = self._balance(self.tcfg.symbol_interval.sy.quote)
+        except Exception:
+            return None
+        if not isfinite(balance):
+            return None
+        return float(balance)
+
+    def _leverage_ratio(self) -> float:
+        try:
+            ratio = float(getattr(self.cfg, "leverage_ratio", 1.0) or 1.0)
+        except (TypeError, ValueError):
+            return 1.0
+        if not isfinite(ratio) or ratio < 1.0:
+            return 1.0
+        return ratio
 
     def _exchange_constraint_reason(self, op, quantity: float, notional: float) -> str | None:
         validator = getattr(self.exchange, "validate_order_size", None) if self.exchange is not None else None
@@ -699,7 +774,34 @@ class AutoExecutionRouter:
             f"borrow_limit={precheck.get('borrow_limit')}"
         )
 
-    def _submit_spot(self, op, notional: float, quantity: float, order_type: OperateType) -> AutoExecutionOutcome:
+    def _log_margin_borrow_rejection(self, op, precheck: dict[str, Any]) -> None:
+        if self.log is None:
+            return
+        self.log.warning(
+            "margin borrow check rejected execution: "
+            f"task_id={getattr(self.tcfg, 'id', None)} "
+            f"operation={getattr(getattr(op, 'otype', None), 'name', None)} "
+            f"asset={precheck.get('asset')} "
+            f"shortfall={precheck.get('estimated_shortfall')} "
+            f"balance={precheck.get('balance')} "
+            f"max_borrowable={precheck.get('max_borrowable')} "
+            f"borrow_limit={precheck.get('borrow_limit')} "
+            f"symbol={precheck.get('symbol')} "
+            f"policy={precheck.get('policy')}"
+        )
+
+    def _submit_spot(
+        self,
+        op,
+        notional: float,
+        quantity: float,
+        order_type: OperateType,
+        *,
+        requested_notional: float | None = None,
+        requested_quantity: float | None = None,
+    ) -> AutoExecutionOutcome:
+        requested_notional = float(notional if requested_notional is None else requested_notional)
+        requested_quantity = float(quantity if requested_quantity is None else requested_quantity)
         side = ExecutionSide.LONG
         try:
             selection = select_order_semantics(
@@ -716,8 +818,8 @@ class AutoExecutionRouter:
                     op,
                     AutoExecutionStatus.SKIPPED,
                     reason=str(exc),
-                    requested_notional=notional,
-                    requested_quantity=quantity,
+                    requested_notional=requested_notional,
+                    requested_quantity=requested_quantity,
                     effective_notional=notional,
                     effective_quantity=quantity,
                 )
@@ -739,8 +841,8 @@ class AutoExecutionRouter:
                     op,
                     AutoExecutionStatus.FAILED,
                     reason=str(exc),
-                    requested_notional=notional,
-                    requested_quantity=quantity,
+                    requested_notional=requested_notional,
+                    requested_quantity=requested_quantity,
                     effective_notional=notional,
                     effective_quantity=quantity,
                 )
@@ -769,8 +871,8 @@ class AutoExecutionRouter:
                 op,
                 status,
                 reason=reason,
-                requested_notional=notional,
-                requested_quantity=quantity,
+                requested_notional=requested_notional,
+                requested_quantity=requested_quantity,
                 effective_notional=notional,
                 effective_quantity=quantity,
                 exchange_order=exchange_order,
@@ -838,7 +940,18 @@ class AutoExecutionRouter:
             ).with_native_protection(result.accepted)
         )
 
-    def _submit_margin(self, op, notional: float, quantity: float, order_type: OperateType) -> AutoExecutionOutcome:
+    def _submit_margin(
+        self,
+        op,
+        notional: float,
+        quantity: float,
+        order_type: OperateType,
+        *,
+        requested_notional: float | None = None,
+        requested_quantity: float | None = None,
+    ) -> AutoExecutionOutcome:
+        requested_notional = float(notional if requested_notional is None else requested_notional)
+        requested_quantity = float(quantity if requested_quantity is None else requested_quantity)
         try:
             execution_side = ExecutionSide.LONG if order_type in (OperateType.BUY, OperateType.SELL) else ExecutionSide.SHORT
             selection = select_order_semantics(
@@ -864,6 +977,8 @@ class AutoExecutionRouter:
                     gateway=gateway,
                     selection=selection,
                     initial_result=result,
+                    requested_notional=requested_notional,
+                    requested_quantity=requested_quantity,
                 )
             protection_result = gateway.place_protection(selection.risk) if result.accepted and selection.risk is not None else None
             fail_safe_result = self._fail_safe_close(gateway, selection.order, protection_result)
@@ -873,8 +988,8 @@ class AutoExecutionRouter:
                     op,
                     AutoExecutionStatus.SKIPPED,
                     reason=str(exc),
-                    requested_notional=notional,
-                    requested_quantity=quantity,
+                    requested_notional=requested_notional,
+                    requested_quantity=requested_quantity,
                     effective_notional=notional,
                     effective_quantity=quantity,
                 )
@@ -885,8 +1000,8 @@ class AutoExecutionRouter:
                     op,
                     AutoExecutionStatus.FAILED,
                     reason=str(exc),
-                    requested_notional=notional,
-                    requested_quantity=quantity,
+                    requested_notional=requested_notional,
+                    requested_quantity=requested_quantity,
                     effective_notional=notional,
                     effective_quantity=quantity,
                 )
@@ -914,8 +1029,8 @@ class AutoExecutionRouter:
                 op,
                 status,
                 reason=reason,
-                requested_notional=notional,
-                requested_quantity=quantity,
+                requested_notional=requested_notional,
+                requested_quantity=requested_quantity,
                 effective_notional=notional,
                 effective_quantity=quantity,
                 exchange_order={"orderId": result.gateway_order_id} if result.gateway_order_id is not None else None,
@@ -933,6 +1048,8 @@ class AutoExecutionRouter:
         gateway: BinanceLiveExecutionGateway,
         selection,
         initial_result,
+        requested_notional: float,
+        requested_quantity: float,
     ) -> AutoExecutionOutcome:
         policy = self.margin_borrow_block_policy
         base_reason = f"margin_borrow_blocked_-3006 policy={policy}"
@@ -956,8 +1073,8 @@ class AutoExecutionRouter:
                     op,
                     AutoExecutionStatus.FAILED,
                     reason=base_reason,
-                    requested_notional=notional,
-                    requested_quantity=quantity,
+                    requested_notional=requested_notional,
+                    requested_quantity=requested_quantity,
                     effective_notional=notional,
                     effective_quantity=quantity,
                     exchange_order={"orderId": initial_result.gateway_order_id} if initial_result.gateway_order_id is not None else None,
@@ -972,8 +1089,8 @@ class AutoExecutionRouter:
                     op,
                     AutoExecutionStatus.SKIPPED,
                     reason=base_reason,
-                    requested_notional=notional,
-                    requested_quantity=quantity,
+                    requested_notional=requested_notional,
+                    requested_quantity=requested_quantity,
                     effective_notional=notional,
                     effective_quantity=quantity,
                     execution_events=initial_events,
@@ -989,8 +1106,8 @@ class AutoExecutionRouter:
                     op,
                     AutoExecutionStatus.SKIPPED,
                     reason=f"{base_reason} auto_repay_unavailable",
-                    requested_notional=notional,
-                    requested_quantity=quantity,
+                    requested_notional=requested_notional,
+                    requested_quantity=requested_quantity,
                     effective_notional=notional,
                     effective_quantity=quantity,
                     execution_events=initial_events,
@@ -1007,8 +1124,8 @@ class AutoExecutionRouter:
                     op,
                     AutoExecutionStatus.SKIPPED,
                     reason=f"{base_reason} auto_repay_retry_failed",
-                    requested_notional=notional,
-                    requested_quantity=quantity,
+                    requested_notional=requested_notional,
+                    requested_quantity=requested_quantity,
                     effective_notional=notional,
                     effective_quantity=quantity,
                     execution_events=initial_events + retry_events,
@@ -1022,8 +1139,8 @@ class AutoExecutionRouter:
                     op,
                     AutoExecutionStatus.FAILED,
                     reason=f"{base_reason} retry_non_borrow_failure",
-                    requested_notional=notional,
-                    requested_quantity=quantity,
+                    requested_notional=requested_notional,
+                    requested_quantity=requested_quantity,
                     effective_notional=notional,
                     effective_quantity=quantity,
                     execution_events=initial_events + retry_events,
@@ -1051,8 +1168,8 @@ class AutoExecutionRouter:
                 op,
                 status,
                 reason=reason,
-                requested_notional=notional,
-                requested_quantity=quantity,
+                requested_notional=requested_notional,
+                requested_quantity=requested_quantity,
                 effective_notional=notional,
                 effective_quantity=quantity,
                 exchange_order={"orderId": retry_result.gateway_order_id} if retry_result.gateway_order_id is not None else None,

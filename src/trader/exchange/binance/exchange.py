@@ -158,6 +158,11 @@ class BinanceExchange:
         # if self.spot_ws_client:
         #    self.spot_ws_client.stop()
 
+    def bind_order_context(self, task_id: int | None = None, strategy_name: str | None = None) -> None:
+        """Propagate task/strategy metadata to the underlying ccxt driver for clientOrderId tagging."""
+        if self.ccxt_driver is not None:
+            self.ccxt_driver.bind_order_context(task_id=task_id, strategy_name=strategy_name)
+
     def server_datetime(self):
         if self._use_ccxt():
             return self.ccxt_driver.server_datetime()
@@ -322,6 +327,32 @@ class BinanceExchange:
 
         return ret
 
+    def get_max_borrowable(self, asset: str, symbol: str | None = None) -> dict[str, Any]:
+        if self._use_ccxt():
+            return self.ccxt_driver.get_max_borrowable(asset, symbol=symbol)
+        if self.margin_mode == MarginMode.SPOT:
+            return {"ok": False, "asset": asset, "reason": "spot_mode_no_margin_borrow"}
+        manager = MarginTradingManager(self.cfg, self.log)
+        method = (
+            getattr(manager.client.rest_api, "query_max_borrowable", None)
+            or getattr(manager.client.rest_api, "get_max_borrowable", None)
+            or getattr(manager.client.rest_api, "sapi_get_margin_max_borrowable", None)
+            or getattr(manager.client.rest_api, "sapiGetMarginMaxBorrowable", None)
+        )
+        if method is None:
+            return {"ok": False, "asset": asset, "reason": "max_borrowable_endpoint_missing"}
+        params: dict[str, Any] = {"asset": str(asset).upper(), "isIsolated": "TRUE" if self.margin_mode == MarginMode.ISOLATED_MARGIN else "FALSE"}
+        if self.margin_mode == MarginMode.ISOLATED_MARGIN and symbol:
+            params["symbol"] = symbol if isinstance(symbol, str) else symbol.name()
+        try:
+            response = method(params)
+            data = response.data() if hasattr(response, "data") else response
+            self.log.info(f"get_max_borrowable() response: {data}")
+            return data
+        except Exception as exc:
+            self.log.error(f"get_max_borrowable() error: {exc}")
+            return {"ok": False, "asset": asset, "reason": str(exc)}
+
     def get_position_view(self, symbol: Symbol) -> list[PositionView]:
         if self._use_ccxt():
             return self.ccxt_driver.get_position_view(symbol)
@@ -429,7 +460,7 @@ class BinanceExchange:
             return response.data()
 
         except Exception as e:
-            self.log.error(e)
+            self.log.error(_format_binance_api_error("exchange_info", "/api/v3/exchangeInfo", e, symbol=symbol))
 
         return None
 
@@ -741,6 +772,23 @@ class BinanceExchange:
         response = self.spot_client.rest_api.get_open_orders(symbol=symbol.name())
         return response.data()
 
+    def get_all_open_orders(self):
+        if self._use_ccxt():
+            return self.ccxt_driver.get_all_open_orders()
+        if self.margin_mode != MarginMode.SPOT:
+            response = MarginTradingManager(self.cfg, self.log).client.rest_api.query_margin_accounts_open_orders()
+            return response.data()
+        response = self.spot_client.rest_api.get_open_orders()
+        return response.data()
+
+    def cancel_order(self, symbol: Symbol, order_id: str):
+        if self._use_ccxt():
+            return self.ccxt_driver.cancel_order(symbol, order_id)
+        if self.margin_mode != MarginMode.SPOT:
+            return MarginTradingManager(self.cfg, self.log).cancel_order(symbol, order_id)
+        response = self.spot_client.rest_api.delete_order(symbol=symbol.name(), order_id=int(order_id))
+        return response.data()
+
     def delete_order(self, symbol: str):
         if self._use_ccxt():
             return self.ccxt_driver.delete_order(symbol)
@@ -863,6 +911,50 @@ def _unwrap_actual_instance(value):
     if actual_instance is not None and actual_instance is not value:
         return actual_instance
     return value
+
+
+def _format_binance_api_error(operation: str, endpoint: str, exc: Exception, *, symbol: str | None = None) -> str:
+    response = getattr(exc, "response", None)
+    status = _first_attr(response, "status_code", "status") or _first_attr(exc, "status_code", "status")
+    body = _response_body_excerpt(response)
+    parts = [
+        f"{operation}() failed",
+        f"endpoint={endpoint}",
+        f"symbol={symbol or ''}",
+        f"error_type={type(exc).__name__}",
+        f"error={exc}",
+    ]
+    if status is not None:
+        parts.append(f"response_status={status}")
+    if body:
+        parts.append(f"response_body={body}")
+    return " ".join(parts)
+
+
+def _first_attr(obj, *names):
+    if obj is None:
+        return None
+    for name in names:
+        value = getattr(obj, name, None)
+        if value is not None:
+            return value
+    return None
+
+
+def _response_body_excerpt(response, limit: int = 500) -> str:
+    if response is None:
+        return ""
+    body = getattr(response, "text", None)
+    if body is None:
+        body = getattr(response, "content", None)
+    if isinstance(body, bytes):
+        body = body.decode("utf-8", errors="replace")
+    if body is None:
+        return ""
+    text = " ".join(str(body).split())
+    if len(text) > limit:
+        return text[:limit] + "...<truncated>"
+    return text
 
 
 def on_spot_ws_close(socket_manager):

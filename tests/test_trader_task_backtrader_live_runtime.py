@@ -177,8 +177,7 @@ async def test_trader_task_persists_live_auto_execution_state_records():
         SymbolInterval("BTC-USDT", Interval.INTERVAL_1m),
         strategies=["macd_triple_divergence"],
         free=1000,
-        live_execution_mode="small_live_auto",
-        live_data_mode="realtime",
+        live_execution_mode="auto_trade",
     )
     task = TraderTask(tcfg, Config(window=500), Logger(Config(window=500)), db, FakeExchange([]))
     intent = OrderIntent.entry(
@@ -191,7 +190,7 @@ async def test_trader_task_persists_live_auto_execution_state_records():
     record = ExecutionStateRecord.from_order_intent(
         intent,
         gateway=GatewayMode.BINANCE_LIVE,
-        staged_execution_mode="small_live_auto",
+        staged_execution_mode="auto_trade",
         status=ExecutionStatus.SUBMITTED,
         exchange_order_id="live-1",
         timestamp=BASE,
@@ -216,8 +215,7 @@ async def test_trader_task_logs_execution_state_context_when_persist_fails():
         SymbolInterval("BTC-USDT", Interval.INTERVAL_1m),
         strategies=["macd_triple_divergence"],
         free=1000,
-        live_execution_mode="small_live_auto",
-        live_data_mode="realtime",
+        live_execution_mode="auto_trade",
     )
     log = CaptureLog()
     task = TraderTask(tcfg, Config(window=500), log, db, FakeExchange([]))
@@ -232,7 +230,7 @@ async def test_trader_task_logs_execution_state_context_when_persist_fails():
         intent,
         task_id=87,
         gateway=GatewayMode.BINANCE_LIVE,
-        staged_execution_mode="small_live_auto",
+        staged_execution_mode="auto_trade",
         status=ExecutionStatus.FAILED,
         timestamp=BASE,
     )
@@ -294,7 +292,6 @@ async def test_trader_task_realtime_uses_backtrader_live_runner_for_warmup_and_c
         strategies=["macd_triple_divergence"],
         free=1000,
         live_execution_mode="manual_notify",
-        live_data_mode="realtime",
     )
     task = TraderTask(tcfg, cfg, Logger(cfg), FakeDb(), FakeExchange(fetched))
     hub = FakeHub([_update(BASE + 180, closed=False), _update(BASE + 180, closed=True)], task.quit)
@@ -338,7 +335,6 @@ async def test_trader_task_realtime_fetches_latest_configured_warmup_when_local_
         strategies=["macd_triple_divergence"],
         free=1000,
         live_execution_mode="manual_notify",
-        live_data_mode="realtime",
     )
     task = TraderTask(tcfg, cfg, Logger(cfg), db, exchange)
 
@@ -378,7 +374,6 @@ async def test_trader_task_realtime_catches_up_missing_closed_klines_through_sam
         strategies=["macd_triple_divergence"],
         free=1000,
         live_execution_mode="manual_notify",
-        live_data_mode="realtime",
     )
     db = FakeDb()
     db.kline.add_klines(tcfg.symbol_interval.name(), warmup)
@@ -454,7 +449,6 @@ async def test_trader_task_realtime_publishes_dashboard_events_and_runtime_statu
         strategies=["macd_triple_divergence"],
         free=1000,
         live_execution_mode="manual_notify",
-        live_data_mode="realtime",
     )
     task = TraderTask(tcfg, cfg, Logger(cfg), FakeDb(), FakeExchange(fetched))
     hub = FakeHub([_update(BASE + 180, closed=True)], task.quit)
@@ -481,7 +475,7 @@ async def test_trader_task_realtime_publishes_dashboard_events_and_runtime_statu
 
 @pytest.mark.anyio
 async def test_trader_task_realtime_paper_auto_is_rejected_before_runtime(monkeypatch):
-    with pytest.raises(ValueError, match="paper_auto is no longer supported"):
+    with pytest.raises(ValueError, match="unsupported live_execution_mode: paper_auto"):
         TaskConfig(
             84,
             TaskType.TRADER,
@@ -489,7 +483,6 @@ async def test_trader_task_realtime_paper_auto_is_rejected_before_runtime(monkey
             strategies=["macd_triple_divergence"],
             free=1000,
             live_execution_mode="paper_auto",
-            live_data_mode="realtime",
         )
 
 
@@ -532,7 +525,6 @@ async def test_trader_task_realtime_preserves_tortoise_context_for_threaded_oper
         strategies=["macd_triple_divergence"],
         free=1000,
         live_execution_mode="manual_notify",
-        live_data_mode="realtime",
     )
     db = FakeDb()
     db.task = ContextRecordingTaskStore()
@@ -587,7 +579,6 @@ async def test_trader_task_realtime_publishes_warmup_operations_for_dashboard_wi
         strategies=["macd_triple_divergence"],
         free=1000,
         live_execution_mode="manual_notify",
-        live_data_mode="realtime",
     )
     task = TraderTask(tcfg, cfg, Logger(cfg), FakeDb(), FakeExchange(fetched))
 
@@ -653,9 +644,8 @@ async def test_trader_task_realtime_warmup_operations_do_not_route_auto_executio
         SymbolInterval("BTC-USDT", Interval.INTERVAL_1m),
         strategies=["macd_triple_divergence"],
         free=1000,
-        live_execution_mode="small_live_auto",
+        live_execution_mode="auto_trade",
         live_trade_max_notional=11,
-        live_data_mode="realtime",
     )
     task = TraderTask(tcfg, cfg, Logger(cfg), FakeDb(), FakeExchange(fetched))
     task._auto_execution_router = RouteMustNotBeCalled()
@@ -712,9 +702,8 @@ async def test_trader_task_realtime_warmup_operations_are_not_persisted(monkeypa
         SymbolInterval("BTC-USDT", Interval.INTERVAL_1m),
         strategies=["macd_triple_divergence"],
         free=1000,
-        live_execution_mode="small_live_auto",
+        live_execution_mode="auto_trade",
         live_trade_max_notional=11,
-        live_data_mode="realtime",
     )
     task = TraderTask(tcfg, cfg, Logger(cfg), db, FakeExchange(fetched))
     hub = QuitOnSubscribeHub([], task.quit)
@@ -771,7 +760,6 @@ async def test_trader_task_realtime_does_not_disconnect_on_business_message_idle
         strategies=["macd_triple_divergence"],
         free=1000,
         live_execution_mode="manual_notify",
-        live_data_mode="realtime",
     )
     task = TraderTask(tcfg, cfg, Logger(cfg), FakeDb(), FakeExchange(fetched))
     hub = IdleHub(task.quit)

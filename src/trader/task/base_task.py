@@ -7,6 +7,7 @@ from trader.common.config import Config
 from trader.common.logger import Logger
 from trader.database.manager import DatabaseManager
 from trader.exchange.binance.exchange import BinanceExchange
+from trader.task.persisted_live_config_migration import canonicalize_persisted_task_config_dict
 from trader.task.task_config import TaskConfig
 from trader.utils.task_state import TaskState, TaskStateType
 
@@ -85,8 +86,6 @@ class BaseTask:
             config_dict["free"] = self.tcfg.free
         if getattr(self.tcfg, "live_execution_mode", "auto_trade") != "auto_trade":
             config_dict["live_execution_mode"] = self.tcfg.live_execution_mode
-        if getattr(self.tcfg, "live_data_mode", "polling") != "polling":
-            config_dict["live_data_mode"] = self.tcfg.live_data_mode
         if getattr(self.tcfg, "manual_start_position", 0.0):
             config_dict["manual_start_position"] = self.tcfg.manual_start_position
         if getattr(self.tcfg, "live_trade_max_notional", 0.0):
@@ -118,6 +117,7 @@ class BaseTask:
         if getattr(self.tcfg, "fund_reservation_remaining", None) is not None:
             config_dict["fund_reservation_remaining"] = self.tcfg.fund_reservation_remaining
 
+        config_dict = canonicalize_persisted_task_config_dict(config_dict)
         return json.dumps([config_dict], indent=2, ensure_ascii=False)
 
     def start(self, queue: Queue):

@@ -18,7 +18,11 @@ from trader.exchange.exchange_type import ExchangeType
 from trader.notify.notify_manager import NotifyManager
 from trader.statistics.statistics import Statistics
 from trader.task.live_startup_self_check import evaluate_live_startup_self_check, infer_required_margin_mode
-from trader.task.task_config import TaskConfig, parse_task_config
+from trader.task.persisted_live_config_migration import (
+    assert_persisted_task_config_json_is_migrated,
+    migrate_persisted_live_task_configs,
+)
+from trader.task.task_config import TaskConfig, apply_persisted_task_runtime_metadata, parse_task_config
 from trader.task.task_manager import TaskManager
 
 RECOVERY_TASK_CONCURRENCY = 10
@@ -103,7 +107,7 @@ class App:
             return None
         if not getattr(self.db_manager, "started", False):
             await self.db_manager.start()
-        if not self.tasks_cfg:
+        if self.cfg.is_server() or not self.tasks_cfg:
             return None
         startup_admin = await self.db_manager.get_startup_admin()
         if startup_admin is None:
@@ -123,24 +127,27 @@ class App:
         if self.exchange:
             self.exchange.start()
 
-        if self.exchange and self.tasks_cfg:
-            self.startup_self_check = evaluate_live_startup_self_check(self.exchange, self.tasks_cfg)
-            self.logger.info(f"Startup self-check: {self.startup_self_check.summary()}", LogTag.PRIVATE)
-            if not self.startup_self_check.passed:
-                self.logger.warning(f"Startup self-check details: {self.startup_self_check.to_dict()}", LogTag.PRIVATE)
-
         msgs: list[Message] = []
         if self.task_manager:
-            try:
+            if self.cfg.is_server():
+                startup_taskcs = []
+            else:
                 startup_taskcs = await self._startup_task_configs_to_start()
-                msg = self.task_manager.start(startup_taskcs)
-            except TypeError:
-                msg = self.task_manager.start()
-            if msg:
-                msgs.append(msg)
-            elif self.cfg.tasks and not self.cfg.is_server():
-                self.logger.warning("No valid tasks can be executed")
-                return None
+                if self.exchange and startup_taskcs:
+                    self.startup_self_check = evaluate_live_startup_self_check(self.exchange, startup_taskcs)
+                    self.logger.info(f"Startup self-check: {self.startup_self_check.summary()}", LogTag.PRIVATE)
+                    if not self.startup_self_check.passed:
+                        self.logger.warning(f"Startup self-check details: {self.startup_self_check.to_dict()}", LogTag.PRIVATE)
+            if not self.cfg.is_server():
+                try:
+                    msg = self.task_manager.start(startup_taskcs)
+                except TypeError:
+                    msg = self.task_manager.start()
+                if msg:
+                    msgs.append(msg)
+                elif self.cfg.tasks and not self.cfg.is_server():
+                    self.logger.warning("No valid tasks can be executed")
+                    return None
 
         return msgs
 
@@ -158,19 +165,23 @@ class App:
                 continue
             config_json = getattr(state, "config_json", None)
             if not config_json:
-                continue
+                raise RuntimeError(f"persisted running task({getattr(state, 'id', 'unknown')}) is missing config_json")
+            saved_config = self._first_task_config(config_json)
             try:
+                assert_persisted_task_config_json_is_migrated(config_json)
                 recovered = parse_task_config(config_json)
             except Exception as exc:
-                self.logger.warning(f"Skip recovering task({getattr(state, 'id', 'unknown')}): invalid config_json: {exc}")
-                continue
-            saved_config = self._first_task_config(config_json)
+                task_kind = "live task" if self._is_persisted_live_task_config(saved_config) else "running task"
+                raise RuntimeError(
+                    f"persisted {task_kind}({getattr(state, 'id', 'unknown')}) recovery failed: {exc}"
+                ) from exc
             for taskc in recovered:
                 taskc.id = int(getattr(state, "id", taskc.id) or taskc.id)
                 if getattr(state, "user_id", None) is not None:
                     taskc.user_id = state.user_id
                 if saved_config.get("run_id"):
                     taskc.run_id = saved_config["run_id"]
+                apply_persisted_task_runtime_metadata(taskc, saved_config)
             taskcs.extend(recovered)
 
         if taskcs:
@@ -190,39 +201,10 @@ class App:
         if not running_taskcs:
             return self.tasks_cfg
 
-        running_keys = {self._task_recovery_key(taskc) for taskc in running_taskcs}
-        filtered = [taskc for taskc in self.tasks_cfg if self._task_recovery_key(taskc) not in running_keys]
-        skipped = len(self.tasks_cfg) - len(filtered)
-        if skipped:
-            self.logger.info(f"Skip {skipped} startup task config(s) already pending recovery")
-        return filtered
-
-    @staticmethod
-    def _task_recovery_key(taskc: TaskConfig) -> tuple:
-        symbol_interval = getattr(taskc, "symbol_interval", None)
-        return (
-            getattr(taskc, "ttype", None),
-            symbol_interval.name() if symbol_interval else None,
-            getattr(taskc, "csv", None),
-            getattr(taskc, "start_time", 0),
-            getattr(taskc, "limit", 0),
-            tuple(getattr(taskc, "strategies", None) or []),
-            json.dumps(getattr(taskc, "strategy_params", None) or {}, sort_keys=True),
-            getattr(taskc, "auto_download", False),
-            getattr(taskc, "free", -1),
-            getattr(taskc, "force_update", False),
-            getattr(taskc, "live_execution_mode", "auto_trade"),
-            getattr(taskc, "manual_start_position", 0.0),
-            getattr(taskc, "live_data_mode", "polling"),
-            getattr(taskc, "live_trade_max_notional", 0.0),
-            getattr(taskc, "live_margin_borrow_block_policy", "skip_continue"),
-            getattr(taskc, "live_margin_borrow_precheck", True),
-            getattr(taskc, "live_margin_auto_repay_max_total", 100.0),
-            getattr(taskc, "live_margin_auto_repay_max_per_asset", 50.0),
-            getattr(taskc, "live_margin_auto_repay_min_amount", 0.000001),
-            tuple(getattr(taskc, "live_margin_auto_repay_excluded_assets", None) or []),
-            getattr(taskc, "user_id", None),
+        self.logger.info(
+            f"Skip {len(self.tasks_cfg)} startup task config(s) because {len(running_taskcs)} running task(s) are pending recovery"
         )
+        return []
 
     def _schedule_recovery_tasks(self) -> None:
         if not self.cfg.is_server():
@@ -256,6 +238,10 @@ class App:
         if isinstance(payload, list) and payload and isinstance(payload[0], dict):
             return payload[0]
         return {}
+
+    @staticmethod
+    def _is_persisted_live_task_config(saved_config: dict) -> bool:
+        return str(saved_config.get("task_type") or "").strip().upper() == "TRADER"
 
     def stop(self):
         self.stat.report()
@@ -316,13 +302,14 @@ class App:
         if self.db_manager:
             if not getattr(self.db_manager, "started", False):
                 await self.db_manager.start()
-            if self.tasks_cfg or any(msg.is_add_tasks() for msg in msgs):
+            if (not self.cfg.is_server() and self.tasks_cfg) or any(msg.is_add_tasks() for msg in msgs):
                 startup_admin = await self.db_manager.get_startup_admin()
                 if startup_admin is None:
                     raise RuntimeError("startup tasks require an administrator account")
                 startup_admin_id = startup_admin.id
-                for taskc in self.tasks_cfg:
-                    taskc.user_id = startup_admin_id
+                if not self.cfg.is_server():
+                    for taskc in self.tasks_cfg:
+                        taskc.user_id = startup_admin_id
 
         queue = asyncio.Queue()
         self.queue = queue
@@ -400,6 +387,24 @@ class App:
         for tc in taskcs:
             ids.append(tc.to_dict())
         return {"result": "success", "tasks": ids}
+
+    async def migrate_persisted_live_task_configs(self):
+        if not self.db_manager:
+            raise RuntimeError("database configuration is required for persisted live config migration")
+
+        started_here = False
+        if not getattr(self.db_manager, "started", False):
+            await self.db_manager.start()
+            started_here = True
+
+        try:
+            task_repo = getattr(self.db_manager, "task", None)
+            if task_repo is None or not hasattr(task_repo, "get_all_tasks") or not hasattr(task_repo, "add_tasks"):
+                raise RuntimeError("task persistence is unavailable for persisted live config migration")
+            return await migrate_persisted_live_task_configs(task_repo)
+        finally:
+            if started_here:
+                await self.db_manager.stop()
 
 
 def version():

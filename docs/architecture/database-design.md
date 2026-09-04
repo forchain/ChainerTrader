@@ -74,6 +74,43 @@ Indexes:
 
 - unique index on `task_id`
 
+### `execution_states`
+
+Purpose:
+
+- persist exchange-order intent and outcome records
+- associate order state with the owning task through `task_id`
+- support order reconciliation, recovery, and task-scoped cleanup
+
+Fields:
+
+- `task_id`: owning task ID, nullable for legacy or external records
+- `idempotency_key`: unique order-intent key
+- `intent_id`: intent identifier
+- `operation_id`: operation identifier
+- `gateway`: execution gateway name
+- `staged_execution_mode`: staged/live mode label
+- `symbol`: market symbol
+- `trade_id`: owning trade identifier
+- `order_role`: entry / exit / protection role
+- `status`: execution status
+- `exchange_order_id`: exchange-side order identifier
+- `protection_id`: protection-group identifier
+- `quantity`: order quantity
+- `price`: order price
+- `stop_price`: stop price for protection orders
+- `take_profit_price`: take-profit price for protection orders
+- `raw_payload`: serialized intent payload
+- `created_at`: creation timestamp
+- `updated_at`: update timestamp
+
+Indexes:
+
+- unique index on `idempotency_key`
+- composite index on `(task_id, symbol, trade_id)`
+- composite index on `(gateway, staged_execution_mode)`
+- composite index on `(intent_id, operation_id)`
+
 ### `availability`
 
 Purpose:
@@ -114,6 +151,7 @@ Relationship rules:
 - `availability` describes what data coverage exists for a market stream
 - `klines-<symbol-interval>` stores the actual candles for that market stream
 - `tasks` references that data indirectly through the task's symbol, interval, and time-window configuration
+- `execution_states` records exchange-order lifecycle state and links each record back to the originating task when available
 
 There is no database-level foreign key. Coordination happens in application logic.
 

@@ -59,7 +59,7 @@ This plan defines the comprehensive testing strategy for the decoupled execution
 ## Phase 3: Staged Rollout Simulation
 **Goal**: Validate the safety boundaries and transition logic between execution modes.
 
-### 3.1 Safety Caps in `small_live_auto`
+### 3.1 Safety Caps in `auto_trade`
 - **Test Case**: Notional Limit Enforcement.
   - **Input**: Submit order with notional value exceeding `live_trade_max_notional`.
   - **Expected**: Order rejected or blocked by the gateway resolution layer.
@@ -67,7 +67,7 @@ This plan defines the comprehensive testing strategy for the decoupled execution
 
 ### 3.2 Mode Resolver Constraints
 - **Test Case**: Invalid Mode Transition.
-  - **Input**: Requesting `BINANCE_LIVE` while the environment is configured for `paper_auto`.
+  - **Input**: Requesting `BINANCE_LIVE` while the environment is configured for a removed live execution mode.
   - **Expected**: `GatewayResolutionError`.
 - **Command**: `pytest tests/test_execution_gateway_contract.py`
 
@@ -97,7 +97,7 @@ This plan defines the comprehensive testing strategy for the decoupled execution
 **Goal**: Final end-to-end verification on a live exchange with minimal risk.
 
 ### 5.1 Minimal Notional Entry/Exit
-- **Setup**: `live_execution_mode="small_live_auto"`, `live_trade_max_notional=15.0`.
+- **Setup**: `live_execution_mode="auto_trade"`, `live_trade_max_notional=15.0`.
 - **Action**: Trigger a real BTC-USDT trade (e.g., via a dummy signal or manual override).
 - **Verification**:
   - [ ] Order visible in Binance "Open Orders" or "Trade History".
@@ -106,7 +106,7 @@ This plan defines the comprehensive testing strategy for the decoupled execution
   - [ ] Trade closed successfully via `close_position`.
 - **Run Command**: 
   ```bash
-  python -m trader.task.run_task configs/tasks/live_smoke_test.json --mode small_live_auto
+  python -m trader.task.run_task configs/tasks/live/binance_smoke_test.json --mode auto_trade
   ```
 
 ---

@@ -2,6 +2,7 @@ import os
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request, Response, status
@@ -11,8 +12,8 @@ from fastapi.templating import Jinja2Templates
 from fastapi_auto_router import AutoRouter
 
 from trader.app.app import version
-from trader.auth.context import AuthUser, SESSION_COOKIE, SessionAuthMiddleware, auth_enabled, current_user, require_admin, require_user
-from trader.auth.credentials import decrypt_secret, encrypt_secret, mask_api_key, service_key_available
+from trader.auth.context import SESSION_COOKIE, AuthUser, SessionAuthMiddleware, auth_enabled, current_user, require_admin, require_user
+from trader.auth.credentials import encrypt_secret, mask_api_key, service_key_available
 from trader.auth.passwords import (
     PasswordPolicyError,
     generate_temporary_password,
@@ -25,11 +26,25 @@ from trader.auth.sessions import create_session_token, hash_session_token
 from trader.common import path
 from trader.common.common import NAME
 from trader.common.config import Config
-from trader.live.monitor import GLOBAL_LIVE_EVENT_BUS
 from trader.exchange.binance.exchange import BinanceExchange
-from trader.exchange.exchange_config import ExchangeConfig, parse_exchange_config
-from trader.rpc.models import get_accounts_info, get_klines_info, get_logs_info, get_taskinfo
+from trader.exchange.exchange_config import ExchangeConfig, MarginMode, parse_exchange_config
+from trader.exchange.user_credentials import (
+    UserExchangeCredentialError,
+    attach_user_exchange_context,
+    base_exchange_config,
+    build_user_exchange_context,
+)
+from trader.live.monitor import GLOBAL_LIVE_EVENT_BUS
+from trader.rpc.models import (
+    AcctsInfo,
+    get_accounts_info,
+    get_klines_info,
+    get_logs_info,
+    get_taskinfo,
+    open_orders_for_symbol_from_exchange,
+)
 from trader.rpc.rpc_app import RpcApp
+from trader.utils.symbol_interval import Symbol
 
 
 @asynccontextmanager
@@ -282,6 +297,14 @@ async def account_page(request: Request):
     credentials = []
     if rpc_app.db_manager and getattr(rpc_app.db_manager, "exchange_credential", None):
         credentials = await rpc_app.db_manager.exchange_credential.list_by_user(user.id)
+    accts_info = _user_accounts_info(request.app.state.cfg, rpc_app, user, credentials)
+    cancel_preview, cancel_preview_error = _account_cancel_preview(
+        request.app.state.cfg,
+        rpc_app,
+        user,
+        credentials,
+        str(request.query_params.get("cancel_symbol", "") or ""),
+    )
     return templates.TemplateResponse(
         request,
         "account.html",
@@ -290,7 +313,9 @@ async def account_page(request: Request):
             "credentials": credentials,
             "credential_error": None,
             "secret_key_ready": service_key_available(getattr(request.app.state.cfg, "secret_key", None)),
-            "accts_info": get_accounts_info(rpc_app),
+            "accts_info": accts_info,
+            "cancel_preview": cancel_preview,
+            "cancel_preview_error": cancel_preview_error,
         },
     )
 
@@ -313,7 +338,7 @@ async def account_exchange_credentials_submit(request: Request):
                 "credentials": credentials,
                 "credential_error": "TRADER_SECRET_KEY 未配置，不能保存交易所 API key。",
                 "secret_key_ready": False,
-                "accts_info": get_accounts_info(rpc_app),
+                "accts_info": _user_accounts_info(request.app.state.cfg, rpc_app, user, credentials),
             },
             status_code=503,
         )
@@ -336,7 +361,7 @@ async def account_exchange_credentials_submit(request: Request):
                 "credentials": credentials,
                 "credential_error": validation_error,
                 "secret_key_ready": True,
-                "accts_info": get_accounts_info(rpc_app),
+                "accts_info": _user_accounts_info(request.app.state.cfg, rpc_app, user, credentials),
             },
             status_code=400,
         )
@@ -349,6 +374,26 @@ async def account_exchange_credentials_submit(request: Request):
     )
     if logger is not None:
         logger.info(f"Exchange credential saved: user_id={user.id} exchange={exchange}")
+    return RedirectResponse(url="/account", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/account/open-orders/cancel-cleanup-symbols")
+async def account_cancel_cleanup_symbol_open_orders(request: Request):
+    user = await require_user(request)
+    form = await request.form()
+    requested_symbol = _symbol_from_cancel_request(str(form.get("symbol", "") or ""))
+    if requested_symbol is None:
+        raise HTTPException(status_code=400, detail="必须指定要取消开放订单的交易对。")
+    rpc_app = _require_rpc_app(request)
+    credentials = []
+    if rpc_app.db_manager and getattr(rpc_app.db_manager, "exchange_credential", None):
+        credentials = await rpc_app.db_manager.exchange_credential.list_by_user(user.id)
+    exchange = _account_exchange_for_user(request.app.state.cfg, rpc_app, user, credentials)
+    _cancel_requested_open_order_symbol(
+        exchange,
+        requested_symbol,
+        getattr(rpc_app, "logger", None),
+    )
     return RedirectResponse(url="/account", status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -366,6 +411,100 @@ def _validate_exchange_credential_connectivity(cfg: Config, exchange: str, api_k
     except Exception as exc:
         return f"API key 连通性检查失败：{exc}"
     return None
+
+
+def _user_accounts_info(cfg: Config, rpc_app: RpcApp, user, credentials: list) -> AcctsInfo:
+    try:
+        exchange = _account_exchange_for_user(cfg, rpc_app, user, credentials)
+    except UserExchangeCredentialError as exc:
+        return AcctsInfo(total=0, balances=[], account_error=str(exc))
+    except Exception as exc:
+        logger = getattr(rpc_app, "logger", None)
+        if logger is not None and hasattr(logger, "error"):
+            logger.error(f"account page user exchange initialization failed: {exc}")
+        return AcctsInfo(total=0, balances=[], account_error=f"交易所账户读取失败: {exc}")
+    account_app = SimpleNamespace(
+        exchange=exchange,
+        task_manager=getattr(rpc_app, "task_manager", None),
+        logger=getattr(rpc_app, "logger", None),
+    )
+    return get_accounts_info(account_app, include_open_orders=False)
+
+
+def _account_exchange_for_user(cfg: Config, rpc_app: RpcApp, user, credentials: list):
+    credential = _default_binance_credential(credentials)
+    context = build_user_exchange_context(
+        base_cfg=base_exchange_config(getattr(rpc_app, "exchange", None), cfg),
+        service_key=getattr(cfg, "secret_key", None),
+        credential=credential,
+        user_id=user.id,
+        margin_mode=MarginMode.CROSS_MARGIN,
+    )
+    logger = getattr(rpc_app, "logger", None)
+    return attach_user_exchange_context(BinanceExchange(context.cfg, logger), context)
+
+
+def _account_cancel_preview(cfg: Config, rpc_app: RpcApp, user, credentials: list, raw_symbol: str):
+    if not str(raw_symbol or "").strip():
+        return None, ""
+    symbol = _symbol_from_cancel_request(raw_symbol)
+    if symbol is None:
+        return None, "请输入完整交易对，例如 SOLUSDT。"
+    try:
+        exchange = _account_exchange_for_user(cfg, rpc_app, user, credentials)
+        orders = open_orders_for_symbol_from_exchange(exchange, symbol)
+    except Exception as exc:
+        logger = getattr(rpc_app, "logger", None)
+        if logger is not None and hasattr(logger, "error"):
+            logger.error(f"account cancel preview failed: symbol={symbol.name()} error={exc}")
+        return None, f"{symbol.name()} 开放订单读取失败: {exc}"
+    return {
+        "symbol": symbol.name(),
+        "orders": orders,
+        "order_ids": ", ".join(str(order.get("order_id") or "").strip() for order in orders if order.get("order_id")),
+        "count": len(orders),
+    }, ""
+
+
+def _default_binance_credential(credentials: list):
+    for credential in credentials or []:
+        if str(getattr(credential, "exchange", "") or "").upper() == "BINANCE":
+            return credential
+    return None
+
+
+def _symbol_from_cancel_request(raw_symbol: str, quote_asset: str = "USDT") -> Symbol | None:
+    normalized = str(raw_symbol or "").strip().upper().replace("/", "-").replace("_", "-")
+    if not normalized:
+        return None
+    if "-" in normalized:
+        symbol = Symbol(normalized)
+        return symbol if not symbol.is_empty() else None
+
+    compact = normalized.replace("-", "")
+    quote_candidates = [quote_asset, "USDT", "USDC", "FDUSD", "BUSD", "BTC", "ETH", "BNB"]
+    seen: set[str] = set()
+    for quote in quote_candidates:
+        quote = str(quote or "").strip().upper()
+        if not quote or quote in seen:
+            continue
+        seen.add(quote)
+        if compact.endswith(quote) and len(compact) > len(quote):
+            return Symbol(f"{compact[:-len(quote)]}-{quote}")
+    return None
+
+
+def _cancel_requested_open_order_symbol(exchange, symbol: Symbol, logger=None) -> int:
+    cancel_all = getattr(exchange, "cancel_all_open_orders", None)
+    if not callable(cancel_all):
+        return 0
+    try:
+        cancel_all(symbol)
+        return 1
+    except Exception as exc:
+        if logger is not None and hasattr(logger, "error"):
+            logger.error(f"account cancel_all_open_orders failed: symbol={symbol.name()} error={exc}")
+        return 0
 
 
 @app.get("/admin", response_class=HTMLResponse)

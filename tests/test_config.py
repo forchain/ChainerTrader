@@ -1,6 +1,9 @@
 import argparse
+import json
 import logging
 import os
+
+import pytest
 
 from trader.common.config import Config, new_and_env
 from trader.common.logger import Logger
@@ -82,9 +85,8 @@ def test_base_task_config_json_preserves_live_runtime_controls():
         SymbolInterval("BTC-USDT", Interval.INTERVAL_1m),
         strategies=["macd_triple_divergence"],
         free=10000,
-        strategy_params={"chainer_mode": "BOTH"},
-        live_execution_mode="small_live_auto",
-        live_data_mode="realtime",
+        strategy_params={"chainer_mode": "LONG_ONLY"},
+        live_execution_mode="auto_trade",
         live_trade_max_notional=12.0,
         live_margin_borrow_block_policy="repay_all",
         live_margin_borrow_precheck=False,
@@ -97,13 +99,20 @@ def test_base_task_config_json_preserves_live_runtime_controls():
     )
     original.fund_reservation_asset = "USDT"
     original.fund_reservation_amount = 12.0
-    original.fund_reservation_remaining = 7.5
+    original.fund_reservation_remaining = 12.0
     persisted = BaseTask(original, Config(tasks="[]"), Logger(Config(tasks="[]"))).ts.config_json
+    payload = json.loads(persisted)[0]
 
     restored = parse_task_config(persisted, last_task_id=original.id)[0]
 
-    assert restored.live_execution_mode == original.live_execution_mode
-    assert restored.live_data_mode == original.live_data_mode
+    assert "live_execution_mode" not in payload
+    assert "live_data_mode" not in payload
+    assert "persisted_legacy_live_execution_mode" not in payload
+    assert "persisted_live_data_mode" not in payload
+    assert restored.live_execution_mode == "auto_trade"
+    assert not hasattr(restored, "live_data_mode")
+    assert getattr(restored, "persisted_legacy_live_execution_mode", None) is None
+    assert getattr(restored, "persisted_live_data_mode", None) is None
     assert restored.live_trade_max_notional == original.live_trade_max_notional
     assert restored.live_margin_borrow_block_policy == original.live_margin_borrow_block_policy
     assert restored.live_margin_borrow_precheck is original.live_margin_borrow_precheck
@@ -117,6 +126,58 @@ def test_base_task_config_json_preserves_live_runtime_controls():
     assert restored.fund_reservation_asset == original.fund_reservation_asset
     assert restored.fund_reservation_amount == original.fund_reservation_amount
     assert restored.fund_reservation_remaining == original.fund_reservation_remaining
+    assert "persisted_legacy_live_execution_mode" not in restored.to_dict()
+    assert "persisted_live_data_mode" not in restored.to_dict()
+
+
+def test_task_config_rejects_manual_notify_polling_legacy_data_mode():
+    with pytest.raises(ValueError, match="live_data_mode is no longer supported"):
+        TaskConfig(
+            1,
+            TaskType.TRADER,
+            SymbolInterval("BTC-USDT", Interval.INTERVAL_1m),
+            strategies=["macd_triple_divergence"],
+            live_execution_mode="manual_notify",
+            live_data_mode="polling",
+        )
+
+
+def test_parse_task_config_rejects_live_data_mode():
+    cfg = (
+        '[{"task_type":"TRADER","symbol":"BTC-USDT","interval":"1m",'
+        '"strategy":"macd_triple_divergence","live_data_mode":"realtime"}]'
+    )
+
+    with pytest.raises(ValueError, match="live_data_mode is no longer supported"):
+        parse_task_config(cfg)
+
+
+@pytest.mark.parametrize(
+    "mode",
+    ["small_live_auto", "full_live_auto", "staged_auto_trade", "paper_auto", "manual", "notify"],
+)
+def test_parse_task_config_rejects_removed_live_execution_modes(mode):
+    cfg = (
+        '[{"task_type":"TRADER","symbol":"BTC-USDT","interval":"1m",'
+        f'"strategy":"macd_triple_divergence","live_execution_mode":"{mode}"}}]'
+    )
+
+    with pytest.raises(ValueError, match=f"unsupported live_execution_mode: {mode}"):
+        parse_task_config(cfg)
+
+
+def test_parse_task_config_accepts_only_current_live_execution_modes():
+    cfg = (
+        '[{"task_type":"TRADER","symbol":"BTC-USDT","interval":"1m",'
+        '"strategy":"macd_triple_divergence","live_execution_mode":"manual_notify"}]'
+    )
+
+    task = parse_task_config(cfg)[0]
+    persisted = BaseTask(task, Config(tasks="[]"), Logger(Config(tasks="[]"))).ts.config_json
+
+    assert task.live_execution_mode == "manual_notify"
+    assert "live_data_mode" not in task.to_dict()
+    assert "live_data_mode" not in persisted
 
 
 def test_parse_task_config_keeps_legacy_margin_borrow_policy_aliases():
@@ -184,9 +245,98 @@ def test_new_and_env_env_when_cli_absent(monkeypatch):
     assert cfg.commission == 0.003
 
 
+def test_new_and_env_leverage_ratio_defaults_to_one():
+    cfg = new_and_env()
+
+    assert cfg.leverage_ratio == 1.0
+
+
+def test_config_accepts_leverage_ratio_boundary_value():
+    cfg = Config(leverage_ratio=1.0)
+
+    assert cfg.leverage_ratio == 1.0
+
+
+@pytest.mark.parametrize("value", [0.999, 0, -1, "abc", "nan"])
+def test_config_rejects_invalid_leverage_ratio(value):
+    with pytest.raises(ValueError, match="TRADER_LEVERAGE_RATIO"):
+        Config(leverage_ratio=value)
+
+
+def test_new_and_env_reads_leverage_ratio_from_env(monkeypatch):
+    monkeypatch.setenv("TRADER_LEVERAGE_RATIO", "2.5")
+
+    cfg = new_and_env()
+
+    assert cfg.leverage_ratio == 2.5
+
+
+def test_new_and_env_does_not_accept_leverage_ratio_cli_override(monkeypatch):
+    monkeypatch.setenv("TRADER_LEVERAGE_RATIO", "2.5")
+    ns = argparse.Namespace(leverage_ratio=9.0)
+
+    cfg = new_and_env(ns)
+
+    assert cfg.leverage_ratio == 2.5
+
+
+@pytest.mark.parametrize("value", ["abc", "0", "-1", "0.999"])
+def test_new_and_env_rejects_invalid_leverage_ratio(monkeypatch, value):
+    monkeypatch.setenv("TRADER_LEVERAGE_RATIO", value)
+
+    with pytest.raises(ValueError, match="TRADER_LEVERAGE_RATIO"):
+        new_and_env()
+
+
+@pytest.mark.parametrize("value", ["nan", "inf", "-inf"])
+def test_new_and_env_rejects_non_finite_leverage_ratio(monkeypatch, value):
+    monkeypatch.setenv("TRADER_LEVERAGE_RATIO", value)
+
+    with pytest.raises(ValueError, match="TRADER_LEVERAGE_RATIO"):
+        new_and_env()
+
+
+def test_config_export_env_includes_leverage_ratio(monkeypatch):
+    monkeypatch.delenv("TRADER_LEVERAGE_RATIO", raising=False)
+    cfg = Config(leverage_ratio=3.0)
+
+    cfg.export_env()
+
+    assert os.environ["TRADER_LEVERAGE_RATIO"] == "3.0"
+
+
+def test_config_dict_serialization_includes_leverage_ratio():
+    cfg = Config(leverage_ratio=4.0)
+
+    assert cfg.to_dict()["leverage_ratio"] == 4.0
+    assert cfg.safe_to_dict()["leverage_ratio"] == 4.0
+
+
 def test_live_warmup_candles_defaults_to_500():
     cfg = Config()
     assert cfg.live_warmup_candles == 500
+
+
+def test_live_order_cleanup_symbols_default_empty():
+    cfg = Config()
+    assert cfg.live_order_cleanup_symbols == []
+
+
+def test_new_and_env_reads_live_order_cleanup_symbols_from_env(monkeypatch):
+    monkeypatch.setenv("TRADER_LIVE_ORDER_CLEANUP_SYMBOLS", "btc-usdt, ethusdt, SOL/USDT")
+
+    cfg = new_and_env()
+
+    assert cfg.live_order_cleanup_symbols == ["BTC-USDT", "ETHUSDT", "SOL/USDT"]
+
+
+def test_new_and_env_cli_live_order_cleanup_symbols_overrides_env(monkeypatch):
+    monkeypatch.setenv("TRADER_LIVE_ORDER_CLEANUP_SYMBOLS", "BTC-USDT")
+    ns = argparse.Namespace(live_order_cleanup_symbols="sol-usdt,bnbusdt")
+
+    cfg = new_and_env(ns)
+
+    assert cfg.live_order_cleanup_symbols == ["SOL-USDT", "BNBUSDT"]
 
 
 def test_new_and_env_reads_live_warmup_candles_from_env(monkeypatch):
@@ -251,6 +401,36 @@ def test_logger_writes_to_configured_log_file_path(tmp_path, capsys):
     assert log_path.exists()
     assert "configured file path smoke" in log_path.read_text(encoding="utf-8")
     assert "configured file path smoke" in captured.err
+
+
+def test_logger_highlights_terminal_errors_without_coloring_file_logs(tmp_path, capsys):
+    log_path = tmp_path / "logs" / "trader.log"
+    cfg = Config(log_file=str(log_path), log_level="INFO")
+
+    root_logger = logging.getLogger()
+    original_handlers = list(root_logger.handlers)
+    for handler in original_handlers:
+        root_logger.removeHandler(handler)
+    try:
+        logger = Logger(cfg)
+        logger.error("insufficient reserved capacity")
+        for handler in logging.getLogger().handlers:
+            handler.flush()
+    finally:
+        for handler in list(logging.getLogger().handlers):
+            handler.close()
+            logging.getLogger().removeHandler(handler)
+        for handler in original_handlers:
+            logging.getLogger().addHandler(handler)
+
+    captured = capsys.readouterr()
+    file_text = log_path.read_text(encoding="utf-8")
+
+    assert "\x1b[1;31m" in captured.err
+    assert "\x1b[0m" in captured.err
+    assert "[ERROR:trader] insufficient reserved capacity" in captured.err
+    assert "\x1b[" not in file_text
+    assert "[ERROR:trader] insufficient reserved capacity" in file_text
 
 
 def test_logger_keeps_noisy_third_party_debug_logs_quiet(tmp_path):

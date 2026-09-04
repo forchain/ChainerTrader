@@ -51,7 +51,7 @@ def test_execution_state_store_reserves_idempotency_key_before_order_submit():
             intent,
             task_id=11,
             gateway=GatewayMode.BINANCE_LIVE,
-            staged_execution_mode="small_live_auto",
+            staged_execution_mode="auto_trade",
             status=ExecutionStatus.SUBMITTED,
             timestamp=1_714_281_600,
         )
@@ -95,7 +95,7 @@ def test_execution_state_store_persists_protection_state_for_reconciliation():
             risk,
             task_id=22,
             gateway=GatewayMode.BINANCE_LIVE,
-            staged_execution_mode="small_live_auto",
+            staged_execution_mode="auto_trade",
             status=ExecutionStatus.ACCEPTED,
             exchange_order_id="stop-123,tp-456",
             protection_id="protection-1",
@@ -107,7 +107,7 @@ def test_execution_state_store_persists_protection_state_for_reconciliation():
         active = await store.list_open_by_symbol("BTCUSDT")
         saved = active[0]
         assert saved.gateway == GatewayMode.BINANCE_LIVE
-        assert saved.staged_execution_mode == "small_live_auto"
+        assert saved.staged_execution_mode == "auto_trade"
         assert saved.order_role == ProtectionIntentType.BRACKET.value
         assert saved.protection_id == "protection-1"
         assert saved.stop_price == 95000.0
@@ -139,7 +139,7 @@ def test_execution_state_store_updates_without_update_or_create_instance_save_pa
             intent,
             task_id=33,
             gateway=GatewayMode.BINANCE_LIVE,
-            staged_execution_mode="small_live_auto",
+            staged_execution_mode="auto_trade",
             status=ExecutionStatus.SUBMITTED,
             exchange_order_id="live-order-ctx",
             timestamp=1_714_281_800,
@@ -181,7 +181,7 @@ def test_execution_state_store_logs_context_when_save_fails():
             intent,
             task_id=33,
             gateway=GatewayMode.BINANCE_LIVE,
-            staged_execution_mode="small_live_auto",
+            staged_execution_mode="auto_trade",
             status=ExecutionStatus.SUBMITTED,
             exchange_order_id="live-order-ctx",
             timestamp=1_714_281_800,

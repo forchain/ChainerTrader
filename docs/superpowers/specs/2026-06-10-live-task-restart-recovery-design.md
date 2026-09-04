@@ -10,7 +10,7 @@ The observed bug is that a live task created by a user is `RUNNING` before resta
 
 - Restarting the server does not permanently stop persisted `RUNNING` live tasks.
 - Recovered tasks reuse the original persisted `task_id` when possible.
-- Recovered tasks preserve the original `user_id`, `run_id`, strategy, symbol, interval, live execution mode, live data mode, and live margin/short controls.
+- Recovered tasks preserve the original `user_id`, `run_id`, strategy, symbol, interval, live execution mode, and live margin/short controls.
 - API startup is not blocked by restoring every running task.
 - Recovery is bounded so a large backlog, for example 10,000 running tasks, does not start with unbounded parallelism.
 
@@ -78,7 +78,6 @@ The current state model may not have a dedicated `FAILED` or `RECOVERING` state.
 The recovery path depends on `config_json`, so `config_json` must preserve live runtime controls. Persisted live task config must round-trip through `parse_task_config()` without losing:
 
 - `live_execution_mode`
-- `live_data_mode`
 - `live_trade_max_notional`
 - `live_short_execution`
 - `live_margin_borrow_block_policy`
@@ -91,7 +90,7 @@ The recovery path depends on `config_json`, so `config_json` must preserve live 
 - `user_id`
 - `run_id`
 
-This is required because losing `live_data_mode=realtime` or short/margin settings can make a recovered live task run with different semantics or exit early.
+This is required because losing live execution, sizing, or short/margin settings can make a recovered live task run with different semantics or exit early.
 
 ## Testing
 

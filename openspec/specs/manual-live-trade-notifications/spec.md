@@ -85,12 +85,12 @@ TBD - created by archiving change manual-live-trade-email-notifications. Update 
 - **THEN** 烟测 SHALL 输出足够的发送结果和邮件标识信息，允许用户手动验证收件
 
 ### Requirement: Manual notify remains the no-order realtime safety baseline
-When staged automatic realtime execution modes are available, `manual_notify` SHALL remain a recommendation-only mode. The system MUST NOT call exchange order placement APIs for `manual_notify` operations, even if the same task configuration format also supports real automatic modes such as `small_live_auto` or `full_live_auto`. The system MUST NOT route `manual_notify` operations through `paper_auto`.
+When automatic live execution is available, `manual_notify` SHALL remain a recommendation-only mode. The system MUST NOT call exchange order placement APIs for `manual_notify` operations, even if the same task configuration format also supports `auto_trade`. The system MUST NOT route `manual_notify` operations through removed modes such as `paper_auto`.
 
 #### Scenario: Manual notify receives a long signal after staged modes are added
 - **WHEN** a realtime live task is configured with `live_execution_mode` set to `manual_notify` and the strategy emits a `BUY` or `LONG` operation
 - **THEN** the system SHALL generate manual notification behavior according to the existing manual live notification requirements
-- **THEN** the system MUST NOT simulate the operation as `paper_auto`
+- **THEN** the system MUST NOT simulate the operation through a removed live execution mode
 - **THEN** the system MUST NOT place an exchange order
 
 #### Scenario: Manual notify receives a short signal after staged modes are added

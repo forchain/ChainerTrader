@@ -82,6 +82,13 @@ def main():
         default=argparse.SUPPRESS,
     )
     parser.add_argument(
+        "--live-order-cleanup-symbols",
+        help="Comma-separated symbols to clean before live task start/stop, e.g. BTC-USDT,ETHUSDT",
+        action="store",
+        type=str,
+        default=argparse.SUPPRESS,
+    )
+    parser.add_argument(
         "--tasks",
         help="Tasks config:TRADER,BACK_TRADER,UPDATE_KLINES,CHECK_KLINES,IMPORT_CSV",
         type=str,

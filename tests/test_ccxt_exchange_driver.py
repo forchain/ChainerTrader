@@ -255,6 +255,19 @@ def test_ccxt_cross_margin_open_order_queries_use_margin_mode_params():
     assert client.fetch_open_orders_call == ("BTC/USDT", None, None, {"marginMode": "cross"})
 
 
+def test_ccxt_cross_margin_all_open_order_queries_use_no_symbol_with_margin_mode_params():
+    client = FakeCcxtClient()
+    driver = CcxtExchangeDriver(
+        ExchangeConfig(ty=ExchangeType.BINANCE, driver=ExchangeDriverType.CCXT, margin_mode=MarginMode.CROSS_MARGIN),
+        client=client,
+    )
+
+    orders = driver.get_all_open_orders()
+
+    assert len(orders) == 3
+    assert client.fetch_open_orders_call == (None, None, None, {"marginMode": "cross"})
+
+
 def test_ccxt_cross_margin_cancel_all_uses_margin_mode_params():
     client = FakeCcxtClient()
     driver = CcxtExchangeDriver(
@@ -270,6 +283,12 @@ def test_ccxt_cross_margin_cancel_all_uses_margin_mode_params():
         ("tp-1", "BTC/USDT", {"marginMode": "cross"}),
         ("stop-oco", "BTC/USDT", {"marginMode": "cross"}),
     ]
+
+
+def test_ccxt_driver_does_not_expose_no_symbol_account_order_cleanup():
+    driver = _driver()
+
+    assert not hasattr(driver, "cancel_all_account_open_orders")
 
 
 def test_ccxt_default_type_is_spot_for_cross_margin_to_avoid_futures_endpoint_routing():
@@ -399,3 +418,64 @@ def test_ccxt_repay_all_liabilities_respects_caps_and_exclusions():
     bnb = next(item for item in result["results"] if item["asset"] == "BNB")
     assert bnb["status"] == "skipped"
     assert bnb["reason"] == "excluded_asset"
+
+
+# ---------------------------------------------------------------------------
+# clientOrderId tagging tests
+# ---------------------------------------------------------------------------
+
+
+def test_ccxt_new_order_without_order_context_sends_no_client_order_id():
+    driver = _driver()
+    driver.new_order(Symbol("BTC-USDT"), OperateType.BUY, 0.25)
+
+    _, _, _, _, _, params = driver.client.create_order_calls[-1]
+    assert "clientOrderId" not in params
+
+
+def test_ccxt_bind_order_context_injects_client_order_id_into_new_order():
+    driver = _driver()
+    driver.bind_order_context(task_id=42, strategy_name="ShihunRSI 2")
+
+    driver.new_order(Symbol("BTC-USDT"), OperateType.BUY, 0.25)
+    driver.new_order(Symbol("BTC-USDT"), OperateType.SELL, 0.25)
+
+    calls = driver.client.create_order_calls
+    # First order
+    _, _, _, _, _, params1 = calls[0]
+    assert params1["clientOrderId"] == "ct42sShihunRS_0001"
+    # Second order – sequence increments
+    _, _, _, _, _, params2 = calls[1]
+    assert params2["clientOrderId"] == "ct42sShihunRS_0002"
+
+
+def test_ccxt_bind_order_context_injects_client_order_id_into_trigger_orders():
+    driver = _driver()
+    driver.bind_order_context(task_id=7, strategy_name="Breakout")
+
+    driver.new_stop_order(Symbol("BTC-USDT"), OperateType.SELL, 0.25, 95.0)
+    driver.new_take_profit_order(Symbol("BTC-USDT"), OperateType.SELL, 0.25, 110.0)
+
+    calls = driver.client.create_order_calls
+    _, _, _, _, _, stop_params = calls[0]
+    assert stop_params["clientOrderId"] == "ct7sBreakout_0001"
+    assert "stopLossPrice" in stop_params
+
+    _, _, _, _, _, tp_params = calls[1]
+    assert tp_params["clientOrderId"] == "ct7sBreakout_0002"
+    assert "takeProfitPrice" in tp_params
+
+
+def test_ccxt_close_order_with_context_carries_auto_repay_and_client_order_id():
+    client = FakeCcxtClient()
+    driver = CcxtExchangeDriver(
+        ExchangeConfig(ty=ExchangeType.BINANCE, driver=ExchangeDriverType.CCXT, margin_mode=MarginMode.CROSS_MARGIN),
+        client=client,
+    )
+    driver.bind_order_context(task_id=3, strategy_name="Grid")
+
+    driver.new_order(Symbol("BTC-USDT"), OperateType.CLOSE, 0.25)
+
+    _, _, _, _, _, params = client.create_order_calls[-1]
+    assert params["sideEffectType"] == "AUTO_REPAY"
+    assert params["clientOrderId"] == "ct3sGrid_0001"

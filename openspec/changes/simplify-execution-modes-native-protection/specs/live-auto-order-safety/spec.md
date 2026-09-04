@@ -1,15 +1,15 @@
 ## MODIFIED Requirements
 
 ### Requirement: Real automatic order placement requires explicit staged mode selection
-The system SHALL place realtime live exchange orders only when the task execution mode explicitly selects a real automatic mode. `manual_notify` MUST NOT call exchange order placement APIs. `paper_auto` SHALL be rejected as unsupported and MUST NOT simulate or place orders.
+The system SHALL place live exchange orders only when the task execution mode explicitly selects `auto_trade`. `manual_notify` MUST NOT call exchange order placement APIs. Removed modes such as `small_live_auto`, `full_live_auto`, `staged_auto_trade`, and `paper_auto` SHALL be rejected as unsupported and MUST NOT simulate or place orders.
 
 #### Scenario: Manual notify remains no-order
 - **WHEN** a realtime live task is configured with `live_execution_mode` set to `manual_notify`
 - **THEN** the system SHALL route strategy operations to manual notification behavior
 - **THEN** the system MUST NOT call exchange order placement APIs
 
-#### Scenario: Paper auto is unsupported
-- **WHEN** a realtime live task is configured with `live_execution_mode` set to `paper_auto`
+#### Scenario: Removed live execution mode is unsupported
+- **WHEN** a live task is configured with a removed `live_execution_mode`
 - **THEN** the system SHALL reject the configuration as unsupported
 - **THEN** the system MUST NOT simulate execution and MUST NOT call exchange order placement APIs
 
@@ -45,12 +45,12 @@ The system SHALL validate operation price, calculated quantity, effective notion
 The system SHALL make automatic execution outcomes visible to live monitoring consumers so operators can distinguish manual recommendations, skipped orders, failed orders, real submitted orders, and live protection state.
 
 #### Scenario: Real order outcome appears in live monitor data
-- **WHEN** `small_live_auto` or `full_live_auto` routes an operation to a real exchange order
+- **WHEN** `auto_trade` routes an operation to a real exchange order
 - **THEN** the live monitor data SHALL identify whether the order was submitted, skipped, or failed
 - **THEN** the live monitor data SHALL include the effective notional or quantity and any skip or failure reason
 
 #### Scenario: Live protection outcome appears in live monitor data
-- **WHEN** `small_live_auto` or `full_live_auto` routes stop-loss or take-profit protection to the live gateway
+- **WHEN** `auto_trade` routes stop-loss or take-profit protection to the live gateway
 - **THEN** the live monitor data SHALL identify whether protection is armed, rejected, missing, failed, replaced, or canceled
 - **THEN** the live monitor data SHALL include the relevant protection order identifiers when native protection is armed
 

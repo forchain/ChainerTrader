@@ -551,6 +551,44 @@ def test_binance_exchange_normalize_quantity_reads_oneof_wrapped_exchange_info()
     assert normalized == 0.000137
 
 
+def test_binance_exchange_info_logs_http_error_context():
+    class _Log:
+        def __init__(self):
+            self.errors = []
+
+        def error(self, message):
+            self.errors.append(str(message))
+
+    class _Response:
+        status_code = 451
+        text = '{"code":-2015,"msg":"Invalid API-key, IP, or permissions for action."}'
+
+    class _ExchangeInfoError(Exception):
+        def __init__(self):
+            super().__init__("binance GET https://api.binance.com/api/v3/exchangeInfo")
+            self.response = _Response()
+
+    class _RestApi:
+        def exchange_info(self, symbol=None):
+            raise _ExchangeInfoError()
+
+    exchange = BinanceExchange.__new__(BinanceExchange)
+    exchange.driver_type = ExchangeDriverType.BINANCE_NATIVE
+    exchange.spot_client = SimpleNamespace(rest_api=_RestApi())
+    exchange.rate_limits = {}
+    exchange.log = _Log()
+
+    assert exchange.exchange_info("BTCUSDT") is None
+
+    message = exchange.log.errors[-1]
+    assert "exchange_info() failed" in message
+    assert "endpoint=/api/v3/exchangeInfo" in message
+    assert "symbol=BTCUSDT" in message
+    assert "error_type=_ExchangeInfoError" in message
+    assert "response_status=451" in message
+    assert "Invalid API-key" in message
+
+
 def test_binance_exchange_normalize_price_reads_oneof_wrapped_exchange_info():
     class ActualInstance:
         def __init__(self, symbols):

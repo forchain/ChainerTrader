@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from fastapi import HTTPException, Request, status
-from starlette.responses import RedirectResponse
+from starlette.responses import RedirectResponse, JSONResponse
 
 from trader.auth.sessions import hash_session_token, is_expired
 
@@ -100,12 +100,24 @@ class SessionAuthMiddleware:
 
         user = await current_user(request)
         if user is None:
-            response = RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
+            if request.url.path.startswith("/api/"):
+                response = JSONResponse(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    content={"detail": "authentication required"}
+                )
+            else:
+                response = RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
             await response(scope, receive, send)
             return
 
         if user.must_change_password and not request.url.path.startswith("/change-password") and not request.url.path.startswith("/api/auth/logout"):
-            response = RedirectResponse(url="/change-password", status_code=status.HTTP_303_SEE_OTHER)
+            if request.url.path.startswith("/api/"):
+                response = JSONResponse(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    content={"detail": "password change required"}
+                )
+            else:
+                response = RedirectResponse(url="/change-password", status_code=status.HTTP_303_SEE_OTHER)
             await response(scope, receive, send)
             return
 

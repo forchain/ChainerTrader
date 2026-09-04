@@ -107,3 +107,34 @@ def test_require_admin_allows_admin_user():
 
     assert response.status_code == 200
     assert response.json() == {"page": "admin-users"}
+
+
+def test_session_auth_api_routes_unauthenticated():
+    app, _repo = _app(SimpleNamespace(id=1, username="trader", role="user", status="active", must_change_password=False))
+
+    @app.get("/api/tasks/config-template")
+    async def api_tasks():
+        return {"status": "ok"}
+
+    client = TestClient(app)
+    response = client.get("/api/tasks/config-template", follow_redirects=False)
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "authentication required"}
+
+
+def test_session_auth_api_routes_forces_password_change():
+    token = create_session_token()
+    app, repo = _app(SimpleNamespace(id=1, username="trader", role="user", status="active", must_change_password=True))
+    repo.session_hash = hash_session_token(token)
+
+    @app.get("/api/tasks/config-template")
+    async def api_tasks():
+        return {"status": "ok"}
+
+    client = TestClient(app, cookies={SESSION_COOKIE: token})
+    response = client.get("/api/tasks/config-template", follow_redirects=False)
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "password change required"}
+

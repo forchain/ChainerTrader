@@ -69,6 +69,10 @@ class AccountFundReservationCol:
         amount: float,
         capacity: float,
         reason: str,
+        balance: float | None = None,
+        max_borrowable: float | None = None,
+        borrow_limit: float | None = None,
+        operable_capacity: float | None = None,
     ) -> FundReservationResult:
         account_key = str(account_key or "").strip()
         asset = str(asset or "").strip().upper()
@@ -100,6 +104,8 @@ class AccountFundReservationCol:
                 raise FundReservationError(
                     "insufficient reserved capacity: "
                     f"account_key={account_key} asset={asset} capacity={capacity} "
+                    f"balance={balance} max_borrowable={max_borrowable} "
+                    f"borrow_limit={borrow_limit} operable_capacity={operable_capacity} "
                     f"active_reserved={reserved} requested={amount}"
                 )
 

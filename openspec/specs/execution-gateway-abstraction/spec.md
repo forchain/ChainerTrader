@@ -26,20 +26,20 @@ The system SHALL provide gateway implementations for `backtrader` and `binance_l
 - **THEN** `paper` SHALL NOT be required as a gateway implementation for apply readiness or runtime support
 - **THEN** Backtrader SHALL be the supported no-live-order execution engine for strategy testing
 
-### Requirement: Gateway Resolution Preserves Staged Live Modes
-The system SHALL resolve execution gateways through the staged execution safety model. `manual_notify` SHALL remain notification-only, and live gateway execution SHALL be available only through live-capable modes such as `small_live_auto` and `full_live_auto`.
+### Requirement: Gateway Resolution Preserves Live Safety Modes
+The system SHALL resolve execution gateways through the live execution safety model. `manual_notify` SHALL remain notification-only, and live gateway execution SHALL be available only through `auto_trade`.
 
 #### Scenario: Manual notify cannot submit live orders
 - **WHEN** runtime configuration uses `live_execution_mode=manual_notify`
 - **THEN** gateway resolution SHALL NOT return a gateway path that submits broker or live exchange orders
 
-#### Scenario: Paper auto cannot resolve a gateway
-- **WHEN** runtime configuration uses `live_execution_mode=paper_auto`
+#### Scenario: Removed execution modes cannot resolve a gateway
+- **WHEN** runtime configuration uses a removed `live_execution_mode`
 - **THEN** gateway resolution SHALL reject the mode as unsupported
 - **THEN** gateway resolution SHALL NOT return a paper or live execution gateway
 
-#### Scenario: Small live cap remains authoritative
-- **WHEN** runtime configuration uses `live_execution_mode=small_live_auto`
+#### Scenario: Auto trade cap remains authoritative
+- **WHEN** runtime configuration uses `live_execution_mode=auto_trade` with positive `live_trade_max_notional`
 - **THEN** all live entry intents SHALL be capped by `live_trade_max_notional` before reaching the live gateway
 
 #### Scenario: Explicit gateway cannot upgrade safety mode
@@ -105,4 +105,3 @@ The Binance live gateway SHALL treat exchange-native accepted protection orders 
 #### Scenario: Local guardian is not native protection
 - **WHEN** client-side WebSocket monitoring is active as a fallback or verification layer
 - **THEN** the system SHALL identify it as local guardian state and SHALL NOT use it as proof that exchange-native protection is armed
-

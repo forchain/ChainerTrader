@@ -9,6 +9,9 @@ from trader.live.auto_execution import (
     normalize_live_execution_mode,
     normalize_margin_borrow_block_policy,
 )
+from trader.task.persisted_live_config_migration import (
+    PERSISTED_LEGACY_LIVE_EXECUTION_MODE,
+)
 from trader.task.optimization import expand_parameter_space, has_parameter_search, make_optimization_run_id, make_param_id
 from trader.task.task_type import TaskType, parse_task_type
 from trader.utils.symbol_interval import Interval, SymbolInterval
@@ -73,6 +76,13 @@ def _global_min_live_trade_notional() -> float:
     return float(os.environ.get(TRADER_MIN_LIVE_TRADE_NOTIONAL, 11.0) or 11.0)
 
 
+def apply_persisted_task_runtime_metadata(taskc, saved_config: dict | None) -> None:
+    saved = dict(saved_config or {})
+    legacy_mode = saved.get(PERSISTED_LEGACY_LIVE_EXECUTION_MODE)
+    if legacy_mode:
+        setattr(taskc, PERSISTED_LEGACY_LIVE_EXECUTION_MODE, str(legacy_mode).strip().lower())
+
+
 class TaskConfig:
     def __init__(
         self,
@@ -93,7 +103,7 @@ class TaskConfig:
         dataset_ref=None,
         live_execution_mode: str = "auto_trade",
         manual_start_position: float = 0.0,
-        live_data_mode: str = "polling",
+        live_data_mode: str | None = None,
         live_trade_max_notional: float = 0.0,
         live_margin_borrow_block_policy: str = "skip_continue",
         live_margin_borrow_precheck: bool = True,
@@ -123,7 +133,8 @@ class TaskConfig:
         self.dataset_ref = dataset_ref
         self.live_execution_mode = normalize_live_execution_mode(live_execution_mode)
         self.manual_start_position = float(manual_start_position or 0.0)
-        self.live_data_mode = str(live_data_mode or "polling").strip().lower()
+        if live_data_mode is not None:
+            raise ValueError("live_data_mode is no longer supported; remove it from the task config")
         self.live_trade_max_notional = float(live_trade_max_notional or 0.0)
         self.live_margin_borrow_block_policy = normalize_margin_borrow_block_policy(live_margin_borrow_block_policy)
         self.live_margin_borrow_precheck = parse_bool(live_margin_borrow_precheck, default=True)
@@ -190,7 +201,6 @@ class TaskConfig:
             "optimization_run_id": self.optimization_run_id,
             "live_execution_mode": self.live_execution_mode,
             "manual_start_position": self.manual_start_position,
-            "live_data_mode": self.live_data_mode,
             "live_trade_max_notional": self.live_trade_max_notional,
             "live_margin_borrow_block_policy": self.live_margin_borrow_block_policy,
             "live_margin_borrow_precheck": self.live_margin_borrow_precheck,
@@ -230,6 +240,8 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
             return []
         except FileNotFoundError:
             return []
+    elif path.is_like_file(cfg):
+        raise ValueError(f"task config file does not exist: {cfg}")
     else:
         parsed_list = json.loads(cfg)
 
@@ -246,6 +258,8 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
         return task_id
 
     for tcd in parsed_list:
+        if "live_data_mode" in tcd:
+            raise ValueError("live_data_mode is no longer supported; remove it from the task config")
         if tcd.get("run_id"):
             run_id = tcd["run_id"]
         task_type = parse_task_type(tcd["task_type"])
@@ -286,8 +300,6 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
 
         live_execution_mode = normalize_live_execution_mode(tcd.get("live_execution_mode", "auto_trade"))
         manual_start_position = float(tcd.get("manual_start_position", 0.0) or 0.0)
-        default_live_data_mode = "realtime" if live_execution_mode == "manual_notify" else "polling"
-        live_data_mode = str(tcd.get("live_data_mode", default_live_data_mode)).strip().lower()
         global_min_notional = _global_min_live_trade_notional()
         configured_notional = "live_trade_max_notional" in tcd and tcd.get("live_trade_max_notional") not in (None, "")
         if configured_notional:
@@ -298,7 +310,7 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
                     f"TRADER_MIN_LIVE_TRADE_NOTIONAL({global_min_notional})"
                 )
         else:
-            live_trade_max_notional = float(global_min_notional)
+            live_trade_max_notional = 0.0
         live_margin_borrow_block_policy = normalize_margin_borrow_block_policy(
             tcd.get("live_margin_borrow_block_policy", "skip_continue")
         )
@@ -373,7 +385,6 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
                     strategy_params={},
                     live_execution_mode=live_execution_mode,
                     manual_start_position=manual_start_position,
-                    live_data_mode=live_data_mode,
                     live_trade_max_notional=live_trade_max_notional,
                     live_margin_borrow_block_policy=live_margin_borrow_block_policy,
                     live_margin_borrow_precheck=live_margin_borrow_precheck,
@@ -409,7 +420,6 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
                             optimization_run_id=optimization_run_id if parameter_search_enabled else None,
                             live_execution_mode=live_execution_mode,
                             manual_start_position=manual_start_position,
-                            live_data_mode=live_data_mode,
                             live_trade_max_notional=live_trade_max_notional,
                             live_margin_borrow_block_policy=live_margin_borrow_block_policy,
                             live_margin_borrow_precheck=live_margin_borrow_precheck,
@@ -441,7 +451,6 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
                         strategy_params={},
                         live_execution_mode=live_execution_mode,
                         manual_start_position=manual_start_position,
-                        live_data_mode=live_data_mode,
                         live_trade_max_notional=live_trade_max_notional,
                         live_margin_borrow_block_policy=live_margin_borrow_block_policy,
                         live_margin_borrow_precheck=live_margin_borrow_precheck,

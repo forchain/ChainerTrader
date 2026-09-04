@@ -14,7 +14,7 @@
 ## Test Cases
 | ID | Gate | Purpose | Steps | Expected Result | Evidence | Failure Handling | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| TEST-PROD-001 | AC-PROD-001 | Ensure dedicated fast-signal task is used | Use dedicated task file only; assert task config excludes `realtime_macd_triple_divergence_top10_production.json` | Runtime command points to dedicated task file | task path + config snapshot | Wrong task path -> hard_fail stop | passed |
+| TEST-PROD-001 | AC-PROD-001 | Ensure dedicated fast-signal task is used | Use dedicated task file only; assert task config excludes `auto_trade_macd_triple_divergence_top10_production.json` | Runtime command points to dedicated task file | task path + config snapshot | Wrong task path -> hard_fail stop | passed |
 | TEST-PROD-002 | AC-PROD-002 | Ensure production runtime reaches live loop | Start `python -m trader --tasks <dedicated-task>` | Warmup/realtime loop logs appear | startup/realtime log lines + timestamps | Startup error -> failed | passed |
 | TEST-PROD-003 | AC-PROD-003 | Ensure fast signal appears quickly | Observe signal logs/events after startup | LONG/SELL/SHORT/CLOSE signals appear by early bar windows | signal timestamp, op type, task id, bar phase | no signal in timeout -> failed | passed |
 | TEST-PROD-004 | AC-PROD-004 | Verify spot long real submission | Observe auto_execution submit logs during long flow | submit success with `order_id` and spot scope | order_id, symbol, side/type, timestamp | missing order_id/silent failure -> hard_fail | passed |

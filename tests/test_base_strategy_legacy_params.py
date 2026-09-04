@@ -5,6 +5,7 @@ import pandas as pd
 import pytest
 
 from trader.strategy.base_strategy import BaseStrategy
+from trader.strategy.node import build_strategy_kwargs
 from trader.strategy.strategy import parse_strategy
 
 
@@ -38,6 +39,28 @@ def test_base_strategy_no_longer_declares_legacy_stoploss_engine_params():
     assert "atrdist" not in param_names
     assert "stoploss" not in param_names
     assert "takeprofit" not in param_names
+    assert "position_percent" not in param_names
+    assert "position_price_buffer" not in param_names
+    assert "chainer_position_percent" in param_names
+    assert "chainer_position_price_buffer" in param_names
+
+
+def test_build_strategy_kwargs_maps_legacy_position_params_to_prefixed_names():
+    kwargs = build_strategy_kwargs(
+        cfg=type("Cfg", (), {"mode": None, "period": None})(),
+        log=None,
+        position=0,
+        trader=True,
+        strategy_params={
+            "position_percent": 75,
+            "position_price_buffer": 0.01,
+        },
+    )
+
+    assert "position_percent" not in kwargs
+    assert "position_price_buffer" not in kwargs
+    assert kwargs["chainer_position_percent"] == 75
+    assert kwargs["chainer_position_price_buffer"] == 0.01
 
 
 @pytest.mark.parametrize("strategy_name", ["DUALMA", "MACDRSI", "TURTLE"])

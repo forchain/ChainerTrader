@@ -10,7 +10,8 @@ from fastapi.responses import StreamingResponse
 
 from trader.auth.context import current_user
 from trader.rpc.api.tasks import _enforce_current_user_ownership, _preflight_single_running_task_per_user, _preflight_user_live_tasks
-from trader.task.task_config import parse_task_config
+from trader.task.persisted_live_config_migration import sanitize_public_task_config_json
+from trader.task.task_config import apply_persisted_task_runtime_metadata, parse_task_config
 from trader.live.dashboard import build_risk_overlay_events, build_signal_marker_event, notification_event, strategy_execution_event
 from trader.live.dashboard import kline_to_chart_candle
 from trader.live.monitor import build_initial_snapshot, list_live_strategy_summaries, serialize_dashboard_event
@@ -346,7 +347,7 @@ async def _build_historical_chart_snapshot(ts, db_manager, *, limit: int) -> dic
             "task_type": task_type,
             "task_id": task_id,
         },
-        "config_json": getattr(ts, "config_json", None),
+        "config_json": sanitize_public_task_config_json(getattr(ts, "config_json", None)),
         "market": symbol_interval.symbol() if symbol_interval is not None else "",
         "interval": symbol_interval.interval.value if symbol_interval is not None else "",
         "strategy_name": _task_strategy_name_from_state(ts),
@@ -465,7 +466,7 @@ async def current_task_workspace(request: Request, task_id: int | None = None):
         "name": selected_item["name"],
         "start_time": selected_item["start_time"],
         "runtime_status": {"state": selected_item["state"]},
-        "config_json": getattr(selected, "config_json", None),
+        "config_json": sanitize_public_task_config_json(getattr(selected, "config_json", None)),
     }
     can_stream = False
     if renderer == "live":
@@ -513,6 +514,7 @@ async def rerun_task(request: Request, task_id: int):
     if not config_json:
         raise HTTPException(status_code=400, detail=f"task({task_id}) has no reusable config")
     try:
+        saved_config = _task_config_dict(selected)
         taskcs = parse_task_config(_rerun_config_json(config_json))
         if not taskcs:
             # Fallback for legacy/atypical saved config_json payloads: rebuild from task state config.
@@ -530,6 +532,8 @@ async def rerun_task(request: Request, task_id: int):
                     f"interval={fallback_cfg.get('interval')}, keys={keys})"
                 ),
             )
+        for tc in taskcs:
+            apply_persisted_task_runtime_metadata(tc, saved_config)
         if user is not None:
             _enforce_current_user_ownership(taskcs, user.id)
             # Rerun semantics: force-stop current running tasks first, then submit rerun.

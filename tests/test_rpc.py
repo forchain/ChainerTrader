@@ -1,14 +1,19 @@
 import asyncio
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
 from fastapi.testclient import TestClient
 
+from trader.auth.credentials import encrypt_secret
 from trader.common.common import NAME
 from trader.common.config import Config
+from trader.common.logger import Logger
 from trader.exchange.balance import Balance
+from trader.exchange.exchange_config import ExchangeConfig, MarginMode
 from trader.rpc.app import app
 from trader.rpc.models import AcctsInfo, TasksInfo, get_accounts_info
+from trader.utils.symbol_interval import Interval, SymbolInterval
 
 
 @pytest.fixture
@@ -48,7 +53,7 @@ def test_lifespan_attaches_rpc_app_to_state(rpc_test_client):
 def test_admin_dashboard_returns_200_when_lifecycle_active(rpc_test_client, monkeypatch):
     monkeypatch.setattr(
         "trader.rpc.app.get_accounts_info",
-        lambda rpc_app: AcctsInfo(
+        lambda rpc_app, **_kwargs: AcctsInfo(
             total=3,
             balances=[
                 Balance(asset="USDT", free=12.5, locked=0.0),
@@ -94,9 +99,9 @@ def test_public_nav_hides_admin_dropdown_for_anonymous(rpc_test_client):
 
 
 def test_admin_nav_shows_admin_dropdown_for_user_management_only(monkeypatch):
-    from fastapi import FastAPI
-    from fastapi import Request
     from types import SimpleNamespace
+
+    from fastapi import FastAPI, Request
 
     from trader.auth.context import SessionAuthMiddleware
     from trader.rpc.app import templates
@@ -140,45 +145,260 @@ def test_admin_nav_shows_admin_dropdown_for_user_management_only(monkeypatch):
 
 
 def test_account_page_shows_balances_with_default_filter(rpc_test_client, monkeypatch):
+    service_key = "service-secret"
+    user = type("User", (), {"id": 1, "username": "trader", "role": "user"})()
+    credential = SimpleNamespace(
+        id=1,
+        exchange="BINANCE",
+        encrypted_api_key=encrypt_secret(service_key, "user-api-key"),
+        encrypted_api_secret=encrypt_secret(service_key, "user-api-secret"),
+        masked_api_key="user***ikey",
+    )
+
+    class _UserExchange:
+        def __init__(self, cfg, _log=None):
+            self.cfg = cfg
+            self.margin_mode = cfg.margin_mode
+
     monkeypatch.setattr(
         "trader.rpc.app.require_user",
-        AsyncMock(return_value=type("User", (), {"id": 1, "username": "trader", "role": "user"})()),
+        AsyncMock(return_value=user),
     )
+    monkeypatch.setattr("trader.rpc.app.BinanceExchange", _UserExchange)
     monkeypatch.setattr(
         "trader.rpc.app.get_accounts_info",
-        lambda rpc_app: AcctsInfo(
+        lambda rpc_app, **_kwargs: AcctsInfo(
             total=3,
             balances=[
-                Balance(asset="USDT", free=12.5, locked=0.0),
-                Balance(asset="BTC", free=0.0, locked=0.01),
-                Balance(asset="ETH", free=1.25, locked=0.0),
+                Balance(asset="USDT", free=12.5, locked=0.0, max_borrowable=7.5, operable=20.0),
+                Balance(asset="BTC", free=0.0, locked=0.01, max_borrowable=0.0, operable=0.0),
+                Balance(asset="ETH", free=1.25, locked=0.0, max_borrowable=0.0, operable=1.25),
             ],
+            open_orders=[
+                {
+                    "symbol": "BTCUSDT",
+                    "side": "BUY",
+                    "quantity": 0.5,
+                    "order_id": "1001",
+                    "order_type": "LIMIT",
+                    "price": 100.0,
+                    "status": "open",
+                }
+            ],
+            borrow_asset="USDT",
+            borrowable_amount=7.5,
+            operable_amount=20.0,
         ),
     )
+    app.state.cfg = Config(api="127.0.0.1:8100", tasks="[]", secret_key=service_key)
+    rpc_stub = SimpleNamespace(
+        db_manager=SimpleNamespace(exchange_credential=SimpleNamespace(list_by_user=AsyncMock(return_value=[credential]))),
+        exchange=SimpleNamespace(cfg=ExchangeConfig(api_key="system-api-key", api_secret="system-api-secret")),
+        task_manager=SimpleNamespace(latest_si=SymbolInterval("BTC-USDT", Interval("1m"))),
+        logger=None,
+    )
+    monkeypatch.setattr("trader.rpc.app._require_rpc_app", lambda _request: rpc_stub)
     response = rpc_test_client.get("/account")
     assert response.status_code == 200
+    assert 'class="row g-4"' in response.text
     assert "账户余额" in response.text
+    assert "策略可操作资金" in response.text
+    assert "7.5" in response.text
+    assert "20.0" in response.text
+    assert "开放订单" in response.text
+    assert "取消前必须指定交易对" in response.text
+    assert "查询待取消订单" in response.text
+    assert "请输入交易对查询该交易对开放订单" in response.text
+    assert "准备取消此交易对" not in response.text
+    assert "1001" not in response.text
     assert 'id="toggle-all-assets"' in response.text
     assert "USDT" in response.text
     assert "ETH" in response.text
     assert "BTC" in response.text
     assert 'data-has-free="false"' in response.text
     assert 'class="account-row d-none"' in response.text
-    assert "创建 API Key" in response.text
-    assert "重置 API Key" not in response.text
-    assert "类型" not in response.text
+    assert "创建 API Key" not in response.text
+    assert "重置 API Key" in response.text
+
+
+def test_account_page_previews_requested_symbol_orders_before_cancel(rpc_test_client, monkeypatch):
+    service_key = "service-secret"
+    user = type("User", (), {"id": 1, "username": "trader", "role": "user"})()
+    credential = SimpleNamespace(
+        id=1,
+        exchange="BINANCE",
+        encrypted_api_key=encrypt_secret(service_key, "user-api-key"),
+        encrypted_api_secret=encrypt_secret(service_key, "user-api-secret"),
+        masked_api_key="user***ikey",
+    )
+
+    class _Exchange:
+        def __init__(self):
+            self.open_order_reads = []
+
+        def get_open_orders(self, symbol):
+            self.open_order_reads.append(symbol.name())
+            return [
+                {
+                    "symbol": "SOLUSDT",
+                    "side": "buy",
+                    "amount": 0.5,
+                    "id": "sol-buy-1",
+                    "type": "market",
+                    "status": "open",
+                },
+                {
+                    "symbol": "SOLUSDT",
+                    "side": "buy",
+                    "amount": 0.4,
+                    "id": "sol-buy-2",
+                    "type": "market",
+                    "status": "open",
+                },
+            ]
+
+    exchange = _Exchange()
+    monkeypatch.setattr("trader.rpc.app.require_user", AsyncMock(return_value=user))
+    monkeypatch.setattr("trader.rpc.app.get_accounts_info", lambda rpc_app, **_kwargs: AcctsInfo(total=0, balances=[]))
+    monkeypatch.setattr("trader.rpc.app._account_exchange_for_user", lambda *_args, **_kwargs: exchange)
+    app.state.cfg = Config(api="127.0.0.1:8100", tasks="[]", secret_key=service_key)
+    rpc_stub = SimpleNamespace(
+        db_manager=SimpleNamespace(exchange_credential=SimpleNamespace(list_by_user=AsyncMock(return_value=[credential]))),
+        exchange=SimpleNamespace(cfg=ExchangeConfig(api_key="system-api-key", api_secret="system-api-secret")),
+        task_manager=SimpleNamespace(latest_si=SymbolInterval("BTC-USDT", Interval("1m"))),
+        logger=None,
+    )
+    monkeypatch.setattr("trader.rpc.app._require_rpc_app", lambda _request: rpc_stub)
+
+    response = rpc_test_client.get("/account?cancel_symbol=SOLUSDT")
+
+    assert response.status_code == 200
+    assert exchange.open_order_reads == ["SOLUSDT"]
+    assert "SOLUSDT 待取消订单预览" in response.text
+    assert "sol-buy-1" in response.text
+    assert "sol-buy-2" in response.text
+    assert 'name="symbol" value="SOLUSDT"' in response.text
+    assert "确认取消 SOLUSDT" in response.text
+
+
+def test_account_page_shows_empty_requested_symbol_order_result(rpc_test_client, monkeypatch):
+    service_key = "service-secret"
+    user = type("User", (), {"id": 1, "username": "trader", "role": "user"})()
+    credential = SimpleNamespace(
+        id=1,
+        exchange="BINANCE",
+        encrypted_api_key=encrypt_secret(service_key, "user-api-key"),
+        encrypted_api_secret=encrypt_secret(service_key, "user-api-secret"),
+        masked_api_key="user***ikey",
+    )
+
+    class _Exchange:
+        def __init__(self):
+            self.open_order_reads = []
+
+        def get_open_orders(self, symbol):
+            self.open_order_reads.append(symbol.name())
+            return []
+
+    exchange = _Exchange()
+    monkeypatch.setattr("trader.rpc.app.require_user", AsyncMock(return_value=user))
+    monkeypatch.setattr("trader.rpc.app.get_accounts_info", lambda rpc_app, **_kwargs: AcctsInfo(total=0, balances=[]))
+    monkeypatch.setattr("trader.rpc.app._account_exchange_for_user", lambda *_args, **_kwargs: exchange)
+    app.state.cfg = Config(api="127.0.0.1:8100", tasks="[]", secret_key=service_key)
+    rpc_stub = SimpleNamespace(
+        db_manager=SimpleNamespace(exchange_credential=SimpleNamespace(list_by_user=AsyncMock(return_value=[credential]))),
+        exchange=SimpleNamespace(cfg=ExchangeConfig(api_key="system-api-key", api_secret="system-api-secret")),
+        task_manager=SimpleNamespace(latest_si=SymbolInterval("BTC-USDT", Interval("1m"))),
+        logger=None,
+    )
+    monkeypatch.setattr("trader.rpc.app._require_rpc_app", lambda _request: rpc_stub)
+
+    response = rpc_test_client.get("/account?cancel_symbol=BNBUSDT")
+
+    assert response.status_code == 200
+    assert exchange.open_order_reads == ["BNBUSDT"]
+    assert "BNBUSDT 待取消订单预览" in response.text
+    assert "BNBUSDT 当前没有开放订单。" in response.text
+    assert 'class="alert alert-info mb-0"' in response.text
+    assert "确认取消 BNBUSDT" in response.text
+    assert "disabled" in response.text
+
+
+def test_account_page_shows_account_read_error(rpc_test_client, monkeypatch):
+    service_key = "service-secret"
+    user = type("User", (), {"id": 1, "username": "trader", "role": "user"})()
+    credential = SimpleNamespace(
+        id=1,
+        exchange="BINANCE",
+        encrypted_api_key=encrypt_secret(service_key, "user-api-key"),
+        encrypted_api_secret=encrypt_secret(service_key, "user-api-secret"),
+        masked_api_key="user***ikey",
+    )
+
+    class _UserExchange:
+        def __init__(self, cfg, _log=None):
+            self.cfg = cfg
+            self.margin_mode = cfg.margin_mode
+
+    monkeypatch.setattr(
+        "trader.rpc.app.require_user",
+        AsyncMock(return_value=user),
+    )
+    monkeypatch.setattr("trader.rpc.app.BinanceExchange", _UserExchange)
+    monkeypatch.setattr(
+        "trader.rpc.app.get_accounts_info",
+        lambda rpc_app, **_kwargs: AcctsInfo(total=0, balances=[], account_error="交易所账户读取失败: Invalid API-key"),
+    )
+    app.state.cfg = Config(api="127.0.0.1:8100", tasks="[]", secret_key=service_key)
+    rpc_stub = SimpleNamespace(
+        db_manager=SimpleNamespace(exchange_credential=SimpleNamespace(list_by_user=AsyncMock(return_value=[credential]))),
+        exchange=SimpleNamespace(cfg=ExchangeConfig(api_key="system-api-key", api_secret="system-api-secret")),
+        task_manager=SimpleNamespace(latest_si=SymbolInterval("BTC-USDT", Interval("1m"))),
+        logger=None,
+    )
+    monkeypatch.setattr("trader.rpc.app._require_rpc_app", lambda _request: rpc_stub)
+
+    response = rpc_test_client.get("/account")
+
+    assert response.status_code == 200
+    assert "交易所账户读取失败" in response.text
+    assert "Invalid API-key" in response.text
+
+
+def test_account_page_tolerates_legacy_account_info_without_margin_fields(rpc_test_client, monkeypatch):
+    user = type("User", (), {"id": 1, "username": "trader", "role": "user"})()
+    monkeypatch.setattr("trader.rpc.app.require_user", AsyncMock(return_value=user))
+    monkeypatch.setattr(
+        "trader.rpc.app._user_accounts_info",
+        lambda _cfg, _rpc_app, _user, _credentials: SimpleNamespace(
+            total=0,
+            balances=[],
+            locked_reasons=[],
+            account_error="交易所账户读取失败: Invalid API-key",
+        ),
+    )
+    rpc_stub = SimpleNamespace(
+        db_manager=SimpleNamespace(exchange_credential=SimpleNamespace(list_by_user=AsyncMock(return_value=[]))),
+        exchange=None,
+        logger=None,
+    )
+    monkeypatch.setattr("trader.rpc.app._require_rpc_app", lambda _request: rpc_stub)
+
+    response = rpc_test_client.get("/account")
+
+    assert response.status_code == 200
+    assert "交易所账户读取失败" in response.text
+    assert "Invalid API-key" in response.text
 
 
 def test_account_page_shows_existing_credential_summary_and_reset_button(rpc_test_client, monkeypatch):
-    from types import SimpleNamespace
-
     monkeypatch.setattr(
         "trader.rpc.app.require_user",
         AsyncMock(return_value=type("User", (), {"id": 1, "username": "trader", "role": "user"})()),
     )
     monkeypatch.setattr(
         "trader.rpc.app.get_accounts_info",
-        lambda rpc_app: AcctsInfo(total=0, balances=[]),
+        lambda rpc_app, **_kwargs: AcctsInfo(total=0, balances=[]),
     )
 
     class _Credential:
@@ -201,8 +421,356 @@ def test_account_page_shows_existing_credential_summary_and_reset_button(rpc_tes
     assert "abcd***wxyz" in response.text
 
 
+def test_account_page_reads_user_exchange_credential_not_system_exchange(rpc_test_client, monkeypatch):
+    user = type("User", (), {"id": 7, "username": "trader", "role": "user"})()
+    service_key = "service-secret"
+    credential = SimpleNamespace(
+        id=2,
+        exchange="BINANCE",
+        label="default",
+        encrypted_api_key=encrypt_secret(service_key, "user-api-key"),
+        encrypted_api_secret=encrypt_secret(service_key, "user-api-secret"),
+        masked_api_key="user***ikey",
+    )
+    captured = {}
+
+    class _SystemExchange:
+        cfg = ExchangeConfig(api_key="system-api-key", api_secret="system-api-secret")
+
+        def get_account_balances(self):
+            raise AssertionError("account page must not read the system exchange")
+
+    class _UserExchange:
+        def __init__(self, cfg, _log=None):
+            self.cfg = cfg
+            self.margin_mode = cfg.margin_mode
+
+    def _capture_accounts_info(account_app, **_kwargs):
+        captured["api_key"] = account_app.exchange.cfg.api_key
+        captured["api_secret"] = account_app.exchange.cfg.api_secret
+        captured["margin_mode"] = account_app.exchange.cfg.margin_mode
+        captured["include_open_orders"] = _kwargs.get("include_open_orders")
+        return AcctsInfo(total=0, balances=[])
+
+    monkeypatch.setattr("trader.rpc.app.require_user", AsyncMock(return_value=user))
+    monkeypatch.setattr("trader.rpc.app.BinanceExchange", _UserExchange)
+    monkeypatch.setattr("trader.rpc.app.get_accounts_info", _capture_accounts_info)
+    app.state.cfg = Config(
+        api="127.0.0.1:8100",
+        tasks="[]",
+        secret_key=service_key,
+        exchange='{"ty":"BINANCE","driver":"ccxt","api_key":"system-api-key","api_secret":"system-api-secret"}',
+    )
+    rpc_stub = SimpleNamespace(
+        db_manager=SimpleNamespace(exchange_credential=SimpleNamespace(list_by_user=AsyncMock(return_value=[credential]))),
+        exchange=_SystemExchange(),
+        task_manager=SimpleNamespace(latest_si=SymbolInterval("BTC-USDT", Interval("1m"))),
+        logger=None,
+    )
+    monkeypatch.setattr("trader.rpc.app._require_rpc_app", lambda _request: rpc_stub)
+
+    response = rpc_test_client.get("/account")
+
+    assert response.status_code == 200
+    assert captured == {
+        "api_key": "user-api-key",
+        "api_secret": "user-api-secret",
+        "margin_mode": MarginMode.CROSS_MARGIN,
+        "include_open_orders": False,
+    }
+
+
+def test_account_page_without_saved_credential_does_not_fallback_to_system_exchange(rpc_test_client, monkeypatch):
+    user = type("User", (), {"id": 7, "username": "trader", "role": "user"})()
+
+    class _SystemExchange:
+        def get_account_balances(self):
+            raise AssertionError("missing user credential must not fall back to the system exchange")
+
+    monkeypatch.setattr("trader.rpc.app.require_user", AsyncMock(return_value=user))
+    app.state.cfg = Config(api="127.0.0.1:8100", tasks="[]", secret_key="service-secret")
+    rpc_stub = SimpleNamespace(
+        db_manager=SimpleNamespace(exchange_credential=SimpleNamespace(list_by_user=AsyncMock(return_value=[]))),
+        exchange=_SystemExchange(),
+        task_manager=SimpleNamespace(latest_si=SymbolInterval("BTC-USDT", Interval("1m"))),
+        logger=None,
+    )
+    monkeypatch.setattr("trader.rpc.app._require_rpc_app", lambda _request: rpc_stub)
+
+    response = rpc_test_client.get("/account")
+
+    assert response.status_code == 200
+    assert "missing BINANCE API credential for user_id=7" in response.text
+
+
 def test_accounts_info_returns_empty_when_exchange_is_not_configured():
     assert get_accounts_info(type("AppStub", (), {"exchange": None})()) == AcctsInfo(total=0, balances=[])
+
+
+def test_accounts_info_returns_error_when_exchange_balance_read_fails():
+    class _Log:
+        def __init__(self):
+            self.errors = []
+
+        def error(self, message):
+            self.errors.append(str(message))
+
+    class _Exchange:
+        def get_account_balances(self):
+            raise RuntimeError('binance {"code":-2015,"msg":"Invalid API-key, IP, or permissions for action."}')
+
+    log = _Log()
+    info = get_accounts_info(type("AppStub", (), {"exchange": _Exchange(), "logger": log})())
+
+    assert info.total == 0
+    assert info.balances == []
+    assert "交易所账户读取失败" in info.account_error
+    assert "Invalid API-key" in info.account_error
+    assert "account page exchange balance read failed" in log.errors[0]
+
+
+def test_accounts_info_adds_borrow_capacity_and_locked_order_reasons():
+    class _Exchange:
+        def __init__(self):
+            self.borrow_reads = []
+            self.open_order_reads = []
+
+        def get_account_balances(self):
+            return [
+                Balance(asset="USDT", free=5.0, locked=70.0),
+                Balance(asset="BTC", free=0.0, locked=0.0),
+            ]
+
+        def get_max_borrowable(self, asset, symbol=None):
+            self.borrow_reads.append((asset, symbol))
+            return {"amount": "22.5", "borrowLimit": "100000"}
+
+        def get_open_orders(self, symbol):
+            self.open_order_reads.append(symbol.name())
+            return [
+                {
+                    "symbol": "BTCUSDT",
+                    "side": "BUY",
+                    "origQty": "0.25",
+                    "orderId": 1001,
+                    "type": "STOP_LOSS",
+                    "price": "100.0",
+                }
+            ]
+
+    exchange = _Exchange()
+    info = get_accounts_info(
+        type(
+            "AppStub",
+            (),
+            {
+                "exchange": exchange,
+                "task_manager": type("TaskManagerStub", (), {"latest_si": SymbolInterval("BTC-USDT", Interval("1m"))})(),
+            },
+        )()
+    )
+
+    assert info.borrow_asset == "USDT"
+    assert info.borrowable_amount == 22.5
+    assert info.operable_amount == 27.5
+    assert info.balances[0].max_borrowable == 22.5
+    assert info.balances[0].operable == 27.5
+    assert info.locked_reasons[0]["symbol"] == "BTCUSDT"
+    assert info.locked_reasons[0]["order_id"] == "1001"
+    assert exchange.borrow_reads == [("USDT", None)]
+    assert exchange.open_order_reads == ["BTCUSDT"]
+
+
+def test_accounts_info_reads_open_orders_for_symbols_with_locked_balances():
+    class _Exchange:
+        def __init__(self):
+            self.open_order_reads = []
+
+        def get_account_balances(self):
+            return [
+                Balance(asset="USDT", free=5.0, locked=70.0),
+                Balance(asset="ETH", free=1.0, locked=0.25),
+                Balance(asset="SOL", free=2.0, locked=0.0),
+            ]
+
+        def get_max_borrowable(self, asset, symbol=None):
+            return {"amount": "0"}
+
+        def get_all_open_orders(self):
+            raise AssertionError("account-wide open order reader should not be used")
+
+        def get_open_orders(self, symbol):
+            self.open_order_reads.append(symbol.name())
+            return [
+                {
+                    "symbol": symbol.name(),
+                    "side": "sell",
+                    "amount": 0.25,
+                    "id": f"{symbol.name()}-order",
+                    "type": "stop_loss",
+                    "price": "100.0",
+                    "status": "open",
+                }
+            ]
+
+    exchange = _Exchange()
+    info = get_accounts_info(
+        type(
+            "AppStub",
+            (),
+            {
+                "exchange": exchange,
+                "task_manager": type("TaskManagerStub", (), {"latest_si": SymbolInterval("BTC-USDT", Interval("1m"))})(),
+            },
+        )()
+    )
+
+    assert exchange.open_order_reads == ["BTCUSDT", "ETHUSDT"]
+    assert info.open_orders[0]["symbol"] == "BTCUSDT"
+    assert info.open_orders[0]["order_id"] == "BTCUSDT-order"
+    assert info.open_orders[1]["symbol"] == "ETHUSDT"
+    assert info.open_orders[1]["order_id"] == "ETHUSDT-order"
+    assert info.locked_reasons == info.open_orders
+
+
+def test_accounts_info_uses_account_open_order_snapshot_when_quote_asset_is_locked():
+    class _Exchange:
+        def __init__(self):
+            self.symbol_open_order_reads = []
+            self.all_open_order_reads = 0
+
+        def get_account_balances(self):
+            return [
+                Balance(asset="USDT", free=5.0, locked=70.0),
+                Balance(asset="ETH", free=1.0, locked=0.25),
+            ]
+
+        def get_max_borrowable(self, asset, symbol=None):
+            return {"amount": "0"}
+
+        def get_open_orders(self, symbol):
+            self.symbol_open_order_reads.append(symbol.name())
+            return [
+                {
+                    "symbol": symbol.name(),
+                    "side": "sell",
+                    "amount": 0.25,
+                    "id": f"{symbol.name()}-sell",
+                    "type": "market",
+                    "status": "open",
+                }
+            ]
+
+        def get_all_open_orders(self):
+            self.all_open_order_reads += 1
+            return [
+                {"symbol": "BTC/USDT", "side": "buy", "amount": 0.001, "id": "btc-buy", "type": "market", "status": "open"},
+                {"symbol": "SOL/USDT", "side": "buy", "amount": 0.5, "id": "sol-buy-1", "type": "market", "status": "open"},
+                {"symbol": "BNB/USDT", "side": "buy", "amount": 0.02, "id": "bnb-buy", "type": "market", "status": "open"},
+                {"symbol": "SOL/USDT", "side": "buy", "amount": 0.4, "id": "sol-buy-2", "type": "market", "status": "open"},
+            ]
+
+    exchange = _Exchange()
+    info = get_accounts_info(
+        type(
+            "AppStub",
+            (),
+            {
+                "exchange": exchange,
+                "task_manager": type("TaskManagerStub", (), {"latest_si": SymbolInterval("ETH-USDT", Interval("1m"))})(),
+            },
+        )()
+    )
+
+    assert exchange.all_open_order_reads == 1
+    assert exchange.symbol_open_order_reads == []
+    assert {order["order_id"] for order in info.open_orders} == {"btc-buy", "sol-buy-1", "bnb-buy", "sol-buy-2"}
+    assert [order["symbol"] for order in info.open_orders] == ["BTCUSDT", "SOLUSDT", "BNBUSDT", "SOLUSDT"]
+    assert {order["side"] for order in info.open_orders} == {"buy"}
+
+
+def test_accounts_info_can_skip_open_order_reads():
+    class _Exchange:
+        def get_account_balances(self):
+            return [Balance(asset="USDT", free=5.0, locked=70.0)]
+
+        def get_max_borrowable(self, asset, symbol=None):
+            return {"amount": "0"}
+
+        def get_open_orders(self, symbol):
+            raise AssertionError("account page summary must not read open orders by default")
+
+        def get_all_open_orders(self):
+            raise AssertionError("account page summary must not read account-wide open orders by default")
+
+    info = get_accounts_info(
+        type(
+            "AppStub",
+            (),
+            {
+                "exchange": _Exchange(),
+                "task_manager": type("TaskManagerStub", (), {"latest_si": SymbolInterval("ETH-USDT", Interval("1m"))})(),
+            },
+        )(),
+        include_open_orders=False,
+    )
+
+    assert info.open_orders == []
+    assert info.locked_reasons == []
+
+
+def test_account_cancel_cleanup_symbol_open_orders_requires_symbol(rpc_test_client, monkeypatch):
+    user = type("User", (), {"id": 1, "username": "trader", "role": "user"})()
+    monkeypatch.setattr("trader.rpc.app.require_user", AsyncMock(return_value=user))
+
+    response = rpc_test_client.post("/account/open-orders/cancel-cleanup-symbols", follow_redirects=False)
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "必须指定要取消开放订单的交易对。"
+
+
+def test_account_cancel_cleanup_symbol_open_orders_cancels_requested_symbol_only(rpc_test_client, monkeypatch):
+    service_key = "service-secret"
+    user = type("User", (), {"id": 1, "username": "trader", "role": "user"})()
+    credential = SimpleNamespace(
+        id=1,
+        exchange="BINANCE",
+        encrypted_api_key=encrypt_secret(service_key, "user-api-key"),
+        encrypted_api_secret=encrypt_secret(service_key, "user-api-secret"),
+        masked_api_key="user***ikey",
+    )
+
+    class _Exchange:
+        def __init__(self):
+            self.cancel_all_open_orders_calls = []
+
+        def cancel_all_open_orders(self, symbol):
+            self.cancel_all_open_orders_calls.append(symbol.name())
+
+    exchange = _Exchange()
+    monkeypatch.setattr("trader.rpc.app.require_user", AsyncMock(return_value=user))
+    monkeypatch.setattr("trader.rpc.app._account_exchange_for_user", lambda *_args, **_kwargs: exchange)
+    app.state.cfg = Config(
+        api="127.0.0.1:8100",
+        tasks="[]",
+        secret_key=service_key,
+    )
+    rpc_stub = SimpleNamespace(
+        db_manager=SimpleNamespace(exchange_credential=SimpleNamespace(list_by_user=AsyncMock(return_value=[credential]))),
+        logger=None,
+        task_manager=SimpleNamespace(latest_si=SymbolInterval("BTC-USDT", Interval("1m"))),
+    )
+    monkeypatch.setattr("trader.rpc.app._require_rpc_app", lambda _request: rpc_stub)
+
+    response = rpc_test_client.post(
+        "/account/open-orders/cancel-cleanup-symbols",
+        data={"symbol": "SOLUSDT"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/account"
+    assert exchange.cancel_all_open_orders_calls == ["SOLUSDT"]
 
 
 def test_admin_returns_503_when_rpc_app_not_initialized(monkeypatch):
@@ -237,6 +805,7 @@ def test_admin_logs_highlights_warning_error_and_critical(rpc_test_client, monke
                 "2026-06-24 00:01:21[WARNING:trader] check config",
                 "2026-06-24 00:01:22[ERROR:trader] failed task",
                 "2026-06-24 00:01:23[CRITICAL:trader] service down",
+                "ERROR: insufficient reserved capacity",
             ]
         )
     )
@@ -252,6 +821,15 @@ def test_admin_logs_highlights_warning_error_and_critical(rpc_test_client, monke
     assert "check config" in response.text
     assert "failed task" in response.text
     assert "service down" in response.text
+    assert '<div class="log-line log-line-error">ERROR: insufficient reserved capacity</div>' in response.text
+
+
+def test_logger_buffer_preserves_log_level_for_admin_highlighting():
+    logger = Logger(Config(api="127.0.0.1:8100"))
+
+    logger.error("insufficient reserved capacity")
+
+    assert logger.get_buffer_str()[-1] == "ERROR: insufficient reserved capacity"
 
 
 def test_read_root_follow_redirect_returns_503_when_rpc_app_not_initialized(monkeypatch):

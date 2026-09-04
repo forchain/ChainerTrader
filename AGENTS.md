@@ -140,3 +140,17 @@ OpenSpec archive rule:
 - Every time an OpenSpec change is archived, explicitly check whether README needs an update
 - Use the README responsibilities above as the decision rule
 - If the change affects project introduction, architecture presentation, deployment, CLI usage, API usage, database design, database structure, or any other user-facing interface, update README in the same change before archiving
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues on `ChainerLabs/ChainerTrader` via the `gh` CLI; external PRs are not a triage surface. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Canonical five-role vocabulary with default label names (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context layout: `CONTEXT.md` at repo root and `docs/adr/` for ADRs. See `docs/agents/domain.md`.

@@ -241,7 +241,7 @@ class BacktraderExecutionGateway(ExecutionGateway):
 
 
 class BinanceLiveExecutionGateway(ExecutionGateway):
-    def __init__(self, exchange, *, staged_execution_mode: str = "full_live_auto"):
+    def __init__(self, exchange, *, staged_execution_mode: str = "auto_trade"):
         self.exchange = exchange
         self.staged_execution_mode = staged_execution_mode
 

@@ -12,7 +12,7 @@ One task set can contain multiple live trading tasks running at the same time. T
 The existing code has useful safety controls, but it does not lock funds:
 
 - `free` controls the task's intended strategy capital.
-- `live_trade_max_notional` controls the notional for small-live orders.
+- `live_trade_max_notional` caps the notional for `auto_trade` orders when positive.
 - live routing checks exchange free balance before submitting a spot long order.
 - task and execution state are scoped by user/task.
 
@@ -44,8 +44,8 @@ The auto execution router then spends against the task's reserved budget instead
 ## Reservation Amount
 For a task requiring live auto orders:
 
-- `small_live_auto`: reserve `live_trade_max_notional`.
-- `full_live_auto` / `auto_trade`: reserve `task.free` when configured, otherwise `Config.cash`.
+- capped `auto_trade`: reserve `live_trade_max_notional`.
+- uncapped `auto_trade`: reserve `task.free` when configured, otherwise `Config.cash`.
 
 The reserved asset is the task quote asset. For `BTC-USDT`, the reserved asset is `USDT`.
 
