@@ -4,9 +4,9 @@ from logging import Logger
 
 from pymongo.synchronous.collection import Collection
 
-from trader.app.database_manager import DatabaseManager
 from trader.common.common import sleep
 from trader.common.config import Config
+from trader.database.manager import DatabaseManager
 from trader.exchange.binance.exchange import BinanceExchange
 from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig
@@ -36,7 +36,7 @@ class UpdateKlinesTask(BaseTask):
 
         super().start(queue, quit)
 
-        self.collection = self.db_manager.get_collection(self.cfg.db_name, self.tcfg.symbol_interval.name())
+        self.collection = self.db_manager.kline.get_collection(self.tcfg.symbol_interval.name())
         start_time = self.tcfg.start_time
         if self.tcfg.limit > 0:
             if self.tcfg.end_time > 0:
@@ -46,7 +46,7 @@ class UpdateKlinesTask(BaseTask):
                     -self.tcfg.limit,
                 )
             else:
-                latest_kline = self.db_manager.get_latest_kline(self.collection)
+                latest_kline = self.db_manager.kline.get_latest_kline(self.collection)
                 if latest_kline:
                     start_time = add_time_duration(
                         latest_kline.open_time,
@@ -92,7 +92,7 @@ async def download(
             log.info(f"exit {name}. total={total_records}")
             return False
 
-        latest_kline = db_manager.get_latest_kline(collection)
+        latest_kline = db_manager.kline.get_latest_kline(collection)
         if latest_kline is None:
             kls = exchange.get_klines_by_start(symbol_interval, start_time)
         else:
@@ -113,7 +113,7 @@ async def download(
                 log.warning(f"exit {name}, because get empty klines. total={total_records}")
                 return False
 
-        ret = db_manager.add_klines(collection, kls)
+        ret = db_manager.kline.add_klines(collection, kls)
         total_records += ret
 
         if ret != len(kls):

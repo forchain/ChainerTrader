@@ -1,15 +1,16 @@
 from trader.strategy.trader_result import TraderResult
+from trader.utils.task_state import TaskState
 
 
 class BackTraderStat:
-    def __init__(self, strategy, symbol_interval, tret: TraderResult):
+    def __init__(self, strategy, symbol_interval, ts: TaskState):
         self.strategy = strategy
         self.symbol_interval = symbol_interval
-        self.tret = tret
+        self.ts = ts
 
 
 class TraderStat:
-    def __init__(self, strategy, symbol_interval, tret: TraderResult):
+    def __init__(self, strategy, symbol_interval, ts: TaskState):
         self.strategy = strategy
         self.symbol_interval = symbol_interval
-        self.tret = tret
+        self.ts = ts

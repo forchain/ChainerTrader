@@ -1,8 +1,8 @@
 from asyncio import Event, Queue
 from logging import Logger
 
-from trader.app.database_manager import DatabaseManager
 from trader.common.config import Config
+from trader.database.manager import DatabaseManager
 from trader.exchange.binance.exchange import BinanceExchange
 from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig
@@ -28,14 +28,14 @@ class CheckKlinesNumTask(BaseTask):
         super().start(queue, quit)
 
         self.log.info(f"Start {self.name()}")
-        collection = self.db_manager.get_collection(self.cfg.db_name, self.tcfg.symbol_interval.name())
+        collection = self.db_manager.kline.get_collection(self.tcfg.symbol_interval.name())
 
-        first_kl = self.db_manager.get_first_kline(collection)
+        first_kl = self.db_manager.kline.get_first_kline(collection)
         if first_kl is None:
             self.log.error(f"{self.name()} can't find first kline")
             return
 
-        latest_kl = self.db_manager.get_latest_kline(collection)
+        latest_kl = self.db_manager.kline.get_latest_kline(collection)
         if latest_kl is None:
             self.log.error(f"{self.name()} can't find latest kline")
             return
@@ -52,7 +52,7 @@ class CheckKlinesNumTask(BaseTask):
                 break
             next_time = add_time_duration(next_time, self.tcfg.symbol_interval.interval, -1)
             if next_time > first_kl.open_time:
-                kl = self.db_manager.get_kline(collection, next_time)
+                kl = self.db_manager.kline.get_kline(collection, next_time)
                 if kl is None:
                     self.log.warning(f"{self.name()} no kline: open_time={next_time}. Process:{count}/{total}")
                     break

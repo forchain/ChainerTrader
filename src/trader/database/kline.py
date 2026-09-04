@@ -1,42 +1,23 @@
-from pymongo import ASCENDING, DESCENDING, MongoClient
+from logging import Logger
+
 from pymongo.synchronous.collection import Collection
-
-from trader.common.logger import Logger
 from trader.utils.kline import PRIMARY_KEY, Kline, parse_kline
+from trader.database.collection import get_name_for_klines, get_name_for_tasks
+from pymongo import ASCENDING, DESCENDING
 
 
-class DatabaseManager:
-    def __init__(self, cfg, log: Logger):
-        self.log = log.log()
-        self.cfg = cfg
-        self.log.info("Init DatabaseManager")
+class KlineCol:
+    def __init__(self, db, log: Logger):
+        self.db = db
+        self.log = log
 
-        """
-        _COMMAND_LOGGER = logging.getLogger("pymongo.command")
-        _CONNECTION_LOGGER = logging.getLogger("pymongo.connection")
-        _SERVER_SELECTION_LOGGER = logging.getLogger("pymongo.serverSelection")
-        _CLIENT_LOGGER = logging.getLogger("pymongo.client")
-        _SDAM_LOGGER = logging.getLogger("pymongo.topology")
-        """
-        # log.apply(logging.getLogger("pymongo.command"))
-
-    def start(self):
-        self.client = MongoClient(self.cfg.db)
-
-    def stop(self):
-        self.client.close()
-
-    def get_database(self, name):
-        return self.client[name]
-
-    def get_collection(self, db_name, collection_name) -> Collection:
-        db = self.get_database(db_name)
-
-        if collection_name in db.list_collection_names():
-            return db[collection_name]
+    def get_collection(self, name: str) -> Collection:
+        collection_name = get_name_for_klines(name)
+        if collection_name in self.db.list_collection_names():
+            return self.db[collection_name]
         else:
             self.log.info(f"Create collection {collection_name} and index")
-            col = db[collection_name]
+            col = self.db[collection_name]
             col.create_index([(PRIMARY_KEY, ASCENDING)], unique=True)
             return col
 

@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import FastAPI, Request
+from fastapi_auto_router import AutoRouter
 
 from trader.common import path
 from trader.common.config import Config
@@ -40,6 +41,14 @@ def start(cfg: Config):
         port = 8000
 
     rpc.state.cfg = cfg
+
+    # Initialize and load routers
+    routers_dir = os.path.abspath(os.path.dirname(__file__))
+    routers_dir = os.path.join(routers_dir, "api")
+
+    auto_router = AutoRouter(app=rpc, routers_dir=routers_dir, api_prefix="/api")  # relative to current file
+    auto_router.load_routers()
+
     uvicorn.run(
         rpc,
         host=host,
@@ -50,55 +59,6 @@ def start(cfg: Config):
     )
 
 
-@rpc.get("/version")
-def read_app_version():
-    return {"version": rpc.state.app.version()}
-
-
 @rpc.get("/")
 def read_root():
     return {"Hello": "I am " + rpc.state.app.name()}
-
-
-@rpc.get("/info")
-def read_app_info():
-    return rpc.state.app.info()
-
-
-@rpc.get("/name")
-def read_app_name():
-    return {"name": rpc.state.app.name()}
-
-
-@rpc.get("/config")
-def read_app_config():
-    return rpc.state.app.cfg.to_dict()
-
-
-@rpc.post("/add_tasks")
-async def add_tasks(request: Request):
-    raw_bytes = await request.body()
-    cfg = raw_bytes.decode("utf-8")
-    return rpc.state.app.send_add_tasks_msg(cfg)
-
-
-@rpc.get("/update_klines_task")
-def update_kines_task():
-    return rpc.state.app.task_manager.add_task()
-
-
-@rpc.get("/operates/")
-def read_start_app(limit: int = 10):
-    return rpc.state.app.stat.get_operates()
-
-
-@rpc.get("/exchange_info")
-def read_exchange_info(symbol: str):
-    if len(symbol) <= 0:
-        return {"error": "must config symbol"}
-    return rpc.state.app.exchange.get_exchange_info(symbol)
-
-
-@rpc.get("/accout")
-def read_account():
-    return rpc.state.app.exchange.get_account()

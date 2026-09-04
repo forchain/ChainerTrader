@@ -2,8 +2,8 @@ import csv
 import os
 from asyncio import Event, Queue
 
-from trader.app.database_manager import DatabaseManager
 from trader.common import path
+from trader.database.manager import DatabaseManager
 from trader.exchange.binance.exchange import BinanceExchange
 from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig
@@ -88,9 +88,9 @@ class ImportCSVTask(BaseTask):
                 self.log.error(f"{self.name()} kline interval is not {self.tcfg.symbol_interval.interval.name}")
                 return
 
-        collection = self.db_manager.get_collection(self.cfg.db_name, self.tcfg.symbol_interval.name())
+        collection = self.db_manager.kline.get_collection(self.tcfg.symbol_interval.name())
 
-        ret = self.db_manager.add_klines(collection, kls)
+        ret = self.db_manager.kline.add_klines(collection, kls)
         if ret != len(kls):
             self.log.warning(f"{self.name()} add klines to DB: {ret} != {len(kls)}")
         else:

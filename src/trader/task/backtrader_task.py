@@ -1,12 +1,12 @@
 from asyncio import Event
 from datetime import datetime
 
-from trader.app.database_manager import DatabaseManager
 from trader.common import path
 from trader.common.common import MIN_RECORDS_NUM
 from trader.common.config import Config
 from trader.common.logger import Logger
 from trader.common.message import new_stat_msg
+from trader.database.manager import DatabaseManager
 from trader.exchange.binance.csvdata import BinanceCSVData
 from trader.exchange.binance.data import BinanceData
 from trader.exchange.binance.exchange import BinanceExchange
@@ -17,6 +17,7 @@ from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig
 from trader.task.update_klines_task import download
 from trader.utils.symbol_interval import add_time_duration
+from trader.utils.task_state import TaskState
 
 
 class BackTraderTask(BaseTask):
@@ -64,8 +65,8 @@ class BackTraderTask(BaseTask):
                     todate=datetime.fromtimestamp(self.tcfg.end_time),
                 )
         if self.db_manager and data is None:
-            collection = self.db_manager.get_collection(self.cfg.db_name, self.tcfg.symbol_interval.name())
-            kls_cache = self.db_manager.get_klines(collection, self.tcfg.start_time, self.tcfg.end_time)
+            collection = self.db_manager.kline.get_collection(self.tcfg.symbol_interval.name())
+            kls_cache = self.db_manager.kline.get_klines(collection, self.tcfg.start_time, self.tcfg.end_time)
             if kls_cache is None or len(kls_cache) <= 0:
                 if self.tcfg.auto_download:
                     if not self.exchange:
@@ -83,7 +84,7 @@ class BackTraderTask(BaseTask):
                     ):
                         self.log.error(f"Fail download for {self.name()}")
                         return None
-                    kls_cache = self.db_manager.get_klines(collection, self.tcfg.start_time, self.tcfg.end_time)
+                    kls_cache = self.db_manager.kline.get_klines(collection, self.tcfg.start_time, self.tcfg.end_time)
 
             if kls_cache is None or len(kls_cache) <= 0:
                 self.log.error(f"No klines for {self.name()}")
@@ -118,6 +119,8 @@ def process_backtrader(parmas, result):
     logger.log().info(f"end do backtrader: {tcfg.id}")
     if ret is None:
         return
+    ts = TaskState(tcfg.id, [ret.operate], ret)
+
     if ret.operate:
         next_time = add_time_duration(ret.operate.dtime, tcfg.symbol_interval.interval, 1)
         if next_time < int(datetime.now().timestamp()):
@@ -125,7 +128,7 @@ def process_backtrader(parmas, result):
 
     result.append(
         new_stat_msg(
-            BackTraderStat(tcfg.strategy_name(), tcfg.symbol_interval.name(), ret),
+            BackTraderStat(tcfg.strategy_name(), tcfg.symbol_interval.name(), ts),
             tcfg.id,
         )
     )
