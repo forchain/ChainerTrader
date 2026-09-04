@@ -1,11 +1,27 @@
 import os
 
+from mypy.typeops import false_only
+
 from trader.strategy.strategy import parseStrategyType
+from trader.utils.symbol_interval import SymbolInterval, Interval
 from trader.utils.trend import TrendType, parseTrendType
 
 
 class Config:
-    def __init__(self,strategy_type=None,commission=0.001,atr=True,period=14,log_file=False,plot=False,mode=None,log_level="INFO",exchange=None,symbols=None):
+    def __init__(self,strategy_type=None,
+                      commission=0.001,
+                      atr=True,
+                      period=14,
+                      log_file=False,
+                      plot=False,
+                      mode=None,
+                      log_level="INFO",
+                      exchange=None,
+                      symbols="BTCUSDT",
+                      intervals="1d",
+                      data_file=None,
+                      db_uri=None,
+                      window=1000):
         self.strategy=parseStrategyType(strategy_type)
         self.mode=parseTrendType(mode)
         self.commission=commission
@@ -16,6 +32,10 @@ class Config:
         self.log_level=log_level
         self.exchange=exchange
         self.symbols=symbols
+        self.intervals=intervals
+        self.data_file=data_file
+        self.db_uri=db_uri
+        self.window=window
 
     def exportEnv(self):
         if self.strategy:
@@ -31,8 +51,13 @@ class Config:
 
         if self.exchange:
             os.environ['exchange'] = self.exchange
-        if self.symbols:
-            os.environ['symbols'] = self.symbols
+        os.environ['symbols'] = self.symbols
+        if self.data_file:
+            os.environ['data_file'] = self.data_file
+        if self.db_uri:
+            os.environ['db_uri'] = self.db_uri
+        os.environ['intervals'] = self.intervals
+        os.environ['window'] = str(self.window)
 
     def to_dict(self):
         strategy_type = None
@@ -50,12 +75,42 @@ class Config:
             'log_level':self.log_level,
             'exchange':self.exchange,
             'symbols':self.symbols,
+            'intervals': self.intervals,
+            'data_file':self.data_file,
+            'db_uri': self.db_uri,
+            'window': self.window,
         }
 
     def symbols_list(self):
-        if self.symbols:
-            return self.symbols.split(',')
-        return None
+        return self.symbols.split(',')
+
+    def intervals_list(self):
+        return self.intervals.split(',')
+
+    def check_symbols_intervals(self):
+        if self.symbols is None or self.intervals is None:
+            return False
+
+        intervals_len = len(self.intervals_list())
+        if len(self.symbols_list()) != intervals_len and intervals_len != 1:
+            return False
+        return True
+
+    def get_symbol_interval_list(self)->[SymbolInterval]:
+        intervals = self.intervals_list()
+        symbols = self.symbols_list()
+        intervals_len = len(intervals)
+
+        ret:[SymbolInterval]=[]
+        index=0
+        for sy in symbols:
+            if intervals_len == 1:
+                ret.append(SymbolInterval(sy,Interval(intervals[0])))
+            else:
+                ret.append(SymbolInterval(sy,Interval(intervals[index])))
+            index+=1
+
+        return ret
 
 def NewConfigFromEnv():
     commission = os.environ.get('commission')
@@ -64,6 +119,9 @@ def NewConfigFromEnv():
     period = os.environ.get('period')
     if period is None:
         period="0"
+    window = os.environ.get('window')
+    if window is None:
+        window="0"
 
     return Config(
         os.environ.get('strategy_type'),
@@ -76,4 +134,8 @@ def NewConfigFromEnv():
         os.environ.get('log_level'),
         os.environ.get('exchange'),
         os.environ.get('symbols'),
+        os.environ.get('intervals'),
+        os.environ.get('data_file'),
+        os.environ.get('db_uri'),
+        int(window)
     )

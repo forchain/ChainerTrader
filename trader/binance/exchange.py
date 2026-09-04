@@ -4,10 +4,17 @@ from time import sleep
 from binance.spot import Spot as Client
 
 from trader.binance.restapi import get_restapi
+from trader.utils.kline import Kline
+from trader.utils.symbol_interval import SymbolInterval, add_time_duration
 
 EXCHANGE_NAME = "BINANCE"
 
 RECV_WINDOW = 5000
+
+KLINE_LIMIT_MAX = 1000
+KLINE_LIMIT_DEFAULT = 500
+
+OLDEST_TIME  = "2000-01-01 00:00:00"
 
 class BinanceExchange:
     def __init__(self,cfg,log):
@@ -58,3 +65,61 @@ class BinanceExchange:
         else:
             self.exchange_info = None
         return self.exchange_info
+
+    def get_klines(self,si:SymbolInterval,start_time:int=None,end_time:int=None,limit:int=KLINE_LIMIT_DEFAULT)->[Kline]:
+        r_limit=limit
+        if r_limit > KLINE_LIMIT_MAX:
+            r_limit=KLINE_LIMIT_MAX
+
+        if start_time and end_time:
+            start_time *= 1000
+            end_time *= 1000
+            ret = self.spot_client.klines(si.symbol,si.interval.value,startTime=start_time,endTime=end_time,limit=r_limit)
+        else:
+            ret = self.spot_client.klines(si.symbol, si.interval.value,limit=r_limit)
+        kls = parse_klines(ret)
+
+        if kls and len(kls) > 0:
+            self.log.info(f"get klines: {len(kls)}/{len(ret)}  start={kls[0].open_datetime()} end={kls[len(kls)-1].close_datetime()}")
+        else:
+            self.log.info(f"get klines: 0/{len(ret)}")
+
+        return kls
+
+    def get_latest_klines(self,si:SymbolInterval,limit:int=KLINE_LIMIT_DEFAULT)->[Kline]:
+        return self.get_klines(si,None,None,limit)
+
+    def get_klines_by_start(self,si:SymbolInterval,start_time:int=None,limit:int=KLINE_LIMIT_DEFAULT)->[Kline]:
+        r_end_time = int(datetime.now().timestamp())
+        if start_time is None:
+            start_time = int(get_oldest_time().timestamp())
+        return self.get_klines(si,start_time,r_end_time,limit)
+
+def get_oldest_time()->datetime:
+    return datetime.strptime(OLDEST_TIME, "%Y-%m-%d %H:%M:%S")
+
+def parse_klines(data)->[Kline]:
+    if data is None:
+        return None
+
+    R_LIST_LEN=12
+    ret:[Kline]=[]
+    for d in data:
+        if len(d) < R_LIST_LEN:
+            raise Exception(f"kline length is error:{len(d)} != {R_LIST_LEN}")
+
+        ret.append(Kline(
+            int(d[0]/1000),
+            float(d[1]),
+            float(d[2]),
+            float(d[3]),
+            float(d[4]),
+            int(d[6]/1000),
+            float(d[5]),
+            float(d[7]),
+            int(d[8]),
+            float(d[9]),
+            float(d[10]),
+            float(d[11]),
+        ))
+    return ret
