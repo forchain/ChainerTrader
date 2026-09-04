@@ -4,6 +4,8 @@ from __future__ import (absolute_import, division, print_function,
 import datetime
 import os.path
 
+from backtrader import num2date
+
 from trader.binance.csvdata import BinanceCSVData
 from trader.common import path
 
@@ -66,6 +68,9 @@ class Node:
         if self.plot:
             self.cerebro.plot()
 
+        data_len = len(self.cerebro.datas[0])
+        end_time = num2date(self.cerebro.datas[0].datetime[0])
+        start_time = num2date(self.cerebro.datas[0].datetime[1 - data_len])
         # statistics
         table = PrettyTable()
         table.field_names = ["Name", "Value"]
@@ -83,8 +88,11 @@ class Node:
         table.add_row(["平均盈亏比:", (f"{plr:.2f}")])
         table.add_row(["平均盈利:", (f"{avgProfit:.2f}")])
         table.add_row(["平均亏损:", (f"{avgLoss:.2f}")])
+        table.add_row(["开始时间", (f"{start_time}")])
+        table.add_row(["结束时间", (f"{end_time}")])
+        table.add_row(["数据量", data_len])
 
         print("\n")
         print(table)
 
-        return totalReturnRate
+        return [totalReturnRate,maxDrawdown,maxDrawdownDuration,volatility,winRate,plr,avgProfit,avgLoss]

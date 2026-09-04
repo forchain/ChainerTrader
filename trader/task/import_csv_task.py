@@ -64,7 +64,7 @@ class ImportCSVTask(BaseTask):
                 return
 
 
-        collection = self.db_manager.get_collection("trader", self.tcfg.symbol_interval.name())
+        collection = self.db_manager.get_collection(self.cfg.db_name, self.tcfg.symbol_interval.name())
 
         ret = self.db_manager.add_klines(collection, kls)
         if ret != len(kls):

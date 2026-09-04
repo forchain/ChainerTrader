@@ -1,10 +1,7 @@
 from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
 
-import backtrader as bt
-
-
-from trader.utils.base_strategy import BaseStrategy
+from trader.strategy.base_strategy import BaseStrategy
 from trader.utils.inflectionpoint import InflectionType
 from trader.utils.trend import TrendType
 

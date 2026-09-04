@@ -12,7 +12,7 @@ from trader.common import path
 import backtrader as bt
 import backtrader.indicators as btind
 
-from trader.utils.trilogy_strategy import TrilogyStrategy
+from trader.strategy.trilogy_strategy import TrilogyStrategy
 
 class SMAStrategy(TrilogyStrategy):
     params = (

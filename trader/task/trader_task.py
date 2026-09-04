@@ -8,7 +8,7 @@ from trader.binance.exchange import BinanceExchange
 from trader.common.common import Context, sleep
 from trader.common.config import Config
 from trader.common.message import new_stat_msg
-from trader.statistics.stat import BackTraderStat
+from trader.statistics.stat import BackTraderStat, TraderStat
 from trader.strategy.node import Node
 from trader.strategy.strategy import parseStrategy
 from trader.task.base_task import BaseTask
@@ -47,7 +47,7 @@ class TraderTask(BaseTask):
         #if self.exchange.spot_ws_client:
         #    self.exchange.spot_ws_client.klines(symbol=self.symbol_interval.symbol, interval=self.symbol_interval.interval.value, limit=1)
 
-        self.collection = self.db_manager.get_collection("trader", self.tcfg.symbol_interval.name())
+        self.collection = self.db_manager.get_collection(self.cfg.db_name, self.tcfg.symbol_interval.name())
 
         while Context.running:
             ret = await download(self.name(),self.log,self.db_manager,self.collection,self.exchange,self.tcfg.symbol_interval,quit)
@@ -59,8 +59,8 @@ class TraderTask(BaseTask):
                 continue
             latest_kline = kls_cache[len(kls_cache) - 1]
             node = Node(strategy, self.cfg, self.log,BinanceData(kls_cache))
-            total_return_rate = node.start()
-            await queue.put(new_stat_msg(BackTraderStat(self.tcfg.strategy, self.tcfg.symbol_interval.name(), total_return_rate)))
+            ret=node.start()
+            await queue.put(new_stat_msg(TraderStat()))
 
             while Context.running:
                 next_time = add_time_duration(latest_kline.open_time, self.tcfg.symbol_interval.interval, 1)

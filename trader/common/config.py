@@ -1,6 +1,7 @@
 import logging
 import os
 
+from trader.common.common import NAME
 from trader.strategy.strategy import parseStrategyType
 from trader.utils.symbol_interval import SymbolInterval, Interval
 from trader.utils.trend import TrendType, parseTrendType
@@ -16,6 +17,7 @@ class Config:
                       log_level="INFO",
                       exchange=None,
                       db_uri=None,
+                      db_name=NAME,
                       window=1000,
                       tasks=None):
         self.mode=parseTrendType(mode)
@@ -27,6 +29,7 @@ class Config:
         self.log_level=log_level
         self.exchange=exchange
         self.db_uri=db_uri
+        self.db_name=db_name
         self.window=window
         self.tasks=tasks
 
@@ -43,6 +46,7 @@ class Config:
             os.environ['exchange'] = self.exchange
         if self.db_uri:
             os.environ['db_uri'] = self.db_uri
+        os.environ['db_name'] = self.db_name
         os.environ['window'] = str(self.window)
         if self.tasks:
             os.environ['tasks'] = self.tasks
@@ -58,6 +62,7 @@ class Config:
             'log_level':self.log_level,
             'exchange':self.exchange,
             'db_uri': self.db_uri,
+            'db_name': self.db_name,
             'window': self.window,
             'tasks':self.tasks,
         }
@@ -86,6 +91,7 @@ def NewConfigFromEnv():
         os.environ.get('log_level'),
         os.environ.get('exchange'),
         os.environ.get('db_uri'),
+        os.environ.get('db_name'),
         int(window),
         os.environ.get('tasks'),
     )

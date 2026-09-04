@@ -2,8 +2,7 @@ from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
 
 import backtrader as bt
-from backtrader import num2date
-from trader.utils.trilogy_strategy import TrilogyStrategy
+from trader.strategy.trilogy_strategy import TrilogyStrategy
 
 # Shihun MACD strategy
 class ShihunMACDStrategy(TrilogyStrategy):
@@ -25,6 +24,8 @@ class ShihunMACDStrategy(TrilogyStrategy):
         self.mcross = bt.indicators.CrossOver(self.macd.macd, self.macd.signal)
 
     def next(self):
+        super().next()
+
         self.log_debug(f'Kline:{self.cur_datetime()} 收盘价, {self.dataclose[0]:.2f}')
 
         if self.order:

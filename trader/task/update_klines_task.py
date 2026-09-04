@@ -31,7 +31,7 @@ class UpdateKlinesTask(BaseTask):
 
         super().start(queue,quit)
 
-        self.collection = self.db_manager.get_collection("trader", self.tcfg.symbol_interval.name())
+        self.collection = self.db_manager.get_collection(self.cfg.db_name, self.tcfg.symbol_interval.name())
 
         await download(self.name(),self.log,self.db_manager,self.collection,self.exchange,self.tcfg.symbol_interval,quit)
 

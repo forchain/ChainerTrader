@@ -1,13 +1,9 @@
 from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
 
-from backtrader import num2date
-
-from trader.strategy.node import Node
-
 import backtrader as bt
 
-from trader.utils.base_strategy import BaseStrategy
+from trader.strategy.base_strategy import BaseStrategy
 from trader.utils.operate import OperateType
 
 
@@ -27,6 +23,7 @@ class ShihunMACD2Strategy(BaseStrategy):
         self.criticalSellK = None
 
     def next(self):
+        super().next()
         if self.order:
             return
         self.log_debug(f'Kline:{self.cur_datetime()} 收盘价, {self.dataclose[0]:.2f}')

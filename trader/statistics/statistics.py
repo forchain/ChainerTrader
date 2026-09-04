@@ -26,10 +26,20 @@ class Statistics:
                 self.bts_list.sort(key=lambda bts: bts.total_return_rate)
 
             table = PrettyTable()
-            table.field_names = ["Index","策略", "币种", "总收益率"]
+            table.field_names = ["Index","策略", "币种", "总收益率","最大回撤","回撤持续","波动率","胜率","平均盈亏比","平均盈利","平均亏损"]
             index = 0
             for bts in self.bts_list:
-                table.add_row([index,bts.strategy,bts.symbol_interval, format(bts.total_return_rate, '.2f') + "%"])
+                table.add_row([index,
+                               bts.strategy,
+                               bts.symbol_interval,
+                               format(bts.total_return_rate, '.2f') + "%",
+                               (f"{bts.maxDrawdown:.2f}%"),
+                               (f"{bts.maxDrawdownDuration:.2f}"),
+                               (f"{bts.volatility:.2f}%"),
+                               (f"{bts.winRate:.2f}%"),
+                               (f"{bts.plr:.2f}"),
+                               (f"{bts.avgProfit:.2f}"),
+                               (f"{bts.avgLoss:.2f}")])
                 index+=1
 
             print("\n")
