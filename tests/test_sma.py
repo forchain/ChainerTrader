@@ -87,7 +87,7 @@ def test_sma():
 
     cerebro.addstrategy(SMAStrategy)
 
-    datapath = os.path.join(path.GetDatasDir(), 'ETHUSDT-1h-202301-202401.csv')
+    datapath = os.path.join(path.GetDataDir(), 'ETHUSDT-1h-202301-202401.csv')
 
     data = BinanceCSVData(
         dataname=datapath,

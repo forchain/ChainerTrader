@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-from trader.utils import get_symbol_top, write_symbols_top100_config
+from trader.utils.top import get_symbol_top, write_symbols_top100_config
 
 
 def test_get_symbol_top100():

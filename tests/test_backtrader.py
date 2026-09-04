@@ -86,7 +86,7 @@ def test_backtrader(main=False):
 
     cerebro.addstrategy(TestStrategy)
 
-    datapath = os.path.join(path.GetDatasDir(), 'orcl-1995-2014.txt')
+    datapath = os.path.join(path.GetDataDir(), 'orcl-1995-2014.txt')
 
     data = bt.feeds.YahooFinanceCSVData(
         dataname=datapath,
