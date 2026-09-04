@@ -1,6 +1,6 @@
 from asyncio import Queue
 from datetime import datetime
-from logging import Logger
+from trader.common.logger import Logger
 
 from trader.common.common import MIN_RECORDS_NUM, sleep, sleep_loop
 from trader.common.config import Config
@@ -113,7 +113,7 @@ class TraderTask(BaseTask):
             ret.opts.append(last_task.tret.opts)
 
         self.ts.tret = ret
-        self.db_manager.task.add_tasks(self.ts)
+        self.db_manager.task.add_tasks([self.ts])
 
     def operate_exchange(self, ret: TraderResult):
         if ret.opts:

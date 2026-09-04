@@ -1,7 +1,9 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import logging
 from datetime import timedelta
+
+from trader.common.log_tag import LogTag
+from trader.common.logger import Logger
 
 import backtrader as bt
 from backtrader import num2date
@@ -15,14 +17,14 @@ from trader.utils.symbol_interval import SymbolInterval, get_time_duration
 
 class Node:
     def __init__(
-        self, name, strategy, si: SymbolInterval, cfg: Config = None, log: logging.Logger = None, data=None, position: float = 0, trader: bool = False
+        self, name, strategy, si: SymbolInterval, cfg: Config = None, log: Logger = None, data=None, position: float = 0, trader: bool = False
     ):
         self.log = log
         self.name = name
         self.cfg = cfg
         self.si = si
 
-        log.info("New node")
+        log.info("New node", LogTag.STRATEGY)
 
         data_ha = None
 
@@ -57,7 +59,7 @@ class Node:
         cerebro.adddata(data)
         if data_ha is not None:
             cerebro.adddata(data_ha)
-            self.log.info(f"Add HeikinAshi data for {self.name}")
+            self.log.info(f"Add HeikinAshi data for {self.name}", LogTag.STRATEGY)
 
         cerebro.broker.setcash(cfg.cash)
 
@@ -100,7 +102,7 @@ class Node:
         return hold_rate
 
     def start(self):
-        self.log.info("start node")
+        self.log.info("start node", LogTag.STRATEGY)
 
         rets = self.cerebro.run()
         ret = rets[0]
@@ -159,7 +161,7 @@ class Node:
         table.add_row(["操作买单数", optstat["buys"]])
         table.add_row(["操作卖单数", optstat["sells"]])
 
-        self.log.info(f"\n{table}")
+        self.log.info(f"\n{table}", LogTag.STRATEGY)
 
         return TraderResult(
             totalReturnRate,

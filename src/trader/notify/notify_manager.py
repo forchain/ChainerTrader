@@ -1,4 +1,5 @@
 from trader.common.config import Config
+from trader.common.log_tag import LogTag
 from trader.common.logger import Logger
 from trader.common.message import Message
 from trader.notify.notify_type import parse_notice_config
@@ -6,7 +7,7 @@ from trader.notify.notify_type import parse_notice_config
 
 class NotifyManager:
     def __init__(self, cfg: Config, log: Logger):
-        self.log = log.log()
+        self.log = log
         self.cfg = cfg
         self.log.info("Init NotifyManager")
         self.notice = None
@@ -21,7 +22,7 @@ class NotifyManager:
         if self.notice is None or len(self.notice) <= 0:
             return
         for n in self.notice:
-            self.log.info(f"Load notice:{n.to_dict()}")
+            self.log.info(f"Load notice:{n.to_dict()}", LogTag.PRIVATE)
 
     def handler(self, msg: Message):
         if self.notice is None or len(self.notice) <= 0:

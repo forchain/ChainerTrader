@@ -3,6 +3,7 @@ from enum import Enum
 from typing import Any
 
 from trader.strategy.trader_result import TraderResult, parse_trader_result
+from datetime import datetime
 
 
 class TaskStateType(Enum):
@@ -27,17 +28,23 @@ def parse_task_state_type(name):
 
 PRIMARY_KEY = "task_id"
 
+DATETIME_FORMART = "%Y-%m-%d %H:%M:%S"
+
 
 class TaskState:
-    def __init__(self, id: int, tret: TraderResult = None):
+    def __init__(self, id: int, name: str, start_time: datetime, tret: TraderResult = None):
         self.id = id
         self.state = TaskStateType.READY
         self.tret = tret
+        self.name = name
+        self.start_time = start_time
 
     def to_dict(self) -> dict[str, Any]:
         ret: dict[str, Any] = {
             PRIMARY_KEY: self.id,
             "state": self.state.name,
+            "name": self.name,
+            "start_time": self.start_time.strftime(DATETIME_FORMART),
         }
 
         if self.tret:
@@ -65,7 +72,7 @@ def parse_task_state(data) -> TaskState:
         except (ValueError, TypeError):
             raise ValueError(f"Invalid task_id format: {task_id}")
 
-    ts = TaskState(task_id)
+    ts = TaskState(task_id, data.get("name"), datetime.strptime(data.get("start_time"), DATETIME_FORMART))
 
     # Safely handle state field
     state_name = data.get("state")

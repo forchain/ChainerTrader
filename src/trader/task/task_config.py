@@ -104,7 +104,7 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
             sis = SymbolsInterval(tcd["symbols"], Interval(tcd["interval"]))
         else:
             sis = SymbolsInterval(tcd["symbol"], Interval(tcd["interval"]))
-        if len(sis):
+        if len(sis) <= 0:
             continue
 
         start_time = 0

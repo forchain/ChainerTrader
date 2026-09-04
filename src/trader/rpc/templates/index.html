@@ -4,6 +4,48 @@
 
 {% block content %}
 <div class="row">
+    <div class="col-lg-8">
+        <div class="jumbotron bg-primary text-white rounded p-5 mb-4">
+            <h3 class="display-10">
+                欢迎使用ChainerTrader
+            </h3>
+            <p class="lead">Implement TradvingView Algorithms of Youtube Channel Shi Hun</p>
+            <hr class="my-4">
+            <p>基本信息：trader 0.1.1</p>
+        </div>
+        <div class="jumbotron bg-primary text-white rounded p-5 mb-4">
+            <h4 class="display-10">
+                账户信息
+            </h4>
+            <hr class="my-4">
+            <div class="table-responsive">
+                <table class="table table-sm table-striped table-bordered align-middle mb-0 bg-white text-dark">
+                    <thead class="table-light">
+                        <tr>
+                            <th scope="col">资产</th>
+                            <th scope="col">可用</th>
+                            <th scope="col">冻结</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if accts_info and accts_info.balances %}
+                            {% for b in accts_info.balances %}
+                            <tr>
+                                <td>{{ b.asset }}</td>
+                                <td>{{ b.free | round(8) }}</td>
+                                <td>{{ b.locked | round(8) }}</td>
+                            </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr>
+                                <td colspan="3" class="text-center text-muted">暂无账户余额数据</td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
     <div class="col-lg-4">
         <div class="card">
             <div class="card-header">
@@ -14,19 +56,19 @@
             <div class="card-body">
                 <div class="row text-center">
                     <div class="col-6">
-                        <h3 class="text-primary">{{ total_tasks }}</h3>
+                        <h3 class="text-primary">{{ tasks_info.total }}</h3>
                         <p class="text-muted">总任务数</p>
                     </div>
                     <div class="col-6">
-                        <h3 class="text-success">{{ completed_tasks }}</h3>
+                        <h3 class="text-success">{{ tasks_info.completed }}</h3>
                         <p class="text-muted">已完成</p>
                     </div>
                 </div>
-                {% if total_tasks > 0 %}
+                {% if tasks_info.total > 0 %}
                 <div class="progress mt-3">
                     <div class="progress-bar" role="progressbar"
-                         style="width: {{ (completed_tasks / total_tasks * 100) | round(1) }}%">
-                        {{ (completed_tasks / total_tasks * 100) | round(1) }}%
+                         style="width: {{ (tasks_info.completed / tasks_info.total * 100) | round(1) }}%">
+                        {{ (tasks_info.completed / tasks_info.total * 100) | round(1) }}%
                     </div>
                 </div>
                 {% endif %}
@@ -40,15 +82,11 @@
                 </h5>
             </div>
             <div class="card-body">
-                {% if tasks %}
-                    {% for task in tasks[:5] %}
+                {% if tasks_info.tasks %}
+                    {% for task in tasks_info.tasks[:5] %}
                     <div class="d-flex align-items-center mb-2">
-                        <div class="form-check me-2">
-                            <input class="form-check-input" type="checkbox"
-                                   {% if task.completed %}checked{% endif %} disabled>
-                        </div>
                         <div class="flex-grow-1">
-                            <small class="text-muted">{{ task.title }}</small>
+                            <small class="text-muted">{{ task.name }}</small>
                         </div>
                     </div>
                     {% endfor %}

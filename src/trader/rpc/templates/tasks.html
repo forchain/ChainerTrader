@@ -10,37 +10,21 @@
                 <h5 class="card-title mb-0">
                     <i class="fas fa-tasks me-2"></i>任务列表
                 </h5>
-                <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addTaskModal">
-                    <i class="fas fa-plus me-1"></i>添加任务
-                </button>
             </div>
             <div class="card-body">
                 <div id="tasksList">
-                    {% if tasks %}
-                        {% for task in tasks %}
-                        <div class="task-item border rounded p-3 mb-3" data-task-id="{{ task.id }}">
+                    {% if tasks_info.tasks %}
+                        {% for task in tasks_info.tasks %}
+                        <div class="task-item border rounded p-3 mb-3" data-task-id="{{ task.task_id }}">
                             <div class="d-flex align-items-start">
-                                <div class="form-check me-3">
-                                    <input class="form-check-input task-checkbox" type="checkbox" 
-                                           data-task-id="{{ task.id }}"
-                                           {% if task.completed %}checked{% endif %}>
-                                </div>
                                 <div class="flex-grow-1">
-                                    <h6 class="mb-1 {% if task.completed %}text-decoration-line-through text-muted{% endif %}">
-                                        {{ task.title }}
-                                    </h6>
-                                    {% if task.description %}
-                                    <p class="text-muted mb-2 small">{{ task.description }}</p>
+                                    {% if task.name %}
+                                    <p class="text-muted mb-2 small">{{ task.name }}</p>
                                     {% endif %}
                                     <small class="text-muted">
                                         <i class="fas fa-calendar me-1"></i>
-                                        {{ task.created_at.strftime('%Y-%m-%d %H:%M') if task.created_at else '未知时间' }}
+                                        {{ task.start_time if task.start_time else '未知时间' }}
                                     </small>
-                                </div>
-                                <div class="task-actions">
-                                    <button class="btn btn-outline-danger btn-sm" onclick="deleteTask({{ task.id }})">
-                                        <i class="fas fa-trash"></i>
-                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -67,12 +51,8 @@
             <div class="card-body">
                 <form id="quickAddForm">
                     <div class="mb-3">
-                        <label for="quickTitle" class="form-label">任务标题</label>
-                        <input type="text" class="form-control" id="quickTitle" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="quickDescription" class="form-label">任务描述</label>
-                        <textarea class="form-control" id="quickDescription" rows="3"></textarea>
+                        <label for="json_str" class="form-label">json配置参数</label>
+                        <textarea class="form-control" id="json_str" rows="8">[{"task_type": "DEBUG","limit": 15}]</textarea>
                     </div>
                     <button type="submit" class="btn btn-primary w-100">
                         <i class="fas fa-plus me-1"></i>添加任务
@@ -91,12 +71,12 @@
             <div class="card-body">
                 <div class="row text-center">
                     <div class="col-6">
-                        <h4 class="text-primary" id="totalTasks">{{ tasks|length }}</h4>
+                        <h4 class="text-primary" id="totalTasks">{{ tasks_info.total }}</h4>
                         <small class="text-muted">总任务</small>
                     </div>
                     <div class="col-6">
                         <h4 class="text-success" id="completedTasks">
-                            {{ tasks|selectattr('completed')|list|length }}
+                            {{ tasks_info.completed }}
                         </h4>
                         <small class="text-muted">已完成</small>
                     </div>
@@ -106,73 +86,83 @@
     </div>
 </div>
 
-<!-- 添加任务模态框 -->
-<div class="modal fade" id="addTaskModal" tabindex="-1">
-    <div class="modal-dialog">
+<!-- 任务详情模态框 -->
+<div class="modal fade" id="taskDetailModal" tabindex="-1" aria-labelledby="taskDetailModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">添加新任务</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <h5 class="modal-title" id="taskDetailModalLabel">
+                    <i class="fas fa-info-circle me-2"></i>任务详情
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <form id="addTaskForm">
-                <div class="modal-body">
-                    <div class="mb-3">
-                        <label for="taskTitle" class="form-label">任务标题 *</label>
-                        <input type="text" class="form-control" id="taskTitle" required>
+            <div class="modal-body">
+                <div id="taskDetailContent">
+                    <div class="text-center py-4" id="taskDetailLoading" style="display:none;">
+                        <div class="loading" style="vertical-align: middle;"></div>
+                        <div class="mt-2 text-muted">正在加载...</div>
                     </div>
-                    <div class="mb-3">
-                        <label for="taskDescription" class="form-label">任务描述</label>
-                        <textarea class="form-control" id="taskDescription" rows="3"></textarea>
-                    </div>
+                    <div id="taskDetailGrid" class="container-fluid"></div>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                    <button type="submit" class="btn btn-primary">添加任务</button>
-                </div>
-            </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" data-bs-dismiss="modal">确定</button>
+            </div>
         </div>
     </div>
-</div>
+    </div>
 {% endblock %}
 
 {% block scripts %}
+<style>
+/* 简易树形视图样式（类似资源管理器） */
+.tree-container { font-family: var(--bs-body-font-family); }
+.tree-node { margin-left: 16px; }
+.tree-item { cursor: pointer; user-select: none; display: flex; align-items: center; gap: 6px; }
+.tree-item .caret { width: 14px; display: inline-block; text-align: center; color: var(--bs-secondary-color); }
+.tree-item .key { font-weight: 600; }
+.tree-item .meta { color: var(--bs-secondary-color); font-size: 12px; }
+.tree-leaf { cursor: default; }
+.tree-children { margin-top: 4px; margin-left: 14px; border-left: 1px dashed var(--bs-border-color); padding-left: 10px; }
+.tree-value { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+.tree-badge { display: inline-block; padding: 0.1rem 0.35rem; border-radius: 0.25rem; font-size: 0.75rem; background: var(--bs-tertiary-bg); color: var(--bs-secondary-color); }
+pre.tree-json { background: var(--bs-tertiary-bg); padding: 8px; border-radius: 6px; margin: 0; }
+</style>
 <script>
-// 任务管理功能
 document.addEventListener('DOMContentLoaded', function() {
-    // 快速添加表单
     document.getElementById('quickAddForm').addEventListener('submit', function(e) {
         e.preventDefault();
-        addTask(document.getElementById('quickTitle').value, document.getElementById('quickDescription').value);
+        addTask(document.getElementById('json_str').value);
         this.reset();
     });
 
-    // 模态框表单
-    document.getElementById('addTaskForm').addEventListener('submit', function(e) {
-        e.preventDefault();
-        addTask(document.getElementById('taskTitle').value, document.getElementById('taskDescription').value);
-        this.reset();
-        bootstrap.Modal.getInstance(document.getElementById('addTaskModal')).hide();
-    });
+    // 绑定任务项点击，打开详情模态框
+    const tasksList = document.getElementById('tasksList');
+    if (tasksList) {
+        tasksList.addEventListener('click', async function(e) {
+            const target = e.target.closest('.task-item');
+            if (!target) return;
+            const taskId = target.getAttribute('data-task-id');
+            if (!taskId) return;
 
-    // 任务复选框
-    document.querySelectorAll('.task-checkbox').forEach(checkbox => {
-        checkbox.addEventListener('change', function() {
-            updateTaskStatus(this.dataset.taskId, this.checked);
+            openTaskDetailModal(taskId);
         });
-    });
+    }
 });
 
-async function addTask(title, description) {
+async function addTask(json_str) {
+    // 空值检测：为空或仅空白则提示并退出
+    if (!json_str || json_str.trim() === '') {
+        alert('请输入JSON配置后再提交');
+        return;
+    }
     try {
         const response = await fetch('/api/tasks', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-                title: title,
-                description: description
-            })
+            body: json_str
         });
         
         if (response.ok) {
@@ -186,44 +176,135 @@ async function addTask(title, description) {
     }
 }
 
-async function updateTaskStatus(taskId, completed) {
+// 打开并填充任务详情模态框
+async function openTaskDetailModal(taskId) {
+    const modalEl = document.getElementById('taskDetailModal');
+    const loadingEl = document.getElementById('taskDetailLoading');
+    const gridEl = document.getElementById('taskDetailGrid');
+
+    // 重置内容
+    gridEl.innerHTML = '';
+    loadingEl.style.display = 'block';
+
+    const modal = new bootstrap.Modal(modalEl);
+    modal.show();
+
     try {
-        const response = await fetch(`/api/tasks/${taskId}`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ completed: completed })
-        });
-        
-        if (response.ok) {
-            location.reload();
-        } else {
-            alert('更新任务失败');
-        }
-    } catch (error) {
-        console.error('Error:', error);
-        alert('更新任务失败');
+        const resp = await fetch(`/api/task?id=${encodeURIComponent(taskId)}`);
+        if (!resp.ok) throw new Error('请求失败');
+        const data = await resp.json();
+        renderTaskDetailTree(gridEl, data);
+    } catch (err) {
+        gridEl.innerHTML = `<div class="alert alert-danger" role="alert">加载失败：${(err && err.message) || '未知错误'}</div>`;
+    } finally {
+        loadingEl.style.display = 'none';
     }
 }
 
-async function deleteTask(taskId) {
-    if (confirm('确定要删除这个任务吗？')) {
-        try {
-            const response = await fetch(`/api/tasks/${taskId}`, {
-                method: 'DELETE'
-            });
-            
-            if (response.ok) {
-                location.reload();
-            } else {
-                alert('删除任务失败');
-            }
-        } catch (error) {
-            console.error('Error:', error);
-            alert('删除任务失败');
-        }
+// 递归渲染树形 TaskState（完整展示服务端返回的数据）
+function renderTaskDetailTree(container, rawData) {
+    // 直接使用完整返回，不再优先 data/result
+    const data = rawData;
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'tree-container';
+
+    if (data == null) {
+        wrapper.innerHTML = '<div class="text-muted">无可显示的数据</div>';
+        container.innerHTML = '';
+        container.appendChild(wrapper);
+        return;
     }
+
+    // 构造根节点
+    const rootHtml = buildTreeHtml(undefined, data, true);
+    wrapper.innerHTML = rootHtml;
+    container.innerHTML = '';
+    container.appendChild(wrapper);
+
+    // 事件委托：展开/收起
+    wrapper.addEventListener('click', function(e) {
+        const item = e.target.closest('.tree-item');
+        if (!item || item.classList.contains('tree-leaf')) return;
+        const node = item.parentElement; // .tree-node
+        const children = node.querySelector(':scope > .tree-children');
+        if (!children) return;
+
+        const expanded = item.getAttribute('data-expanded') !== 'false';
+        if (expanded) {
+            item.setAttribute('data-expanded', 'false');
+            const caret = item.querySelector(':scope > .caret');
+            if (caret) caret.textContent = '▸';
+            children.style.display = 'none';
+        } else {
+            item.setAttribute('data-expanded', 'true');
+            const caret = item.querySelector(':scope > .caret');
+            if (caret) caret.textContent = '▾';
+            children.style.display = '';
+        }
+    });
+}
+
+function buildTreeHtml(key, value, isRoot = false) {
+    const type = getType(value);
+    if (type === 'object' || type === 'array') {
+        const size = type === 'array' ? value.length : Object.keys(value).length;
+        const label = isRoot
+            ? (type === 'array' ? `Root [Array(${size})]` : 'Root [Object]')
+            : (type === 'array' ? `${escapeHtml(String(key))} <span class="meta">[Array(${size})]</span>`
+                                : `${escapeHtml(String(key))} <span class="meta">[Object]</span>`);
+
+        const childrenHtml = Object.entries(type === 'array' ? value : value).map(([k, v]) => buildTreeHtml(k, v, false)).join('');
+
+        // 根默认展开，其他默认展开也行，这里设为展开
+        return `
+<div class="tree-node">
+  <div class="tree-item" data-expanded="true">
+    <span class="caret">▾</span>
+    <span class="key">${label}</span>
+  </div>
+  <div class="tree-children">${childrenHtml}</div>
+</div>`;
+    }
+
+    // 叶子节点
+    return `
+<div class="tree-node">
+  <div class="tree-item tree-leaf">
+    <span class="caret"></span>
+    <span class="key">${escapeHtml(String(key))}:</span>
+    <span class="tree-value">${formatPrimitive(value)}</span>
+  </div>
+</div>`;
+}
+
+function getType(val) {
+    if (Array.isArray(val)) return 'array';
+    if (val === null) return 'null';
+    return typeof val === 'object' ? 'object' : 'primitive';
+}
+
+function formatPrimitive(val) {
+    if (val === null || val === undefined) return '<span class="text-muted">null</span>';
+    if (typeof val === 'boolean') {
+        return val ? '<span class="badge bg-success">true</span>' : '<span class="badge bg-secondary">false</span>';
+    }
+    if (typeof val === 'number') return String(val);
+    if (typeof val === 'string') return escapeHtml(val);
+    try {
+        return `<span class="tree-badge">${escapeHtml(JSON.stringify(val))}</span>`;
+    } catch (_) {
+        return escapeHtml(String(val));
+    }
+}
+
+function escapeHtml(str) {
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
 }
 </script>
 {% endblock %}

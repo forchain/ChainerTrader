@@ -24,16 +24,16 @@ class RpcApp(App):
             asyncio.set_event_loop(loop)
         self.quit = asyncio.Event()
         self.main_task = loop.create_task(self.main_task_handler(msgs, self.quit))
-        self.log().info("Create main task for RPC App")
+        self.logger.info("Create main task for RPC App")
 
     async def main_task_handler(self, msgs: list[Message], quit: Event):
-        self.log().info("Enter main_task_handler")
+        self.logger.info("Enter main_task_handler")
         await self.handler(msgs, quit)
-        await sleep(self.log(), 1, "Try to exit rpc...")
+        await sleep(self.logger, 1, "Try to exit rpc...")
         # exit uvicorn
         # os.kill(os.getpid(), signal.SIGTERM)
         os.kill(os.getpid(), signal.SIGINT)
-        self.log().info("Exit main_task_handler")
+        self.logger.info("Exit main_task_handler")
 
     async def stop(self):
         if self.main_task and not self.main_task.done():
@@ -41,4 +41,4 @@ class RpcApp(App):
             self.exit_handle(self.quit)
             await self.main_task
 
-        self.log().info("Stop RPC App")
+        self.logger.info("Stop RPC App")

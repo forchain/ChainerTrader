@@ -6,6 +6,7 @@ import backtrader as bt
 from backtrader import num2date
 
 from trader.common.config import DEFAULT_PERIOD
+from trader.common.log_tag import LogTag
 from trader.utils.trend import TrendType
 
 
@@ -68,10 +69,10 @@ class BaseStrategy(bt.Strategy):
 
         if order.status in [order.Completed]:
             if order.isbuy():
-                self.log_info("买入, 价格: %.2f, 花费: %.2f, 手续费: %.2f" % (order.executed.price, order.executed.value, order.executed.comm))
+                self.log_info(f"买入, 价格: {order.executed.price:.2f}, 花费: {order.executed.value:.2f}, 手续费: {order.executed.comm:.2f}")
 
             else:  # Sell
-                self.log_info("卖出, 价格: %.2f, 花费: %.2f, 手续费: %.2f" % (order.executed.price, order.executed.value, order.executed.comm))
+                self.log_info(f"卖出, 价格: {order.executed.price:.2f}, 花费: {order.executed.value:.2f}, 手续费: {order.executed.comm:.2f}")
 
         elif order.status in [order.Canceled, order.Margin, order.Rejected]:
             self.log_info("Order Canceled/Margin/Rejected")
@@ -82,19 +83,19 @@ class BaseStrategy(bt.Strategy):
         if not trade.isclosed:
             return
 
-        self.log_info("营业利润, 毛利润: %.2f, 净利润: %.2f" % (trade.pnl, trade.pnlcomm))
+        self.log_info(f"营业利润, 毛利润: {trade.pnl:.2f}, 净利润: {trade.pnlcomm:.2f}")
 
     def log_info(self, msg):
         if self.params.log is None:
             print(msg)
             return
-        self.params.log.info(f"{msg}, [{self.name()}][{self.bar_idx()}/{self.total_bars-1}]")
+        self.params.log.info(f"{msg}, [{self.name()}][{self.bar_idx()}/{self.total_bars-1}]", LogTag.STRATEGY)
 
     def log_debug(self, msg):
         if self.params.log is None:
             print(msg)
             return
-        self.params.log.debug(f"{msg}, [{self.name()}][{self.bar_idx()}/{self.total_bars-1}]")
+        self.params.log.debug(f"{msg}, [{self.name()}][{self.bar_idx()}/{self.total_bars-1}]", LogTag.STRATEGY)
 
     def cur_datetime(self):
         return num2date(self.datas[0].datetime[0])

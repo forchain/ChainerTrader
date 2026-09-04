@@ -1,6 +1,6 @@
 from asyncio import Event, Queue
 from datetime import datetime
-from logging import Logger
+from trader.common.logger import Logger
 
 from pymongo.synchronous.collection import Collection
 

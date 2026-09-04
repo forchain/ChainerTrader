@@ -110,7 +110,6 @@ def process_backtrader(parmas, result):
     strategy = parmas[2]
     tcfg = parmas[3]
     ts = parmas[4]
-    db_manager = parmas[5]
 
     logger = Logger(cfg)
 
@@ -122,12 +121,6 @@ def process_backtrader(parmas, result):
         return
 
     ts.tret = ret
-    db_manager.task.add_tasks(ts)
-
-    if ret.operate:
-        next_time = add_time_duration(ret.operate.dtime, tcfg.symbol_interval.interval, 1)
-        if next_time < int(datetime.now().timestamp()):
-            ret.operate = None
 
     result.append(
         new_stat_msg(

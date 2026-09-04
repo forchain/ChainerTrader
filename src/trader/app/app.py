@@ -7,6 +7,7 @@ from datetime import datetime
 from trader.common import path
 from trader.common.common import NAME
 from trader.common.config import Config, default
+from trader.common.log_tag import LogTag
 from trader.common.logger import Logger
 from trader.common.message import Message, new_add_tasks_msg, new_exit_msg
 from trader.database.manager import DatabaseManager
@@ -24,7 +25,7 @@ class App:
         self.cfg = cfg
         self.logger = Logger(cfg)
 
-        self.log().info(f"Init App {self.name()}")
+        self.logger.info(f"Init App {self.name()}")
 
         self.db_manager = None
         self.exchange = None
@@ -40,7 +41,7 @@ class App:
         self.notify_mgr = NotifyManager(cfg, self.logger)
 
         self.stat = Statistics(self.cfg, self.log(), self.db_manager)
-        self.task_manager = TaskManager(self.cfg, self.log(), self.db_manager, self.exchange)
+        self.task_manager = TaskManager(self.cfg, self.logger, self.db_manager, self.exchange)
 
         self.startTime = datetime.now()
         self.queue = None
@@ -57,11 +58,12 @@ class App:
         return "CLI"
 
     def start(self):
-        self.log().info(f"Start {self.name()} App, config:{self.cfg.to_dict()}, running mode:{self.get_running_mode()}")
+        self.log().info(f"Start {self.name()} App, config:{self.cfg.safe_to_dict()}, running mode:{self.get_running_mode()}")
+        self.logger.info(f"Start {self.name()} App, config:{self.cfg.to_dict()}, running mode:{self.get_running_mode()}", LogTag.PRIVATE)
 
         if not self.cfg.is_server():
             if self.cfg.tasks is None:
-                self.log().warn("No tasks can be executed")
+                self.logger.warning("No tasks can be executed")
                 return False
 
         self.notify_mgr.start()
@@ -92,7 +94,7 @@ class App:
             self.exchange.stop()
 
         elapsed = datetime.now() - self.startTime
-        self.log().info(f"Stop {self.name()} App, elapsed time:{elapsed}")
+        self.logger.info(f"Stop {self.name()} App, elapsed time:{elapsed}")
 
     def version(self):
         return version()
@@ -123,13 +125,13 @@ class App:
         try:
             loop.run_until_complete(self.handler(msgs, quit))
         except asyncio.CancelledError:
-            self.log().debug("All tasks have been cancelled.")
+            self.logger.debug("All tasks have been cancelled.")
         finally:
             loop.close()
-            self.log().info(f"{self.name()} tasks exited.")
+            self.logger.info(f"{self.name()} tasks exited.")
 
     def shutdown(self, quit: Event):
-        self.log().info(f"Received shutdown signal, stopping {self.name()}...")
+        self.logger.info(f"Received shutdown signal, stopping {self.name()}...")
         self.exit_handle(quit)
 
     async def handler(self, msgs: list[Message], quit: Event):
@@ -139,13 +141,13 @@ class App:
         for msg in msgs:
             await queue.put(msg)
 
-        self.log().info(f"{self.name()} enter handler: init messages={len(msgs)}")
+        self.logger.info(f"{self.name()} enter handler: init messages={len(msgs)}")
 
         while True:
             msg: Message = await queue.get()
-            self.log().debug(f"Processing message: {msg.name()}")
+            self.logger.debug(f"Processing message: {msg.name()}")
             if msg.is_exit():
-                self.log().info("Received exit message, shutting down...")
+                self.logger.info("Received exit message, shutting down...")
                 break
             elif msg.is_stat():
                 self.stat.handler(msg)
@@ -158,7 +160,7 @@ class App:
 
         self.task_manager.close()
 
-        self.log().info(f"{self.name()} exit handler")
+        self.logger.info(f"{self.name()} exit handler")
 
     def exit_handle(self, quit: Event):
         quit.set()
@@ -169,7 +171,7 @@ class App:
             try:
                 self.queue.put_nowait(new_exit_msg())
             except asyncio.QueueFull:
-                self.log().error("QueueFull")
+                self.logger.error("QueueFull")
 
     def send_add_tasks_msg(self, tasks_cfg: str):
         taskcs: list[TaskConfig] = []

@@ -94,6 +94,21 @@ def main():
         help="Load notification configuration files, such as email",
         type=str,
     )
+    parser.add_argument(
+        "--auth-username",
+        help="Username for HTTP Basic Authentication (optional)",
+        type=str,
+    )
+    parser.add_argument(
+        "--auth-password",
+        help="Password for HTTP Basic Authentication (optional)",
+        type=str,
+    )
+    parser.add_argument(
+        "--protected-paths",
+        help="Comma-separated list of path prefixes that require authentication (e.g., '/admin,/api/admin'). Default: all paths are public",
+        type=str,
+    )
 
     args = parser.parse_args()
     load_dotenv()
@@ -116,6 +131,9 @@ def main():
         args.stat,
         args.notice,
         args.api,
+        args.auth_username,
+        args.auth_password,
+        args.protected_paths.split(",") if args.protected_paths else None,
     )
     if args.version:
         print(version())

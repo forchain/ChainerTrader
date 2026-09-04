@@ -1,12 +1,13 @@
 import asyncio
 from asyncio import Queue
-from logging import Logger
+from trader.common.logger import Logger
 from multiprocessing import Manager, Process
 
 from trader.common.config import Config
 from trader.common.message import new_add_tasks_msg, new_exit_msg
 from trader.database.manager import DatabaseManager
 from trader.exchange.binance.exchange import BinanceExchange
+from trader.statistics.stat import BackTraderStat
 from trader.task.backtrader_task import BackTraderTask, process_backtrader
 from trader.task.base_task import BaseTask
 from trader.task.check_klines_num_task import CheckKlinesNumTask
@@ -135,7 +136,6 @@ class TaskManager:
                 parmas.append(strategy)
                 parmas.append(cfg)
                 parmas.append(task.ts)
-                parmas.append(self.db_manager)
 
                 proc = Process(target=process_backtrader, args=(parmas, result))
                 processes.append(proc)
@@ -147,6 +147,11 @@ class TaskManager:
 
             for msg in result:
                 self.log.info(f"Relay process queue message:{msg.name()}")
+                bts: BackTraderStat = msg.get_data()
+                task = self.get_task(bts.ts.id)
+                if task:
+                    task.ts = bts.ts
+
                 await queue.put(msg)
 
     def get_task(self, id: int) -> BaseTask | None:
