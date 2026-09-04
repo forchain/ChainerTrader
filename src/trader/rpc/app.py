@@ -1,6 +1,7 @@
 import os
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request, Response, status
@@ -10,8 +11,8 @@ from fastapi.templating import Jinja2Templates
 from fastapi_auto_router import AutoRouter
 
 from trader.app.app import version
-from trader.auth.context import SESSION_COOKIE, SessionAuthMiddleware, current_user, require_admin, require_user
-from trader.auth.credentials import encrypt_secret, mask_api_key, service_key_available
+from trader.auth.context import AuthUser, SESSION_COOKIE, SessionAuthMiddleware, auth_enabled, current_user, require_admin, require_user
+from trader.auth.credentials import decrypt_secret, encrypt_secret, mask_api_key, service_key_available
 from trader.auth.passwords import (
     PasswordPolicyError,
     generate_temporary_password,
@@ -25,6 +26,8 @@ from trader.common import path
 from trader.common.common import NAME
 from trader.common.config import Config
 from trader.live.monitor import GLOBAL_LIVE_EVENT_BUS
+from trader.exchange.binance.exchange import BinanceExchange
+from trader.exchange.exchange_config import ExchangeConfig, parse_exchange_config
 from trader.rpc.models import get_accounts_info, get_klines_info, get_logs_info, get_taskinfo
 from trader.rpc.rpc_app import RpcApp
 
@@ -54,11 +57,65 @@ def get_directory(sub: str) -> str:
     return os.path.realpath(filePath)
 
 
+def _list_strategy_options() -> list[str]:
+    strategy_dir = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "strategy"))
+    options: set[str] = set()
+    ignore_py_files = {
+        "__init__.py",
+        "base_strategy.py",
+        "backtrader_adapter.py",
+        "execution_kernel.py",
+        "lifecycle.py",
+        "node.py",
+        "risk.py",
+        "signal_router.py",
+        "strategy.py",
+        "trader_result.py",
+        "smoke_test.py",
+    }
+    if not os.path.isdir(strategy_dir):
+        return []
+
+    for name in os.listdir(strategy_dir):
+        full_path = os.path.join(strategy_dir, name)
+        if os.path.isfile(full_path) and name.endswith(".py") and name not in ignore_py_files:
+            options.add(name[:-3])
+            continue
+        if os.path.isdir(full_path):
+            nested = os.path.join(full_path, f"{name}.py")
+            if os.path.isfile(nested):
+                options.add(name)
+    return sorted(options)
+
+
+def _list_task_config_options() -> list[str]:
+    root_dir = Path(__file__).resolve().parents[3]
+    tasks_dir = root_dir / "configs" / "tasks"
+    if not tasks_dir.is_dir():
+        return []
+    options = []
+    for cfg_path in tasks_dir.rglob("*.json"):
+        if cfg_path.is_file():
+            relative = cfg_path.relative_to(root_dir).as_posix()
+            options.append(relative)
+    return sorted(options)
+
+
 app = FastAPI(lifespan=lifespan, title="ChainerTrader", description="ChainerTrader", version=version())
 
 app.mount("/static", StaticFiles(directory=get_directory("static")), name="static")
 
 templates = Jinja2Templates(directory=get_directory("templates"))
+
+
+async def _template_user(request: Request):
+    user = await current_user(request)
+    if user is not None:
+        return user
+    if not auth_enabled(request):
+        # No-auth mode: keep admin pages navigable in local/dev and tests.
+        return AuthUser(id=0, username="local-admin", role="admin", status="active", must_change_password=False)
+    return None
 
 
 def _require_rpc_app(request: Request) -> RpcApp:
@@ -109,8 +166,15 @@ def start(cfg: Config):
 
 
 @app.get("/")
-async def read_root():
-    return RedirectResponse(url="/admin")
+async def read_root(request: Request):
+    return templates.TemplateResponse(
+        request,
+        "index.html",
+        {
+            "version": version(),
+            "user": await current_user(request),
+        },
+    )
 
 
 @app.get("/name")
@@ -226,6 +290,7 @@ async def account_page(request: Request):
             "credentials": credentials,
             "credential_error": None,
             "secret_key_ready": service_key_available(getattr(request.app.state.cfg, "secret_key", None)),
+            "accts_info": get_accounts_info(rpc_app),
         },
     )
 
@@ -234,8 +299,11 @@ async def account_page(request: Request):
 async def account_exchange_credentials_submit(request: Request):
     user = await require_user(request)
     rpc_app = _require_rpc_app(request)
+    logger = getattr(rpc_app, "logger", None)
     service_key = getattr(request.app.state.cfg, "secret_key", None)
     if not service_key_available(service_key):
+        if logger is not None:
+            logger.error(f"Exchange credential save rejected: user_id={user.id} detail=missing TRADER_SECRET_KEY")
         credentials = await rpc_app.db_manager.exchange_credential.list_by_user(user.id)
         return templates.TemplateResponse(
             request,
@@ -245,13 +313,33 @@ async def account_exchange_credentials_submit(request: Request):
                 "credentials": credentials,
                 "credential_error": "TRADER_SECRET_KEY 未配置，不能保存交易所 API key。",
                 "secret_key_ready": False,
+                "accts_info": get_accounts_info(rpc_app),
             },
             status_code=503,
         )
     form = await request.form()
-    exchange = str(form.get("exchange", "BINANCE")).strip().upper() or "BINANCE"
+    exchange = "BINANCE"
     api_key = str(form.get("api_key", "")).strip()
     api_secret = str(form.get("api_secret", "")).strip()
+    validation_error = _validate_exchange_credential_connectivity(request.app.state.cfg, exchange, api_key, api_secret)
+    if validation_error is not None:
+        if logger is not None:
+            logger.error(
+                f"Exchange credential validation failed: user_id={user.id} exchange={exchange} detail={validation_error}"
+            )
+        credentials = await rpc_app.db_manager.exchange_credential.list_by_user(user.id)
+        return templates.TemplateResponse(
+            request,
+            "account.html",
+            {
+                "user": user,
+                "credentials": credentials,
+                "credential_error": validation_error,
+                "secret_key_ready": True,
+                "accts_info": get_accounts_info(rpc_app),
+            },
+            status_code=400,
+        )
     await rpc_app.db_manager.exchange_credential.upsert_default(
         user.id,
         exchange=exchange,
@@ -259,19 +347,36 @@ async def account_exchange_credentials_submit(request: Request):
         encrypted_api_secret=encrypt_secret(service_key, api_secret),
         masked_api_key=mask_api_key(api_key),
     )
+    if logger is not None:
+        logger.info(f"Exchange credential saved: user_id={user.id} exchange={exchange}")
     return RedirectResponse(url="/account", status_code=status.HTTP_303_SEE_OTHER)
+
+
+def _validate_exchange_credential_connectivity(cfg: Config, exchange: str, api_key: str, api_secret: str) -> str | None:
+    if exchange != "BINANCE":
+        return None
+    try:
+        base = parse_exchange_config(getattr(cfg, "exchange", "") or "") if getattr(cfg, "exchange", "") else ExchangeConfig()
+        payload = base.model_dump()
+        payload["api_key"] = api_key
+        payload["api_secret"] = api_secret
+        probe = BinanceExchange(ExchangeConfig(**payload))
+        if not probe.ping():
+            return "API key 连通性检查失败：无法连接交易所，请检查网络或密钥。"
+    except Exception as exc:
+        return f"API key 连通性检查失败：{exc}"
+    return None
 
 
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_dashboard(request: Request):
     rpc_app = _require_rpc_app(request)
-    user = await current_user(request)
+    user = await _template_user(request)
     return templates.TemplateResponse(
         request,
         "index.html",
         {
             "tasks_info": await get_taskinfo(rpc_app, user),
-            "accts_info": get_accounts_info(rpc_app),
             "version": rpc_app.version(),
             "user": user,
         },
@@ -281,32 +386,41 @@ async def admin_dashboard(request: Request):
 @app.get("/admin/tasks", response_class=HTMLResponse)
 async def admin_tasks_page(request: Request):
     rpc_app = _require_rpc_app(request)
-    user = await current_user(request)
+    user = await _template_user(request)
     raw_page = request.query_params.get("page", "1")
     try:
         page = max(1, int(raw_page))
     except ValueError:
         page = 1
     tasks_info = await get_taskinfo(rpc_app, user, page=page, per_page=20)
-    return templates.TemplateResponse(request, "tasks.html", {"tasks_info": tasks_info, "user": user})
+    return templates.TemplateResponse(
+        request,
+        "tasks.html",
+        {
+            "tasks_info": tasks_info,
+            "user": user,
+            "strategy_options": _list_strategy_options(),
+            "task_config_options": _list_task_config_options(),
+        },
+    )
 
 
 @app.get("/admin/klines", response_class=HTMLResponse)
 async def admin_klines_page(request: Request):
     rpc_app = _require_rpc_app(request)
-    return templates.TemplateResponse(request, "klines.html", {"klines_info": await get_klines_info(rpc_app), "user": await current_user(request)})
+    return templates.TemplateResponse(request, "klines.html", {"klines_info": await get_klines_info(rpc_app), "user": await _template_user(request)})
 
 
 @app.get("/admin/live", response_class=HTMLResponse)
 async def admin_live_page(request: Request):
     _require_rpc_app(request)
-    return templates.TemplateResponse(request, "live.html", {"user": await current_user(request)})
+    return templates.TemplateResponse(request, "live.html", {"user": await _template_user(request)})
 
 
 @app.get("/admin/logs", response_class=HTMLResponse)
 async def admin_logs_page(request: Request):
     rpc_app = _require_rpc_app(request)
-    return templates.TemplateResponse(request, "logs.html", {"logs_info": get_logs_info(rpc_app), "user": await current_user(request)})
+    return templates.TemplateResponse(request, "logs.html", {"logs_info": get_logs_info(rpc_app), "user": await _template_user(request)})
 
 
 @app.get("/admin/users", response_class=HTMLResponse)

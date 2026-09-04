@@ -140,6 +140,8 @@ dmypy.json
 .vscode
 tests/output
 reports
+output/
+.playwright-mcp/
 .sw*
 .worktrees/
 tmp
@@ -151,3 +153,4 @@ skills-lock.json
 configs/notices/notice.json
 .codex/config.toml
 
+configs/tasks/saved/

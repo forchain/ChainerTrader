@@ -3,99 +3,34 @@
 {% block title %}首页 - ChainerTrader{% endblock %}
 
 {% block content %}
-<div class="row">
-    <div class="col-lg-8">
-        <div class="jumbotron bg-primary text-white rounded p-5 mb-4">
-            <h3 class="display-10">
-                欢迎使用ChainerTrader
-            </h3>
-            <p class="lead">Implement TradvingView Algorithms of Youtube Channel Shi Hun</p>
-            <hr class="my-4">
-            <p>基本信息：ChainerTrader</p>
-            <p>版本: {{ version }}</p>
-        </div>
-        <div class="jumbotron bg-primary text-white rounded p-5 mb-4">
-            <h4 class="display-10">
-                账户信息
-            </h4>
-            <hr class="my-4">
-            <div class="table-responsive">
-                <table class="table table-sm table-striped table-bordered align-middle mb-0 bg-white text-dark">
-                    <thead class="table-light">
-                        <tr>
-                            <th scope="col">资产</th>
-                            <th scope="col">可用</th>
-                            <th scope="col">冻结</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% if accts_info and accts_info.balances %}
-                            {% for b in accts_info.balances %}
-                            <tr>
-                                <td>{{ b.asset }}</td>
-                                <td>{{ b.free | round(8) }}</td>
-                                <td>{{ b.locked | round(8) }}</td>
-                            </tr>
-                            {% endfor %}
-                        {% else %}
-                            <tr>
-                                <td colspan="3" class="text-center text-muted">暂无账户余额数据</td>
-                            </tr>
-                        {% endif %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
+<section class="card mb-4">
+    <div class="card-body p-4 p-lg-5">
+        <h1 class="h3 mb-3">欢迎使用 ChainerTrader</h1>
+        <p class="lead mb-3">面向高并发并行优化的量化平台</p>
+        <p class="mb-4">
+            通过并行计算大规模验证策略与参数组合，快速筛选更优的投资组合方案。
+        </p>
+        <div class="small text-muted">版本: {{ version }}</div>
     </div>
-    <div class="col-lg-4">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="card-title mb-0">
-                    <i class="fas fa-chart-bar me-2"></i>统计信息
-                </h5>
-            </div>
-            <div class="card-body">
-                <div class="row text-center">
-                    <div class="col-6">
-                        <h3 class="text-primary">{{ tasks_info.total }}</h3>
-                        <p class="text-muted">总任务数</p>
-                    </div>
-                    <div class="col-6">
-                        <h3 class="text-success">{{ tasks_info.completed }}</h3>
-                        <p class="text-muted">已完成</p>
-                    </div>
-                </div>
-                {% if tasks_info.total > 0 %}
-                <div class="progress mt-3">
-                    <div class="progress-bar" role="progressbar"
-                         style="width: {{ (tasks_info.completed / tasks_info.total * 100) | round(1) }}%">
-                        {{ (tasks_info.completed / tasks_info.total * 100) | round(1) }}%
-                    </div>
-                </div>
-                {% endif %}
-            </div>
-        </div>
+</section>
 
-        <div class="card mt-4">
-            <div class="card-header">
-                <h5 class="card-title mb-0">
-                    <i class="fas fa-clock me-2"></i>最近任务
-                </h5>
-            </div>
-            <div class="card-body">
-                {% if tasks_info.tasks %}
-                    {% for task in tasks_info.tasks[:5] %}
-                    <div class="d-flex align-items-center mb-2">
-                        <div class="flex-grow-1">
-                            <small class="text-muted">{{ task.name }}</small>
-                        </div>
-                    </div>
-                    {% endfor %}
-                {% else %}
-                    <p class="text-muted text-center">暂无任务</p>
-                {% endif %}
-            </div>
-        </div>
+<section class="card mb-4">
+    <div class="card-body p-4">
+        <h2 class="h5 mb-3">项目简介</h2>
+        <p class="mb-0">
+            ChainerTrader 提供任务集配置、运行监控、结果分析等能力，支持以运行（Run）为单位管理一次任务集执行过程。
+        </p>
     </div>
-</div>
+</section>
+
+<section class="card">
+    <div class="card-body p-4">
+        <h2 class="h5 mb-3">核心能力</h2>
+        <ul class="mb-0">
+            <li>任务集配置与复用</li>
+            <li>运行态监控与图表分析</li>
+            <li>回测与实盘统一管理</li>
+        </ul>
+    </div>
+</section>
 {% endblock %}

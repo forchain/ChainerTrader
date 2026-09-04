@@ -48,9 +48,37 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }, 5000);
 
+    setupAccountBalanceToggle();
 
     addThemeToggle();
 });
+
+function setupAccountBalanceToggle() {
+    const toggle = document.getElementById('toggle-all-assets');
+    const rows = document.querySelectorAll('#accounts-table tbody tr.account-row');
+
+    if (!toggle || rows.length === 0) {
+        return;
+    }
+
+    const storageKey = 'showAllAssets';
+    const savedValue = localStorage.getItem(storageKey);
+    const showAll = savedValue === 'true';
+
+    toggle.checked = showAll;
+
+    function applyVisibility() {
+        const showAllRows = toggle.checked;
+        rows.forEach(row => {
+            const hasFree = row.getAttribute('data-has-free') === 'true';
+            row.classList.toggle('d-none', !showAllRows && !hasFree);
+        });
+        localStorage.setItem(storageKey, String(showAllRows));
+    }
+
+    toggle.addEventListener('change', applyVisibility);
+    applyVisibility();
+}
 
 function addThemeToggle() {
     const savedTheme = localStorage.getItem('theme') || 'light';

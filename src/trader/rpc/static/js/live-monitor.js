@@ -3,7 +3,12 @@
 
   const state = {
     strategies: [],
+    strategiesLoading: false,
+    selectedContext: "empty",
+    runningTaskId: null,
+    renderer: "generic",
     selectedId: null,
+    canStream: false,
     chart: null,
     candleSeries: null,
     markerApi: null,
@@ -20,6 +25,13 @@
   };
 
   const el = (id) => document.getElementById(id);
+
+  function initialTaskIdFromUrl() {
+    const value = new URLSearchParams(window.location.search).get("task_id");
+    if (!value) return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  }
 
   function isLocalHost() {
     return ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
@@ -157,54 +169,122 @@
   }
 
   async function loadStrategies() {
-    const response = await fetch("/api/live/strategies");
-    state.strategies = response.ok ? await response.json() : [];
+    state.strategiesLoading = true;
     renderStrategyList();
-    if (state.strategies.length > 0) {
-      await selectStrategy(state.strategies[0].strategy_id);
-    } else {
-      el("live-strategy-list").innerHTML = '<div class="text-muted small p-3">暂无运行中的实盘策略</div>';
+    const response = await fetch("/api/live/current-task");
+    state.strategiesLoading = false;
+    if (!response.ok) {
+      state.strategies = [];
+      renderStrategyList();
+      appendDiagnostic("workspace_error", { error: "current task workspace load failed" });
+      return;
     }
+    const payload = await response.json();
+    state.strategies = payload.tasks || [];
+    state.selectedId = payload.selected_task_id || null;
+    state.selectedContext = payload.display_context || "empty";
+    state.runningTaskId = payload.running_task_id || null;
+    state.renderer = payload.renderer || "generic";
+    state.canStream = Boolean(payload.can_stream);
+    renderStrategyList();
+    renderWorkspace(payload.snapshot);
   }
 
   function renderStrategyList() {
     const list = el("live-strategy-list");
+    const runNode = el("live-run-id");
     if (!list) return;
+    if (runNode) {
+      const first = state.strategies[0];
+      const runId = first?.run_id;
+      runNode.textContent = runId ? `Run ${runId}` : "";
+    }
+    if (state.strategiesLoading) {
+      list.innerHTML = '<div class="text-muted small p-3">任务列表加载中...</div>';
+      return;
+    }
     list.innerHTML = "";
     state.strategies.forEach((strategy) => {
       const button = document.createElement("button");
       button.type = "button";
-      button.className = `list-group-item list-group-item-action ${strategy.strategy_id === state.selectedId ? "active" : ""}`;
-      button.dataset.strategyId = strategy.strategy_id;
-      button.innerHTML = `<div class="fw-semibold">${escapeHtml(strategy.symbol)} ${escapeHtml(strategy.interval)}</div>
-        <div class="small">${escapeHtml(strategy.strategy_name)}</div>
-        <div class="small opacity-75">${escapeHtml(strategy.execution_mode)} · ${escapeHtml(strategy.status)}</div>
-        <div class="small opacity-75">任务 #${escapeHtml(strategy.task_id)}</div>`;
-      button.addEventListener("click", () => selectStrategy(strategy.strategy_id));
+      button.className = `list-group-item list-group-item-action ${strategy.task_id === state.selectedId ? "active" : ""}`;
+      button.dataset.strategyId = strategy.task_id;
+      const marker = strategy.is_running ? "运行中" : "历史";
+      const rerunDisabled = Boolean(strategy.is_running);
+      const rerunLabel = rerunDisabled ? "运行中" : "重新运行";
+      const rerunClass = rerunDisabled ? "btn btn-sm btn-outline-secondary disabled live-rerun-task" : "btn btn-sm btn-outline-primary live-rerun-task";
+      const symbol = strategy.symbol || "-";
+      const interval = strategy.interval || "-";
+      const strategyName = strategy.strategy || "-";
+      const runBadge = strategy.run_id
+        ? `<div class="small opacity-75">Run ${escapeHtml(strategy.run_id)}${
+            strategy.run_index && strategy.run_total ? ` · ${escapeHtml(strategy.run_index)}/${escapeHtml(strategy.run_total)}` : ""
+          }</div>`
+        : "";
+      button.innerHTML = `<div class="fw-semibold">任务 #${escapeHtml(strategy.task_id)}</div>
+        <div class="small">${escapeHtml(strategy.task_type)}</div>
+        <div class="small opacity-75">币种 ${escapeHtml(symbol)} · 周期 ${escapeHtml(interval)} · 策略 ${escapeHtml(strategyName)}</div>
+        ${runBadge}
+        <div class="small opacity-75">${escapeHtml(marker)} · ${escapeHtml(strategy.state)}</div>
+        ${rerunDisabled ? "" : `<div class="mt-2">
+          <span class="${rerunClass}" data-task-id="${escapeHtml(strategy.task_id)}" data-rerun-disabled="0">${rerunLabel}</span>
+        </div>`}`;
+      button.addEventListener("click", () => selectStrategy(strategy.task_id));
       list.appendChild(button);
     });
+    if (state.strategies.length === 0) {
+      list.innerHTML = '<div class="text-muted small p-3">暂无可展示任务</div>';
+    }
   }
 
-  async function selectStrategy(strategyId) {
-    state.selectedId = strategyId;
-    renderStrategyList();
-    closeEventSource();
-    const response = await fetch(`/api/live/strategies/${strategyId}/snapshot`);
+  async function selectStrategy(taskId) {
+    const response = await fetch(`/api/live/current-task?task_id=${encodeURIComponent(taskId)}`);
     if (!response.ok) {
       appendDiagnostic("runtime_status", { error: "snapshot load failed" });
       return;
     }
-    const snapshot = await response.json();
-    renderSnapshot(snapshot);
-    openEventSource(strategyId);
+    const payload = await response.json();
+    state.selectedId = payload.selected_task_id || taskId;
+    state.selectedContext = payload.display_context || "historical_selection";
+    state.runningTaskId = payload.running_task_id || null;
+    state.renderer = payload.renderer || "generic";
+    state.canStream = Boolean(payload.can_stream);
+    renderStrategyList();
+    renderWorkspace(payload.snapshot);
+  }
+
+  function renderWorkspace(snapshot) {
+    closeEventSource();
+    if (!snapshot) {
+      renderGenericSnapshot({ name: "暂无任务", state: "EMPTY", task_id: "-" }, "empty");
+      return;
+    }
+    if (state.renderer === "live") {
+      renderSnapshot(snapshot);
+      if (state.selectedContext === "active_running_task" && state.canStream) {
+        openEventSource(state.selectedId || snapshot.task_id);
+      }
+      return;
+    }
+    if (state.renderer === "backtest") {
+      renderBacktestSnapshot(snapshot);
+      return;
+    }
+    if (state.renderer === "data") {
+      renderDataSnapshot(snapshot);
+      return;
+    }
+    renderGenericSnapshot(snapshot, state.renderer);
   }
 
   function renderSnapshot(snapshot) {
     state.candleLimit = Math.max(1, Number(snapshot?.history_window?.limit || DEFAULT_MAX_CANDLES));
-    el("active-strategy-title").textContent = `${snapshot.market} ${snapshot.interval}`;
+    const marketLabel = snapshot.market ? `${snapshot.market} ${snapshot.interval || ""}`.trim() : `任务 #${snapshot.task_id}`;
+    el("active-strategy-title").textContent = marketLabel;
     const paramLabel = snapshot.param_id || snapshot.parameter_fingerprint || "default";
+    const displayContextText = state.selectedContext || "active_running_task";
     el("active-strategy-meta").textContent =
-      `${snapshot.strategy_name} · ${snapshot.execution_mode} · 任务 #${snapshot.task_id} · 参数 ${paramLabel}`;
+      `${snapshot.strategy_name} · ${snapshot.execution_mode} · 任务 #${snapshot.task_id} · 参数 ${paramLabel} · ${displayContextText}`;
     renderStatus({
       ...(snapshot.runtime_status || {}),
       task_id: snapshot.task_id,
@@ -220,8 +300,8 @@
     state.eventSequence = 0;
     renderSnapshotOverlays(snapshot.overlays || {});
     appendDiagnostic("snapshot", {
-      loaded: snapshot.history_window.loaded,
-      insufficient: snapshot.history_window.insufficient,
+      loaded: snapshot.history_window?.loaded,
+      insufficient: snapshot.history_window?.insufficient,
       overlays: {
         signals: state.markers.length,
         risk: state.riskOverlays.length,
@@ -230,6 +310,32 @@
       parameter_summary: snapshot.parameter_summary,
       strategy_params: snapshot.strategy_params,
     });
+  }
+
+  function renderBacktestSnapshot(snapshot) {
+    if (Array.isArray(snapshot.candles)) {
+      renderSnapshot(snapshot);
+      return;
+    }
+    renderGenericSnapshot(snapshot, "backtest");
+  }
+
+  function renderDataSnapshot(snapshot) {
+    el("active-strategy-title").textContent = `Data 任务 #${snapshot.task_id}`;
+    el("active-strategy-meta").textContent = `${state.selectedContext} · ${snapshot.state}`;
+    renderStatus(snapshot.runtime_status || { state: snapshot.state, task_type: snapshot.task_type });
+    const chart = el("live-chart");
+    chart.innerHTML = `<div class="p-3 text-muted small">Data 视图（首期）：显示任务状态、参数和事件。任务名称：${escapeHtml(snapshot.name || "-")}</div>`;
+    el("strategy-parameters").innerHTML = `<div class="live-panel-title mb-2">任务配置</div><pre class="small mb-0">${escapeHtml(snapshot.config_json || "{}")}</pre>`;
+  }
+
+  function renderGenericSnapshot(snapshot, renderer) {
+    el("active-strategy-title").textContent = `任务 #${snapshot.task_id || "-"}`;
+    el("active-strategy-meta").textContent = `${state.selectedContext} · ${snapshot.state || "UNKNOWN"} · ${renderer}`;
+    renderStatus(snapshot.runtime_status || { state: snapshot.state, task_type: snapshot.task_type });
+    const chart = el("live-chart");
+    chart.innerHTML = `<div class="p-3 text-muted small">通用任务视图：${escapeHtml(snapshot.name || "-")}</div>`;
+    el("strategy-parameters").innerHTML = `<div class="live-panel-title mb-2">任务配置</div><pre class="small mb-0">${escapeHtml(snapshot.config_json || "{}")}</pre>`;
   }
 
   function renderSnapshotOverlays(overlays) {
@@ -464,6 +570,23 @@
     }
   }
 
+  async function rerunSelectedTask(taskId) {
+    if (!taskId) return;
+    const response = await fetch(`/api/live/tasks/${encodeURIComponent(taskId)}/rerun`, { method: "POST" });
+    if (!response.ok) {
+      let message = `重跑失败：HTTP ${response.status}`;
+      try {
+        const payload = await response.json();
+        if (payload?.detail) message = `重跑失败：${payload.detail}`;
+      } catch (_err) {}
+      appendDiagnostic("rerun_task", { ok: false, task_id: taskId, error: message });
+      return;
+    }
+    const payload = await response.json();
+    appendDiagnostic("rerun_task", { ok: true, task_id: taskId, result: payload });
+    await loadStrategies();
+  }
+
   function renderStatus(status) {
     const node = el("runtime-status");
     node.innerHTML = "";
@@ -560,9 +683,30 @@
     if (isLocalHost()) {
       el("live-debug-panel")?.classList.remove("d-none");
     }
+    el("live-strategy-list")?.addEventListener("click", (event) => {
+      const button = event.target.closest(".live-rerun-task");
+      if (!button) return;
+      event.stopPropagation();
+      if (button.dataset.rerunDisabled === "1") {
+        appendDiagnostic("rerun_task", { ok: false, task_id: button.dataset.taskId, error: "当前任务正在运行，不能重跑" });
+        return;
+      }
+      rerunSelectedTask(button.dataset.taskId);
+    });
     el("live-debug-entry")?.addEventListener("click", () => sendDebugManualSignal("entry"));
     el("live-debug-exit")?.addEventListener("click", () => sendDebugManualSignal("exit"));
-    loadStrategies().catch((error) => {
+    loadStrategies().then(() => {
+      const initialTaskId = initialTaskIdFromUrl();
+      if (initialTaskId != null) {
+        const match = state.strategies.find((item) => Number(item.task_id) === initialTaskId);
+        if (match) {
+          selectStrategy(match.task_id).catch((error) => {
+            setConnection("error", "danger");
+            appendDiagnostic("error", { message: error.message });
+          });
+        }
+      }
+    }).catch((error) => {
       setConnection("error", "danger");
       appendDiagnostic("error", { message: error.message });
     });

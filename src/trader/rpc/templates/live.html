@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 
-{% block title %}实盘监控 - ChainerTrader{% endblock %}
+{% block title %}任务监控 - ChainerTrader{% endblock %}
 
 {% block content %}
 <div class="live-monitor" data-page="live-monitor">
     <div class="d-flex align-items-center justify-content-between mb-3">
         <div>
-            <h2 class="h4 mb-1">实盘监控</h2>
-            <div class="text-muted small">Realtime strategy workspace</div>
+            <h2 class="h4 mb-1">任务监控</h2>
+            <div class="text-muted small">正在运行任务工作台</div>
         </div>
         <div id="live-connection-state" class="badge text-bg-secondary">idle</div>
     </div>
@@ -15,7 +15,10 @@
     <div class="row g-3">
         <aside class="col-lg-3">
             <div class="live-panel">
-                <div class="live-panel-title">策略</div>
+                <div class="live-panel-title d-flex align-items-center justify-content-between">
+                    <span>任务</span>
+                    <span id="live-run-id" class="text-muted small"></span>
+                </div>
                 <div id="live-strategy-list" class="list-group live-strategy-list"></div>
             </div>
             <div class="live-panel mt-3">
@@ -45,7 +48,7 @@
         <section class="col-lg-6">
             <div class="live-panel">
                 <div class="d-flex align-items-center justify-content-between mb-2">
-                    <div id="active-strategy-title" class="fw-semibold">未选择策略</div>
+                    <div id="active-strategy-title" class="fw-semibold">未选择任务</div>
                     <div id="active-strategy-meta" class="text-muted small"></div>
                 </div>
                 <div id="live-chart" class="live-chart"></div>

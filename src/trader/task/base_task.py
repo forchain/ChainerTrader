@@ -11,6 +11,15 @@ from trader.task.task_config import TaskConfig
 from trader.utils.task_state import TaskState, TaskStateType
 
 
+def _task_config_symbol(symbol_interval) -> str:
+    symbol = getattr(symbol_interval, "sy", None)
+    base = getattr(symbol, "base", "")
+    quote = getattr(symbol, "quote", "")
+    if base and quote:
+        return f"{base}-{quote}"
+    return symbol_interval.symbol()
+
+
 class BaseTask:
     def __init__(
         self,
@@ -51,7 +60,7 @@ class BaseTask:
             "task_type": self.tcfg.ttype.name,
         }
         if self.tcfg.symbol_interval:
-            config_dict["symbol"] = self.tcfg.symbol_interval.symbol()
+            config_dict["symbol"] = _task_config_symbol(self.tcfg.symbol_interval)
             config_dict["interval"] = self.tcfg.symbol_interval.interval.value
 
         if self.tcfg.csv:
@@ -88,6 +97,8 @@ class BaseTask:
             config_dict["requires_short_capability"] = True
         if getattr(self.tcfg, "user_id", None) is not None:
             config_dict["user_id"] = self.tcfg.user_id
+        if getattr(self.tcfg, "run_id", None):
+            config_dict["run_id"] = self.tcfg.run_id
 
         return json.dumps([config_dict], indent=2, ensure_ascii=False)
 

@@ -158,6 +158,32 @@ def test_parse_task_config_keeps_legacy_backtest_behavior_without_parameter_sear
     assert tasks[0].optimization_run_id is None
 
 
+def test_parse_task_config_assigns_one_run_id_to_one_launch():
+    config = json.dumps(
+        [
+            {
+                "task_type": "TRADER",
+                "symbols": "BTC-USDT,ETH-USDT",
+                "interval": "1h",
+                "strategy": "macd_triple_divergence",
+            }
+        ]
+    )
+
+    tasks = parse_task_config(config)
+
+    assert len(tasks) == 2
+    assert len({task.run_id for task in tasks}) == 1
+    assert tasks[0].run_id
+
+
+def test_parse_task_config_assigns_run_id_to_single_debug_launch():
+    tasks = parse_task_config('[{"task_type":"DEBUG","limit":1}]')
+
+    assert len(tasks) == 1
+    assert tasks[0].run_id
+
+
 def test_parameter_search_uses_launch_run_id_from_environment(monkeypatch):
     monkeypatch.setenv("TRADER_OPTIMIZATION_RUN_ID", "run-launch-123")
     config = json.dumps(

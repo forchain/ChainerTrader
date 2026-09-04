@@ -12,13 +12,22 @@ def test_live_monitor_template_loads_tradingview_lightweight_charts_and_workspac
     assert "overlay-signals" in template
     assert "strategy-parameters" in template
     assert "diagnostic-events" in template
+    assert "任务监控" in template
+    assert "Current task workspace" in template
+
+
+def test_base_navigation_hides_standalone_klines_entry():
+    template = (ROOT / "src/trader/rpc/templates/base.html").read_text(encoding="utf-8")
+
+    assert 'href="/admin/klines"' not in template
+    assert '<i class="fas fa-info-circle me-1"></i>K线' not in template
 
 
 def test_live_monitor_javascript_uses_snapshot_sse_and_incremental_candle_updates():
     script = (ROOT / "src/trader/rpc/static/js/live-monitor.js").read_text(encoding="utf-8")
 
     assert "LightweightCharts" in script
-    assert "/api/live/strategies" in script
+    assert "/api/live/current-task" in script
     assert "EventSource" in script
     assert "setCandles(snapshot.candles || [])" in script
     assert "upsertCandle(candle)" in script
@@ -39,6 +48,14 @@ def test_live_monitor_javascript_uses_snapshot_sse_and_incremental_candle_update
     assert "candleTimes" in script
     assert "riskLineStyle" in script
     assert "risk_overlay_invalid_price" in script
+
+
+def test_live_monitor_backtest_renderer_uses_kline_chart_when_candles_exist():
+    script = (ROOT / "src/trader/rpc/static/js/live-monitor.js").read_text(encoding="utf-8")
+
+    assert "if (Array.isArray(snapshot.candles))" in script
+    assert "renderSnapshot(snapshot);" in script
+    assert "Backtest 视图（首期）" not in script
 
 
 def test_live_monitor_javascript_reuses_marker_api_and_filters_noisy_diagnostics():
@@ -97,6 +114,17 @@ def test_live_monitor_javascript_surfaces_task_and_parameter_identity():
     assert "snapshot.strategy_params" in script
     assert "renderStrategyParameters(snapshot)" in script
     assert "strategy-parameter-summary\">${escapeHtml(snapshot.parameter_summary" not in script
+    assert "state.selectedContext" in script
+    assert "renderer" in script
+
+
+def test_live_monitor_javascript_surfaces_run_rerun_action():
+    script = (ROOT / "src/trader/rpc/static/js/live-monitor.js").read_text(encoding="utf-8")
+
+    assert "Run #" in script
+    assert "live-rerun-task" in script
+    assert "/api/live/tasks/${encodeURIComponent(taskId)}/rerun" in script
+    assert "rerunSelectedTask" in script
 
 
 def test_live_monitor_javascript_uses_local_chart_time_and_numbered_events():
