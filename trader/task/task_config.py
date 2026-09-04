@@ -2,7 +2,6 @@ import os
 
 from trader.common import path
 from trader.common.common import parse_datetime
-from trader.strategy.strategy import parseStrategyType, StrategyType
 from trader.task.task_type import TaskType, parse_task_type
 import json
 
@@ -10,12 +9,12 @@ from trader.utils.symbol_interval import SymbolInterval, Interval
 from trader.utils.symbols_interval import SymbolsInterval
 
 class TaskConfig:
-    def __init__(self,ttype:TaskType,symbol_interval=SymbolInterval("BTCUSDT",Interval("1d")),csv=None,start_time=0,end_time=0,strategy:[StrategyType]=None,auto_download=False):
+    def __init__(self,ttype:TaskType,symbol_interval=SymbolInterval("BTCUSDT",Interval("1d")),csv=None,start_time=0,end_time=0,strategys:[str]=None,auto_download=False):
         self.ttype=ttype
         self.csv = csv
         self.start_time=start_time
         self.end_time=end_time
-        self.strategy=strategy
+        self.strategys=strategys
         self.symbol_interval = symbol_interval
         self.auto_download = auto_download
 
@@ -29,19 +28,19 @@ class TaskConfig:
             'csv': self.csv,
             'start_time': self.start_time,
             'end_time': self.end_time,
-            'strategy': self.strategy,
+            'strategys': self.strategys,
             'auto_download': self.auto_download,
         }
 
     def strategy_name(self):
-        if self.strategy is None:
+        if self.strategys is None:
             return None
         s=""
-        for st in self.strategy:
+        for st in self.strategys:
             if len(s) > 0:
-                s+="+"+st.name
+                s+="+"+st
             else:
-                s+=st.name
+                s+=st
         return s
 
 
@@ -83,17 +82,17 @@ def parse_task_config(cfg)->[TaskConfig]:
         strategys = []
         strategys_bunch = []
         if "strategy" in tcd:
-            strategy = parseStrategyType(tcd['strategy'])
+            strategy = tcd['strategy']
             strategys.append(strategy)
         elif "strategys" in tcd:
             strategys_list = tcd['strategys'].split(',')
             for st in strategys_list:
-                strategy = parseStrategyType(st)
+                strategy = st
                 strategys.append(strategy)
         elif "strategys_bunch" in tcd:
             strategys_list = tcd['strategys_bunch'].split(',')
             for st in strategys_list:
-                strategy = parseStrategyType(st)
+                strategy = st
                 strategys_bunch.append(strategy)
 
         id=0
