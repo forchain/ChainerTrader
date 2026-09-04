@@ -13,17 +13,16 @@ from trader.utils import path
 
 import backtrader as bt
 
+from trader.utils.basestrategy import BaseStrategy
 from trader.utils.chainerrsi import ChainerRSI, ChainerRSIHisto
 from trader.utils.chainerstrategy import ChainerStrategy
 from trader.utils.operate import OperateType
+from trader.utils.trend import TrendType
 
 
 # Shihun RSI strategy
-class ShihunRSIStrategy(bt.Strategy):
+class ShihunRSIStrategy(BaseStrategy):
     params = (
-        ('atr', False),
-        ('atrperiod', 14),
-        ('atrdist', 5),  # ATR distance for stop price
         ('overbought', 70),
         ('oversold', 30),
     )
@@ -41,12 +40,6 @@ class ShihunRSIStrategy(bt.Strategy):
         self.order = None
 
         self.rsi = ChainerRSIHisto(self.datas[0])
-
-        # Stop loss point
-        self.stopLossPoint=0
-        # To set the stop price
-        if self.params.atr:
-            self.atr = bt.indicators.ATR(self.datas[0], period=self.params.atrperiod)
 
         self.criticalBuyK = None
         self.criticalSellK = None

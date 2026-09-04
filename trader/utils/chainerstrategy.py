@@ -38,7 +38,7 @@ class ChainerStrategy(bt.Strategy):
         l = len(self.datas[0].close)
         if l <= minK:
             return False
-        curTrend = TrendType.UNKNOWN
+        curTrend = TrendType.NORMAL
 
         av1=(self.datas[0].open[-1] + self.datas[0].close[-1]) / 2
 
@@ -47,7 +47,7 @@ class ChainerStrategy(bt.Strategy):
         elif self.datas[0].close[0] >= av1:
             curTrend=TrendType.UP
         else:
-            curTrend = TrendType.UNKNOWN
+            curTrend = TrendType.NORMAL
         print(curTrend)
         # We only operate in an upward trend
         if curTrend != TrendType.UP:
