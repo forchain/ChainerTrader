@@ -17,12 +17,15 @@ class BaseStrategy(bt.Strategy):
         ('mode', TrendType.NORMAL),
         ('period', 14),
         ('log', None),
+        ('stoploss', False),
     )
 
     def __init__(self):
         super().__init__()
         # Stop loss point
-        self.stopLossPoint=0
+        if self.params.stoploss:
+            self.stopLossPoint = 0
+
         # To set the stop price
         if self.params.atr:
             self.atr = bt.indicators.ATR(self.datas[0], period=self.params.atrperiod)
@@ -82,3 +85,20 @@ class BaseStrategy(bt.Strategy):
 
     def cur_datetime(self):
         return num2date(self.datas[0].datetime[0])
+
+    def need_stop_loss(self):
+        if not self.params.stoploss:
+            return False
+
+        if self.data.close[0] < self.stopLossPoint:
+            return True
+        return False
+
+    def update_stop_loss_point(self):
+        if not self.params.stoploss:
+            return
+
+        pdist = 0
+        if self.params.atr:
+            pdist = self.atr[0] * self.params.atrdist
+        self.stopLossPoint = self.datas[0].close[0] - pdist

@@ -14,6 +14,7 @@ import backtrader.analyzers as btanalyzers
 
 from prettytable import PrettyTable
 
+from trader.strategy.trader_result import TraderResult
 from trader.utils.profitlossratio import ProfitLossRatioAnalyzer
 from trader.utils.trend import TrendType
 from trader.utils.volatility import VolatilityAnalyzer
@@ -95,4 +96,4 @@ class Node:
         print("\n")
         print(table)
 
-        return [totalReturnRate,maxDrawdown,maxDrawdownDuration,volatility,winRate,plr,avgProfit,avgLoss]
+        return TraderResult(totalReturnRate,maxDrawdown,maxDrawdownDuration,volatility,winRate,plr,avgProfit,avgLoss)

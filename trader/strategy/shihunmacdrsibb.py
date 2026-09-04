@@ -58,9 +58,7 @@ class ShihunMacdRsiBollingerBandStrategy(BaseStrategy):
             self.order = self.buy()
             pdist = 0
             if curTrend == TrendType.UP:
-                if self.params.atr:
-                    pdist = self.atr[0] * self.params.atrdist
-                pdist = self.datas[0].close[0] - pdist
+                self.update_stop_loss_point()
             else:
                 pdist = self.datas[0].low[0]
                 if self.datas[0].low[-1] < pdist:
@@ -98,10 +96,9 @@ class ShihunMacdRsiBollingerBandStrategy(BaseStrategy):
                     willOpt = OperateType.BUY
 
         else:
-            if self.stopLossPoint:
-                if self.dataclose[0] < self.stopLossPoint:
-                    willOpt = OperateType.SELL
-            if willOpt == OperateType.UNKNOWN:
+            if self.need_stop_loss():
+                willOpt = OperateType.SELL
+            else:
                 if self.datas[0].high[0] > upperBand:
                     willOpt = OperateType.SELL
                 if self.datas[0].close[0] < midBand:
@@ -153,11 +150,9 @@ class ShihunMacdRsiBollingerBandStrategy(BaseStrategy):
                     willOpt = OperateType.BUY
 
         else:
-            if self.stopLossPoint:
-                if self.dataclose[0] < self.stopLossPoint:
-                    willOpt = OperateType.SELL
-
-            if willOpt == OperateType.UNKNOWN:
+            if self.need_stop_loss():
+                willOpt = OperateType.SELL
+            else:
                 if self.data.low[0] < midBand:
                     willOpt = OperateType.SELL
 

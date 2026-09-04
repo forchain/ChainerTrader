@@ -61,14 +61,15 @@ class ShihunMACD2Strategy(BaseStrategy):
                     willOpt = OperateType.BUY
 
         else:
-            if self.stopLossPoint:
-                if self.dataclose[0] < self.stopLossPoint:
+            if self.need_stop_loss():
                    willOpt = OperateType.SELL
-
-            if willOpt == OperateType.UNKNOWN:
-                    if self.macd.histo[0] < self.macd.histo[-1] and self.macd.histo[-1] > self.macd.histo[-2] and self.macd.histo[-2] > 0:
+            else:
+                if willOpt == OperateType.UNKNOWN:
+                    if self.macd.histo[0] < self.macd.histo[-1] and self.macd.histo[-1] > self.macd.histo[-2] and \
+                            self.macd.histo[-2] > 0:
                         self.criticalSellK = self.datas[0].low[0]
-                    elif self.criticalSellK and self.datas[0].close[0] < self.datas[0].open[0] and self.datas[0].close[0] < self.criticalSellK:
+                    elif self.criticalSellK and self.datas[0].close[0] < self.datas[0].open[0] and self.datas[0].close[
+                        0] < self.criticalSellK:
                         willOpt = OperateType.SELL
 
 
@@ -81,9 +82,6 @@ class ShihunMACD2Strategy(BaseStrategy):
         elif willOpt == OperateType.BUY:
             self.log_info(f'Kline:{self.cur_datetime()}, 创建 买单:{self.dataclose[0]:.2f}')
             self.order = self.buy()
-            pdist=0
-            if self.params.atr:
-                pdist = self.atr[0] * self.params.atrdist
-            self.stopLossPoint = self.datas[0].close[0] - pdist
+            self.update_stop_loss_point()
             self.criticalBuyK = None
             self.criticalSellK = None

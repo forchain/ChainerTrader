@@ -5,12 +5,14 @@ from multiprocessing import Manager, Process
 
 from trader.app.database_manager import DatabaseManager
 from trader.common.common import sleep
+from trader.common.message import new_stat_msg
+from trader.statistics.stat import BackTraderStat
 from trader.statistics.statistics import Statistics
 from trader.task.check_klines_task import CheckKlinesTask
 from trader.task.import_csv_task import ImportCSVTask
 from trader.task.task_config import parse_task_config, TaskConfig
 from trader.task.trader_task import TraderTask
-from trader.task.backtrader_task import BackTraderTask
+from trader.task.backtrader_task import BackTraderTask, process_backtrader
 from trader.binance.exchange import BinanceExchange
 from trader.common.config import Config
 from trader.task.task_type import parse_task_type, TaskType
@@ -74,11 +76,22 @@ class TaskManager:
 
     async def add_backtrader_task(self,cfgs,queue:Queue,quit:Event):
         with Manager() as manager:
-            pqueue = manager.list()
+            result = manager.list()
             processes = []
+            tasks = []
             for cfg in cfgs:
-                proc = Process(target=start_backtrader_task,
-                               args=(cfg, self.cfg, self.log, self.db_manager, self.exchange, pqueue, quit))
+                task = BackTraderTask(cfg,self.cfg,self.log,self.db_manager,self.exchange)
+                strategy,data = task.start(queue,quit)
+                tasks.append(task)
+
+                parmas = manager.list()
+                parmas.append(self.cfg)
+                parmas.append(data)
+                parmas.append(strategy)
+                parmas.append(cfg)
+
+
+                proc = Process(target=process_backtrader,args=(parmas,result))
                 processes.append(proc)
 
             for p in processes:
@@ -86,11 +99,9 @@ class TaskManager:
             for p in processes:
                 p.join()
 
-            for msg in pqueue:
+            for msg in result:
                 self.log.info(f"Relay process queue message:{msg.name()}")
                 await queue.put(msg)
 
-
-def start_backtrader_task(tcfg,cfg,log,db_manager,exchange,queue,quit:Event):
-    task = BackTraderTask(tcfg, cfg, log, db_manager, exchange)
-    task.start(queue,quit)
+        for task in tasks:
+            task.stop()
