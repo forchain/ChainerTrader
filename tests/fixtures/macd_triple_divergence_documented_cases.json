@@ -1,0 +1,17 @@
+[
+  {"case_time": "2025-05-23T08:00:00", "signal_type": "top_divergence", "case_status": "success"},
+  {"case_time": "2024-10-31T08:00:00", "signal_type": "top_divergence", "case_status": "success"},
+  {"case_time": "2024-01-11T08:00:00", "signal_type": "top_divergence", "case_status": "success"},
+  {"case_time": "2021-04-16T08:00:00", "signal_type": "top_divergence", "case_status": "success"},
+  {"case_time": "2020-06-02T08:00:00", "signal_type": "top_divergence", "case_status": "success"},
+  {"case_time": "2020-02-10T08:00:00", "signal_type": "top_divergence", "case_status": "failed"},
+  {"case_time": "2020-02-13T08:00:00", "signal_type": "top_divergence", "case_status": "success"},
+  {"case_time": "2025-04-09T08:00:00", "signal_type": "bottom_divergence", "case_status": "success"},
+  {"case_time": "2024-05-03T08:00:00", "signal_type": "bottom_divergence", "case_status": "success"},
+  {"case_time": "2023-06-06T08:00:00", "signal_type": "bottom_divergence", "case_status": "failed"},
+  {"case_time": "2023-06-15T08:00:00", "signal_type": "bottom_divergence", "case_status": "success"},
+  {"case_time": "2019-12-18T08:00:00", "signal_type": "bottom_divergence", "case_status": "success"},
+  {"case_time": "2018-06-25T08:00:00", "signal_type": "bottom_divergence", "case_status": "failed"},
+  {"case_time": "2018-02-03T08:00:00", "signal_type": "bottom_divergence", "case_status": "failed"},
+  {"case_time": "2018-02-06T08:00:00", "signal_type": "bottom_divergence", "case_status": "success"}
+]

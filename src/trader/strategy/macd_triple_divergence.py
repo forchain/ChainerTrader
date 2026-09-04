@@ -72,26 +72,6 @@ class Pivot:
     macd_val: float
     price_val: float
 
-
-DOCUMENTED_CASES_META = {
-    "2025-05-23T08:00:00": {"signal_type": "top_divergence", "case_status": "success"},
-    "2024-10-31T08:00:00": {"signal_type": "top_divergence", "case_status": "success"},
-    "2024-01-11T08:00:00": {"signal_type": "top_divergence", "case_status": "success"},
-    "2021-04-16T08:00:00": {"signal_type": "top_divergence", "case_status": "success"},
-    "2020-06-02T08:00:00": {"signal_type": "top_divergence", "case_status": "success"},
-    "2020-02-10T08:00:00": {"signal_type": "top_divergence", "case_status": "failed"},
-    "2020-02-13T08:00:00": {"signal_type": "top_divergence", "case_status": "success"},
-    "2025-04-09T08:00:00": {"signal_type": "bottom_divergence", "case_status": "success"},
-    "2024-05-03T08:00:00": {"signal_type": "bottom_divergence", "case_status": "success"},
-    "2023-06-06T08:00:00": {"signal_type": "bottom_divergence", "case_status": "failed"},
-    "2023-06-15T08:00:00": {"signal_type": "bottom_divergence", "case_status": "success"},
-    "2019-12-18T08:00:00": {"signal_type": "bottom_divergence", "case_status": "success"},
-    "2018-06-25T08:00:00": {"signal_type": "bottom_divergence", "case_status": "failed"},
-    "2018-02-03T08:00:00": {"signal_type": "bottom_divergence", "case_status": "failed"},
-    "2018-02-06T08:00:00": {"signal_type": "bottom_divergence", "case_status": "success"},
-}
-
-
 class MacdTripleDivergenceStrategy(BaseStrategy):
     """
     MACD Triple Divergence Strategy using ChainerTrader framework.
@@ -117,7 +97,6 @@ class MacdTripleDivergenceStrategy(BaseStrategy):
         ("max_lookback_segments", 10),  # Max segments to keep in history
         ("max_lookback_bars", 200),  # Hard safety cap for recent bars scanned
         ("max_same_sign_waves", 5),  # Max same-sign waves to consider from the latest wave backward
-        ("doc_trade_logic", True),  # Use trading rules described in the source document
         # Chainer Framework parameters
         ("chainer_mode", "BOTH"),  # LONG_ONLY, SHORT_ONLY, BOTH
         ("chainer_auto_signal", True),  # Enable auto signal processing
@@ -167,7 +146,6 @@ class MacdTripleDivergenceStrategy(BaseStrategy):
         self._short_signal_meta: Optional[dict] = None
         self._signal_seq: int = 0
         self._signal_events: List[dict] = []
-        self._documented_case_events: List[dict] = []
 
         # Order tracking
         self.order = None
@@ -181,8 +159,7 @@ class MacdTripleDivergenceStrategy(BaseStrategy):
 
     def start(self):
         super().start()
-        if self.params.doc_trade_logic:
-            self.broker.set_coc(True)
+        self.broker.set_coc(True)
 
     def _get_sign(self, hist_val: float) -> SegmentSign:
         """Determine the sign of a histogram value."""
@@ -1029,76 +1006,11 @@ class MacdTripleDivergenceStrategy(BaseStrategy):
 
     def _build_signal_event(self, direction: str, waves: List[Segment], triplet: List[Segment], trigger_pivot: Optional[Pivot]) -> dict:
         payload = self._signal_payload(direction, waves, triplet, trigger_pivot)
-        documented_case_meta = DOCUMENTED_CASES_META.get(payload["signal_time"])
         self._signal_seq += 1
         return {
             "signal_id": self._signal_seq,
-            "is_documented_case": documented_case_meta is not None,
-            "documented_case_status": documented_case_meta["case_status"] if documented_case_meta is not None else None,
             **payload,
         }
-
-    def _analysis_payload(self, direction: str, waves: List[Segment], triplet: Optional[List[Segment]], trigger_pivot: Optional[Pivot]) -> dict:
-        sign = SegmentSign.NEGATIVE if direction == "LONG" else SegmentSign.POSITIVE
-        candidates = self._price_divergence_candidates(waves, sign)
-
-        fail_reason = None
-        if triplet is None:
-            if len(candidates) < 3:
-                fail_reason = "insufficient_structural_candidates"
-            else:
-                fail_reason = "latest_contiguous_filtered_triplet_not_valid"
-        elif not self._is_first_shortening_bar(sign):
-            fail_reason = "not_first_shortening_bar"
-        elif trigger_pivot is None:
-            fail_reason = "no_trigger_pivot"
-
-        return {
-            "recent_streak_count": len(candidates),
-            "candidate_window_count": len(candidates),
-            "first_shortening_bar": self._is_first_shortening_bar(sign),
-            "recent_streak_legs": [self._leg_detail(wave, direction) for wave in candidates],
-            "price_qualified_legs": [self._leg_detail(wave, direction) for wave in candidates],
-            "selected_triplet_legs": [self._leg_detail(wave, direction) for wave in triplet] if triplet else [],
-            "trigger_pivot": self._pivot_detail(trigger_pivot, direction) if trigger_pivot else None,
-            "fail_reason": fail_reason,
-        }
-
-    def _capture_documented_case_snapshot(self) -> None:
-        case_time = self.cur_datetime().isoformat()
-        case_meta = DOCUMENTED_CASES_META.get(case_time)
-        if case_meta is None:
-            return
-        if any(event.get("case_time") == case_time for event in self._documented_case_events):
-            return
-
-        direction = "SHORT" if case_meta["signal_type"] == "top_divergence" else "LONG"
-        waves = self._build_recent_waves()
-        sign = SegmentSign.POSITIVE if direction == "SHORT" else SegmentSign.NEGATIVE
-        candidates = self._price_divergence_candidates(waves, sign)
-        latest_wave = candidates[-1] if candidates else None
-        trigger_pivot = self._current_trigger_pivot(latest_wave, sign) if latest_wave is not None else None
-        triplet = self._find_top_triplet(waves, trigger_pivot) if direction == "SHORT" else self._find_bottom_triplet(waves, trigger_pivot)
-
-        event = {
-            "case_time": case_time,
-            "signal_type": case_meta["signal_type"],
-            "case_status": case_meta["case_status"],
-            **(
-                self._signal_payload(direction, waves, triplet, trigger_pivot)
-                if triplet is not None
-                else {
-                    "signal_time": case_time,
-                    "signal_bar_index": self.bar_idx(),
-                    "signal_bar": self._bar_snapshot(self.bar_idx()),
-                    "legs": [],
-                    "conditions": {"separator_details": []},
-                    "trade_outcome": {"status": "not_triggered"},
-                }
-            ),
-            "analysis": self._analysis_payload(direction, waves, triplet, trigger_pivot),
-        }
-        self._documented_case_events.append(event)
 
     def _store_signal_event(self, event: dict) -> int:
         self._signal_events.append(event)
@@ -1210,7 +1122,7 @@ class MacdTripleDivergenceStrategy(BaseStrategy):
         event = self._build_signal_event("LONG", waves, triplet, trigger_pivot)
         signal_id = self._store_signal_event(event)
         self._long_signal_meta = {
-            "stop_price": float(r3.price_extreme),
+            "suggested_stop_price": float(r3.price_extreme),
             "signal_bar_index": current_bar,
             "signal_event_id": signal_id,
         }
@@ -1263,7 +1175,7 @@ class MacdTripleDivergenceStrategy(BaseStrategy):
         event = self._build_signal_event("SHORT", waves, triplet, trigger_pivot)
         signal_id = self._store_signal_event(event)
         self._short_signal_meta = {
-            "stop_price": float(g3.price_extreme),
+            "suggested_stop_price": float(g3.price_extreme),
             "signal_bar_index": current_bar,
             "signal_event_id": signal_id,
         }
@@ -1298,6 +1210,12 @@ class MacdTripleDivergenceStrategy(BaseStrategy):
             return False
 
         return self._detect_top_triple_divergence()
+
+    def get_long_signal_context(self) -> dict:
+        return dict(self._long_signal_meta or {})
+
+    def get_short_signal_context(self) -> dict:
+        return dict(self._short_signal_meta or {})
 
     def _check_macd_stop_loss(self) -> bool:
         """
@@ -1358,11 +1276,15 @@ class MacdTripleDivergenceStrategy(BaseStrategy):
                 else:
                     self._entry_hist_val = float(self.macd_hist[0])
                 self._entry_direction = "LONG" if order.isbuy() else "SHORT"
-                self._entry_signal_bar_idx = self._pending_entry_signal_bar_idx
+                if self._pending_entry_signal_bar_idx is not None:
+                    self._entry_signal_bar_idx = self._pending_entry_signal_bar_idx
+                elif self._active_trade is not None:
+                    signal_bar_index = (self._active_trade.signal_metadata or {}).get("signal_bar_index")
+                    self._entry_signal_bar_idx = int(signal_bar_index) if signal_bar_index is not None else None
                 self._pending_entry_signal_bar_idx = None
                 self._pending_entry_hist_val = None
                 if self._active_trade is not None:
-                    signal_id = getattr(self._active_trade, "signal_event_id", None)
+                    signal_id = (self._active_trade.signal_metadata or {}).get("signal_event_id")
                     self._update_signal_outcome(
                         signal_id,
                         "entered",
@@ -1382,7 +1304,7 @@ class MacdTripleDivergenceStrategy(BaseStrategy):
             if role == "entry":
                 tradeid = getattr(order, "tradeid", None)
                 ctx = self._trades_by_id.get(int(tradeid)) if tradeid is not None else None
-                signal_id = getattr(ctx, "signal_event_id", None) if ctx is not None else None
+                signal_id = (ctx.signal_metadata or {}).get("signal_event_id") if ctx is not None else None
                 self._update_signal_outcome(
                     signal_id,
                     "entry_order_failed",
@@ -1392,10 +1314,6 @@ class MacdTripleDivergenceStrategy(BaseStrategy):
                 self._pending_entry_hist_val = None
 
     def _process_signals(self) -> None:
-        if not self.params.doc_trade_logic:
-            super()._process_signals()
-            return
-
         long_signal = self.get_long_signal()
         short_signal = self.get_short_signal()
         can_open_new_position = self._can_open_new_position()
@@ -1406,7 +1324,7 @@ class MacdTripleDivergenceStrategy(BaseStrategy):
         )
 
         if long_signal and no_active_trade and can_open_new_position:
-            meta = dict(self._long_signal_meta or {})
+            meta = self.get_long_signal_context()
             ctx = self.enter_trade(
                 direction="LONG",
                 key_bar_index=self.bar_idx(),
@@ -1414,15 +1332,12 @@ class MacdTripleDivergenceStrategy(BaseStrategy):
                 need_confirm=False,
                 enable_breakeven=False,
                 risk_reward_ratio=self.params.chainer_risk_reward_ratio,
+                signal_metadata=meta,
             )
             if ctx is not None and ctx.status not in (BaseStrategy.TradeStatus.CANCELLED,):
-                ctx.signal_event_id = meta.get("signal_event_id")
-                stop_price = float(meta.get("stop_price", ctx.stop_price))
-                ctx.initial_stop_price = stop_price
-                ctx.stop_price = stop_price
                 self._pending_entry_signal_bar_idx = int(meta.get("signal_bar_index", self.bar_idx()))
                 self._pending_entry_hist_val = float(self.macd_hist[0])
-                self.log_info(f"文档交易逻辑: 使用第三低点止损 stop_price={stop_price:.6f}")
+                self.log_info(f"策略上下文: 使用建议止损 stop_price={float(ctx.stop_price):.6f}")
             elif ctx is not None:
                 self._update_signal_outcome(meta.get("signal_event_id"), "entry_context_cancelled", reason=ctx.cancel_reason)
             return
@@ -1442,11 +1357,11 @@ class MacdTripleDivergenceStrategy(BaseStrategy):
                 },
             )
         elif long_signal and not can_open_new_position:
-            meta = dict(self._long_signal_meta or {})
+            meta = self.get_long_signal_context()
             self._update_signal_outcome(meta.get("signal_event_id"), "blocked_equity")
 
         if short_signal and no_active_trade and can_open_new_position:
-            meta = dict(self._short_signal_meta or {})
+            meta = self.get_short_signal_context()
             ctx = self.enter_trade(
                 direction="SHORT",
                 key_bar_index=self.bar_idx(),
@@ -1454,15 +1369,12 @@ class MacdTripleDivergenceStrategy(BaseStrategy):
                 need_confirm=False,
                 enable_breakeven=False,
                 risk_reward_ratio=self.params.chainer_risk_reward_ratio,
+                signal_metadata=meta,
             )
             if ctx is not None and ctx.status not in (BaseStrategy.TradeStatus.CANCELLED,):
-                ctx.signal_event_id = meta.get("signal_event_id")
-                stop_price = float(meta.get("stop_price", ctx.stop_price))
-                ctx.initial_stop_price = stop_price
-                ctx.stop_price = stop_price
                 self._pending_entry_signal_bar_idx = int(meta.get("signal_bar_index", self.bar_idx()))
                 self._pending_entry_hist_val = float(self.macd_hist[0])
-                self.log_info(f"文档交易逻辑: 使用第三高点止损 stop_price={stop_price:.6f}")
+                self.log_info(f"策略上下文: 使用建议止损 stop_price={float(ctx.stop_price):.6f}")
             elif ctx is not None:
                 self._update_signal_outcome(meta.get("signal_event_id"), "entry_context_cancelled", reason=ctx.cancel_reason)
             return
@@ -1482,16 +1394,13 @@ class MacdTripleDivergenceStrategy(BaseStrategy):
                 },
             )
         elif short_signal and not can_open_new_position:
-            meta = dict(self._short_signal_meta or {})
+            meta = self.get_short_signal_context()
             self._update_signal_outcome(meta.get("signal_event_id"), "blocked_equity")
 
     def next(self):
         """Main strategy logic executed on each bar."""
         # Update segment tracking
         self._update_segments()
-
-        if len(self) >= self.params.macd_slow + self.params.macd_signal:
-            self._capture_documented_case_snapshot()
 
         # Call parent next() for signal processing
         super().next()

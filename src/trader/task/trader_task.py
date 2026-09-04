@@ -130,16 +130,58 @@ class TraderTask(BaseTask):
         self.db_manager.task.add_tasks([self.ts])
 
     def operate_exchange(self, ret: TraderResult, position: float):
-        if ret.opts:
-            op = ret.opts[-1]
-            if op.otype == OperateType.BUY:
-                cash = self.exchange.get_account_balance(self.tcfg.symbol_interval.sy.quote)
+        if not ret.opts:
+            return
 
-                if self.tcfg.free <= cash:
-                    quantity = self.tcfg.free / op.price
-                    self.log.info(f"New order:symbol={self.tcfg.symbol_interval.symbol()},operateType={op.otype},quantity={quantity}")
-                    self.exchange.new_order(self.tcfg.symbol_interval.sy, op.otype, quantity)
-                else:
-                    self.log.info("Due to insufficient balance, we have given up placing orders with the exchange")
+        op = ret.opts[-1]
+        symbol = self.tcfg.symbol_interval.sy
+
+        if not op.price or op.price <= 0:
+            self.log.warning(f"Skip order due to invalid price: symbol={symbol.name()} operateType={op.otype} price={op.price}")
+            return
+
+        trade_quantity = self.tcfg.free / op.price
+        if trade_quantity <= 0:
+            self.log.warning(f"Skip order due to invalid quantity: symbol={symbol.name()} operateType={op.otype} quantity={trade_quantity}")
+            return
+
+        if op.otype in (OperateType.BUY, OperateType.LONG):
+            cash = self.exchange.get_account_balance(symbol.quote)
+            if getattr(self.exchange, "margin_mode", None) is not None and self.exchange.margin_mode.name != "SPOT":
+                cash_ok = True
             else:
-                self.exchange.new_order(self.tcfg.symbol_interval.symbol(), op.otype, position)
+                cash_ok = self.tcfg.free <= cash
+
+            if not cash_ok:
+                self.log.info("Due to insufficient balance, we have given up placing orders with the exchange")
+                return
+
+            self.log.info(f"New order:symbol={symbol.name()},operateType={op.otype},quantity={trade_quantity}")
+            self.exchange.new_order(symbol, op.otype, trade_quantity)
+            return
+
+        if op.otype == OperateType.SHORT:
+            if getattr(self.exchange, "margin_mode", None) is not None and self.exchange.margin_mode.name == "SPOT":
+                self.log.warning(f"Skip SHORT order in SPOT mode: symbol={symbol.name()}")
+                return
+            self.log.info(f"New order:symbol={symbol.name()},operateType={op.otype},quantity={trade_quantity}")
+            self.exchange.new_order(symbol, op.otype, trade_quantity)
+            return
+
+        if op.otype == OperateType.SELL:
+            if position <= 0:
+                self.log.info(f"Skip SELL due to empty position: symbol={symbol.name()} position={position}")
+                return
+            self.log.info(f"New order:symbol={symbol.name()},operateType={op.otype},quantity={position}")
+            self.exchange.new_order(symbol, op.otype, position)
+            return
+
+        if op.otype == OperateType.CLOSE:
+            if position > 0:
+                self.log.info(f"New order:symbol={symbol.name()},operateType={op.otype},quantity={position}")
+                self.exchange.new_order(symbol, OperateType.SELL, position)
+            else:
+                self.log.warning(f"Skip CLOSE due to unknown short position size: symbol={symbol.name()} position={position}")
+            return
+
+        self.log.warning(f"Skip unsupported operateType: symbol={symbol.name()} operateType={op.otype}")
