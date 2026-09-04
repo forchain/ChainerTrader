@@ -25,6 +25,7 @@ class App:
 
         self.db_manager=None
         self.exchange=None
+        self.main_task=None
 
         if self.cfg.db_uri:
             self.db_manager = DatabaseManager(cfg, self.logger)
@@ -61,12 +62,11 @@ class App:
             self.exchange.start()
 
         self.process()
-
-        self.stat.report()
-
         return True
 
     def stop(self):
+        self.stat.report()
+
         if self.task_manager:
             self.task_manager.stop()
 
@@ -103,7 +103,6 @@ class App:
 
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.add_signal_handler(sig, self.shutdown, quit)
-
         try:
             loop.run_until_complete(self.start_handler(quit))
         except asyncio.CancelledError:

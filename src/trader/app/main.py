@@ -1,10 +1,8 @@
 import argparse
-import time
 
 from trader.app.app import App, version
 from trader.common.config import Config
 from trader.rpc.rpc import start
-from multiprocessing import Process, Manager
 
 
 def main():
@@ -53,26 +51,17 @@ def main():
                  args.tasks,
                  args.cash,
                  args.stat,
-                 args.notice)
+                 args.notice,
+                 args.api)
     if args.version:
         print(version())
         return
 
-    app = App(cfg)
-    if args.api:
-        manager=Manager()
-        shared_dict = manager.dict()
-        shared_dict['app'] = app
-        shared_dict['api'] = args.api
-        proc = Process(target=start, args=(shared_dict,))
-        proc.start()
-        if app.start():
-            app.stop()
 
-        time.sleep(1)
-        proc.terminate()
-        proc.join()
+    if cfg.api:
+        start(cfg)
 
     else:
+        app = App(cfg)
         if app.start():
             app.stop()
