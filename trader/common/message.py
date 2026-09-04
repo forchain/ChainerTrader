@@ -4,12 +4,17 @@ class MessageType(Enum):
     EXIT = 0
     STR = 1
     TASK = 2
+    STAT = 3
 
 
 class Message:
     count:int=0
-    def __init__(self,tp:MessageType,data=None):
-        self.id=Message.count
+    def __init__(self,tp:MessageType,data=None,id=0):
+        if id == 0:
+            self.id=Message.count
+        else:
+            self.id=id
+
         Message.count+=1
 
         self.tp=tp
@@ -30,6 +35,9 @@ class Message:
     def is_task(self):
         return self.tp == MessageType.TASK
 
+    def is_stat(self):
+        return self.tp == MessageType.STAT
+
 def new_exit_msg()->Message:
     return Message(MessageType.EXIT)
 
@@ -38,3 +46,6 @@ def new_str_msg(string:str)->Message:
 
 def new_task_msg(data)->Message:
     return Message(MessageType.TASK,data)
+
+def new_stat_msg(data,id=0)->Message:
+    return Message(MessageType.STAT,data,id)

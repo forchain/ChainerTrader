@@ -78,8 +78,10 @@ def read_start_app():
     return rpc.start()
 
 @rpc.get("/exchange_info")
-def read_exchange_info():
-    return rpc.app.exchange.exchange_info
+def read_exchange_info(symbol:str):
+    if len(symbol) <= 0:
+        return {"error":"must config symbol"}
+    return rpc.app.exchange.get_exchange_info(symbol)
 
 @rpc.get("/update_klines_task")
 def update_kines_task():
