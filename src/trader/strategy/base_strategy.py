@@ -11,7 +11,10 @@ from backtrader import num2date
 
 from trader.common.config import DEFAULT_PERIOD
 from trader.common.log_tag import LogTag
+from trader.libraries.chainer_trader import ChainerTraderLib
 from trader.utils.trend import TrendType
+
+_BREAKEVEN_EPS = 1e-10
 
 
 # chainer basic framework strategy
@@ -220,18 +223,28 @@ class BaseStrategy(bt.Strategy):
 
     def log_info(self, msg):
         if self.params.log is None:
-            print(msg)
+            cur_time = self.cur_datetime()
+            print(f"[{cur_time}] {msg}")
             return
-        self.params.log.info(f"{msg}, [{self.name()}][{self.bar_idx()}/{self.total_bars-1}]", LogTag.STRATEGY)
+        cur_time = self.cur_datetime()
+        self.params.log.info(
+            f"[{cur_time}] {msg}, [{self.name()}][{self.bar_idx()}/{self.total_bars-1}]",
+            LogTag.STRATEGY,
+        )
 
     def log_debug(self, msg):
         if self.params.log is None:
-            print(msg)
+            cur_time = self.cur_datetime()
+            print(f"[{cur_time}] {msg}")
             return
         bars_info = ""
         if self.total_bars > 0:
             bars_info = f"[{self.bar_idx()}/{self.total_bars-1}]"
-        self.params.log.debug(f"{msg}, [{self.name()}]{bars_info}", LogTag.STRATEGY)
+        cur_time = self.cur_datetime()
+        self.params.log.debug(
+            f"[{cur_time}] {msg}, [{self.name()}]{bars_info}",
+            LogTag.STRATEGY,
+        )
 
     def cur_datetime(self):
         return num2date(self.datas[0].datetime[0])
@@ -434,11 +447,11 @@ class BaseStrategy(bt.Strategy):
         )
 
         if not exit_need_confirm:
-            close_size = int(abs(getattr(self.position, "size", 0)))
-            if close_size <= 0:
+            close_size = float(abs(getattr(self.position, "size", 0.0)))
+            if close_size <= 0.0:
                 self.log_info(f"创建卖出订单失败(无持仓): trade_id={ctx.trade_id} key={ctx.key}")
                 return ctx
-            pos_size = int(getattr(self.position, "size", 0))
+            pos_size = float(getattr(self.position, "size", 0.0))
             order = self.sell(size=close_size, tradeid=ctx.trade_id) if pos_size > 0 else self.buy(size=close_size, tradeid=ctx.trade_id)
             if order is None:
                 self.log_info(f"创建平仓订单失败: trade_id={ctx.trade_id} key={ctx.key}")
@@ -574,11 +587,11 @@ class BaseStrategy(bt.Strategy):
             confirm_ok = close < key_low if ctx.direction == "LONG" else close > key_high
             confirm_fail = close > key_high if ctx.direction == "LONG" else close < key_low
             if confirm_ok:
-                close_size = int(abs(getattr(self.position, "size", 0)))
-                if close_size <= 0:
+                close_size = float(abs(getattr(self.position, "size", 0.0)))
+                if close_size <= 0.0:
                     self.log_info(f"创建卖出订单失败(无持仓): trade_id={ctx.trade_id} key={ctx.key}")
                     return
-                pos_size = int(getattr(self.position, "size", 0))
+                pos_size = float(getattr(self.position, "size", 0.0))
                 order = self.sell(size=close_size, tradeid=ctx.trade_id) if pos_size > 0 else self.buy(size=close_size, tradeid=ctx.trade_id)
                 if order is None:
                     self.log_info(f"创建平仓订单失败: trade_id={ctx.trade_id} key={ctx.key}")
@@ -608,44 +621,51 @@ class BaseStrategy(bt.Strategy):
         if ctx.entry_price is None or ctx.stop_price is None or ctx.initial_stop_price is None:
             return
 
-        # Breakeven ladder
-        if ctx.enable_breakeven and ctx.risk_reward_ratio > 0.0:
+        # Breakeven management (R ladder):
+        # - Define base risk R = LONG: entry - initial_stop; SHORT: initial_stop - entry
+        # - When profit reaches n*R (n>=1), move stop to (n-1)*R from entry
+        #   LONG: stop = entry + (n-1)*R
+        #   SHORT: stop = entry - (n-1)*R
+        # - breakeven_step is set to the reached R level n (not "number of updates"),
+        #   so it remains correct even if price jumps multiple R levels in a single bar.
+        if ctx.enable_breakeven:
             entry_price = float(ctx.entry_price)
             initial_stop = float(ctx.initial_stop_price)
-            risk = entry_price - initial_stop if ctx.direction == "LONG" else initial_stop - entry_price
-            if risk > 0:
+            is_long = ctx.direction == "LONG"
+
+            risk = (entry_price - initial_stop) if is_long else (initial_stop - entry_price)
+            if risk > 0.0:
                 close = float(self.data.close[0])
-                rr = float(ctx.risk_reward_ratio)
-                if ctx.direction == "LONG":
-                    while close >= float(ctx.entry_price) + ((ctx.breakeven_step + 1) * rr * risk):
-                        ctx.breakeven_step += 1
-                        new_stop = float(ctx.entry_price) + ((ctx.breakeven_step - 1) * rr * risk)
-                        if new_stop > float(ctx.stop_price):
-                            ctx.stop_price = new_stop
-                            self.log_info(
-                                f"保本移动止损: trade_id={ctx.trade_id} key={ctx.key} direction=LONG step={ctx.breakeven_step} "
-                                f"stop={ctx.stop_price:.6f}"
-                            )
-                else:
-                    while close <= float(ctx.entry_price) - ((ctx.breakeven_step + 1) * rr * risk):
-                        ctx.breakeven_step += 1
-                        new_stop = float(ctx.entry_price) - ((ctx.breakeven_step - 1) * rr * risk)
-                        if new_stop < float(ctx.stop_price):
-                            ctx.stop_price = new_stop
-                            self.log_info(
-                                f"保本移动止损: trade_id={ctx.trade_id} key={ctx.key} direction=SHORT step={ctx.breakeven_step} "
-                                f"stop={ctx.stop_price:.6f}"
-                            )
+                new_stop = ChainerTraderLib.breakeven_price(
+                    ctx.direction,
+                    entry_price,
+                    initial_stop,
+                    close,
+                )
+                if new_stop is not None:
+                    should_update = (new_stop > float(ctx.stop_price)) if is_long else (new_stop < float(ctx.stop_price))
+                    if should_update:
+                        # Derive reached R-level n from the returned stop:
+                        # LONG: (stop-entry)/risk = n-1; SHORT: (entry-stop)/risk = n-1
+                        level = ((new_stop - entry_price) / risk) if is_long else ((entry_price - new_stop) / risk)
+                        n = int(math.floor(level + _BREAKEVEN_EPS)) + 1
+
+                        ctx.stop_price = float(new_stop)
+                        ctx.breakeven_step = max(int(ctx.breakeven_step), int(n))
+                        self.log_info(
+                            f"保本移动止损: trade_id={ctx.trade_id} key={ctx.key} direction={ctx.direction} "
+                            f"step={ctx.breakeven_step} stop={ctx.stop_price:.6f}"
+                        )
 
         # Bar-by-bar stop check (market exit)
         close = float(self.data.close[0])
         stop_hit = close <= float(ctx.stop_price) if ctx.direction == "LONG" else close >= float(ctx.stop_price)
         if stop_hit and self.order is None:
-            close_size = int(abs(getattr(self.position, "size", 0)))
-            if close_size <= 0:
+            close_size = float(abs(getattr(self.position, "size", 0.0)))
+            if close_size <= 0.0:
                 self.log_info(f"触发止损但无持仓: trade_id={ctx.trade_id} key={ctx.key} close={close:.6f}")
                 return
-            pos_size = int(getattr(self.position, "size", 0))
+            pos_size = float(getattr(self.position, "size", 0.0))
             order = self.sell(size=close_size, tradeid=ctx.trade_id) if pos_size > 0 else self.buy(size=close_size, tradeid=ctx.trade_id)
             if order is None:
                 self.log_info(f"触发止损但创建卖出订单失败: trade_id={ctx.trade_id} key={ctx.key} close={close:.6f}")
@@ -714,7 +734,8 @@ class BaseStrategy(bt.Strategy):
             price: Price to use for calculation. If None, uses current close price.
             
         Returns:
-            int: Calculated position size (number of units)
+            float: Calculated position size (number of units). Use float to support
+            fractional sizing (e.g. crypto spot).
         """
         if price is None:
             price = self.data.close[0]
@@ -735,7 +756,7 @@ class BaseStrategy(bt.Strategy):
         # Formula: size = available_cash / (price * (1 + commission_rate))
         size = available_cash / (price * (1 + commission_rate))
         
-        return int(size) if size > 0 else 0
+        return float(size) if size > 0 else 0.0
 
     def buy(
         self,

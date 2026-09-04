@@ -132,7 +132,7 @@ def test_entry_confirm_success_then_breakeven_then_stop_exit():
             chainer_entry_need_confirm=True,
             chainer_exit_need_confirm=True,
             chainer_enable_breakeven=True,
-            chainer_risk_reward_ratio=1.0,
+            chainer_risk_reward_ratio=0.0,
             chainer_stoploss_atr_mult=0.0,
         ),
     )
@@ -149,6 +149,42 @@ def test_entry_confirm_success_then_breakeven_then_stop_exit():
     msgs = [m for _, __, m in st.events]
     assert any("保本移动止损" in m for m in msgs)
     assert any("触发止损出场" in m for m in msgs)
+
+
+def test_breakeven_step_matches_r_level_when_price_jumps_multiple_r():
+    # Entry confirm success -> entry fills next bar open.
+    # Then a single bar close jumps to 3R profit; stop should move to 2R and breakeven_step should be 3.
+    rows = [
+        dict(open=100, high=101, low=99, close=100),  # warmup
+        dict(open=100, high=101, low=99, close=100),  # warmup
+        dict(open=100, high=101, low=98, close=99),  # keep fast < slow
+        dict(open=99, high=105, low=90, close=104),  # key bar (cross up), initial stop=90
+        dict(open=104, high=110, low=103, close=106),  # confirm (close>105) places buy
+        dict(open=100, high=135, low=99, close=130),  # entry fill at open=100; close=130 => profit=30 => 3R (R=10)
+        dict(open=130, high=131, low=110, close=119),  # close <= stop(120) => stop exit order
+        dict(open=119, high=120, low=100, close=111),  # stop exit fills at open=119
+    ]
+    st = _run(
+        _build_df(rows),
+        dict(
+            fastLen=2,
+            slowLen=3,
+            chainer_entry_need_confirm=True,
+            chainer_exit_need_confirm=True,
+            chainer_enable_breakeven=True,
+            chainer_risk_reward_ratio=0.0,
+            chainer_stoploss_atr_mult=0.0,
+        ),
+    )
+
+    closed = [t for t in st._trades_by_id.values() if t.status == BaseStrategy.TradeStatus.CLOSED]  # noqa: SLF001
+    assert len(closed) == 1
+    ctx = closed[0]
+
+    assert abs(float(ctx.entry_price) - 100.0) < 1e-9
+    assert abs(float(ctx.initial_stop_price) - 90.0) < 1e-9
+    assert ctx.breakeven_step == 3
+    assert abs(float(ctx.stop_price) - 120.0) < 1e-9
 
 
 @pytest.mark.parametrize("chainer_entry_need_confirm,chainer_exit_need_confirm", [(False, False)])

@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from trader.common.common import dynamic_load
+from trader.utils.strings import capitalize_first
 
 
 def parse_strategy(stype):
@@ -35,4 +36,8 @@ def parse_strategies(stypes: [str]):
 
 
 def get_strategy_class_name(file_name: str) -> str:
-    return file_name + "Strategy"
+    parts = file_name.split("_")
+    class_name = "".join(capitalize_first(word) for word in parts if word)
+    if class_name:
+        class_name = class_name[0].upper() + class_name[1:]
+    return class_name + "Strategy"
