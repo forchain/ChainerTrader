@@ -148,3 +148,5 @@ artifacts
 
 # Local notification credentials
 configs/notices/notice.json
+.codex/config.toml
+

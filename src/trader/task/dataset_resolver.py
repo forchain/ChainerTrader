@@ -94,6 +94,14 @@ class DatasetResolver:
     ) -> DatasetPreparationResult:
         started_at = time.perf_counter()
         cache_start, cache_end = self._cache_range(symbol_interval, start_time, end_time)
+        first_available_open_time = None
+        if self.db_manager is not None:
+            first_available_open_time = await self._get_first_available_open_time(symbol_interval)
+        if first_available_open_time is not None and cache_start < first_available_open_time:
+            self.log.info(
+                f"update dataset start_time to first available kline: symbol_interval={symbol_interval.name()} requested_start={datetime.fromtimestamp(cache_start)} first_available={datetime.fromtimestamp(first_available_open_time)}"
+            )
+            cache_start = first_available_open_time
         dataset_key = self._build_dataset_key(symbol_interval, cache_start, cache_end)
         if dataset_key in self._prepared:
             result = self._prepared[dataset_key]
@@ -106,8 +114,13 @@ class DatasetResolver:
             self._log_prepare_result(symbol_interval, start_time, end_time, result, time.perf_counter() - started_at)
             return result
 
+        if cache_start > cache_end:
+            result = self._failure(dataset_key, "no_data", "requested range is before first available kline")
+            self._prepared[dataset_key] = result
+            self._log_prepare_result(symbol_interval, start_time, end_time, result, time.perf_counter() - started_at)
+            return result
+
         klines = list(await self.db_manager.kline.get_klines(symbol_interval.name(), cache_start, cache_end) or [])
-        first_available_open_time = await self._get_first_available_open_time(symbol_interval)
         missing_ranges = self._detect_missing_ranges(
             symbol_interval,
             cache_start,

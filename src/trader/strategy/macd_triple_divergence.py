@@ -1027,12 +1027,12 @@ class MacdTripleDivergenceStrategy(BaseStrategy):
                 return
 
     @staticmethod
-    def _next_day_macd_follow_through_ok(direction: str, entry_hist: float, current_hist: float) -> bool:
+    def _next_day_macd_follow_through_ok(direction: str, entry_hist: float, current_hist: float, eps: float = 0.0) -> bool:
         direction_norm = str(direction).upper()
         if direction_norm == "LONG":
-            return current_hist > entry_hist
+            return current_hist > entry_hist - eps
         if direction_norm == "SHORT":
-            return current_hist < entry_hist
+            return current_hist < entry_hist + eps
         return False
 
     def _find_bottom_triplet(self, waves: List[Segment], trigger_pivot: Optional[Pivot] = None) -> Optional[List[Segment]]:
@@ -1257,17 +1257,11 @@ class MacdTripleDivergenceStrategy(BaseStrategy):
         if self._entry_signal_bar_idx is None or self.bar_idx() != self._entry_signal_bar_idx + 1:
             return False
 
-        ctx = self._active_trade
-        if ctx is not None and ctx.stop_price is not None:
-            stop_price = float(ctx.stop_price)
-            if self._entry_direction == "LONG" and float(self.data.low[0]) <= stop_price:
-                return False
-            if self._entry_direction == "SHORT" and float(self.data.high[0]) >= stop_price:
-                return False
-
         hist_val = float(self.macd_hist[0])
 
-        if not self._next_day_macd_follow_through_ok(self._entry_direction, self._entry_hist_val, hist_val):
+        if not self._next_day_macd_follow_through_ok(
+            self._entry_direction, self._entry_hist_val, hist_val, eps=float(self.params.macd_stop_eps)
+        ):
             self.log_info(
                 f"MACD止损触发({'多' if self._entry_direction == 'LONG' else '空'}): "
                 f"entry_hist={self._entry_hist_val:.6f} current_hist={hist_val:.6f}"
@@ -1376,20 +1370,20 @@ class MacdTripleDivergenceStrategy(BaseStrategy):
 
         # Check for MACD-based stop loss (special exit condition)
         if self._check_macd_stop_loss():
-            # Force exit via exit_trade
-            pos_size = float(getattr(self.position, "size", 0.0))
-            if pos_size != 0.0:
-                try:
-                    self.exit_trade(
-                        key_bar_index=self.bar_idx(),
-                        need_confirm=False,
-                        exit_reason_code="strategy_stop",
-                        exit_reason_label="策略止损逻辑退出",
-                        exit_reason_detail="MACD 三背离后续走势失效",
-                    )
-                except (ValueError, RuntimeError) as e:
-                    self.log_debug(f"MACD stop loss exit_trade failed: {e}")
-                    # Fallback to direct close
-                    self.close()
+            # Always route exits through the framework so exit_reason_code stays classified.
+            # BaseStrategy.exit_trade will no-op safely if a close cannot be placed yet.
+            ctx = getattr(self, "_active_trade", None)
+            if ctx is not None:
+                # Pre-stamp the reason to survive any order-status race.
+                ctx.requested_exit_reason_code = "strategy_stop"
+                ctx.requested_exit_reason_label = "策略止损逻辑退出"
+                ctx.requested_exit_reason_detail = "MACD 三背离后续走势失效"
+            self.exit_trade(
+                key_bar_index=self.bar_idx(),
+                need_confirm=False,
+                exit_reason_code="strategy_stop",
+                exit_reason_label="策略止损逻辑退出",
+                exit_reason_detail="MACD 三背离后续走势失效",
+            )
 
         # Signal processing is handled by BaseStrategy._process_signals()

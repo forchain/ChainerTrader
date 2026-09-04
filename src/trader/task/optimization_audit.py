@@ -277,7 +277,7 @@ def write_shortlist_html(path: Path, shortlist: dict) -> None:
               <div class="badge badge-{item['status']}">{item['status']}</div>
               <h2>{winner['strategy']} / {winner['symbol']} / {winner['interval']}</h2>
               <p class="param">param_id: <span>{winner['param_id']}</span></p>
-              <p>收益: {summary['avg_total_return_pct']:.2f}% | 回撤: {summary['avg_max_dd_pct']:.2f}% | 交易数: {summary['total_trades']}</p>
+              <p>收益: {summary['avg_total_return_pct']:.2f}% | 持仓回撤: {summary['avg_max_dd_pct']:.2f}% | 交易数: {summary['total_trades']}</p>
               <p>入选原因: {", ".join(item['selection_reasons']) or "n/a"}</p>
               <p>风险提示: {", ".join(item['risks']) or "无"}</p>
             </article>

@@ -22,6 +22,8 @@ def test_static_workbench_assets_expect_run_id_and_workbench_json():
     assert 'id="candidate-list"' in index_html
     assert 'id="detail-view"' in index_html
     assert 'id="filter-input"' in index_html
+    assert 'id="symbol-filter"' in index_html
+    assert 'id="interval-filter"' in index_html
     assert 'id="param-filters"' in index_html
     assert 'id="sort-select"' in index_html
     assert 'id="prev-page"' in index_html
@@ -30,8 +32,12 @@ def test_static_workbench_assets_expect_run_id_and_workbench_json():
     assert 'fetch(`/reports/optimizations/${runId}/workbench.json`)' in app_js
     assert "window.__WORKBENCH_DATA__" in app_js
     assert "const pageSize = 25;" in app_js
+    assert 'sortMode: "return_desc"' in app_js
+    assert "function renderDimensionFilters()" in app_js
     assert "function renderParamFilters()" in app_js
     assert "function applyFilters()" in app_js
+    assert "item.symbol !== state.symbolFilter" in app_js
+    assert "item.interval !== state.intervalFilter" in app_js
     assert "function sortItems(items, mode)" in app_js
     assert 'trade.report_path || ""' not in app_js
     assert 'item.links.report_paths' in app_js

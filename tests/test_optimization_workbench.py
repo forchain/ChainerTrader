@@ -71,6 +71,7 @@ def test_workbench_artifacts_include_parameter_observability_and_dynamic_entry(t
                 "sharpe": 1.6,
                 "profit_factor": 1.8,
                 "max_dd_pct": 10.0,
+                "active_max_dd_pct": 4.0,
                 "total_trades": 2,
             },
             "report_path": "reports/optimizations/run-workbench/runs/a.json",
@@ -106,6 +107,24 @@ def test_workbench_artifacts_include_parameter_observability_and_dynamic_entry(t
                     tp_price=112.0,
                 ),
             ],
+            "open_trades": [
+                {
+                    "id": 3,
+                    "dir": "S",
+                    "status": "open",
+                    "entry_signal_time": "2026-01-09T00:00:00",
+                    "entry": "2026-01-10T00:00:00",
+                    "entry_px": 120.0,
+                    "current_px": 90.0,
+                    "qty": 4.0,
+                    "unrealized_pnl_pct": 25.0,
+                    "exit_reason_code": "open_position",
+                    "exit_reason_label": "未平仓",
+                    "framework_initial_stop_price": 130.0,
+                    "framework_final_stop_price": 110.0,
+                    "framework_tp_price": None,
+                }
+            ],
         }
     ]
 
@@ -116,11 +135,18 @@ def test_workbench_artifacts_include_parameter_observability_and_dynamic_entry(t
     assert item["rank"] == 1
     assert item["links"]["primary_report_path"] == "reports/optimizations/run-workbench/runs/a.json"
     assert item["trades"][0]["qty"] == 12.5
+    assert item["trades"][-1]["status"] == "open"
+    assert item["trades"][-1]["current_px"] == 90.0
+    assert item["summary"]["avg_hold_return_pct"] == 5.0
+    assert item["summary"]["avg_excess_return_pct"] == 7.0
+    assert item["summary"]["avg_max_dd_pct"] == 4.0
+    assert item["summary"]["avg_full_max_dd_pct"] == 10.0
+    assert item["summary"]["open_trades"] == 1
     assert item["views"] == ["parameter_observability", "trade_details", "audit_context"]
 
     observations = {obs["parameter"]: obs for obs in item["parameter_observations"]}
     assert observations["chainer_need_confirm"]["status"] == "has_evidence"
-    assert observations["chainer_need_confirm"]["stats"]["delayed_entry_count"] == 2
+    assert observations["chainer_need_confirm"]["stats"]["delayed_entry_count"] == 3
     assert observations["chainer_risk_reward_ratio"]["status"] == "has_evidence"
     assert observations["chainer_enable_breakeven"]["status"] == "has_evidence"
     assert observations["chainer_min_equity_percent"]["status"] == "has_evidence"
@@ -130,6 +156,7 @@ def test_workbench_artifacts_include_parameter_observability_and_dynamic_entry(t
     workbench = json.loads((run_dir / "workbench.json").read_text(encoding="utf-8"))
     assert workbench["run"]["run_id"] == "run-workbench"
     assert workbench["items"][0]["trades"][0]["qty"] == 12.5
+    assert workbench["items"][0]["trades"][-1]["status"] == "open"
     static_html = (run_dir / "workbench" / "index.html").read_text(encoding="utf-8")
     assert "window.__WORKBENCH_DATA__" in static_html
     assert "Optimization Validation Workbench" in static_html

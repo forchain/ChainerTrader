@@ -50,6 +50,11 @@ def build_workbench_payload(
             if summary is not None and summary.get("win_rate_pct") is not None
         ]
         avg_win_rate_pct = (sum(win_rate_values) / len(win_rate_values)) if win_rate_values else None
+        open_trade_count = sum(
+            len(sample.get("open_trades", []))
+            for sample in row.get("sample_details", [])
+            if isinstance(sample, dict)
+        )
 
         current_group_id = group_id(row)
         item_audit = audit.get("by_group", {}).get(current_group_id, {}).get("parameters", {})
@@ -66,9 +71,13 @@ def build_workbench_payload(
                 "score": float(row.get("score", 0.0)),
                 "summary": {
                     "avg_total_return_pct": float(row.get("avg_total_return_pct", 0.0)),
+                    "avg_hold_return_pct": float(row.get("avg_hold_return_pct", 0.0)),
                     "avg_excess_return_pct": float(row.get("avg_excess_return_pct", 0.0)),
                     "avg_max_dd_pct": float(row.get("avg_max_dd_pct", 0.0)),
+                    "avg_active_max_dd_pct": float(row.get("avg_active_max_dd_pct", row.get("avg_max_dd_pct", 0.0))),
+                    "avg_full_max_dd_pct": float(row.get("avg_full_max_dd_pct", row.get("avg_max_dd_pct", 0.0))),
                     "total_trades": int(row.get("total_trades", 0)),
+                    "open_trades": int(open_trade_count),
                     "avg_win_rate_pct": avg_win_rate_pct,
                 },
                 "params": dict(row.get("params", {})),
@@ -262,7 +271,7 @@ def write_workbench_html(path: Path, workbench_payload: dict, app_js_path: Path,
               <select id="sort-select">
                 <option value="score_desc">排序: 评分（高→低）</option>
                 <option value="return_desc">收益（高→低）</option>
-                <option value="dd_asc">回撤（低→高）</option>
+                <option value="dd_asc">持仓回撤（低→高）</option>
                 <option value="trades_desc">交易数（多→少）</option>
                 <option value="winrate_desc">胜率（高→低）</option>
               </select>
@@ -335,6 +344,10 @@ def _build_trade_rows(item: dict) -> list[dict]:
             row = dict(trade)
             row["report_path"] = report_path
             rows.append(row)
+        for trade in sample.get("open_trades", []):
+            row = dict(trade)
+            row["report_path"] = report_path
+            rows.append(row)
     return rows
 
 
@@ -378,6 +391,7 @@ def _flatten_trades(item: dict) -> list[dict]:
     trades = []
     for sample in item.get("sample_details", []):
         trades.extend(sample.get("trades", []))
+        trades.extend(sample.get("open_trades", []))
     return trades
 
 

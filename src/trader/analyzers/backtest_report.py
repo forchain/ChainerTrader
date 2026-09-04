@@ -112,6 +112,7 @@ class BacktestReportAnalyzer(bt.Analyzer):
         })
 
     def stop(self):
+        self._append_missing_closed_trade_records_from_contexts()
         self._enrich_trade_records_from_contexts()
         report = self._build_report()
         self.report = report
@@ -128,8 +129,22 @@ class BacktestReportAnalyzer(bt.Analyzer):
         won_total = ta.get("won_total", 0)
         won_pnl = ta.get("won_pnl_total", 0)
         lost_pnl = ta.get("lost_pnl_total", 0)
+        reported_closed = len(self._trades)
+        if reported_closed > total_closed:
+            total_closed = reported_closed
+            won_total = sum(1 for trade in self._trades if float(trade.get("pnl", 0.0) or 0.0) > 0.0)
+            won_pnl = sum(
+                float(trade.get("pnl", 0.0) or 0.0)
+                for trade in self._trades
+                if float(trade.get("pnl", 0.0) or 0.0) > 0.0
+            )
+            lost_pnl = sum(
+                float(trade.get("pnl", 0.0) or 0.0)
+                for trade in self._trades
+                if float(trade.get("pnl", 0.0) or 0.0) < 0.0
+            )
 
-        win_rate = (won_total / total_closed * 100) if total_closed > 0 else 0
+        win_rate = self._trade_win_rate_pct(total_closed, won_total)
         profit_factor = (won_pnl / abs(lost_pnl)) if lost_pnl != 0 else None
         avg_rr = 0
         if ta.get("lost_pnl_avg") and ta["lost_pnl_avg"] != 0:
@@ -154,6 +169,7 @@ class BacktestReportAnalyzer(bt.Analyzer):
         # Monthly PnL
         monthly_pnl = self._calc_monthly_pnl()
         signals = self._collect_signals()
+        open_trades = self._collect_open_trade_records_from_contexts()
 
         summary = {
             "total_return_pct": round(total_return_pct, 2),
@@ -163,9 +179,12 @@ class BacktestReportAnalyzer(bt.Analyzer):
             "sqn": round(sqn_val, 2) if sqn_val is not None else None,
             "max_dd_pct": round(dd.get("max_dd", 0), 2),
             "max_dd_days": dd.get("max_dd_days", 0),
+            "active_max_dd_pct": round(dd.get("active_max_dd", dd.get("max_dd", 0)), 2),
+            "active_max_dd_days": dd.get("active_max_dd_days", dd.get("max_dd_days", 0)),
             "win_rate_pct": round(win_rate, 2),
             "avg_rr": round(avg_rr, 2),
             "total_trades": total_closed,
+            "open_trades": len(open_trades),
             "total_signals": len(signals),
         }
 
@@ -182,8 +201,28 @@ class BacktestReportAnalyzer(bt.Analyzer):
             "summary": summary,
             "monthly_pnl": monthly_pnl,
             "trades": self._trades,
+            "open_trades": open_trades,
             "signals": signals,
         }
+
+    def _trade_win_rate_pct(self, total_closed, won_total):
+        decisive_trades = [
+            trade
+            for trade in self._trades
+            if not self._is_breakeven_trade(trade)
+        ]
+        if decisive_trades:
+            won = sum(1 for trade in decisive_trades if float(trade.get("pnl", 0.0) or 0.0) > 0.0)
+            return won / len(decisive_trades) * 100
+        return (won_total / total_closed * 100) if total_closed > 0 else 0
+
+    def _is_breakeven_trade(self, trade):
+        try:
+            entry_px = float(trade.get("entry_px"))
+            exit_px = float(trade.get("exit_px"))
+        except (TypeError, ValueError):
+            return False
+        return entry_px == exit_px
 
     def _get_trade_analyzer(self):
         result = {}
@@ -213,7 +252,7 @@ class BacktestReportAnalyzer(bt.Analyzer):
             return None
 
     def _get_drawdown(self):
-        result = {"max_dd": 0, "max_dd_days": 0}
+        result = {"max_dd": 0, "max_dd_days": 0, "active_max_dd": 0, "active_max_dd_days": 0}
         try:
             dd = self.strategy.analyzers.maxdd_ex.get_analysis()
             result["max_dd"] = dd.get("max_drawdown", 0)
@@ -221,6 +260,11 @@ class BacktestReportAnalyzer(bt.Analyzer):
             end = dd.get("end")
             if start and end:
                 result["max_dd_days"] = (end - start).days
+            result["active_max_dd"] = dd.get("active_max_drawdown", result["max_dd"])
+            active_start = dd.get("active_start")
+            active_end = dd.get("active_end")
+            if active_start and active_end:
+                result["active_max_dd_days"] = (active_end - active_start).days
         except (AttributeError, KeyError):
             pass
         return result
@@ -240,6 +284,153 @@ class BacktestReportAnalyzer(bt.Analyzer):
     def _collect_signals(self):
         events = getattr(self.strategy, "_signal_events", [])
         return list(events)
+
+    def _collect_open_trade_records_from_contexts(self):
+        contexts = getattr(self.strategy, "_trades_by_id", {})
+        open_statuses = {"active", "opening", "pending_entry_confirm", "pending_exit_confirm", "closing"}
+        records = []
+        for trade_id, ctx in sorted(contexts.items()):
+            status_value = getattr(getattr(ctx, "status", None), "value", getattr(ctx, "status", None))
+            if status_value not in open_statuses:
+                continue
+            entry_price = getattr(ctx, "entry_price", None)
+            if entry_price is None:
+                continue
+
+            direction = getattr(ctx, "direction", "LONG")
+            trade_entries = getattr(self, "_trade_entries", {})
+            entry_info = (
+                trade_entries.get(trade_id)
+                or trade_entries.get(getattr(ctx, "trade_id", trade_id))
+                or {}
+            )
+            entry_time = entry_info.get("entry_time")
+            entry_signal_time = entry_info.get("entry_signal_time")
+            entry_size = entry_info.get("size")
+            entry_direction = entry_info.get("dir")
+            signal_metadata = getattr(ctx, "signal_metadata", None) or {}
+            current_px = self._current_data_close()
+            unrealized_pnl_pct = self._unrealized_pnl_pct(direction, float(entry_price), current_px)
+            if entry_size is not None:
+                qty = abs(float(entry_size))
+            else:
+                qty = abs(float(getattr(getattr(self.strategy, "position", None), "size", 0.0) or 0.0))
+
+            records.append({
+                "id": int(getattr(ctx, "trade_id", trade_id)),
+                "dir": entry_direction or ("L" if direction == "LONG" else "S"),
+                "status": "open",
+                "qty": round(qty, 8),
+                "entry_signal_time": entry_signal_time or signal_metadata.get("signal_time"),
+                "entry": entry_time,
+                "entry_px": round(float(entry_price), 2),
+                "current_px": round(float(current_px), 2) if current_px is not None else None,
+                "unrealized_pnl_pct": round(unrealized_pnl_pct, 2) if unrealized_pnl_pct is not None else None,
+                "framework_initial_stop_price": getattr(ctx, "initial_stop_price", None),
+                "framework_final_stop_price": getattr(ctx, "stop_price", None),
+                "framework_tp_price": getattr(ctx, "tp_price", None),
+                "strategy_suggested_stop_price": signal_metadata.get("suggested_stop_price"),
+                "exit_reason_code": "open_position",
+                "exit_reason_label": "未平仓",
+                "exit_reason_detail": "回测结束时仍有未平仓仓位",
+            })
+        return records
+
+    def _current_data_close(self):
+        try:
+            return float(self.strategy.data.close[0])
+        except (AttributeError, IndexError, TypeError, ValueError):
+            return None
+
+    def _unrealized_pnl_pct(self, direction, entry_price, current_px):
+        if current_px is None or entry_price <= 0:
+            return None
+        if direction == "SHORT":
+            return (entry_price - current_px) / entry_price * 100
+        return (current_px - entry_price) / entry_price * 100
+
+    def _append_missing_closed_trade_records_from_contexts(self):
+        contexts = getattr(self.strategy, "_trades_by_id", {})
+        existing_ids = {trade.get("id") for trade in self._trades}
+        for trade_id, ctx in sorted(contexts.items()):
+            record_id = int(getattr(ctx, "trade_id", trade_id))
+            if record_id in existing_ids:
+                continue
+            status_value = getattr(getattr(ctx, "status", None), "value", getattr(ctx, "status", None))
+            if status_value != "closed":
+                continue
+            entry_price = getattr(ctx, "entry_price", None)
+            exit_price = getattr(ctx, "exit_price", None)
+            if entry_price is None or exit_price is None:
+                continue
+
+            trade_entries = getattr(self, "_trade_entries", {})
+            entry_info = trade_entries.pop(record_id, None) or trade_entries.pop(trade_id, None) or {}
+            direction = getattr(ctx, "direction", "LONG")
+            dir_label = entry_info.get("dir") or ("L" if direction == "LONG" else "S")
+            qty = self._closed_context_qty(ctx, entry_info, float(exit_price))
+            pnl_pct = self._unrealized_pnl_pct(direction, float(entry_price), float(exit_price)) or 0.0
+            pnl = self._closed_context_pnl(ctx, float(entry_price), float(exit_price), qty)
+            signal_metadata = getattr(ctx, "signal_metadata", None) or {}
+            entry_dt = entry_info.get("entry_time") or self._iso_dt(getattr(ctx, "entry_dt", None))
+            exit_dt = self._iso_dt(getattr(ctx, "exit_dt", None)) or self._exit_signal_time(ctx) or self._current_dt_iso()
+
+            self._trades.append({
+                "id": record_id,
+                "broker_ref": None,
+                "dir": dir_label,
+                "qty": round(abs(float(qty)), 8),
+                "entry_signal_time": entry_info.get("entry_signal_time") or signal_metadata.get("signal_time"),
+                "entry": entry_dt,
+                "entry_px": round(float(entry_price), 2),
+                "exit_signal_time": self._exit_signal_time(ctx, fallback=exit_dt),
+                "exit": exit_dt,
+                "exit_px": round(float(exit_price), 2),
+                "pnl_pct": round(pnl_pct, 2),
+                "pnl": round(pnl, 2),
+                "bars_held": None,
+                "exit_reason_code": getattr(ctx, "exit_reason_code", None),
+                "exit_reason_label": getattr(ctx, "exit_reason_label", None),
+                "exit_reason_detail": getattr(ctx, "exit_reason_detail", None),
+                "stop_multiple_r": getattr(ctx, "stop_multiple_r", None),
+                "risk_reward_ratio": getattr(ctx, "exit_risk_reward_ratio", None),
+                "framework_initial_stop_price": getattr(ctx, "initial_stop_price", None),
+                "framework_final_stop_price": getattr(ctx, "stop_price", None),
+                "framework_tp_price": getattr(ctx, "tp_price", None),
+                "strategy_suggested_stop_price": signal_metadata.get("suggested_stop_price"),
+                "recovered_from_context": True,
+            })
+            existing_ids.add(record_id)
+
+    def _closed_context_qty(self, ctx, entry_info, exit_price):
+        entry_size = entry_info.get("size")
+        if entry_size is not None:
+            return abs(float(entry_size))
+        exit_value = getattr(ctx, "exit_value", None)
+        if exit_value is not None and exit_price > 0:
+            return abs(float(exit_value) / exit_price)
+        return 0.0
+
+    def _closed_context_pnl(self, ctx, entry_price, exit_price, qty):
+        direction = getattr(ctx, "direction", "LONG")
+        price_diff = exit_price - entry_price if direction == "LONG" else entry_price - exit_price
+        gross_pnl = price_diff * qty
+        commission_rate = self._commission_rate()
+        commission = (entry_price * qty + exit_price * qty) * commission_rate
+        return gross_pnl - commission
+
+    def _commission_rate(self):
+        try:
+            return float(self.strategy.broker.getcommissioninfo(self.strategy.data).p.commission)
+        except (AttributeError, TypeError, ValueError):
+            return 0.0
+
+    def _iso_dt(self, value):
+        if value is None:
+            return None
+        if hasattr(value, "isoformat"):
+            return value.isoformat()
+        return str(value)
 
     def _enrich_trade_records_from_contexts(self):
         contexts = getattr(self.strategy, "_trades_by_id", {})

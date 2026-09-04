@@ -18,7 +18,7 @@ from trader.task.optimization_workbench import build_workbench_payload
 from trader.task.optimization_workbench import write_workbench_html
 
 REPORT_VERSION = "2.0"
-SCORE_VERSION = "score_v1"
+SCORE_VERSION = "score_v2_active_drawdown"
 
 
 def normalize_report_params(params: dict) -> dict:
@@ -66,7 +66,11 @@ def build_optimization_artifacts(optimization_run_id: str, sample_reports: list[
         excess_returns = [total - hold for total, hold in zip(total_returns, hold_returns)]
         sharpe_values = [item["summary"].get("sharpe") for item in items if item["summary"].get("sharpe") is not None]
         profit_factors = [item["summary"].get("profit_factor") for item in items if item["summary"].get("profit_factor") is not None]
-        max_dd_values = [item["summary"].get("max_dd_pct", 0.0) for item in items]
+        full_max_dd_values = [item["summary"].get("max_dd_pct", 0.0) for item in items]
+        active_max_dd_values = [
+            item["summary"].get("active_max_dd_pct", item["summary"].get("max_dd_pct", 0.0))
+            for item in items
+        ]
         total_trades = sum(item["summary"].get("total_trades", 0) for item in items)
         no_trade_samples = sum(1 for item in items if item["summary"].get("total_trades", 0) == 0)
         samples = len(items)
@@ -86,6 +90,7 @@ def build_optimization_artifacts(optimization_run_id: str, sample_reports: list[
                         "report_path": item.get("report_path"),
                         "summary": item.get("summary", {}),
                         "trades": item.get("trades", []),
+                        "open_trades": item.get("open_trades", []),
                         "signals": item.get("signals", []),
                     }
                     for item in items
@@ -101,7 +106,9 @@ def build_optimization_artifacts(optimization_run_id: str, sample_reports: list[
                 "beat_hold_ratio": beat_hold_ratio,
                 "avg_sharpe": round(sum(sharpe_values) / len(sharpe_values), 4) if sharpe_values else None,
                 "avg_profit_factor": round(sum(profit_factors) / len(profit_factors), 4) if profit_factors else None,
-                "avg_max_dd_pct": round(sum(max_dd_values) / samples, 4),
+                "avg_max_dd_pct": round(sum(active_max_dd_values) / samples, 4),
+                "avg_active_max_dd_pct": round(sum(active_max_dd_values) / samples, 4),
+                "avg_full_max_dd_pct": round(sum(full_max_dd_values) / samples, 4),
             }
         )
 
@@ -264,8 +271,10 @@ def _build_rankings_html(optimization_run_id: str, ranking_items: list[dict]) ->
             "interval": item["interval"],
             "score": item["score"],
             "avg_total_return_pct": item["avg_total_return_pct"],
+            "avg_hold_return_pct": item["avg_hold_return_pct"],
             "avg_excess_return_pct": item["avg_excess_return_pct"],
             "avg_max_dd_pct": item["avg_max_dd_pct"],
+            "avg_full_max_dd_pct": item.get("avg_full_max_dd_pct", item["avg_max_dd_pct"]),
             "total_trades": item["total_trades"],
             "param_id": item["param_id"],
             "sample_details": item["sample_details"],
@@ -537,8 +546,10 @@ def _build_rankings_html(optimization_run_id: str, ranking_items: list[dict]) ->
               <th><button data-key="interval" data-type="string">周期</button></th>
               <th><button data-key="score" data-type="number">评分</button></th>
               <th><button data-key="avg_total_return_pct" data-type="number">总收益率%</button></th>
+              <th><button data-key="avg_hold_return_pct" data-type="number">拿住收益%</button></th>
               <th><button data-key="avg_excess_return_pct" data-type="number">超额收益%</button></th>
-              <th><button data-key="avg_max_dd_pct" data-type="number">最大回撤%</button></th>
+              <th><button data-key="avg_max_dd_pct" data-type="number">持仓回撤%</button></th>
+              <th><button data-key="avg_full_max_dd_pct" data-type="number">全程回撤%</button></th>
               <th><button data-key="total_trades" data-type="number">交易数</button></th>
               <th><button data-key="param_id" data-type="string">参数ID</button></th>
               <th id="param-columns-anchor"></th>
@@ -579,7 +590,7 @@ def _build_rankings_html(optimization_run_id: str, ranking_items: list[dict]) ->
     function formatCell(key, value) {{
       if (value === null || value === undefined) return "";
       if (key === "param_id") return `<span class="mono">${{escapeHtml(String(value))}}</span>`;
-      if (["score", "avg_total_return_pct", "avg_excess_return_pct", "avg_max_dd_pct"].includes(key)) {{
+      if (["score", "avg_total_return_pct", "avg_hold_return_pct", "avg_excess_return_pct", "avg_max_dd_pct", "avg_full_max_dd_pct"].includes(key)) {{
         return Number(value).toFixed(4).replace(/\\.0+$/, "").replace(/(\\.\\d*?)0+$/, "$1");
       }}
       if (typeof value === "boolean") return value ? "true" : "false";
@@ -618,8 +629,10 @@ def _build_rankings_html(optimization_run_id: str, ranking_items: list[dict]) ->
         {{ key: "interval", label: "周期", mono: false }},
         {{ key: "score", label: "评分", mono: false }},
         {{ key: "avg_total_return_pct", label: "总收益率%", mono: false }},
+        {{ key: "avg_hold_return_pct", label: "拿住收益%", mono: false }},
         {{ key: "avg_excess_return_pct", label: "超额收益%", mono: false }},
-        {{ key: "avg_max_dd_pct", label: "最大回撤%", mono: false }},
+        {{ key: "avg_max_dd_pct", label: "持仓回撤%", mono: false }},
+        {{ key: "avg_full_max_dd_pct", label: "全程回撤%", mono: false }},
         {{ key: "total_trades", label: "交易数", mono: false }},
         {{ key: "param_id", label: "参数ID", mono: true }},
       ];
@@ -635,7 +648,7 @@ def _build_rankings_html(optimization_run_id: str, ranking_items: list[dict]) ->
         const value = row[spec.key];
         if (value === null || value === undefined) return "";
         if (typeof value === "boolean") return value ? "true" : "false";
-        if (["score", "avg_total_return_pct", "avg_excess_return_pct", "avg_max_dd_pct"].includes(spec.key)) {{
+        if (["score", "avg_total_return_pct", "avg_hold_return_pct", "avg_excess_return_pct", "avg_max_dd_pct", "avg_full_max_dd_pct"].includes(spec.key)) {{
           return Number(value).toFixed(4).replace(/\\.0+$/, "").replace(/(\\.\\d*?)0+$/, "$1");
         }}
         return String(value);
@@ -713,8 +726,10 @@ def _build_rankings_html(optimization_run_id: str, ranking_items: list[dict]) ->
           <td>${{formatCell("interval", row.interval)}}</td>
           <td>${{formatCell("score", row.score)}}</td>
           <td>${{formatCell("avg_total_return_pct", row.avg_total_return_pct)}}</td>
+          <td>${{formatCell("avg_hold_return_pct", row.avg_hold_return_pct)}}</td>
           <td>${{formatCell("avg_excess_return_pct", row.avg_excess_return_pct)}}</td>
           <td>${{formatCell("avg_max_dd_pct", row.avg_max_dd_pct)}}</td>
+          <td>${{formatCell("avg_full_max_dd_pct", row.avg_full_max_dd_pct)}}</td>
           <td>${{formatCell("total_trades", row.total_trades)}}</td>
           <td>${{formatCell("param_id", row.param_id)}}</td>
           ${{paramColumns.map((column) => `<td>${{formatCell(column.key, row[column.key])}}</td>`).join("")}}
@@ -723,7 +738,7 @@ def _build_rankings_html(optimization_run_id: str, ranking_items: list[dict]) ->
         if (row.rank !== expandedRank) return baseRow;
         return baseRow + `
         <tr class="drawer-row">
-          <td colspan="${{9 + paramColumns.length}}">
+          <td colspan="${{11 + paramColumns.length}}">
             ${{renderDetails(row)}}
           </td>
         </tr>
@@ -744,21 +759,27 @@ def _build_rankings_html(optimization_run_id: str, ranking_items: list[dict]) ->
       const sampleDetails = row.sample_details || [];
       const columnWidths = [56, 52, 172, 84, 172, 84, 84, 84, 78, 148];
       const detailBody = sampleDetails.map((sample, index) => {{
-        const trades = sample.trades || [];
-        const tradeRows = trades.length ? trades.map((trade) => `
+        const trades = (sample.trades || []).concat(sample.open_trades || []);
+        const tradeRows = trades.length ? trades.map((trade) => {{
+          const isOpen = trade.status === "open";
+          const exitTime = isOpen ? `当前: ${{trade.current_px ?? "-"}}` : trade.exit;
+          const exitPrice = isOpen ? trade.current_px : trade.exit_px;
+          const pnlPct = isOpen ? trade.unrealized_pnl_pct : trade.pnl_pct;
+          const pnl = isOpen ? "" : trade.pnl;
+          return `
           <tr>
             <td>${{formatCell("id", trade.id)}}</td>
             <td>${{formatCell("dir", trade.dir)}}</td>
             <td>${{renderTimeCell(trade.entry_signal_time, trade.entry)}}</td>
             <td>${{formatCell("entry_px", trade.entry_px)}}</td>
-            <td>${{renderTimeCell(trade.exit_signal_time, trade.exit)}}</td>
-            <td>${{formatCell("exit_px", trade.exit_px)}}</td>
-            <td>${{formatCell("pnl_pct", trade.pnl_pct)}}</td>
-            <td>${{formatCell("pnl", trade.pnl)}}</td>
+            <td>${{renderTimeCell(trade.exit_signal_time, exitTime)}}</td>
+            <td>${{formatCell("exit_px", exitPrice)}}</td>
+            <td>${{formatCell("pnl_pct", pnlPct)}}</td>
+            <td>${{formatCell("pnl", pnl)}}</td>
             <td>${{formatCell("bars_held", trade.bars_held)}}</td>
             <td>${{formatCell("exit_reason_label", trade.exit_reason_label || trade.exit_reason_code || "")}}</td>
           </tr>
-        `).join("") : `<div class="empty-note">该样例没有成交记录。</div>`;
+        `;}}).join("") : `<div class="empty-note">该样例没有成交记录。</div>`;
 
         return `
           <section class="sample-card">

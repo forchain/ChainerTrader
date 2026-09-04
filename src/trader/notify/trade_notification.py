@@ -7,10 +7,12 @@ from datetime import datetime
 from typing import Optional
 
 from trader.notify.notify_type import parse_notice_config
+from trader.live.auto_execution import (
+    AUTO_TRADE_MODE,
+    MANUAL_NOTIFY_MODE,
+    normalize_live_execution_mode,
+)
 from trader.utils.operate import Operate, OperateType
-
-MANUAL_NOTIFY_MODE = "manual_notify"
-AUTO_TRADE_MODE = "auto_trade"
 
 
 @dataclass
@@ -82,13 +84,6 @@ class AlwaysTriggerOneMinuteSmokeStrategy:
 
     def next_operation(self, kline: ManualNotifySmokeKline) -> Operate:
         return Operate(OperateType.BUY, int(kline.open_time), float(kline.close))
-
-
-def normalize_live_execution_mode(value: str | None) -> str:
-    mode = str(value or AUTO_TRADE_MODE).strip().lower()
-    if mode in ("manual", "notify", MANUAL_NOTIFY_MODE):
-        return MANUAL_NOTIFY_MODE
-    return AUTO_TRADE_MODE
 
 
 def entry_or_exit_label(action: str) -> str:

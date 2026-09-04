@@ -7,6 +7,9 @@ from tortoise.context import TortoiseContext, get_current_context
 
 from trader.common.config import Config
 from trader.common.logger import Logger
+from trader.execution.models import ExecutionSide, ExecutionStatus, GatewayMode, OrderIntent
+from trader.execution.state import ExecutionStateRecord
+from trader.live.auto_execution import AUTO_EXECUTION_EVENT_TYPE
 from trader.live.market_data import BackfillPlan, BackfillRequestKind, normalize_binance_kline_message
 from trader.task.task_config import TaskConfig
 from trader.task.task_type import TaskType
@@ -59,6 +62,8 @@ class FakeExchange:
     def __init__(self, fetched):
         self.fetched = fetched
         self.latest_requests = []
+        self.new_order_calls = []
+        self.balance_reads = []
 
     def name(self):
         return "BINANCE"
@@ -69,6 +74,14 @@ class FakeExchange:
 
     def get_klines(self, si, start_time=None, end_time=None, limit=500):
         return [kline for kline in self.fetched if start_time <= kline.open_time <= end_time][:limit]
+
+    def get_account_balance(self, asset):
+        self.balance_reads.append(asset)
+        return 0.0
+
+    def new_order(self, *args, **kwargs):
+        self.new_order_calls.append((args, kwargs))
+        raise AssertionError("manual_notify realtime runtime must not place exchange orders")
 
 
 class FakeRunner:
@@ -127,6 +140,49 @@ class FakeHub:
 
 def _kline(open_time, close=100.0):
     return Kline(open_time, close - 1, close + 1, close - 2, close, open_time + 59, 1, 1, 1, 1, 1)
+
+
+@pytest.mark.anyio
+async def test_trader_task_persists_live_auto_execution_state_records():
+    class StateStore:
+        def __init__(self):
+            self.saved = []
+
+        async def save(self, record):
+            self.saved.append(record)
+            return record
+
+    db = FakeDb()
+    db.execution_state = StateStore()
+    tcfg = TaskConfig(
+        86,
+        TaskType.TRADER,
+        SymbolInterval("BTC-USDT", Interval.INTERVAL_1m),
+        strategies=["macd_triple_divergence"],
+        free=1000,
+        live_execution_mode="small_live_auto",
+        live_data_mode="realtime",
+    )
+    task = TraderTask(tcfg, Config(window=500), Logger(Config(window=500)), db, FakeExchange([]))
+    intent = OrderIntent.entry(
+        intent_id="intent-1",
+        operation_id="op-1",
+        symbol="BTCUSDT",
+        side=ExecutionSide.LONG,
+        quantity=0.25,
+    )
+    record = ExecutionStateRecord.from_order_intent(
+        intent,
+        gateway=GatewayMode.BINANCE_LIVE,
+        staged_execution_mode="small_live_auto",
+        status=ExecutionStatus.SUBMITTED,
+        exchange_order_id="live-1",
+        timestamp=BASE,
+    )
+
+    await task._persist_auto_execution_state(SimpleNamespace(execution_state_records=[record]))
+
+    assert db.execution_state.saved == [record]
 
 
 def _update(open_time, closed):
@@ -340,6 +396,20 @@ async def test_trader_task_realtime_publishes_dashboard_events_and_runtime_statu
 
 
 @pytest.mark.anyio
+async def test_trader_task_realtime_paper_auto_is_rejected_before_runtime(monkeypatch):
+    with pytest.raises(ValueError, match="paper_auto is no longer supported"):
+        TaskConfig(
+            84,
+            TaskType.TRADER,
+            SymbolInterval("BTC-USDT", Interval.INTERVAL_1m),
+            strategies=["macd_triple_divergence"],
+            free=1000,
+            live_execution_mode="paper_auto",
+            live_data_mode="realtime",
+        )
+
+
+@pytest.mark.anyio
 async def test_trader_task_realtime_preserves_tortoise_context_for_threaded_operations(monkeypatch):
     class ThreadedOperationRunner(FakeRunner):
         def put_kline(self, kline):
@@ -464,11 +534,16 @@ async def test_trader_task_realtime_publishes_warmup_operations_for_dashboard_wi
 
 
 @pytest.mark.anyio
-async def test_trader_task_realtime_marks_idle_stream_disconnected(monkeypatch):
-    import trader.task.trader_task as trader_task_module
-
+async def test_trader_task_realtime_does_not_disconnect_on_business_message_idle(monkeypatch):
     class IdleSubscription:
+        def __init__(self, quit_event):
+            self.quit_event = quit_event
+            self.calls = 0
+
         async def get(self):
+            self.calls += 1
+            if self.calls >= 3:
+                self.quit_event.set()
             await asyncio.sleep(0.01)
             raise asyncio.TimeoutError
 
@@ -483,15 +558,13 @@ async def test_trader_task_realtime_marks_idle_stream_disconnected(monkeypatch):
         async def subscribe(self, key, reconnect_callback=None):
             self.key = key
             self.reconnect_callback = reconnect_callback
-            return IdleSubscription()
+            return IdleSubscription(self.quit_event)
 
         def status(self, key):
             return SimpleNamespace(state=SimpleNamespace(value="running"), subscriber_count=1, last_error=None)
 
         async def handle_disconnect(self, key):
             self.disconnects.append(key)
-            if self.reconnect_callback is not None:
-                await self.reconnect_callback()
             self.quit_event.set()
 
     FakeRunner.instances = []
@@ -511,9 +584,7 @@ async def test_trader_task_realtime_marks_idle_stream_disconnected(monkeypatch):
 
     monkeypatch.setattr("trader.task.trader_task.BacktraderLiveRunner", FakeRunner)
     monkeypatch.setattr("trader.task.trader_task.GLOBAL_MARKET_STREAM_HUB", hub)
-    monkeypatch.setattr(trader_task_module, "REALTIME_STREAM_QUEUE_TIMEOUT_SECONDS", 0.01, raising=False)
-    monkeypatch.setattr(trader_task_module, "REALTIME_STREAM_STALE_SECONDS", 0.01, raising=False)
 
     await asyncio.wait_for(task.start_realtime(asyncio.Queue(), [NoopStrategy]), timeout=0.5)
 
-    assert hub.disconnects == [hub.key]
+    assert hub.disconnects == []

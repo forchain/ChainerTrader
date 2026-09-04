@@ -42,7 +42,7 @@ ChainerTrader exposes one runtime with several user-visible capabilities:
           | Strategy Layer |   | Data Preparation |
           |----------------|   |------------------|
           | Backtrader     |   | CSV datasets     |
-          | Chainer engine |   | MongoDB klines   |
+          | Chainer engine |   | SQL klines       |
           | Strategy logic |   | Exchange sync    |
           +--------+-------+   +---------+--------+
                    |                     |
@@ -66,7 +66,9 @@ ChainerTrader exposes one runtime with several user-visible capabilities:
 - `src/trader/task/`
   Task parsing, task scheduling, background optimization orchestration, and report generation.
 - `src/trader/strategy/`
-  Trading and backtesting strategies, including the Chainer framework-based strategies.
+  Trading and backtesting strategies plus the Chainer strategy kernel. Strategy subclasses provide signal conditions and signal context, while shared framework modules handle signal routing, trade lifecycle state, risk decisions, and Backtrader execution adaptation.
+- `src/trader/execution/`
+  Portable execution contracts, gateway implementations, execution state, and reconciliation primitives shared by backtest and live modes.
 - `src/trader/exchange/`
   Exchange access and market-data handling.
 - `src/trader/database/`
@@ -80,22 +82,19 @@ ChainerTrader exposes one runtime with several user-visible capabilities:
 
 ## Database Design
 
-ChainerTrader uses MongoDB as its primary persistent store for runtime and historical market data workflows.
+ChainerTrader uses Tortoise ORM with a SQL database as its primary persistent store for runtime state, historical market data, and market-data availability metadata. Local development defaults to SQLite via `TRADER_DB`.
 
 Detailed database design reference:
 
 - [docs/architecture/database-design.md](docs/architecture/database-design.md)
 
-### Collections Overview
+### Tables Overview
 
-ChainerTrader uses three main collection families in MongoDB.
+ChainerTrader uses three main table families through repository interfaces under `src/trader/database/`.
 
-#### 1. `klines-<symbol-interval>`
+#### 1. `klines`
 
-One collection per trading pair and timeframe, for example:
-
-- `klines-BTCUSDT-1h`
-- `klines-ETHUSDT-4h`
+One relational table stores candles for all exchanges, trading pairs, and timeframes.
 
 Purpose:
 
@@ -106,7 +105,7 @@ Purpose:
 Fields:
 
 - `open_time`
-  Primary key. Candle open timestamp.
+  Candle open timestamp, unique together with exchange, symbol, and interval.
 - `open_datetime`
   Human-readable open timestamp.
 - `open`
@@ -243,7 +242,7 @@ This database design supports:
 - database-backed backtests without requiring users to maintain every CSV by hand
 - incremental kline updates
 - optimization runs that reuse prepared datasets instead of repeatedly downloading the same data
-- lightweight runtime state tracking without a complex relational schema
+- lightweight runtime state tracking through explicit relational tables
 
 ### Operational Data Flow
 
@@ -254,7 +253,7 @@ Exchange / CSV
 Data preparation
      |
      v
-MongoDB kline storage
+Tortoise SQL kline storage
      |
      +--> backtests
      +--> optimization runs
@@ -296,7 +295,7 @@ Representative config locations:
 
 - Python 3.11+
 - `uv` recommended for environment management
-- MongoDB if you want database-backed workflows
+- SQLite by default for database-backed workflows; other Tortoise-supported SQL databases can be configured with `TRADER_DB`
 - Exchange credentials if you want live exchange-backed data operations
 
 ### Local Setup
@@ -315,7 +314,7 @@ Common settings:
 
 ```env
 TRADER_LOG_LEVEL="INFO"
-TRADER_DB="mongodb://localhost:27017/"
+TRADER_DB="sqlite://data/trader.db"
 TRADER_EXCHANGE='{"ty":"BINANCE","api_key":"","api_secret":""}'
 TRADER_API="127.0.0.1:8000"
 TRADER_NOTICE="./configs/notices/notice.json"
@@ -344,12 +343,12 @@ trader -h
 python -m trader --tasks configs/tasks/examples/backtrader_strategy.json
 ```
 
-### Run a Backtest Against MongoDB / Exchange-Prepared Data
+### Run a Backtest Against SQL / Exchange-Prepared Data
 
 ```bash
 python -m trader \
   --tasks configs/tasks/backtests/multi_backtrader.json \
-  --db mongodb://localhost:27017/ \
+  --db sqlite://data/trader.db \
   --exchange=BINANCE \
   --log_level INFO
 ```
@@ -457,6 +456,58 @@ python -m trader \
 When `live_data_mode` is `realtime`, the live task creates one persistent Backtrader `Cerebro` runtime and advances it through a live K-line data feed. Startup REST backfill is capped at the latest 500 closed candles and is delivered through the same strategy instance as warmup. During development validation, warmup strategy events use the same dashboard and `manual_notify` path as later live candles, so startup signals appear on the chart and can send email. After the feed transitions to LIVE, each unique closed WebSocket candle is persisted and delivered once to the same strategy instance; reconnect catch-up candles are fetched from REST and delivered through that same feed in chronological order. Open candles are pushed to the dashboard for drawing only and never advance Backtrader strategy execution.
 
 Manual notification emails include the market, interval, strategy id, strategy name, action, side, suggested amount or quantity, signal price and time, local simulated cash and position, trigger reason, and dashboard correlation fields such as signal event id when available. Risk references such as stop loss, take profit, breakeven stop movement, or risk/reward are rendered as local strategy guidance only; the email is not an exchange fill confirmation and does not mean ChainerTrader submitted a stop-loss, take-profit, OCO, or other advanced order.
+
+### Staged Realtime Auto Trading
+
+Realtime live tasks also support staged automatic execution modes:
+
+- `small_live_auto`: places real orders only after validation and caps each order by `live_trade_max_notional`.
+- `full_live_auto`: places real orders using the task sizing policy while retaining duplicate prevention, price/quantity validation, account checks, and execution outcome recording.
+
+The execution boundary is modeled as a gateway contract shared by Backtrader and Binance live execution. `live_execution_mode` remains the authoritative safety switch: `manual_notify` is notification-only, and live gateway execution is available only through live-capable modes such as `small_live_auto` and `full_live_auto`. A gateway setting must not be used to upgrade a safer staged mode.
+
+Execution outcomes published to the live dashboard include normalized execution event traces such as `order_submitted`, `order_accepted`, `order_filled`, `protection_armed`, `protection_replaced`, and `protection_missing`. Binance live protection is native-first: ChainerTrader should treat `protection_armed` as valid only when exchange-native protection order identifiers are accepted and verified. Local WebSocket or guardian monitoring is a separate fallback/monitoring state, not proof that the exchange owns the stop-loss or take-profit order.
+
+Backtrader is the no-live-order test engine for strategy development. It uses broker-managed stop, limit, and OCO-style behavior within the available data feed, but OHLC bars cannot prove tick-level ordering inside a candle. Use lower timeframe or tick data when the exact ordering between stop-loss and take-profit hits matters.
+
+The runtime also keeps durable execution state for reconciliation and idempotency. Before enabling live automation on an existing database, run the database migration flow so the `execution_states` table exists:
+
+```bash
+uv run trader-db migrate
+```
+
+On restart or reconnect, automatic live modes load open execution state for the task symbol and expose the reconciliation view in runtime status. If reconciliation shows missing or stale protection, switch the task back to `manual_notify` until the live protection path is repaired.
+
+Real short execution is disabled unless `live_short_execution` is explicitly set to `margin_cross`. In the first implementation, real shorts use Binance cross margin only; isolated margin and futures are separate future integrations. Operators must ensure exchange credentials, cross-margin account readiness, and any borrow/repay risk are understood before enabling cross-margin short execution.
+
+Small-live example with a 10 USDT per-order cap:
+
+```bash
+python -m trader \
+  --tasks configs/tasks/live/small_live_auto_btc_1m.json \
+  --db mongodb://localhost:27017/ \
+  --exchange=BINANCE
+```
+
+For real-order smoke testing, use a dedicated exchange key, a minimal notional, and explicit operator opt-in. The end-to-end Binance live smoke test places real orders through the same live gateway used by `small_live_auto`; it covers Chainer-style entry, native stop/take-profit protection, breakeven stop replacement, close, execution-state records, and MACD triple divergence style signal/framework metadata. Spot long testing is enabled by default; cross-margin short testing is disabled unless explicitly opted in.
+
+```bash
+export BINANCE_API_KEY="..."
+export BINANCE_API_SECRET="..."
+export CHAINERTRADER_SMALL_LIVE_MAX_NOTIONAL=11
+export CHAINERTRADER_SMALL_LIVE_HARD_LIMIT=25
+export CHAINERTRADER_LIVE_SMOKE_SYMBOL=BTC-USDT
+
+# Spot long only: BUY -> native bracket -> replace stop -> cancel protection -> SELL.
+scripts/run_binance_live_smoke_e2e.sh
+
+# Optional cross-margin short flow: SHORT -> native buy-side bracket -> replace stop -> cancel protection -> CLOSE.
+CHAINERTRADER_LIVE_SMOKE_ENABLE_MARGIN=1 scripts/run_binance_live_smoke_e2e.sh
+```
+
+The legacy guard-only smoke remains available through `CHAINERTRADER_ENABLE_SMALL_LIVE_SMOKE=1`, but it only validates opt-in and configuration gates; use `scripts/run_binance_live_smoke_e2e.sh` for real exchange behavior.
+
+Rollback is configuration-only for staged runtime behavior: move from `full_live_auto` to `small_live_auto`, then to `manual_notify`. Use Backtrader backtests as the no-live-order test environment before enabling live automation.
 
 ### Realtime Live Dashboard
 

@@ -6,11 +6,11 @@ from tortoise.exceptions import OperationalError
 from trader.common.logger import Logger
 from trader.database.availability import AvailabilityCol
 from trader.database.config import build_tortoise_config, normalize_db_url
+from trader.database.execution_state import ExecutionStateCol
 from trader.database.kline import DEFAULT_EXCHANGE, KlineCol
 from trader.database.task import TaskCol
 
-
-REQUIRED_TABLES = ("klines", "tasks", "availability")
+REQUIRED_TABLES = ("klines", "tasks", "availability", "execution_states")
 
 
 class DatabaseSchemaError(RuntimeError):
@@ -28,6 +28,7 @@ class DatabaseManager:
         self.task = None
         self.kline = None
         self.availability = None
+        self.execution_state = None
 
     async def start(self):
         await Tortoise.init(config=build_tortoise_config(self.db_url))
@@ -36,6 +37,7 @@ class DatabaseManager:
         self.kline = KlineCol(self.log, exchange=exchange)
         self.task = TaskCol(self.log)
         self.availability = AvailabilityCol(self.log)
+        self.execution_state = ExecutionStateCol(self.log)
         self.started = True
 
     async def stop(self):

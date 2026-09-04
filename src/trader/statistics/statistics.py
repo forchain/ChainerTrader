@@ -21,11 +21,9 @@ class Statistics:
         add = False
 
         if isinstance(msg.data, BackTraderStat):
-            self.bts_list.append(msg.data)
-            add = True
+            add = self._add_result_stat(msg.data)
         if isinstance(msg.data, TraderStat):
-            self.bts_list.append(msg.data)
-            add = True
+            add = self._add_result_stat(msg.data)
 
         if self.cfg.stat == 0:
             return
@@ -35,6 +33,13 @@ class Statistics:
                     self.bts_list.sort(key=lambda bts: bts.ts.tret.total_return_rate, reverse=True)
                     del_stat = self.bts_list.pop()
                     self.log.info(f"Remove item form stat list:{del_stat.strategy} {del_stat.symbol_interval} {del_stat.ts.tret.total_return_rate}")
+
+    def _add_result_stat(self, stat: BackTraderStat | TraderStat) -> bool:
+        tret = getattr(getattr(stat, "ts", None), "tret", None)
+        if tret is None:
+            return False
+        self.bts_list.append(stat)
+        return True
 
     def report(self):
         if len(self.bts_list) > 0:
@@ -49,8 +54,8 @@ class Statistics:
                 "币种",
                 "总收益率",
                 "持有增长率",
-                "最大回撤",
-                "回撤时长",
+                "持仓最大回撤",
+                "持仓回撤时长",
                 "波动率",
                 "胜率",
                 "平均盈亏比",

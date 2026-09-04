@@ -1,11 +1,20 @@
 from datetime import datetime, timedelta
+from decimal import Decimal, ROUND_DOWN
 from typing import Optional
 
 from binance_common.configuration import ConfigurationRestAPI
 from binance_common.constants import SPOT_REST_API_PROD_URL
 from binance_common.models import RateLimit
 from binance_sdk_spot import Spot
-from binance_sdk_spot.rest_api.models import AccountCommissionResponse, NewOrderSideEnum, NewOrderTypeEnum
+from binance_sdk_spot.rest_api.models import (
+    AccountCommissionResponse,
+    NewOrderSideEnum,
+    NewOrderTypeEnum,
+    OrderOcoSideEnum,
+    OrderCancelReplaceSideEnum,
+    OrderCancelReplaceTypeEnum,
+    OrderCancelReplaceCancelReplaceModeEnum,
+)
 import requests
 import time
 import hmac
@@ -17,6 +26,13 @@ from trader.exchange.balance import Balance
 from trader.exchange.binance.margin import MarginTradingManager
 from trader.exchange.exchange_config import ExchangeConfig, MarginMode
 from trader.exchange.exchange_type import ExchangeType
+from trader.execution.models import (
+    PositionView,
+    ProtectionOrderView,
+    ExecutionSide,
+    ProtectionIntentType,
+    ExecutionStatus,
+)
 from trader.utils.kline import Kline
 from trader.utils.operate import OperateType
 from trader.utils.symbol_interval import SymbolInterval, Symbol
@@ -213,6 +229,21 @@ class BinanceExchange:
 
         return ret
 
+    def get_position_view(self, symbol: Symbol) -> list[PositionView]:
+        if self.margin_mode != MarginMode.SPOT:
+            return MarginTradingManager(self.cfg, self.log).get_position_view(symbol)
+
+        balance = self.get_account_balance(symbol.base)
+        if balance > 0:
+            return [
+                PositionView(
+                    symbol=symbol.name(),
+                    side=ExecutionSide.LONG,
+                    quantity=balance,
+                )
+            ]
+        return []
+
     def account_commission(self, symbol: str = None) -> AccountCommissionResponse:
         if self.has_rate_limit():
             self.log.error("Rate limit")
@@ -297,15 +328,16 @@ class BinanceExchange:
 
         return None
 
-    def new_order(self, symbol:Symbol, op: OperateType, quantity: float = 0):
+    def new_order(self, symbol: Symbol, op: OperateType, quantity: float = 0):
         if self.has_rate_limit("ORDERS"):
             self.log.error("Rate limit")
             return None
 
         if self.margin_mode != MarginMode.SPOT:
-            return MarginTradingManager().new_order(symbol, op, quantity)
+            return self.new_margin_order(symbol, op, quantity)
 
         try:
+            quantity = self._normalize_quantity(symbol, quantity)
             side_name = op.name
             if op == OperateType.SHORT:
                 side_name = "SELL"
@@ -333,6 +365,246 @@ class BinanceExchange:
         except Exception as e:
             self.log.error(e)
             return None
+
+    def new_oco_order(self, symbol: Symbol, op: OperateType, quantity: float, stop_price: float, take_profit_price: float):
+        if self.has_rate_limit("ORDERS"):
+            self.log.error("Rate limit")
+            return None
+
+        if self.margin_mode != MarginMode.SPOT:
+            return MarginTradingManager(self.cfg, self.log).new_oco_order(
+                symbol,
+                op,
+                self._normalize_quantity(symbol, quantity),
+                self._normalize_price(symbol, stop_price),
+                self._normalize_price(symbol, take_profit_price),
+            )
+
+        try:
+            quantity = self._normalize_quantity(symbol, quantity)
+            stop_price = self._normalize_price(symbol, stop_price)
+            take_profit_price = self._normalize_price(symbol, take_profit_price)
+            side_name = protection_side_name(op)
+            # OCO price: Take Profit limit price
+            # OCO stopPrice: Stop Loss trigger price
+            response = self.spot_client.rest_api.order_oco(
+                symbol=symbol.name(),
+                side=OrderOcoSideEnum[side_name].value,
+                quantity=quantity,
+                price=take_profit_price,
+                stop_price=stop_price,
+            )
+
+            data = response.data()
+            self.log.info(f"new_oco_order() response: {data}")
+            return data
+        except Exception as e:
+            self.log.error(f"new_oco_order() error: {e}")
+            return None
+
+    def new_stop_order(self, symbol: Symbol, op: OperateType, quantity: float, stop_price: float):
+        if self.has_rate_limit("ORDERS"):
+            self.log.error("Rate limit")
+            return None
+
+        if self.margin_mode != MarginMode.SPOT:
+            return MarginTradingManager(self.cfg, self.log).new_stop_order(
+                symbol,
+                op,
+                self._normalize_quantity(symbol, quantity),
+                self._normalize_price(symbol, stop_price),
+            )
+
+        try:
+            quantity = self._normalize_quantity(symbol, quantity)
+            stop_price = self._normalize_price(symbol, stop_price)
+            side_name = protection_side_name(op)
+            response = self.spot_client.rest_api.new_order(
+                symbol=symbol.name(),
+                side=NewOrderSideEnum[side_name].value,
+                type=NewOrderTypeEnum["STOP_LOSS"].value,
+                quantity=quantity,
+                stop_price=stop_price,
+            )
+            data = response.data()
+            self.log.info(f"new_stop_order() response: {data}")
+            return data
+        except Exception as e:
+            self.log.error(f"new_stop_order() error: {e}")
+            return None
+
+    def new_take_profit_order(self, symbol: Symbol, op: OperateType, quantity: float, limit_price: float):
+        if self.has_rate_limit("ORDERS"):
+            self.log.error("Rate limit")
+            return None
+
+        if self.margin_mode != MarginMode.SPOT:
+            return MarginTradingManager(self.cfg, self.log).new_take_profit_order(
+                symbol,
+                op,
+                self._normalize_quantity(symbol, quantity),
+                self._normalize_price(symbol, limit_price),
+            )
+
+        try:
+            quantity = self._normalize_quantity(symbol, quantity)
+            limit_price = self._normalize_price(symbol, limit_price)
+            side_name = protection_side_name(op)
+            response = self.spot_client.rest_api.new_order(
+                symbol=symbol.name(),
+                side=NewOrderSideEnum[side_name].value,
+                type=NewOrderTypeEnum["TAKE_PROFIT"].value,
+                quantity=quantity,
+                stop_price=limit_price,
+            )
+            data = response.data()
+            self.log.info(f"new_take_profit_order() response: {data}")
+            return data
+        except Exception as e:
+            self.log.error(f"new_take_profit_order() error: {e}")
+            return None
+
+    def replace_stop_order(self, symbol: Symbol, side: OperateType, order_id: str, quantity: float, stop_price: float):
+        if self.has_rate_limit("ORDERS"):
+            self.log.error("Rate limit")
+            return None
+
+        if self.margin_mode != MarginMode.SPOT:
+            manager = MarginTradingManager(self.cfg, self.log)
+            cancel = getattr(manager, "cancel_order", None)
+            if cancel is not None:
+                cancel(symbol, order_id)
+            return manager.new_stop_order(
+                symbol,
+                side,
+                self._normalize_quantity(symbol, quantity),
+                self._normalize_price(symbol, stop_price),
+            )
+
+        try:
+            quantity = self._normalize_quantity(symbol, quantity)
+            stop_price = self._normalize_price(symbol, stop_price)
+            side_name = protection_side_name(side)
+            
+            response = self.spot_client.rest_api.order_cancel_replace(
+                symbol=symbol.name(),
+                side=OrderCancelReplaceSideEnum[side_name].value,
+                type=OrderCancelReplaceTypeEnum["STOP_LOSS"].value,
+                cancel_replace_mode=OrderCancelReplaceCancelReplaceModeEnum["STOP_ON_FAILURE"].value,
+                cancel_order_id=int(order_id),
+                quantity=quantity,
+                stop_price=stop_price,
+            )
+            data = response.data()
+            self.log.info(f"replace_stop_order() response: {data}")
+            return data
+        except Exception as e:
+            self.log.error(f"replace_stop_order() error: {e}")
+            return None
+
+    def is_cross_margin_ready(self) -> bool:
+        if self.margin_mode != MarginMode.CROSS_MARGIN:
+            return False
+        if not self._has_valid_margin_base_path():
+            self.log.warning("Cross margin is not ready: margin base_path is not configured with an absolute URL")
+            return False
+        return True
+
+    def new_margin_order(self, symbol: Symbol, op: OperateType, quantity: float = 0):
+        if self.has_rate_limit("ORDERS"):
+            self.log.error("Rate limit")
+            return None
+        if not self.is_cross_margin_ready():
+            self.log.warning(f"Skip margin order because cross margin is not ready: symbol={symbol.name()} operateType={op}")
+            return None
+        return MarginTradingManager(self.cfg, self.log).new_order(symbol, op, self._normalize_quantity(symbol, quantity))
+
+    def get_open_protection_orders(self, symbol: Symbol) -> list[ProtectionOrderView]:
+        if self.margin_mode != MarginMode.SPOT:
+            return MarginTradingManager(self.cfg, self.log).get_open_protection_orders(symbol)
+
+        try:
+            # Get open orders for the symbol
+            response = self.spot_client.rest_api.get_open_orders(symbol=symbol.name())
+            open_orders = response.data()
+            
+            protection_orders = []
+            
+            # Group by orderListId for OCO
+            ocos = {}
+            
+            for order in open_orders:
+                # Binance Spot get_open_orders returns list of individual orders.
+                # OCO orders have orderListId != -1
+                order_list_id = getattr(order, "order_list_id", -1)
+                if order_list_id != -1:
+                    if order_list_id not in ocos:
+                        ocos[order_list_id] = []
+                    ocos[order_list_id].append(order)
+                    continue
+
+                # Non-OCO protection orders
+                if order.type in ("STOP_LOSS", "STOP_LOSS_LIMIT", "TAKE_PROFIT", "TAKE_PROFIT_LIMIT"):
+                    protection_type = ProtectionIntentType.STOP_LOSS if "STOP" in order.type else ProtectionIntentType.TAKE_PROFIT
+                    protection_orders.append(
+                        ProtectionOrderView(
+                            protection_id=str(order.order_id),
+                            symbol=symbol.name(),
+                            protection_type=protection_type,
+                            status=ExecutionStatus.ACCEPTED, # If it's in open orders, it's accepted/active
+                            quantity=float(order.orig_qty),
+                            stop_price=float(order.stop_price) if hasattr(order, "stop_price") and order.stop_price else None,
+                            take_profit_price=float(order.price) if "TAKE_PROFIT" in order.type else None,
+                            exchange_order_ids=(str(order.order_id),),
+                            native=True,
+                        )
+                    )
+            
+            # Process OCOs
+            for order_list_id, legs in ocos.items():
+                # OCO usually has one stop leg and one LIMIT_MAKER take-profit leg.
+                stop_price = None
+                tp_price = None
+                qty = 0.0
+                order_ids = []
+                for leg in legs:
+                    order_ids.append(str(leg.order_id))
+                    qty = max(qty, float(leg.orig_qty))
+                    if leg.type in ("STOP_LOSS", "STOP_LOSS_LIMIT"):
+                        stop_price = float(leg.stop_price)
+                    elif leg.type == "LIMIT_MAKER":
+                        tp_price = float(leg.price)
+                
+                protection_orders.append(
+                    ProtectionOrderView(
+                        protection_id=f"oco-{order_list_id}",
+                        symbol=symbol.name(),
+                        protection_type=ProtectionIntentType.BRACKET,
+                        status=ExecutionStatus.ACCEPTED,
+                        quantity=qty,
+                        stop_price=stop_price,
+                        take_profit_price=tp_price,
+                        exchange_order_ids=tuple(order_ids),
+                        native=True,
+                        metadata={"orderListId": order_list_id}
+                    )
+                )
+
+            return protection_orders
+        except Exception as e:
+            self.log.error(f"get_open_protection_orders() error: {e}")
+            return []
+
+    def verify_order_ids(self, symbol: Symbol, order_ids: list[str]) -> bool:
+        if self.margin_mode != MarginMode.SPOT:
+            manager = MarginTradingManager(self.cfg, self.log)
+            if hasattr(manager, "verify_order_ids"):
+                return manager.verify_order_ids(symbol, order_ids)
+
+        if not order_ids:
+            return False
+        # For now, we trust that if we got IDs back from an order placement, they are valid.
+        return all(isinstance(oid, str) and len(oid) > 0 for oid in order_ids)
 
     def delete_order(self, symbol: str):
         if self.has_rate_limit("ORDERS"):
@@ -365,6 +637,86 @@ class BinanceExchange:
             if datetime.now() <= self.rate_limits[typ]:
                 return True
         return False
+
+    def _normalize_quantity(self, symbol: Symbol, quantity: float) -> float:
+        try:
+            info = self.exchange_info(symbol.name())
+            info = _unwrap_actual_instance(info)
+            symbols = getattr(info, "symbols", None) or (info.get("symbols") if isinstance(info, dict) else None) or []
+            filters = []
+            if symbols:
+                first = _unwrap_actual_instance(symbols[0])
+                filters = getattr(first, "filters", None) or (first.get("filters") if isinstance(first, dict) else None) or []
+            for item in filters:
+                item = _unwrap_actual_instance(item)
+                filter_type = getattr(item, "filter_type", None) or getattr(item, "filterType", None)
+                if isinstance(item, dict):
+                    filter_type = item.get("filterType") or item.get("filter_type")
+                if filter_type != "LOT_SIZE":
+                    continue
+                step = getattr(item, "step_size", None) or getattr(item, "stepSize", None)
+                min_qty = getattr(item, "min_qty", None) or getattr(item, "minQty", None)
+                if isinstance(item, dict):
+                    step = item.get("stepSize") or item.get("step_size")
+                    min_qty = item.get("minQty") or item.get("min_qty")
+                normalized = _floor_to_step(Decimal(str(quantity)), Decimal(str(step)))
+                if min_qty is not None and normalized < Decimal(str(min_qty)):
+                    raise ValueError(f"quantity {normalized} is below minQty {min_qty} for {symbol.name()}")
+                return float(normalized)
+        except Exception as exc:
+            self.log.warning(f"Skip quantity normalization for {symbol.name()}: {exc}")
+        return float(quantity)
+
+    def _normalize_price(self, symbol: Symbol, price: float) -> float:
+        try:
+            info = self.exchange_info(symbol.name())
+            info = _unwrap_actual_instance(info)
+            symbols = getattr(info, "symbols", None) or (info.get("symbols") if isinstance(info, dict) else None) or []
+            filters = []
+            if symbols:
+                first = _unwrap_actual_instance(symbols[0])
+                filters = getattr(first, "filters", None) or (first.get("filters") if isinstance(first, dict) else None) or []
+            for item in filters:
+                item = _unwrap_actual_instance(item)
+                filter_type = getattr(item, "filter_type", None) or getattr(item, "filterType", None)
+                if isinstance(item, dict):
+                    filter_type = item.get("filterType") or item.get("filter_type")
+                if filter_type != "PRICE_FILTER":
+                    continue
+                tick = getattr(item, "tick_size", None) or getattr(item, "tickSize", None)
+                min_price = getattr(item, "min_price", None) or getattr(item, "minPrice", None)
+                if isinstance(item, dict):
+                    tick = item.get("tickSize") or item.get("tick_size")
+                    min_price = item.get("minPrice") or item.get("min_price")
+                normalized = _floor_to_step(Decimal(str(price)), Decimal(str(tick)))
+                if min_price is not None and normalized < Decimal(str(min_price)):
+                    raise ValueError(f"price {normalized} is below minPrice {min_price} for {symbol.name()}")
+                return float(normalized)
+        except Exception as exc:
+            self.log.warning(f"Skip price normalization for {symbol.name()}: {exc}")
+        return float(price)
+
+
+def protection_side_name(op: OperateType) -> str:
+    if op in (OperateType.SELL, OperateType.SHORT):
+        return "SELL"
+    if op in (OperateType.BUY, OperateType.LONG, OperateType.CLOSE):
+        return "BUY"
+    return op.name
+
+
+def _floor_to_step(value: Decimal, step: Decimal) -> Decimal:
+    if step <= 0:
+        return value
+    return (value / step).to_integral_value(rounding=ROUND_DOWN) * step
+
+
+def _unwrap_actual_instance(value):
+    actual_instance = getattr(value, "actual_instance", None)
+    if actual_instance is not None and actual_instance is not value:
+        return actual_instance
+    return value
+
 
 def on_spot_ws_close(socket_manager):
     socket_manager.host.log.info(f"{socket_manager.host.name()} exchange spot websocket api client close")

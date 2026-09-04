@@ -6,6 +6,7 @@ from trader.common import path
 from trader.common.common import parse_datetime
 from trader.task.optimization import expand_parameter_space, has_parameter_search, make_optimization_run_id, make_param_id
 from trader.task.task_type import TaskType, parse_task_type
+from trader.live.auto_execution import normalize_live_execution_mode, normalize_live_short_execution
 from trader.utils.symbol_interval import Interval, SymbolInterval
 from trader.utils.symbols_interval import SymbolsInterval
 
@@ -56,6 +57,8 @@ class TaskConfig:
         live_execution_mode: str = "auto_trade",
         manual_start_position: float = 0.0,
         live_data_mode: str = "polling",
+        live_trade_max_notional: float = 0.0,
+        live_short_execution: str = "disabled",
     ):
         self.ttype = ttype
         self.csv = csv
@@ -71,9 +74,11 @@ class TaskConfig:
         self.param_id = param_id
         self.optimization_run_id = optimization_run_id
         self.dataset_ref = dataset_ref
-        self.live_execution_mode = str(live_execution_mode or "auto_trade").strip().lower()
+        self.live_execution_mode = normalize_live_execution_mode(live_execution_mode)
         self.manual_start_position = float(manual_start_position or 0.0)
         self.live_data_mode = str(live_data_mode or "polling").strip().lower()
+        self.live_trade_max_notional = float(live_trade_max_notional or 0.0)
+        self.live_short_execution = normalize_live_short_execution(live_short_execution)
 
         self.id = id
 
@@ -114,6 +119,8 @@ class TaskConfig:
             "live_execution_mode": self.live_execution_mode,
             "manual_start_position": self.manual_start_position,
             "live_data_mode": self.live_data_mode,
+            "live_trade_max_notional": self.live_trade_max_notional,
+            "live_short_execution": self.live_short_execution,
         }
 
     def strategy_name(self):
@@ -182,9 +189,11 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
         if "free" in tcd:
             free = float(tcd["free"])
 
-        live_execution_mode = str(tcd.get("live_execution_mode", "auto_trade")).strip().lower()
+        live_execution_mode = normalize_live_execution_mode(tcd.get("live_execution_mode", "auto_trade"))
         manual_start_position = float(tcd.get("manual_start_position", 0.0) or 0.0)
         live_data_mode = str(tcd.get("live_data_mode", "polling")).strip().lower()
+        live_trade_max_notional = float(tcd.get("live_trade_max_notional", 0.0) or 0.0)
+        live_short_execution = normalize_live_short_execution(tcd.get("live_short_execution", "disabled"))
 
         csv = None
         if "csv" in tcd:
@@ -248,6 +257,8 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
                     live_execution_mode=live_execution_mode,
                     manual_start_position=manual_start_position,
                     live_data_mode=live_data_mode,
+                    live_trade_max_notional=live_trade_max_notional,
+                    live_short_execution=live_short_execution,
                 )
                 ret.append(tc)
                 last_task_id = tc.id
@@ -273,6 +284,8 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
                             live_execution_mode=live_execution_mode,
                             manual_start_position=manual_start_position,
                             live_data_mode=live_data_mode,
+                            live_trade_max_notional=live_trade_max_notional,
+                            live_short_execution=live_short_execution,
                         )
                         ret.append(tc)
                         last_task_id = tc.id
@@ -294,6 +307,8 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
                         live_execution_mode=live_execution_mode,
                         manual_start_position=manual_start_position,
                         live_data_mode=live_data_mode,
+                        live_trade_max_notional=live_trade_max_notional,
+                        live_short_execution=live_short_execution,
                     )
                     ret.append(tc)
                     last_task_id = tc.id

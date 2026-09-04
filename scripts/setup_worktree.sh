@@ -165,9 +165,11 @@ if [ -x "$PYTHON_BIN" ]; then
     echo "✓  Python available: $PYTHON_VER"
     echo ""
     CHECK_CMD=("$PYTHON_BIN" "$REPO_ROOT/scripts/check_runtime_context.py" --profile "$PROFILE" --env-file "$REPO_ROOT/.env")
-    for key in "${EXTRA_REQUIRE_ENVS[@]}"; do
-        CHECK_CMD+=(--require-env "$key")
-    done
+    if ((${#EXTRA_REQUIRE_ENVS[@]} > 0)); then
+        for key in "${EXTRA_REQUIRE_ENVS[@]}"; do
+            CHECK_CMD+=(--require-env "$key")
+        done
+    fi
 
     echo "Validating runtime context..."
     "${CHECK_CMD[@]}"

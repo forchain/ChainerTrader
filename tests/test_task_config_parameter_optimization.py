@@ -93,6 +93,32 @@ def test_param_combinations_override_param_grid():
     ]
 
 
+def test_param_combinations_expands_list_values_inside_each_combination():
+    config = json.dumps(
+        [
+            {
+                "task_type": "BACK_TRADER",
+                "symbol": "BTC-USDT",
+                "interval": "1h",
+                "strategy": "macd_triple_divergence",
+                "param_combinations": [
+                    {
+                        "chainer_mode": ["LONG_ONLY", "SHORT_ONLY"],
+                        "chainer_need_confirm": [True, False],
+                        "chainer_risk_reward_ratio": [0, 1.5],
+                    }
+                ],
+            }
+        ]
+    )
+
+    tasks = parse_task_config(config)
+
+    assert len(tasks) == 8
+    assert all(not isinstance(value, list) for task in tasks for value in task.strategy_params.values())
+    assert {task.strategy_params["chainer_risk_reward_ratio"] for task in tasks} == {0, 1.5}
+
+
 def test_parameter_search_requires_single_strategy_entry():
     config = json.dumps(
         [

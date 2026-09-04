@@ -15,7 +15,7 @@ class SymbolsInterval:
             except FileNotFoundError:
                 return
         else:
-            symbol_list = symbols.split(",")
+            symbol_list = [symbol.strip() for symbol in symbols.split(",")]
 
         self.symbol_intervals = []
         for sy in symbol_list:

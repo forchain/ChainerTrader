@@ -60,3 +60,29 @@ class AvailabilityModel(Model):
         table = "availability"
         unique_together = (("exchange", "symbol", "interval"),)
         indexes = (("exchange", "symbol", "interval"),)
+
+
+class ExecutionStateModel(Model):
+    id = fields.IntField(primary_key=True)
+    idempotency_key = fields.CharField(max_length=255, unique=True)
+    intent_id = fields.CharField(max_length=128)
+    operation_id = fields.CharField(max_length=128)
+    gateway = fields.CharField(max_length=32)
+    staged_execution_mode = fields.CharField(max_length=32)
+    symbol = fields.CharField(max_length=32)
+    trade_id = fields.CharField(max_length=128, null=True)
+    order_role = fields.CharField(max_length=32)
+    status = fields.CharField(max_length=32)
+    exchange_order_id = fields.CharField(max_length=255, null=True)
+    protection_id = fields.CharField(max_length=128, null=True)
+    quantity = fields.FloatField(default=0)
+    price = fields.FloatField(null=True)
+    stop_price = fields.FloatField(null=True)
+    take_profit_price = fields.FloatField(null=True)
+    raw_payload = fields.JSONField(null=True)
+    created_at = fields.IntField(default=0)
+    updated_at = fields.IntField(default=0)
+
+    class Meta:
+        table = "execution_states"
+        indexes = (("symbol", "trade_id"), ("gateway", "staged_execution_mode"), ("intent_id", "operation_id"))
