@@ -1,27 +1,14 @@
 from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
 
-import datetime
-import os.path
-import sys
-
 from backtrader import num2date
 
-from trader.binance.csvdata import BinanceCSVData
-from trader.node import Node
-from trader.utils import path
+from trader.strategy.node import Node
 
 import backtrader as bt
-import backtrader.analyzers as btanalyzers
-
-from prettytable import PrettyTable
 
 from trader.utils.basestrategy import BaseStrategy
 from trader.utils.operate import OperateType
-from trader.utils.profitlossratio import ProfitLossRatioAnalyzer
-from trader.utils.trend import TrendType
-from trader.utils.volatility import VolatilityAnalyzer
-from trader.utils.winrate import WinRateAnalyzer
 
 
 # Shihun MACD strategy

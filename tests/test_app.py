@@ -1,9 +1,21 @@
-from trader.app import NAME
+import logging
+
+from trader.app.app import NAME, App
 from trader.utils import path
+from trader.utils.logger import Logger
 
 
 def test_app():
-    assert NAME == "trader"
+    app = App()
+    assert NAME == app.name()
 
 def test_path():
     print(path.GetProjectDir())
+
+def test_log():
+    app = App()
+    app.log().debug("I am test logger by debug")
+    app.log().info("I am test logger by info")
+    app.log().warn("I am test logger by warn")
+    app.log().error("I am test logger by error")
+    app.log().critical("I am test logger by critical")
