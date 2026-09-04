@@ -1,0 +1,40 @@
+[
+  {
+    "task_type": "BACK_TRADER",
+    "symbols": "BTC-USDT",
+    "interval": "1d",
+    "strategy": "macd_triple_divergence",
+    "start_time": "2017-10-01 00:00:00",
+    "end_time": "2026-04-28 00:00:00",
+    "auto_download": true,
+    "param_grid": {
+      "chainer_mode": [
+        "LONG_ONLY",
+        "SHORT_ONLY",
+        "BOTH"
+      ],
+      "chainer_stoploss_atr_mult": [
+        0,
+        1
+      ],
+      "chainer_need_confirm": [
+        false,
+        true
+      ],
+      "chainer_enable_breakeven": [
+        false,
+        true
+      ],
+      "chainer_risk_reward_ratio": [
+        0,
+        1,
+        1.5,
+        2
+      ],
+      "chainer_min_equity_percent": [
+        0.1,
+        0.5
+      ]
+    }
+  }
+]

@@ -2,7 +2,6 @@
 
 ## Purpose
 定义 Chainer 共享交易框架如何在策略信号与实际交易动作之间进行统一编排，确保 mode 路由、同 bar 信号求值一致性和策略扩展点都由框架层管理，而不是散落在各个策略中。
-
 ## Requirements
 ### Requirement: 框架独占信号 mode 路由
 系统 SHALL 由框架统一根据 `chainer_mode`、持仓状态和交易状态，将 `LONG` / `SHORT` 信号路由为开仓、平仓或忽略动作。策略 SHALL 不需要也不应通过覆写共享交易路由流程来重新定义 `LONG_ONLY`、`SHORT_ONLY` 或 `BOTH` 的 mode 语义。
@@ -44,3 +43,21 @@
 #### Scenario: entry context 创建结果可被观察
 - **WHEN** 某个 signal 成功创建 entry context 或在创建后立刻被取消
 - **THEN** 框架 SHALL 允许策略通过信号生命周期扩展点接收到对应 outcome 及关联上下文
+
+### Requirement: 信号生命周期结果可供通知流程消费
+
+系统 SHALL 允许框架管理的信号生命周期结果被任务层或通知层消费，用于生成进场、出场、阻塞或取消等用户可见事件，而不要求具体策略覆写共享信号路由流程。
+
+#### Scenario: entry context 创建后可生成通知事件
+- **WHEN** 框架根据信号成功创建 entry context
+- **THEN** 任务层或通知层 SHALL 能读取方向、信号上下文、trade id 和本地交易状态以生成进场通知事件
+
+#### Scenario: exit request 触发后可生成通知事件
+- **WHEN** 框架根据信号或本地交易引擎触发 exit request
+- **THEN** 任务层或通知层 SHALL 能读取方向、信号上下文和退出原因以生成出场通知事件
+
+#### Scenario: 通知消费不改变策略路由职责
+- **WHEN** 系统启用手动实盘通知模式
+- **THEN** 策略 SHALL 继续通过标准信号接口和框架 lifecycle 机制暴露行为
+- **THEN** 策略 MUST NOT 为了发送通知而覆写共享 `_process_signals()` 路由流程
+

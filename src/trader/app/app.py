@@ -67,8 +67,6 @@ class App:
 
         self.notify_mgr.start()
 
-        if self.db_manager:
-            self.db_manager.start()
         if self.exchange:
             self.exchange.start()
 
@@ -90,8 +88,6 @@ class App:
         if self.task_manager:
             self.task_manager.stop()
 
-        if self.db_manager:
-            self.db_manager.stop()
         if self.exchange:
             self.exchange.stop()
 
@@ -128,14 +124,22 @@ class App:
         except asyncio.CancelledError:
             self.logger.debug("All tasks have been cancelled.")
         finally:
+            loop.run_until_complete(loop.shutdown_asyncgens())
+            loop.run_until_complete(loop.shutdown_default_executor())
             loop.close()
             self.logger.info(f"{self.name()} tasks exited.")
+
+    def _mark_handler_ready(self):
+        pass
 
     def shutdown(self, quit: Event):
         self.logger.info(f"Received shutdown signal, stopping {self.name()}...")
         self.exit_handle(quit)
 
     async def handler(self, msgs: list[Message], quit: Event):
+        if self.db_manager:
+            await self.db_manager.start()
+
         queue = asyncio.Queue()
         self.queue = queue
 
@@ -143,23 +147,28 @@ class App:
             await queue.put(msg)
 
         self.logger.info(f"{self.name()} enter handler: init messages={len(msgs)}")
+        self._mark_handler_ready()
 
-        while True:
-            msg: Message = await queue.get()
-            self.logger.debug(f"Processing message: {msg.name()}")
-            if msg.is_exit():
-                self.logger.info("Received exit message, shutting down...")
-                break
-            elif msg.is_stat():
-                self.stat.handler(msg)
-                self.notify_mgr.handler(msg)
+        try:
+            while True:
+                msg: Message = await queue.get()
+                self.logger.debug(f"Processing message: {msg.name()}")
+                if msg.is_exit():
+                    self.logger.info("Received exit message, shutting down...")
+                    break
+                elif msg.is_stat():
+                    self.stat.handler(msg)
+                    self.notify_mgr.handler(msg)
 
-            elif msg.is_add_tasks():
-                self.task_manager.add_tasks(msg.get_data(), queue)
+                elif msg.is_add_tasks():
+                    self.task_manager.add_tasks(msg.get_data(), queue)
 
-            queue.task_done()
+                queue.task_done()
 
-        await self.task_manager.close()
+            await self.task_manager.close()
+        finally:
+            if self.db_manager:
+                await self.db_manager.stop()
 
         self.logger.info(f"{self.name()} exit handler")
 

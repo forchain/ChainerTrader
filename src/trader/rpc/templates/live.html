@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}实盘监控 - ChainerTrader{% endblock %}
+
+{% block content %}
+<div class="live-monitor" data-page="live-monitor">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <div>
+            <h2 class="h4 mb-1">实盘监控</h2>
+            <div class="text-muted small">Realtime strategy workspace</div>
+        </div>
+        <div id="live-connection-state" class="badge text-bg-secondary">idle</div>
+    </div>
+
+    <div class="row g-3">
+        <aside class="col-lg-3">
+            <div class="live-panel">
+                <div class="live-panel-title">策略</div>
+                <div id="live-strategy-list" class="list-group live-strategy-list"></div>
+            </div>
+            <div class="live-panel mt-3">
+                <div class="live-panel-title">图层</div>
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" role="switch" id="overlay-signals" checked>
+                    <label class="form-check-label" for="overlay-signals">Signals <span id="overlay-signals-count" class="text-muted small">(0)</span></label>
+                </div>
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" role="switch" id="overlay-risk" checked>
+                    <label class="form-check-label" for="overlay-risk">Risk lines <span id="overlay-risk-count" class="text-muted small">(0)</span></label>
+                </div>
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" role="switch" id="overlay-macd" checked>
+                    <label class="form-check-label" for="overlay-macd">Strategy events <span id="overlay-strategy-events-count" class="text-muted small">(0)</span></label>
+                </div>
+            </div>
+            <div id="live-debug-panel" class="live-panel mt-3 d-none">
+                <div class="live-panel-title">本地调试</div>
+                <div class="d-grid gap-2">
+                    <button id="live-debug-entry" type="button" class="btn btn-outline-primary btn-sm">Debug market entry</button>
+                    <button id="live-debug-exit" type="button" class="btn btn-outline-secondary btn-sm">Debug market exit</button>
+                </div>
+            </div>
+        </aside>
+
+        <section class="col-lg-6">
+            <div class="live-panel">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <div id="active-strategy-title" class="fw-semibold">未选择策略</div>
+                    <div id="active-strategy-meta" class="text-muted small"></div>
+                </div>
+                <div id="live-chart" class="live-chart"></div>
+            </div>
+        </section>
+
+        <aside class="col-lg-3">
+            <div class="live-panel">
+                <div class="live-panel-title">状态</div>
+                <dl id="runtime-status" class="row small mb-0"></dl>
+                <div id="strategy-parameters" class="strategy-parameters mt-3"></div>
+            </div>
+            <div class="live-panel mt-3">
+                <div class="live-panel-title">诊断事件</div>
+                <div id="diagnostic-events" class="diagnostic-events"></div>
+            </div>
+        </aside>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+<script src="/static/js/live-monitor.js"></script>
+{% endblock %}

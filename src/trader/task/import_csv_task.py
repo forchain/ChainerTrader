@@ -88,7 +88,7 @@ class ImportCSVTask(BaseTask):
                 self.log.error(f"{self.name()} kline interval is not {self.tcfg.symbol_interval.interval.name}")
                 return
 
-        ret = self.db_manager.kline.add_klines(self.tcfg.symbol_interval.name(), kls)
+        ret = await self.db_manager.kline.add_klines(self.tcfg.symbol_interval.name(), kls, source="csv")
         if ret != len(kls):
             self.log.warning(f"{self.name()} add klines to DB: {ret} != {len(kls)}")
         else:

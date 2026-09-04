@@ -1010,6 +1010,7 @@ class MacdTripleDivergenceStrategy(BaseStrategy):
         self._signal_seq += 1
         return {
             "signal_id": self._signal_seq,
+            "direction": direction,
             **payload,
         }
 
@@ -1127,6 +1128,11 @@ class MacdTripleDivergenceStrategy(BaseStrategy):
             "signal_time": event["signal_time"],
             "signal_bar_index": current_bar,
             "signal_event_id": signal_id,
+            "direction": event.get("direction"),
+            "signal_type": event.get("signal_type"),
+            "legs": event.get("legs", []),
+            "conditions": event.get("conditions", {}),
+            "trade_outcome": event.get("trade_outcome", {}),
         }
         self.log_debug(
             f"三段底背离检测: R1({r1.start_idx}-{r1.end_idx}, M={r1.extreme_val:.6f}, P={r1.price_extreme:.2f}) "
@@ -1181,6 +1187,11 @@ class MacdTripleDivergenceStrategy(BaseStrategy):
             "signal_time": event["signal_time"],
             "signal_bar_index": current_bar,
             "signal_event_id": signal_id,
+            "direction": event.get("direction"),
+            "signal_type": event.get("signal_type"),
+            "legs": event.get("legs", []),
+            "conditions": event.get("conditions", {}),
+            "trade_outcome": event.get("trade_outcome", {}),
         }
         self.log_debug(
             f"三段顶背离检测: G1({g1.start_idx}-{g1.end_idx}, M={g1.extreme_val:.6f}, H={g1.price_extreme:.2f}) "

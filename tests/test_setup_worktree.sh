@@ -56,8 +56,14 @@ if [ ! -L reports ]; then
     exit 1
 fi
 
+if [ ! -L tmp ]; then
+    echo "FAIL: tmp is not a symlink"
+    exit 1
+fi
+
 CACHE_TARGET=$(readlink .cache)
 REPORTS_TARGET=$(readlink reports)
+TMP_TARGET=$(readlink tmp)
 
 if [ "$CACHE_TARGET" != "$MAIN_DIR/.cache" ]; then
     echo "FAIL: .cache symlink points to $CACHE_TARGET, expected $MAIN_DIR/.cache"
@@ -66,6 +72,11 @@ fi
 
 if [ "$REPORTS_TARGET" != "$MAIN_DIR/reports" ]; then
     echo "FAIL: reports symlink points to $REPORTS_TARGET, expected $MAIN_DIR/reports"
+    exit 1
+fi
+
+if [ "$TMP_TARGET" != "$MAIN_DIR/tmp" ]; then
+    echo "FAIL: tmp symlink points to $TMP_TARGET, expected $MAIN_DIR/tmp"
     exit 1
 fi
 

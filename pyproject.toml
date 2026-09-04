@@ -1,6 +1,6 @@
 [project]
 name = "trader"
-version = "0.66.4"
+version = "0.67.13"
 description = "Awesome trader created by socoldlight"
 authors = [
     {name = "socoldlight", email = "socoldlight@example.com"},
@@ -17,6 +17,8 @@ dependencies = [
     "pymongo",
     "statsmodels",
     "requests",
+    "aiosqlite",
+    "tortoise-orm",
     "binance-common>=1.0.0",
     "binance-sdk-spot>=1.0.0",
     "fastapi-auto-router>=0.1.1",
@@ -38,6 +40,7 @@ build-backend = "setuptools.build_meta"
 
 [project.scripts]
 trader = "trader.app.main:main"
+trader-db = "trader.tools.db:main"
 
 [tool.setuptools]
 include-package-data = true

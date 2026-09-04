@@ -40,6 +40,8 @@ def test_parse_task_config_accepts_inline_json_after_config_migration():
 
     assert len(tasks) == 1
     assert tasks[0].strategy_name() == "macd_triple_divergence"
+    assert tasks[0].start_time == int(parse_task_config.__globals__["parse_datetime"]("2000-01-01 00:00:00").timestamp())
+    assert tasks[0].end_time >= tasks[0].start_time
 
 
 def test_parse_task_config_expands_migrated_optimization_config_with_param_grid_fragments():

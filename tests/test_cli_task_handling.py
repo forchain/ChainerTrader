@@ -1,3 +1,6 @@
+import asyncio
+from types import SimpleNamespace
+
 from trader.app.app import App
 from trader.common.config import Config
 from trader.common.logger import Logger
@@ -41,3 +44,38 @@ def test_base_task_stop_without_db_manager_does_not_crash():
     task.stop()
 
     assert task.ts.state.name == "DONE"
+
+
+def test_task_manager_awaits_completed_task_state_persistence():
+    async def _test():
+        cfg = Config(tasks="[]")
+        saved_batches = []
+
+        async def add_tasks(states):
+            await asyncio.sleep(0)
+            saved_batches.append(list(states))
+            return len(states)
+
+        db_manager = SimpleNamespace(task=SimpleNamespace(add_tasks=add_tasks))
+        task_manager = TaskManager(cfg, Logger(cfg), db_manager, None)
+        task_config = TaskConfig(
+            id=2,
+            ttype=TaskType.DEBUG,
+            symbol_interval=SymbolInterval("ETH-USDT", Interval("1h")),
+            strategies=[],
+        )
+
+        async def fake_add_task(taskc, queue):
+            task = BaseTask(taskc, cfg, Logger(cfg), db_manager)
+            task_manager.tasks[task.id()] = task
+            task.start(queue)
+
+        task_manager.add_task = fake_add_task
+
+        await task_manager.do_add_tasks([task_config], asyncio.Queue())
+
+        assert len(saved_batches) == 1
+        assert saved_batches[0][0].id == task_config.id
+        assert saved_batches[0][0].state.name == "DONE"
+
+    asyncio.run(_test())

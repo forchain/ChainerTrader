@@ -50,13 +50,15 @@ class NotifyMail:
         sender: str = None,
         password: str = None,
         recipient: str = None,
+        recipients: list[str] | None = None,
     ):
         self.tp = tp
         self.stmp_server = stmp_server
         self.stmp_port = stmp_port
         self.sender = sender
         self.password = password
-        self.recipient = recipient
+        self.recipients = normalize_recipients(recipients if recipients is not None else recipient)
+        self.recipient = ",".join(self.recipients)
 
     def to_dict(self):
         return {
@@ -66,10 +68,12 @@ class NotifyMail:
             "sender": self.sender,
             "password": self.password,
             "recipient": self.recipient,
+            "recipients": self.recipients,
         }
 
     def send(self, content: str, title: str = "Trader"):
-        msg = MIMEText(content, "plain", "utf-8")
+        subtype = "html" if is_html_content(content) else "plain"
+        msg = MIMEText(content, subtype, "utf-8")
         msg["Subject"] = title
         msg["From"] = self.sender
         msg["To"] = self.recipient
@@ -80,11 +84,31 @@ class NotifyMail:
             # server.starttls()
 
             server.login(self.sender, self.password)
-            server.sendmail(self.sender, self.recipient, msg.as_string())
+            server.sendmail(self.sender, self.recipients, msg.as_string())
             server.quit()
             return None
         except Exception as e:
             return e
+
+
+def normalize_recipients(value) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        parts = value.replace(";", ",").split(",")
+    elif isinstance(value, list):
+        parts = []
+        for item in value:
+            if isinstance(item, str):
+                parts.extend(item.replace(";", ",").split(","))
+    else:
+        parts = []
+    return [part.strip() for part in parts if part and part.strip()]
+
+
+def is_html_content(content: str) -> bool:
+    stripped = str(content or "").lstrip().lower()
+    return stripped.startswith("<!doctype html") or stripped.startswith("<html")
 
 
 def default_notify_mail_template():
@@ -108,6 +132,8 @@ def parse_notice_config(cfg):
             return []
         except FileNotFoundError:
             return []
+    elif path.is_like_file(cfg):
+        raise FileNotFoundError(f"notice config file not found: {file_path}")
     else:
         parsed_list = json.loads(cfg)
 
@@ -116,14 +142,12 @@ def parse_notice_config(cfg):
 
     for nc in parsed_list:
         ntype = parse_notify_type(nc["type"])
-        if ntype.is_mail():
+        if ntype is not None and ntype.is_mail():
             password = nc["password"]
             if password == "your_smtp_auth_code":
                 continue
             sender = nc["sender"]
-            recipient = sender
-            if "recipient" in nc:
-                recipient = nc["recipient"]
+            recipient = nc.get("recipients", nc.get("recipient", sender))
             tm = mail_template[ntype]
             nm = NotifyMail(tm.tp, tm.stmp_server, tm.stmp_port, sender, password, recipient)
             ret.append(nm)

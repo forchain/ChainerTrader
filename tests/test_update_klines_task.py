@@ -304,6 +304,49 @@ def test_download_range_backward_does_not_confirm_earliest_when_request_start_re
     asyncio.run(_test())
 
 
+def test_download_range_backward_confirms_boundary_when_first_batch_is_empty():
+    async def _test():
+        log = DummyLog()
+        symbol_interval = SymbolInterval("BTC-USDT", Interval.INTERVAL_1d)
+        collection_name = "BTCUSDT-1d"
+        quit_event = asyncio.Event()
+        end_time = 1_600_000_000
+        start_time = end_time - 10 * 86400
+
+        availability = SimpleNamespace(update_earliest_known_open_time=MagicMock())
+        db_manager = SimpleNamespace(
+            kline=SimpleNamespace(add_klines=MagicMock()),
+            availability=availability,
+        )
+        exchange = SimpleNamespace(
+            name=lambda: "BINANCE",
+            get_klines_by_end=MagicMock(return_value=[]),
+        )
+
+        result = await download_range_backward(
+            "update-task",
+            log,
+            db_manager,
+            collection_name,
+            exchange,
+            symbol_interval,
+            start_time,
+            end_time,
+            quit_event,
+        )
+
+        assert result is True
+        availability.update_earliest_known_open_time.assert_called_once_with(
+            "BINANCE",
+            symbol_interval.symbol(),
+            symbol_interval.interval.value,
+            add_time_duration(end_time, symbol_interval.interval, 1),
+            source="backward_fill",
+        )
+
+    asyncio.run(_test())
+
+
 class TestTimeRangeScenarios:
     """Test various time range scenarios for _handle_normal_update logic."""
 

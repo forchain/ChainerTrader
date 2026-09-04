@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # setup_worktree.sh — Restore development environment in a git worktree.
 #
-# Creates symlinks for .venv and .env pointing to the main repo, so that
-# uv run and python-dotenv work transparently without re-installing anything.
+# Creates symlinks into the main repo: .env, configs/notices/notice.json (if present
+# there), data/trader.db, plus shared dirs reports / .cache / tmp — so worktrees share
+# credentials, notices, the SQLite DB, and artifacts without re-installing anything.
 #
 # Usage: bash scripts/setup_worktree.sh [--profile <name>] [--require-env KEY ...]
 # Safe to run multiple times (idempotent).
@@ -56,26 +57,7 @@ echo "Worktree : $REPO_ROOT"
 echo "Main repo: $MAIN_REPO"
 echo ""
 
-# ── 3. Symlink .venv ──────────────────────────────────────────────────────────
-VENV_TARGET="$MAIN_REPO/.venv"
-VENV_LINK="$REPO_ROOT/.venv"
-
-if [ ! -d "$VENV_TARGET" ]; then
-    echo "✗  Main repo has no .venv at '$VENV_TARGET'."
-    echo "   Run 'make install' in the main repo first, then re-run this script."
-    exit 1
-fi
-
-if [ -L "$VENV_LINK" ] && [ -d "$VENV_LINK" ]; then
-    echo "✓  .venv symlink already set up — skipping."
-else
-    # Remove broken symlink or stale file if present
-    [ -e "$VENV_LINK" ] || [ -L "$VENV_LINK" ] && rm -rf "$VENV_LINK"
-    ln -sfn "$VENV_TARGET" "$VENV_LINK"
-    echo "✓  Created .venv → $VENV_TARGET"
-fi
-
-# ── 4. Symlink .env ───────────────────────────────────────────────────────────
+# ── 3. Symlink .env ───────────────────────────────────────────────────────────
 ENV_TARGET="$MAIN_REPO/.env"
 ENV_LINK="$REPO_ROOT/.env"
 
@@ -91,8 +73,45 @@ else
     fi
 fi
 
-# ── 5. Symlink Shared Directories (reports, .cache) ───────────────────────────
-SHARED_DIRS=("reports" ".cache")
+# ── 4. Symlink shared notice config and SQLite DB (main repo) ───────────────
+NOTICE_TARGET="$MAIN_REPO/configs/notices/notice.json"
+NOTICE_LINK="$REPO_ROOT/configs/notices/notice.json"
+mkdir -p "$MAIN_REPO/configs/notices"
+mkdir -p "$(dirname "$NOTICE_LINK")"
+
+if [ ! -f "$NOTICE_TARGET" ]; then
+    echo "⚠  Main repo has no configs/notices/notice.json — skipping notice symlink."
+    echo "   Copy configs/notices/notice.sample.json to $NOTICE_TARGET if needed."
+else
+    if [ -L "$NOTICE_LINK" ] && [ -f "$NOTICE_LINK" ] && [ "$(readlink "$NOTICE_LINK")" = "$NOTICE_TARGET" ]; then
+        echo "✓  notice.json symlink already set up — skipping."
+    else
+        { [ -e "$NOTICE_LINK" ] || [ -L "$NOTICE_LINK" ]; } && rm -f "$NOTICE_LINK"
+        ln -sfn "$NOTICE_TARGET" "$NOTICE_LINK"
+        echo "✓  Created configs/notices/notice.json → $NOTICE_TARGET"
+    fi
+fi
+
+DB_TARGET="$MAIN_REPO/data/trader.db"
+DB_LINK="$REPO_ROOT/data/trader.db"
+mkdir -p "$MAIN_REPO/data"
+mkdir -p "$REPO_ROOT/data"
+
+if [ -L "$DB_LINK" ] && [ "$(readlink "$DB_LINK")" = "$DB_TARGET" ]; then
+    echo "✓  data/trader.db symlink already set up — skipping."
+else
+    if [ -f "$DB_LINK" ] && [ ! -L "$DB_LINK" ]; then
+        echo "⚠  Worktree has its own data/trader.db file. Moving to data/trader.db.worktree-backup."
+        mv "$DB_LINK" "${DB_LINK}.worktree-backup"
+    elif [ -e "$DB_LINK" ] || [ -L "$DB_LINK" ]; then
+        rm -rf "$DB_LINK"
+    fi
+    ln -sfn "$DB_TARGET" "$DB_LINK"
+    echo "✓  Created data/trader.db → $DB_TARGET"
+fi
+
+# ── 5. Symlink Shared Directories (reports, .cache, tmp) ──────────────────────
+SHARED_DIRS=("reports" ".cache" "tmp")
 for dir in "${SHARED_DIRS[@]}"; do
     TARGET="$MAIN_REPO/$dir"
     LINK="$REPO_ROOT/$dir"
@@ -119,6 +138,27 @@ done
 
 # ── 6. Verify ─────────────────────────────────────────────────────────────────
 echo ""
+
+ensure_local_venv() {
+    local venv_dir="$REPO_ROOT/.venv"
+
+    if [ -L "$venv_dir" ]; then
+        echo "⚠  Found shared .venv symlink in worktree. Removing it to avoid conflicts."
+        rm -rf "$venv_dir"
+    fi
+
+    if [ ! -d "$venv_dir" ]; then
+        echo "ℹ  Creating worktree-local virtual environment via 'make install'..."
+        if ! command -v make >/dev/null 2>&1; then
+            echo "✗  'make' not found. Cannot run 'make install' to create .venv."
+            exit 1
+        fi
+        make install
+    fi
+}
+
+ensure_local_venv
+
 PYTHON_BIN="$REPO_ROOT/.venv/bin/python"
 if [ -x "$PYTHON_BIN" ]; then
     PYTHON_VER=$("$PYTHON_BIN" --version 2>&1)
@@ -134,7 +174,7 @@ if [ -x "$PYTHON_BIN" ]; then
     echo ""
     echo "Environment ready. You can now run: uv run python -m trader -h"
 else
-    echo "✗  .venv/bin/python not executable via symlink."
-    echo "   The symlink was created but the venv may be corrupted."
+    echo "✗  '$PYTHON_BIN' is not executable."
+    echo "   Your worktree .venv exists but looks incomplete or corrupted."
     exit 1
 fi

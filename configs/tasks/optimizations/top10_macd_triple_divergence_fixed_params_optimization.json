@@ -1,0 +1,52 @@
+[
+  {
+    "task_type": "BACK_TRADER",
+    "symbols": "BTC-USDT,ETH-USDT,XRP-USDT,BNB-USDT,SOL-USDT,TRX-USDT,ADA-USDT,BCH-USDT,DOGE-USDT,LINK-USDT",
+    "interval": "1d",
+    "strategy": "macd_triple_divergence",
+    "auto_download": false,
+    "param_combinations": [
+      {
+        "chainer_enable_breakeven": true,
+        "chainer_mode": "BOTH",
+        "chainer_need_confirm": true,
+        "chainer_risk_reward_ratio": 0,
+        "chainer_stoploss_atr_mult": 1
+      }
+    ]
+  },
+  {
+    "task_type": "BACK_TRADER",
+    "symbols": "BTC-USDT,ETH-USDT,XRP-USDT,BNB-USDT,SOL-USDT,TRX-USDT,ADA-USDT,BCH-USDT,DOGE-USDT,LINK-USDT",
+    "interval": "4h",
+    "strategy": "macd_triple_divergence",
+    "auto_download": false,
+    "param_combinations": [
+      {
+        "chainer_enable_breakeven": true,
+        "chainer_mode": "BOTH",
+        "chainer_need_confirm": true,
+        "chainer_risk_reward_ratio": 0,
+        "chainer_stoploss_atr_mult": 1
+      }
+    ]
+  },
+  {
+    "task_type": "BACK_TRADER",
+    "symbols": "BTC-USDT,ETH-USDT,XRP-USDT,BNB-USDT,SOL-USDT,TRX-USDT,ADA-USDT,BCH-USDT,DOGE-USDT,LINK-USDT",
+    "interval": "1h",
+    "strategy": "macd_triple_divergence",
+    "start_time": "2025-04-30 00:00:00",
+    "end_time": "2026-04-30 00:00:00",
+    "auto_download": false,
+    "param_combinations": [
+      {
+        "chainer_enable_breakeven": true,
+        "chainer_mode": "BOTH",
+        "chainer_need_confirm": true,
+        "chainer_risk_reward_ratio": 0,
+        "chainer_stoploss_atr_mult": 1
+      }
+    ]
+  }
+]

@@ -1,3 +1,4 @@
+import asyncio
 import datetime as dt
 import json
 from types import SimpleNamespace
@@ -191,17 +192,20 @@ def test_stablecoin_blacklist_covers_required_assets():
 
 
 def test_load_window_klines_reads_requested_symbol_interval_from_db():
-    db_manager = SimpleNamespace(
-        kline=SimpleNamespace(
-            get_klines=Mock(return_value=["k1", "k2"]),
+    async def _test():
+        db_manager = SimpleNamespace(
+            kline=SimpleNamespace(
+                get_klines=AsyncMock(return_value=["k1", "k2"]),
+            )
         )
-    )
 
-    result = load_window_klines(db_manager, "BTC-USDT", Interval.INTERVAL_1h, 10, 20)
+        result = await load_window_klines(db_manager, "BTC-USDT", Interval.INTERVAL_1h, 10, 20)
 
-    assert result == ["k1", "k2"]
-    args = db_manager.kline.get_klines.call_args.args
-    assert args == ("BTCUSDT-1h", 10, 20)
+        assert result == ["k1", "k2"]
+        args = db_manager.kline.get_klines.call_args.args
+        assert args == ("BTCUSDT-1h", 10, 20)
+
+    asyncio.run(_test())
 
 
 def test_normalize_symbol_accepts_binance_compact_symbol():
@@ -268,18 +272,47 @@ def test_scan_market_updates_db_then_reads_db_and_sorts_results():
         db_manager = SimpleNamespace()
         exchange = SimpleNamespace()
 
-        with patch("trader.scanner.top_volume_signal_scanner.fetch_top_usdt_symbols", return_value=["BTC-USDT", "ETH-USDT"]), \
-            patch("trader.scanner.top_volume_signal_scanner.ensure_symbol_window") as ensure_mock, \
-            patch("trader.scanner.top_volume_signal_scanner.load_window_klines", return_value=["klines"]) as load_mock, \
+        with (
+            patch("trader.scanner.top_volume_signal_scanner.fetch_top_usdt_symbols", return_value=["BTC-USDT", "ETH-USDT"]),
+            patch("trader.scanner.top_volume_signal_scanner.ensure_symbol_window") as ensure_mock,
+            patch("trader.scanner.top_volume_signal_scanner.load_window_klines", new=AsyncMock(return_value=["klines"])) as load_mock,
             patch(
                 "trader.scanner.top_volume_signal_scanner.run_strategy_triggered_signals",
                 side_effect=[
-                    [{"signal_time": "2026-04-09T12:00:00", "symbol": "BTC-USDT", "interval": "1d", "strategy": "macd_triple_divergence", "side": "LONG", "price": 100}],
-                    [{"signal_time": "2026-04-09T10:00:00", "symbol": "BTC-USDT", "interval": "1h", "strategy": "macd_triple_divergence", "side": "SHORT", "price": 99}],
+                    [
+                        {
+                            "signal_time": "2026-04-09T12:00:00",
+                            "symbol": "BTC-USDT",
+                            "interval": "1d",
+                            "strategy": "macd_triple_divergence",
+                            "side": "LONG",
+                            "price": 100,
+                        }
+                    ],
+                    [
+                        {
+                            "signal_time": "2026-04-09T10:00:00",
+                            "symbol": "BTC-USDT",
+                            "interval": "1h",
+                            "strategy": "macd_triple_divergence",
+                            "side": "SHORT",
+                            "price": 99,
+                        }
+                    ],
                     [],
-                    [{"signal_time": "2026-04-09T11:00:00", "symbol": "ETH-USDT", "interval": "1h", "strategy": "macd_triple_divergence", "side": "LONG", "price": 50}],
+                    [
+                        {
+                            "signal_time": "2026-04-09T11:00:00",
+                            "symbol": "ETH-USDT",
+                            "interval": "1h",
+                            "strategy": "macd_triple_divergence",
+                            "side": "LONG",
+                            "price": 50,
+                        }
+                    ],
                 ],
-            ) as run_mock:
+            ) as run_mock,
+        ):
             results = await scan_market(
                 cfg,
                 logger,
@@ -467,9 +500,12 @@ def test_scan_market_report_wraps_signals_with_metadata():
         db_manager = SimpleNamespace()
         exchange = SimpleNamespace()
 
-        with patch("trader.scanner.top_volume_signal_scanner.fetch_top_usdt_symbols", return_value=["BTCUSDT"]), patch(
-            "trader.scanner.top_volume_signal_scanner.scan_market",
-            return_value=[{"signal_time": "2026-04-09T10:00:00", "symbol": "BTCUSDT"}],
+        with (
+            patch("trader.scanner.top_volume_signal_scanner.fetch_top_usdt_symbols", return_value=["BTCUSDT"]),
+            patch(
+                "trader.scanner.top_volume_signal_scanner.scan_market",
+                return_value=[{"signal_time": "2026-04-09T10:00:00", "symbol": "BTCUSDT"}],
+            ),
         ):
             report = await scan_market_report(
                 cfg,

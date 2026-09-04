@@ -39,6 +39,18 @@ def build_workbench_payload(
     }
 
     for index, row in enumerate(ranking_items, start=1):
+        sample_summaries = [
+            sample.get("summary", {})
+            for sample in row.get("sample_details", [])
+            if isinstance(sample, dict)
+        ]
+        win_rate_values = [
+            float(summary.get("win_rate_pct"))
+            for summary in sample_summaries
+            if summary is not None and summary.get("win_rate_pct") is not None
+        ]
+        avg_win_rate_pct = (sum(win_rate_values) / len(win_rate_values)) if win_rate_values else None
+
         current_group_id = group_id(row)
         item_audit = audit.get("by_group", {}).get(current_group_id, {}).get("parameters", {})
         cluster = cluster_by_member.get(row["param_id"])
@@ -57,6 +69,7 @@ def build_workbench_payload(
                     "avg_excess_return_pct": float(row.get("avg_excess_return_pct", 0.0)),
                     "avg_max_dd_pct": float(row.get("avg_max_dd_pct", 0.0)),
                     "total_trades": int(row.get("total_trades", 0)),
+                    "avg_win_rate_pct": avg_win_rate_pct,
                 },
                 "params": dict(row.get("params", {})),
                 "parameter_observations": build_parameter_observations(row, item_audit),
@@ -244,6 +257,17 @@ def write_workbench_html(path: Path, workbench_payload: dict, app_js_path: Path,
         <div class="pane-head">
           <h2>候选列表</h2>
           <p id="candidate-count" class="muted"></p>
+          <div class="param-filters">
+            <label>
+              <select id="sort-select">
+                <option value="score_desc">排序: 评分（高→低）</option>
+                <option value="return_desc">收益（高→低）</option>
+                <option value="dd_asc">回撤（低→高）</option>
+                <option value="trades_desc">交易数（多→少）</option>
+                <option value="winrate_desc">胜率（高→低）</option>
+              </select>
+            </label>
+          </div>
           <div id="param-filters" class="param-filters"></div>
           <div class="pager">
             <button id="prev-page" type="button">上一页</button>

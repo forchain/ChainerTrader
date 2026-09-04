@@ -5,6 +5,7 @@ import pandas as pd
 import pytest
 
 from trader.strategy.base_strategy import BaseStrategy
+from trader.utils.operate import OperateType
 
 
 def _build_df(rows):
@@ -181,6 +182,40 @@ def test_breakeven_step_matches_r_level_when_price_jumps_multiple_r():
     assert abs(float(ctx.initial_stop_price) - 90.0) < 1e-9
     assert ctx.breakeven_step == 3
     assert abs(float(ctx.stop_price) - 120.0) < 1e-9
+
+
+def test_breakeven_move_emits_live_risk_update_operation():
+    operations = []
+    rows = [
+        dict(open=100, high=101, low=99, close=100),
+        dict(open=100, high=101, low=99, close=100),
+        dict(open=100, high=101, low=98, close=99),
+        dict(open=99, high=105, low=90, close=104),
+        dict(open=104, high=110, low=103, close=106),
+        dict(open=100, high=135, low=99, close=130),
+    ]
+
+    _run(
+        _build_df(rows),
+        dict(
+            fastLen=2,
+            slowLen=3,
+            chainer_need_confirm=True,
+            chainer_enable_breakeven=True,
+            chainer_risk_reward_ratio=0.0,
+            chainer_stoploss_atr_mult=0.0,
+            live_operation_sink=operations.append,
+        ),
+    )
+
+    risk_updates = [op for op in operations if op.otype == OperateType.RISK_UPDATE]
+    assert len(risk_updates) == 1
+    op = risk_updates[0]
+    assert op.trigger_reason == "breakeven_move"
+    assert op.breakeven_old_stop == 90.0
+    assert op.breakeven_new_stop == 120.0
+    assert op.breakeven_step == 3
+    assert op.stop_loss == 120.0
 
 
 @pytest.mark.parametrize("chainer_need_confirm", [False])

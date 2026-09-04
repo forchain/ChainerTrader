@@ -42,6 +42,8 @@ def launch_background_run(
 
     env = os.environ.copy()
     env["TRADER_API"] = ""
+    env["TRADER_NOTICE"] = "[]"
+    env["TRADER_TASKS"] = str(resolved_tasks_path)
     env["TRADER_OPTIMIZATION_RUN_ID"] = run_id
 
     with log_path.open("w", encoding="utf-8") as log_file:
@@ -51,6 +53,7 @@ def launch_background_run(
             stdout=log_file,
             stderr=subprocess.STDOUT,
             env=env,
+            start_new_session=True,
         )
 
     pid_path.write_text(str(proc.pid), encoding="utf-8")
