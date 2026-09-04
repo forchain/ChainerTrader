@@ -1,0 +1,358 @@
+---
+alwaysApply: false
+---
+# Pine Script to Backtrader Indicator Conversion Rules
+
+This rule provides guidelines for converting TradingView Pine Script indicators to backtrader Python indicators.
+
+## Reference Files
+
+- Indicator example: `src/trader/indicators/super_trend.py`, `src/trader/indicators/trend_a.py`
+- Test example: `tests/trader/indicators/test_super_trend.py`, `tests/trader/indicators/test_trend_a.py`
+- Pine Script example: `src/pine_scripts/indicators/super_trend.pine`
+- Pine Script Library example: `src/pine_scripts/libraries/super_trend.pine`
+
+## Architecture Best Practices
+
+### Pine Script Reusability (Libraries)
+
+Before converting to Python, refactor the Pine Script into a **Library** (logic) and **Indicator** (UI).
+
+1.  **Extract Logic to `src/pine_scripts/libraries/`**:
+    *   Use `library(...)` declaration.
+    *   Export functions using `export`.
+    *   **Stateful Function Rule**: `ta.ema`, `ta.atr` etc. must be called **unconditionally** (outside if/ternary) to maintain history.
+    *   **Security Rule**: `request.security` cannot depend on function arguments. Fetch raw data inside the function first.
+    *   **Publishing**: Libraries must be published (Private allowed) to be imported.
+
+2.  **Refactor Indicator in `src/pine_scripts/indicators/`**:
+    *   Import the library: `import username/Lib/Version as Lib`.
+    *   Use `Lib.calc(...)` for calculations.
+    *   Keep Inputs, Plots, and Alerts in the indicator file.
+
+### Maximize Use of Built-in Indicators
+
+**Do NOT reimplement existing indicators in `next()`**. Always use backtrader's built-in indicators (EMA, SMA, WMA, ATR, HeikinAshi, etc.) by chaining them in `__init__`.
+
+**Heikin Ashi**: Use `bt.ind.HeikinAshi(self.data)` to convert raw OHLC to HA data. Do NOT create custom HA implementations.
+
+```python
+class TrendIndicator(bt.Indicator):
+    def __init__(self):
+        # Step 1: Use built-in HeikinAshi
+        self.ha = bt.ind.HeikinAshi(self.data)
+        
+        # Step 2: Chain MA on HA output lines
+        ha_close_ma = bt.ind.EMA(self.ha.ha_close, period=self.p.period1)
+        
+        # Step 3: Chain another MA on the result
+        self.result = bt.ind.EMA(ha_close_ma, period=self.p.period2)
+
+    def next(self):
+        # Just read and output - no manual calculations
+        self.l.line1[0] = self.result[0]
+```
+
+For other recursive calculations that backtrader doesn't provide, create a **helper `bt.Indicator`** subclass:
+
+```python
+class HelperIndicator(bt.Indicator):
+    """Helper for recursive calculations on input lines."""
+    lines = ("out1", "out2")
+    _nextforce = True  # Required for self.l.line(-1) references
+
+    def __init__(self):
+        # Use backtrader's vectorized operations
+        self.l.out1 = (self.l.out1(-1) + self.data0) / 2.0  # Recursive
+        self.l.out2 = bt.Max(self.data1, self.l.out1)
+        super().__init__()
+
+    def prenext(self):
+        # Seed recursive values
+        self.l.out1[0] = (self.data0[0] + self.data2[0]) / 2.0
+```
+
+### Code Structure (Performance + Debuggability)
+
+```python
+def __init__(self):
+    # 1. Debug timestamps parsing
+    self._debug_timestamps = list(self.p.debug_times) if self.p.debug_times else []
+    
+    # 2. Chain indicators (let backtrader handle execution order)
+    self.ma1 = bt.ind.EMA(self.data.close, period=self.p.period1)
+    self.helper = HelperIndicator(self.ma1, ...)
+    self.ma2 = bt.ind.EMA(self.helper.out, period=self.p.period2)
+
+def next(self):
+    # 3. Read final values and output
+    self.l.line1[0] = self.ma2[0]
+    
+    # 4. Debug logging only
+```
+
+## Common Conversion Pitfalls
+
+### 1. Pine Script Library Warnings (CRITICAL)
+
+When extracting logic to libraries, you will encounter specific Pine Script constraints:
+
+*   **"Function ... should be called on each calculation for consistency"**:
+    *   *Cause*: Calling `ta.ema` or `ta.atr` inside an `if` or ternary operator.
+    *   *Fix*: Move the `ta.*` call **outside** the conditional block so it executes on every bar. Store the result in a variable, then use the variable inside the condition.
+    *   *Example*:
+        ```pine
+        // WRONG
+        val = use_ema ? ta.ema(src, len) : ta.sma(src, len)
+        
+        // RIGHT
+        ema_val = ta.ema(src, len)
+        sma_val = ta.sma(src, len)
+        val = use_ema ? ema_val : sma_val
+        ```
+
+*   **"The 'request.*()' call's 'expression' cannot depend on the arguments"**:
+    *   *Cause*: Passing a variable calculated from function arguments into `request.security`.
+    *   *Fix*: Fetch the **raw** data series (open, high, low, close) via `request.security` first, then perform calculations on that fetched data locally.
+
+### 2. Heikin Ashi with request.security (CRITICAL)
+
+Pine Script's `request.security(ha, tf, expr)` pattern executes an expression in the HA data context:
+
+```pine
+// Pine Script - Expression definition (NOT immediate calculation)
+o = f_ma_type(ma_type, open, ma_period)
+
+// Get HA data source
+ha = ticker.heikinashi(syminfo.tickerid)
+
+// Execute expression on HA data context
+ha_o = request.security(ha, timeframe.period, o)
+```
+
+**Key insight**: `o` is an expression definition. When passed to `request.security(ha, ...)`, the `open` in the expression refers to HA's open, not raw data's open.
+
+**Correct conversion**: Raw OHLC → HA conversion → MA(ma_period) → MA(ma_period_smoothing)
+
+```python
+# Python - CORRECT: Use bt.ind.HeikinAshi first, then apply MA
+class TrendA(bt.Indicator):
+    def __init__(self):
+        # Step 1: Convert raw OHLC to HA using backtrader's built-in indicator
+        self.ha = bt.ind.HeikinAshi(self.data)
+        
+        # Step 2: Apply MA to HA OHLC (this is what request.security does)
+        ha_o_ma = bt.ind.EMA(self.ha.ha_open, period=self.p.ma_period)
+        ha_c_ma = bt.ind.EMA(self.ha.ha_close, period=self.p.ma_period)
+        
+        # Step 3: Apply second smoothing
+        self.smooth_o = bt.ind.EMA(ha_o_ma, period=self.p.ma_period_smoothing)
+```
+
+**Common Error**: Applying MA to raw data first, then converting to HA. This reverses the calculation order.
+
+### 3. Bar Index Reference (CRITICAL)
+
+Pine Script uses `[1]` for previous bar, but meaning differs by context:
+
+```pine
+// Pine Script
+up := close[1] > up1 ? max(up, up1) : up  // close[1] = previous bar's close
+```
+
+```python
+# Python - CORRECT
+close_prev = self.data.close[-1]  # Previous bar's close
+if close_prev > up_prev:
+    up = max(up_raw, up_prev)
+```
+
+**Common Error**: Using current bar's close instead of previous bar's close.
+
+### 4. Recursive Variable Initialization
+
+```pine
+// Pine Script
+up1 = nz(up[1], up)  // If previous is NaN, use current value
+```
+
+```python
+# Python
+up_prev = self._up_prev if self._up_prev is not None else up_raw
+```
+
+### 5. Trend/State Logic
+
+```pine
+// Pine Script - ternary chain
+trend := trend == -1 and close > dn1 ? 1 : trend == 1 and close < up1 ? -1 : trend
+```
+
+```python
+# Python - explicit if-elif-else (clearer and debuggable)
+if trend_prev == -1 and close > dn_prev:
+    trend = 1
+elif trend_prev == 1 and close < up_prev:
+    trend = -1
+else:
+    trend = trend_prev
+```
+
+### 6. Conditional Line Display (NaN for invisible)
+
+```pine
+// Pine Script - show line only when condition is true
+upPlot = plot(trend == 1 ? up : na, ...)
+```
+
+```python
+# Python - use math.nan to hide line
+import math
+self.l.up[0] = up if trend == 1 else math.nan
+self.l.dn[0] = dn if trend == -1 else math.nan
+```
+
+### 7. Signal Markers (backtrader limitation)
+
+backtrader does NOT support text labels like Pine Script's `plotshape`. Use markers instead:
+
+```python
+plotlines = dict(
+    buy_signal=dict(
+        color="green",
+        marker="^",  # Up triangle for buy
+        markersize=10.0,
+        ls="",  # No line, only markers
+    ),
+    sell_signal=dict(
+        color="red",
+        marker="v",  # Down triangle for sell
+        markersize=10.0,
+        ls="",
+    ),
+)
+
+# In next(): signal value = price position (not 0/1)
+buy_signal = up if is_buy else math.nan
+sell_signal = dn if is_sell else math.nan
+```
+
+## Debug Parameter Pattern
+
+Always add the debug block to the Pine Script **before** running the convert command. Conversions without aligned debug hooks are not accepted. TradingView Pine only supports single-line function invocations, so every `log.info` (or other function) call must remain on a single line when adding debug statements. Debug timestamps are specified in **seconds** everywhere; Pine implementations must multiply the parsed value by `1000` internally before comparing with the built-in `time` series (milliseconds).
+
+Both Pine Script and Python should support consistent debug output format:
+
+### Pine Script (debug_times as comma-separated string)
+
+```pine
+// Debug settings (timestamps in milliseconds)
+debug_times = ''  // or '1763938800000,1764000000000'
+
+should_debug = false
+if str.length(debug_times) > 0
+    debug_times_list = str.split(debug_times, ',')
+    for i = 0 to array.size(debug_times_list) - 1
+        debug_ts = str.tonumber(str.trim(array.get(debug_times_list, i)))
+        if not na(debug_ts) and time == debug_ts
+            should_debug := true
+
+if should_debug
+    log.info('===== IndicatorName Debug [time={0}] =====', time)
+    log.info('Input: close={0} close_prev={1}', close, close[1])
+    // ... more debug info
+```
+
+### Python (debug_times as list of timestamps in seconds)
+
+```python
+params = (
+    ("debug_times", None),  # List of timestamps in seconds
+)
+
+def __init__(self):
+    self._debug_timestamps = list(self.p.debug_times) if self.p.debug_times else []
+
+def next(self):
+    if self._debug_timestamps:
+        current_timestamp = int(bt.num2date(self.data.datetime[0]).timestamp())
+        if current_timestamp in self._debug_timestamps:
+            logger.info(f"===== IndicatorName Debug [time={current_timestamp}] =====")
+            logger.info(f"Input: close={close:.2f} close_prev={close_prev:.2f}")
+            # ... more debug info
+```
+
+## Test Case Template
+
+```python
+"""
+Test IndicatorName with BTC-USDT 1h data.
+"""
+import csv, logging, math, os
+from datetime import datetime
+import backtrader as bt
+import matplotlib.pyplot as plt
+from matplotlib.ticker import ScalarFormatter
+from pymongo import MongoClient
+from dotenv import load_dotenv
+
+from trader.database.kline import KlineCol
+from trader.exchange.binance.data import BinanceData
+from trader.indicators.indicator_name import IndicatorName
+
+load_dotenv()
+
+SYMBOL_INTERVAL = "BTCUSDT-1h"
+START_TIME = int(datetime.now().timestamp()) - 3600 * 24 * 30
+END_TIME = int(datetime.now().timestamp())
+OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "output")
+DEBUG_TIMESTAMPS = []  # e.g., [1763938800, 1764000000]
+
+class IndicatorStrategy(bt.Strategy):
+    params = dict(debug_times=DEBUG_TIMESTAMPS)
+    
+    def __init__(self):
+        self.indicator = IndicatorName(self.data, debug_times=self.p.debug_times)
+    
+    def next(self):
+        pass
+
+def get_klines_from_db():
+    # ... load from MongoDB
+    
+def extract_series(indicator, length):
+    # ... extract line data
+    
+def save_csv(path, klines, series):
+    # ... export to CSV
+    
+def test_indicator(main=False):
+    # ... run backtest and generate chart/CSV
+
+if __name__ == "__main__":
+    import logging
+
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    test_indicator(True)
+```
+
+### Manual Test Mode Logging (REQUIRED)
+
+- Always populate `DEBUG_TIMESTAMPS` with at least one realistic epoch second so manual runs print logs immediately.
+- The `if __name__ == "__main__":` block must configure logging with `logging.basicConfig(level=logging.INFO, format="%(message)s")`
+  before calling `test_indicator(True)`. This guarantees `python tests/trader/indicators/test_indicator_name.py`
+  emits the debug log lines needed to compare against TradingView exports.
+
+## Verification Checklist
+
+1. [ ] Compare output values at specific timestamps (enable debug_times)
+2. [ ] Verify line visibility matches (alternating vs simultaneous)
+3. [ ] Check signal positions match (markers at correct price levels)
+4. [ ] Export CSV and compare with TradingView data export
+5. [ ] Visual comparison of charts
+
+## Known backtrader Limitations
+
+1. **No text labels**: Use markers (^, v, o, s, etc.) instead of plotshape text
+2. **No fill between lines**: Limited support compared to Pine Script's fill()
+3. **No style.linebr**: Lines are continuous; use NaN to create breaks

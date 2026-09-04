@@ -34,7 +34,8 @@ class UpdateKlinesTask(BaseTask):
 
         super().start(queue)
 
-        self.collection = self.db_manager.kline.get_collection(self.tcfg.symbol_interval.name())
+        collection_name = self.tcfg.symbol_interval.name()
+        self.collection = self.db_manager.kline.get_collection(collection_name)
         start_time = self.tcfg.start_time
         if self.tcfg.limit > 0:
             if self.tcfg.end_time > 0:
@@ -62,7 +63,7 @@ class UpdateKlinesTask(BaseTask):
             self.name(),
             self.log,
             self.db_manager,
-            self.collection,
+            collection_name,
             self.exchange,
             self.tcfg.symbol_interval,
             start_time,
