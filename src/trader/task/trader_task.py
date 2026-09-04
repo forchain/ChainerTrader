@@ -138,7 +138,7 @@ class TraderTask(BaseTask):
                 if self.tcfg.free <= cash:
                     quantity = self.tcfg.free / op.price
                     self.log.info(f"New order:symbol={self.tcfg.symbol_interval.symbol()},operateType={op.otype},quantity={quantity}")
-                    self.exchange.new_order(self.tcfg.symbol_interval.symbol(), op.otype, quantity)
+                    self.exchange.new_order(self.tcfg.symbol_interval.sy, op.otype, quantity)
                 else:
                     self.log.info("Due to insufficient balance, we have given up placing orders with the exchange")
             else:

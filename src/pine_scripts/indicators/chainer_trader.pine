@@ -17,7 +17,7 @@ indicator("ChainerTrader", "[I]Chainer", overlay=true, format=format.price, prec
 //   - BOTH: 做多信号开多，做空信号开空，离场靠止损/止盈/保本
 // ============================================================================
 
-import outliertony/ChainerTrader/1 as ChainerTraderLib
+import outliertony/ChainerTrader/2 as ChainerTraderLib
 
 // ============================================================================
 // Signal Parameters (Customize for your strategy)
@@ -32,8 +32,8 @@ slowLen = input.int(title="Slow SMA Length", defval=21, minval=1, group="Signal 
 // ============================================================================
 chainer_mode = input.string(title="Trading Mode", defval="LONG_ONLY", options=["LONG_ONLY", "SHORT_ONLY", "BOTH"], group="Chainer Framework")
 chainer_stoploss_atr_mult = input.float(title="Stop loss ATR multiple (0 = disabled)", defval=0.0, step=0.1, group="Chainer Framework")
-chainer_long_need_confirm = input.bool(title="Require long signal confirmation", defval=true, group="Chainer Framework")
-chainer_short_need_confirm = input.bool(title="Require short signal confirmation", defval=true, group="Chainer Framework")
+chainer_enter_need_confirm = input.bool(title="Require entry confirmation", defval=true, group="Chainer Framework", tooltip="If true, waits for price to break key bar high/low before entering.")
+chainer_exit_need_confirm = input.bool(title="Require exit confirmation", defval=true, group="Chainer Framework", tooltip="If true, waits for price to break key bar high/low before exiting.")
 chainer_enable_breakeven = input.bool(title="Enable breakeven", defval=true, group="Chainer Framework")
 chainer_risk_reward_ratio = input.float(title="Risk/reward ratio (0 = disabled)", defval=0.0, step=0.1, group="Chainer Framework")
 
@@ -123,48 +123,49 @@ isBoth = chainer_mode == "BOTH"
 // Helper: Reset trade state
 // ============================================================================
 resetTradeState() =>
-    pendingLong := false
-    pendingShort := false
-    longKeyBarIndex := na
-    shortKeyBarIndex := na
-    initialStop := na
-    stopPrice := na
-    entryPrice := na
-    takeProfitPrice := na
-    breakevenStep := 0
-    currentDirection := na
-    hasTrade := false
+    // [pendingLong, pendingShort, longKey, shortKey, initStop, stopPrice, entryPrice, tp, beStep, curDir, hasTrade]
+    [false, false, int(na), int(na), float(na), float(na), float(na), float(na), 0, string(na), false]
 
 // ============================================================================
 // Helper: Execute entry (for indicator, we just track state)
 // ============================================================================
 executeEntry(string dir, float currentStopPrice) =>
-    entryPrice := close
-    initialStop := currentStopPrice
-    stopPrice := currentStopPrice
-    currentDirection := dir
-    breakevenStep := 0
-    hasTrade := true
-    // 设置止盈
+    ep = close
+    initStop = currentStopPrice
+    sp = currentStopPrice
+    cd = dir
+    step = 0
+    ht = true
+    tp = float(na)
+    // 计算止盈
     if chainer_risk_reward_ratio > 0
-        tp = ChainerTraderLib.riskRewardPrice(dir, entryPrice, initialStop, chainer_risk_reward_ratio)
-        if not na(tp)
-            takeProfitPrice := tp
-            tpLabelY = tp + syminfo.mintick * 5
-            label.new(bar_index,
-                      tpLabelY,
-                      "TP " + str.tostring(chainer_risk_reward_ratio) + "R",
-                      style=label.style_label_down,
-                      textcolor=color.white,
-                      color=color.new(color.teal, 0))
+        tpCalc = ChainerTraderLib.riskRewardPrice(dir, ep, initStop, chainer_risk_reward_ratio)
+        if not na(tpCalc)
+            tp := tpCalc
+    [ep, initStop, sp, cd, step, ht, tp]
+
+plotTakeProfitLabel(float tp) =>
+    tpLabelY = tp + syminfo.mintick * 5
+    label.new(
+        bar_index,
+        tpLabelY,
+        "TP " + str.tostring(chainer_risk_reward_ratio) + "R",
+        style=label.style_label_down,
+        textcolor=color.white,
+        color=color.new(color.teal, 0)
+    )
 
 // ============================================================================
 // LONG_ONLY Mode: 做多信号开多，做空信号平多
 // ============================================================================
+// Pre-calculate stop prices for consistency
+stopPriceLong = ChainerTraderLib.stopPrice("LONG", bar_index, chainer_stoploss_atr_mult)
+stopPriceShort = ChainerTraderLib.stopPrice("SHORT", bar_index, chainer_stoploss_atr_mult)
+
 if isLongOnly
     // 做多信号触发进场
     if longSignal and not hasTrade and not pendingLong
-        currentStopPrice = ChainerTraderLib.stopPrice("LONG", bar_index, chainer_stoploss_atr_mult)
+        currentStopPrice = stopPriceLong
         if not na(currentStopPrice)
             tradeId += 1
             longKeyBarIndex := bar_index
@@ -172,16 +173,46 @@ if isLongOnly
             labelPriceOffset = currentStopPrice - syminfo.mintick * 5
             label.new(bar_index, labelPriceOffset, "SL " + str.tostring(currentStopPrice, format.mintick), style=label.style_label_up, textcolor=color.white, color=color.new(color.red, 0))
             
-            pendingLong := chainer_long_need_confirm
-            if not chainer_long_need_confirm
-                executeEntry("LONG", currentStopPrice)
+            pendingLong := chainer_enter_need_confirm
+            if not chainer_enter_need_confirm
+                [newEp, newInitStop, newSp, newDir, newStep, newHt, newTp] = executeEntry("LONG", currentStopPrice)
+                entryPrice := newEp
+                initialStop := newInitStop
+                stopPrice := newSp
+                currentDirection := newDir
+                breakevenStep := newStep
+                hasTrade := newHt
+                takeProfitPrice := newTp
+                
+                if not na(takeProfitPrice)
+                    plotTakeProfitLabel(takeProfitPrice)
             else
                 initialStop := currentStopPrice
                 stopPrice := currentStopPrice
     
-    // 做空信号触发平仓（无需确认，直接平仓）
+    // 做空信号触发平多
     if shortSignal and hasTrade and not pendingShort
-        resetTradeState()
+        if chainer_exit_need_confirm
+            shortKeyBarIndex := bar_index
+            // 在止损价附近画一个 SL 标签（作为平仓参考的高点）
+            currentStopPrice = stopPriceShort
+            if not na(currentStopPrice)
+                labelPriceOffset = currentStopPrice + syminfo.mintick * 5
+                label.new(bar_index, labelPriceOffset, "X-Key " + str.tostring(currentStopPrice, format.mintick), style=label.style_label_down, textcolor=color.white, color=color.new(color.red, 0))
+            pendingShort := true
+        else
+            [newPL, newPS, newLK, newSK, newIS, newSP, newEP, newTP, newBS, newCD, newHT] = resetTradeState()
+            pendingLong := newPL
+            pendingShort := newPS
+            longKeyBarIndex := newLK
+            shortKeyBarIndex := newSK
+            initialStop := newIS
+            stopPrice := newSP
+            entryPrice := newEP
+            takeProfitPrice := newTP
+            breakevenStep := newBS
+            currentDirection := newCD
+            hasTrade := newHT
 
 // ============================================================================
 // SHORT_ONLY Mode: 做空信号开空，做多信号平空
@@ -189,7 +220,7 @@ if isLongOnly
 if isShortOnly
     // 做空信号触发进场
     if shortSignal and not hasTrade and not pendingShort
-        currentStopPrice = ChainerTraderLib.stopPrice("SHORT", bar_index, chainer_stoploss_atr_mult)
+        currentStopPrice = stopPriceShort
         if not na(currentStopPrice)
             tradeId += 1
             shortKeyBarIndex := bar_index
@@ -197,16 +228,46 @@ if isShortOnly
             labelPriceOffset = currentStopPrice + syminfo.mintick * 5
             label.new(bar_index, labelPriceOffset, "SL " + str.tostring(currentStopPrice, format.mintick), style=label.style_label_down, textcolor=color.white, color=color.new(color.red, 0))
             
-            pendingShort := chainer_short_need_confirm
-            if not chainer_short_need_confirm
-                executeEntry("SHORT", currentStopPrice)
+            pendingShort := chainer_enter_need_confirm
+            if not chainer_enter_need_confirm
+                [newEp, newInitStop, newSp, newDir, newStep, newHt, newTp] = executeEntry("SHORT", currentStopPrice)
+                entryPrice := newEp
+                initialStop := newInitStop
+                stopPrice := newSp
+                currentDirection := newDir
+                breakevenStep := newStep
+                hasTrade := newHt
+                takeProfitPrice := newTp
+
+                if not na(takeProfitPrice)
+                    plotTakeProfitLabel(takeProfitPrice)
             else
                 initialStop := currentStopPrice
                 stopPrice := currentStopPrice
     
-    // 做多信号触发平仓（无需确认，直接平仓）
+    // 做多信号触发平空
     if longSignal and hasTrade and not pendingLong
-        resetTradeState()
+        if chainer_exit_need_confirm
+            longKeyBarIndex := bar_index
+            // 在止损价附近画一个 SL 标签（作为平仓参考的低点）
+            currentStopPrice = stopPriceLong
+            if not na(currentStopPrice)
+                labelPriceOffset = currentStopPrice - syminfo.mintick * 5
+                label.new(bar_index, labelPriceOffset, "X-Key " + str.tostring(currentStopPrice, format.mintick), style=label.style_label_up, textcolor=color.white, color=color.new(color.red, 0))
+            pendingLong := true
+        else
+            [newPL, newPS, newLK, newSK, newIS, newSP, newEP, newTP, newBS, newCD, newHT] = resetTradeState()
+            pendingLong := newPL
+            pendingShort := newPS
+            longKeyBarIndex := newLK
+            shortKeyBarIndex := newSK
+            initialStop := newIS
+            stopPrice := newSP
+            entryPrice := newEP
+            takeProfitPrice := newTP
+            breakevenStep := newBS
+            currentDirection := newCD
+            hasTrade := newHT
 
 // ============================================================================
 // BOTH Mode: 做多信号开多，做空信号开空，离场靠止损/止盈/保本
@@ -214,7 +275,7 @@ if isShortOnly
 if isBoth
     // 做多信号触发开多
     if longSignal and not hasTrade and not pendingLong and not pendingShort
-        currentStopPrice = ChainerTraderLib.stopPrice("LONG", bar_index, chainer_stoploss_atr_mult)
+        currentStopPrice = stopPriceLong
         if not na(currentStopPrice)
             tradeId += 1
             longKeyBarIndex := bar_index
@@ -222,16 +283,26 @@ if isBoth
             labelPriceOffset = currentStopPrice - syminfo.mintick * 5
             label.new(bar_index, labelPriceOffset, "SL " + str.tostring(currentStopPrice, format.mintick), style=label.style_label_up, textcolor=color.white, color=color.new(color.red, 0))
             
-            pendingLong := chainer_long_need_confirm
-            if not chainer_long_need_confirm
-                executeEntry("LONG", currentStopPrice)
+            pendingLong := chainer_enter_need_confirm
+            if not chainer_enter_need_confirm
+                [newEp, newInitStop, newSp, newDir, newStep, newHt, newTp] = executeEntry("LONG", currentStopPrice)
+                entryPrice := newEp
+                initialStop := newInitStop
+                stopPrice := newSp
+                currentDirection := newDir
+                breakevenStep := newStep
+                hasTrade := newHt
+                takeProfitPrice := newTp
+
+                if not na(takeProfitPrice)
+                    plotTakeProfitLabel(takeProfitPrice)
             else
                 initialStop := currentStopPrice
                 stopPrice := currentStopPrice
     
     // 做空信号触发开空
     if shortSignal and not hasTrade and not pendingLong and not pendingShort
-        currentStopPrice = ChainerTraderLib.stopPrice("SHORT", bar_index, chainer_stoploss_atr_mult)
+        currentStopPrice = stopPriceShort
         if not na(currentStopPrice)
             tradeId += 1
             shortKeyBarIndex := bar_index
@@ -239,9 +310,19 @@ if isBoth
             labelPriceOffset = currentStopPrice + syminfo.mintick * 5
             label.new(bar_index, labelPriceOffset, "SL " + str.tostring(currentStopPrice, format.mintick), style=label.style_label_down, textcolor=color.white, color=color.new(color.red, 0))
             
-            pendingShort := chainer_short_need_confirm
-            if not chainer_short_need_confirm
-                executeEntry("SHORT", currentStopPrice)
+            pendingShort := chainer_enter_need_confirm
+            if not chainer_enter_need_confirm
+                [newEp, newInitStop, newSp, newDir, newStep, newHt, newTp] = executeEntry("SHORT", currentStopPrice)
+                entryPrice := newEp
+                initialStop := newInitStop
+                stopPrice := newSp
+                currentDirection := newDir
+                breakevenStep := newStep
+                hasTrade := newHt
+                takeProfitPrice := newTp
+
+                if not na(takeProfitPrice)
+                    plotTakeProfitLabel(takeProfitPrice)
             else
                 initialStop := currentStopPrice
                 stopPrice := currentStopPrice
@@ -249,16 +330,45 @@ if isBoth
 // ============================================================================
 // Long Signal Confirmation (做多信号确认)
 // ============================================================================
+// Pre-calculate confirm status for consistency (call every calculation).
+safeLongKeyBarIndex = not na(longKeyBarIndex) ? longKeyBarIndex : bar_index
+safeShortKeyBarIndex = not na(shortKeyBarIndex) ? shortKeyBarIndex : bar_index
+confirmStatusLong = ChainerTraderLib.longConfirm(safeLongKeyBarIndex)
+confirmStatusShort = ChainerTraderLib.shortConfirm(safeShortKeyBarIndex)
+
 if barstate.isconfirmed and pendingLong
-    safeLongKeyBarIndex = not na(longKeyBarIndex) ? longKeyBarIndex : bar_index
-    confirmStatus = ChainerTraderLib.longConfirm(safeLongKeyBarIndex)
-    
-    if confirmStatus == 1
+    if confirmStatusLong == 1
         longConfirmSignal := true
         pendingLong := false
-        executeEntry("LONG", stopPrice)
         
-    else if confirmStatus == -1
+        // 如果是 SHORT_ONLY 模式且有持仓，则做多确认意味着平空
+        if isShortOnly and hasTrade
+            [newPL, newPS, newLK, newSK, newIS, newSP, newEP, newTP, newBS, newCD, newHT] = resetTradeState()
+            pendingLong := newPL
+            pendingShort := newPS
+            longKeyBarIndex := newLK
+            shortKeyBarIndex := newSK
+            initialStop := newIS
+            stopPrice := newSP
+            entryPrice := newEP
+            takeProfitPrice := newTP
+            breakevenStep := newBS
+            currentDirection := newCD
+            hasTrade := newHT
+        else
+            [newEp, newInitStop, newSp, newDir, newStep, newHt, newTp] = executeEntry("LONG", stopPrice)
+            entryPrice := newEp
+            initialStop := newInitStop
+            stopPrice := newSp
+            currentDirection := newDir
+            breakevenStep := newStep
+            hasTrade := newHt
+            takeProfitPrice := newTp
+
+            if not na(takeProfitPrice)
+                plotTakeProfitLabel(takeProfitPrice)
+        
+    else if confirmStatusLong == -1
         longFailSignal := true
         pendingLong := false
         longKeyBarIndex := na
@@ -269,15 +379,38 @@ if barstate.isconfirmed and pendingLong
 // Short Signal Confirmation (做空信号确认)
 // ============================================================================
 if barstate.isconfirmed and pendingShort
-    safeShortKeyBarIndex = not na(shortKeyBarIndex) ? shortKeyBarIndex : bar_index
-    confirmStatus = ChainerTraderLib.shortConfirm(safeShortKeyBarIndex)
-    
-    if confirmStatus == 1
+    if confirmStatusShort == 1
         shortConfirmSignal := true
         pendingShort := false
-        executeEntry("SHORT", stopPrice)
         
-    else if confirmStatus == -1
+        // 如果是 LONG_ONLY 模式且有持仓，则做空确认意味着平多
+        if isLongOnly and hasTrade
+            [newPL, newPS, newLK, newSK, newIS, newSP, newEP, newTP, newBS, newCD, newHT] = resetTradeState()
+            pendingLong := newPL
+            pendingShort := newPS
+            longKeyBarIndex := newLK
+            shortKeyBarIndex := newSK
+            initialStop := newIS
+            stopPrice := newSP
+            entryPrice := newEP
+            takeProfitPrice := newTP
+            breakevenStep := newBS
+            currentDirection := newCD
+            hasTrade := newHT
+        else
+            [newEp, newInitStop, newSp, newDir, newStep, newHt, newTp] = executeEntry("SHORT", stopPrice)
+            entryPrice := newEp
+            initialStop := newInitStop
+            stopPrice := newSp
+            currentDirection := newDir
+            breakevenStep := newStep
+            hasTrade := newHt
+            takeProfitPrice := newTp
+
+            if not na(takeProfitPrice)
+                plotTakeProfitLabel(takeProfitPrice)
+        
+    else if confirmStatusShort == -1
         shortFailSignal := true
         pendingShort := false
         shortKeyBarIndex := na
@@ -309,24 +442,34 @@ if barstate.isconfirmed and hasTrade and chainer_enable_breakeven and not na(ent
 // ============================================================================
 stopHit = hasTrade and not na(stopPrice) and not na(currentDirection) and (currentDirection == "LONG" ? low <= stopPrice : high >= stopPrice)
 if stopHit
-    resetTradeState()
+    [newPL, newPS, newLK, newSK, newIS, newSP, newEP, newTP, newBS, newCD, newHT] = resetTradeState()
+    pendingLong := newPL
+    pendingShort := newPS
+    longKeyBarIndex := newLK
+    shortKeyBarIndex := newSK
+    initialStop := newIS
+    stopPrice := newSP
+    entryPrice := newEP
+    takeProfitPrice := newTP
+    breakevenStep := newBS
+    currentDirection := newCD
+    hasTrade := newHT
 
 // ============================================================================
-// Debug logging
+// Debug logging (call keyLevelsByBarIndex every bar for consistency)
 // ============================================================================
-longFound = false
-longTime = 0
-longHigh = 0.0
-longLow = 0.0
-if not na(longKeyBarIndex)
-    [longFound, longTime, longHigh, longLow] = ChainerTraderLib.keyLevelsByBarIndex(longKeyBarIndex)
-
-shortFound = false
-shortTime = 0
-shortHigh = 0.0
-shortLow = 0.0
-if not na(shortKeyBarIndex)
-    [shortFound, shortTime, shortHigh, shortLow] = ChainerTraderLib.keyLevelsByBarIndex(shortKeyBarIndex)
+safeLongKeyForLevels = not na(longKeyBarIndex) ? longKeyBarIndex : bar_index
+safeShortKeyForLevels = not na(shortKeyBarIndex) ? shortKeyBarIndex : bar_index
+[longFound, longTime, longHigh, longLow] = ChainerTraderLib.keyLevelsByBarIndex(safeLongKeyForLevels)
+[shortFound, shortTime, shortHigh, shortLow] = ChainerTraderLib.keyLevelsByBarIndex(safeShortKeyForLevels)
+longFound := not na(longKeyBarIndex) and longFound
+longTime := not na(longKeyBarIndex) ? longTime : 0
+longHigh := not na(longKeyBarIndex) ? longHigh : 0.0
+longLow := not na(longKeyBarIndex) ? longLow : 0.0
+shortFound := not na(shortKeyBarIndex) and shortFound
+shortTime := not na(shortKeyBarIndex) ? shortTime : 0
+shortHigh := not na(shortKeyBarIndex) ? shortHigh : 0.0
+shortLow := not na(shortKeyBarIndex) ? shortLow : 0.0
 
 shouldDebug = chainer_debug_start_time > 0 and time >= chainer_debug_start_time
 if shouldDebug
@@ -359,4 +502,4 @@ plotshape(longFailSignal, title="Long Fail", text="", style=shape.xcross, locati
 plotshape(shortConfirmSignal, title="Short Confirm", text="", style=shape.flag, location=location.belowbar, color=color.new(color.red, 0), textcolor=color.white, size=size.tiny)
 plotshape(shortFailSignal, title="Short Fail", text="", style=shape.xcross, location=location.abovebar, color=color.new(color.red, 0), size=size.tiny)
 
-plotshape(stopHit, title="Stop Hit", text="SL", style=shape.circle, location=location.belowbar, color=color.new(color.red, 0), size=size.tiny)
+plotshape(stopHit, title="Stop Loss Hit", text="SL", style=shape.circle, location=location.belowbar, color=color.new(color.red, 0), size=size.tiny)

@@ -32,8 +32,8 @@ class _MACrossEntryExitStrategy(BaseStrategy):
         ("atr", True),
         ("atrperiod", 3),
         ("chainer_stoploss_atr_mult", 0.0),
-        ("chainer_long_need_confirm", True),
-        ("chainer_short_need_confirm", True),
+        ("chainer_enter_need_confirm", True),
+        ("chainer_exit_need_confirm", True),
         ("chainer_enable_breakeven", True),
         ("chainer_risk_reward_ratio", 1.0),
         ("chainer_mode", "LONG_ONLY"),  # Default to LONG_ONLY for LONG entry tests
@@ -101,7 +101,7 @@ def test_entry_confirm_failure_bans_key_time():
         dict(open=104, high=105, low=90, close=94),  # close < key_low => fail confirm
         dict(open=94, high=96, low=93, close=95),
     ]
-    st = _run(_build_df(rows), dict(fastLen=2, slowLen=3, chainer_long_need_confirm=True, chainer_short_need_confirm=True))
+    st = _run(_build_df(rows), dict(fastLen=2, slowLen=3, chainer_enter_need_confirm=True, chainer_exit_need_confirm=True))
 
     cancelled = [t for t in st._trades_by_id.values() if t.status == BaseStrategy.TradeStatus.CANCELLED]  # noqa: SLF001
     assert len(cancelled) == 1
@@ -129,8 +129,8 @@ def test_entry_confirm_success_then_breakeven_then_stop_exit():
         dict(
             fastLen=2,
             slowLen=3,
-            chainer_long_need_confirm=True,
-            chainer_short_need_confirm=True,
+            chainer_enter_need_confirm=True,
+            chainer_exit_need_confirm=True,
             chainer_enable_breakeven=True,
             chainer_risk_reward_ratio=0.0,
             chainer_stoploss_atr_mult=0.0,
@@ -169,8 +169,8 @@ def test_breakeven_step_matches_r_level_when_price_jumps_multiple_r():
         dict(
             fastLen=2,
             slowLen=3,
-            chainer_long_need_confirm=True,
-            chainer_short_need_confirm=True,
+            chainer_enter_need_confirm=True,
+            chainer_exit_need_confirm=True,
             chainer_enable_breakeven=True,
             chainer_risk_reward_ratio=0.0,
             chainer_stoploss_atr_mult=0.0,
@@ -187,8 +187,8 @@ def test_breakeven_step_matches_r_level_when_price_jumps_multiple_r():
     assert abs(float(ctx.stop_price) - 120.0) < 1e-9
 
 
-@pytest.mark.parametrize("chainer_long_need_confirm,chainer_short_need_confirm", [(False, False)])
-def test_no_confirm_places_orders_immediately(chainer_long_need_confirm, chainer_short_need_confirm):
+@pytest.mark.parametrize("chainer_enter_need_confirm,chainer_exit_need_confirm", [(False, False)])
+def test_no_confirm_places_orders_immediately(chainer_enter_need_confirm, chainer_exit_need_confirm):
     # Cross up -> immediate buy order; later cross down -> immediate sell order.
     rows = [
         dict(open=100, high=101, low=99, close=100),  # warmup
@@ -204,8 +204,8 @@ def test_no_confirm_places_orders_immediately(chainer_long_need_confirm, chainer
         dict(
             fastLen=2,
             slowLen=3,
-            chainer_long_need_confirm=chainer_long_need_confirm,
-            chainer_short_need_confirm=chainer_short_need_confirm,
+            chainer_enter_need_confirm=chainer_enter_need_confirm,
+            chainer_exit_need_confirm=chainer_exit_need_confirm,
             chainer_enable_breakeven=False,
             chainer_risk_reward_ratio=0.0,
         ),
@@ -226,8 +226,8 @@ def test_short_entry_confirm_success_then_stop_exit():
             # Disable ATR to avoid minperiod gating; this test uses stoploss_atr_mult=0.
             ("atr", False),
             ("chainer_mode", "SHORT_ONLY"),  # Enable SHORT entries
-            ("chainer_long_need_confirm", True),
-            ("chainer_short_need_confirm", True),
+            ("chainer_enter_need_confirm", True),
+            ("chainer_exit_need_confirm", True),
         )
 
         def __init__(self):
@@ -322,8 +322,8 @@ def test_stoploss_atr_mult_applies_even_when_cfg_atr_disabled():
             ("atrperiod", 3),
             ("chainer_mode", "LONG_ONLY"),
             ("chainer_stoploss_atr_mult", 1.0),
-            ("chainer_long_need_confirm", False),
-            ("chainer_short_need_confirm", True),
+            ("chainer_enter_need_confirm", False),
+            ("chainer_exit_need_confirm", True),
             ("chainer_enable_breakeven", True),
             ("chainer_risk_reward_ratio", 0.0),
         )

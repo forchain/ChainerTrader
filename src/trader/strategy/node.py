@@ -10,7 +10,7 @@ from trader.common.config import Config
 from trader.common.log_tag import LogTag
 from trader.common.logger import Logger
 from trader.strategy.trader_result import TraderResult
-from trader.utils.operation_state import OptStatAnalyzer
+from trader.utils.operation_state import MaxDrawdownAnalyzer, OptStatAnalyzer
 from trader.utils.symbol_interval import SymbolInterval, get_time_duration
 
 
@@ -57,6 +57,7 @@ class Node:
         cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name="trade_analyzer")
 
         cerebro.addanalyzer(OptStatAnalyzer, _name="optstat", si=self.si)
+        cerebro.addanalyzer(MaxDrawdownAnalyzer, _name="maxdd_ex")
 
         self.cerebro = cerebro
 
@@ -116,12 +117,17 @@ class Node:
 
         hold_rate = self.get_hold_rate()
 
-        drawdown = ret.analyzers.drawdown.get_analysis()
-        maxDrawdown = drawdown.max.drawdown
+        # 通过自定义分析器获取最大回撤及其对应的起止时间
+        maxdd_ex = ret.analyzers.maxdd_ex.get_analysis()
+        maxDrawdown = maxdd_ex.get("max_drawdown", 0.0)
+        maxDrawdownStart = maxdd_ex.get("start")
+        maxDrawdownEnd = maxdd_ex.get("end")
 
-        maxDrawdownLen = drawdown.max.len
-        maxDrawdownLen = get_time_duration(self.si.interval) * maxDrawdownLen
-        maxDrawdownDuration = timedelta(seconds=maxDrawdownLen)
+        # 使用起止时间计算最大回撤对应的持续时间（峰 -> 谷）
+        if maxDrawdownStart is not None and maxDrawdownEnd is not None:
+            maxDrawdownDuration = maxDrawdownEnd - maxDrawdownStart
+        else:
+            maxDrawdownDuration = timedelta(0)
 
         sharpeRatio = ret.analyzers.sharpe.get_analysis()
         volatility = ret.analyzers.volatility.get_analysis()["vwr"]
@@ -150,6 +156,9 @@ class Node:
             table.add_row(["夏普比率", (f"{sharpeRatio['sharperatio']:.2f}")])
         table.add_row(["最大回撤:", (f"{maxDrawdown:.2f}%")])
         table.add_row(["回撤时长:", (f"{maxDrawdownDuration}")])
+        if maxDrawdownStart is not None and maxDrawdownEnd is not None:
+            table.add_row(["最大回撤开始时间", (f"{maxDrawdownStart}")])
+            table.add_row(["最大回撤结束时间", (f"{maxDrawdownEnd}")])
         table.add_row(["波动率:", (f"{volatility:.2f}%")])
         table.add_row(["胜率:", (f"{winRate:.2f}%")])
         table.add_row(["平均盈亏比:", (f"{plr:.2f}")])
