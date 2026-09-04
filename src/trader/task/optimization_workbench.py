@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -237,15 +238,20 @@ def _build_parameter_observation(parameter: str, value: Any, trades: list[dict],
 
 
 def write_workbench_html(path: Path, workbench_payload: dict, app_js_path: Path, style_css_path: Path) -> None:
-    app_href = app_js_path.resolve().as_uri()
-    style_href = style_css_path.resolve().as_uri()
+    workbench_dir = path.parent
+    app_target = workbench_dir / app_js_path.name
+    style_target = workbench_dir / style_css_path.name
+    if app_js_path.resolve() != app_target.resolve():
+        shutil.copy2(app_js_path, app_target)
+    if style_css_path.resolve() != style_target.resolve():
+        shutil.copy2(style_css_path, style_target)
     html = f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Optimization Validation Workbench</title>
-  <link rel="stylesheet" href="{style_href}">
+  <link rel="stylesheet" href="./{style_css_path.name}">
 </head>
 <body>
   <main class="shell">
@@ -297,7 +303,7 @@ def write_workbench_html(path: Path, workbench_payload: dict, app_js_path: Path,
   </main>
 
   <script>window.__WORKBENCH_DATA__ = {__import__("json").dumps(workbench_payload, ensure_ascii=False)};</script>
-  <script src="{app_href}"></script>
+  <script src="./{app_js_path.name}"></script>
 </body>
 </html>
 """

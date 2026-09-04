@@ -163,7 +163,11 @@ async def _stop_running_tasks_for_user(request: Request, user) -> None:
     ]
     running_ids = sorted({task_id for task_id in running_ids if task_id > 0})
     for task_id in running_ids:
-        task_manager.close_task(task_id, user_id=user.id)
+        close_task_state = getattr(task_manager, "close_task_state", None)
+        if callable(close_task_state):
+            await close_task_state(task_id, user_id=user.id)
+        else:
+            task_manager.close_task(task_id, user_id=user.id)
 
 
 async def _preflight_single_running_task_per_user(request: Request, user) -> None:

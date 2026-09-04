@@ -266,7 +266,7 @@ class BackTraderTask(BaseTask):
             self.log.error(f"No config strategy for {self.tcfg.to_dict()}")
             return None
 
-        super().start(queue)
+        await super().start(queue)
 
         data = None
         if self.tcfg.csv:

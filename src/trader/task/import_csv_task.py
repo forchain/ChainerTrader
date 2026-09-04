@@ -30,7 +30,7 @@ class ImportCSVTask(BaseTask):
             self.log.error(f"No config db_uri for {self.tcfg.to_dict()}")
             return
 
-        super().start(queue)
+        await super().start(queue)
 
         if not self.tcfg.csv:
             self.log.error(f"{self.name()} no data_file")

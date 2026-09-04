@@ -91,6 +91,20 @@ class BaseTask:
             config_dict["manual_start_position"] = self.tcfg.manual_start_position
         if getattr(self.tcfg, "live_trade_max_notional", 0.0):
             config_dict["live_trade_max_notional"] = self.tcfg.live_trade_max_notional
+        if getattr(self.tcfg, "live_short_execution", "disabled") != "disabled":
+            config_dict["live_short_execution"] = self.tcfg.live_short_execution
+        if getattr(self.tcfg, "live_margin_borrow_block_policy", "skip_continue") != "skip_continue":
+            config_dict["live_margin_borrow_block_policy"] = self.tcfg.live_margin_borrow_block_policy
+        if getattr(self.tcfg, "live_margin_borrow_precheck", True) is not True:
+            config_dict["live_margin_borrow_precheck"] = self.tcfg.live_margin_borrow_precheck
+        if getattr(self.tcfg, "live_margin_auto_repay_max_total", 100.0) != 100.0:
+            config_dict["live_margin_auto_repay_max_total"] = self.tcfg.live_margin_auto_repay_max_total
+        if getattr(self.tcfg, "live_margin_auto_repay_max_per_asset", 50.0) != 50.0:
+            config_dict["live_margin_auto_repay_max_per_asset"] = self.tcfg.live_margin_auto_repay_max_per_asset
+        if getattr(self.tcfg, "live_margin_auto_repay_min_amount", 0.000001) != 0.000001:
+            config_dict["live_margin_auto_repay_min_amount"] = self.tcfg.live_margin_auto_repay_min_amount
+        if getattr(self.tcfg, "live_margin_auto_repay_excluded_assets", None):
+            config_dict["live_margin_auto_repay_excluded_assets"] = list(self.tcfg.live_margin_auto_repay_excluded_assets)
         if getattr(self.tcfg, "strategy_params", None):
             config_dict["strategy_params"] = self.tcfg.strategy_params
         if getattr(self.tcfg, "requires_short_capability", False):
@@ -106,6 +120,7 @@ class BaseTask:
         self.start_time = datetime.now()
         self.log.info(f"Start {self.name()}")
         self.ts.state = TaskStateType.RUNNING
+        return self._persist_state()
 
     def stop(self):
         if not self.ts.is_running():
@@ -126,3 +141,23 @@ class BaseTask:
 
     def close(self):
         self.quit.set()
+
+    def _persist_state(self):
+        task_store = getattr(self.db_manager, "task", None)
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if task_store is None:
+            if loop is not None:
+                return asyncio.sleep(0)
+            return
+
+        async def _save():
+            await task_store.add_tasks([self.ts])
+
+        if loop is None:
+            asyncio.run(_save())
+        else:
+            return loop.create_task(_save())

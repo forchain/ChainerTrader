@@ -209,6 +209,7 @@ def _classify_failure_counts(failures: list[dict]) -> dict:
 def write_optimization_artifacts(base_dir: str | Path, optimization_run_id: str, sample_reports: list[dict], failures: list[dict]) -> Path:
     artifacts = build_optimization_artifacts(optimization_run_id, sample_reports, failures)
     run_dir = Path(base_dir) / "reports" / "optimizations" / optimization_run_id
+    static_dir = Path(__file__).resolve().parents[1] / "rpc" / "static" / "optimization-workbench"
     rankings_dir = run_dir / "rankings"
     shortlist_dir = run_dir / "shortlist"
     workbench_dir = run_dir / "workbench"
@@ -232,8 +233,8 @@ def write_optimization_artifacts(base_dir: str | Path, optimization_run_id: str,
     write_workbench_html(
         workbench_dir / "index.html",
         artifacts["workbench"],
-        Path(base_dir) / "src" / "trader" / "rpc" / "static" / "optimization-workbench" / "app.js",
-        Path(base_dir) / "src" / "trader" / "rpc" / "static" / "optimization-workbench" / "style.css",
+        static_dir / "app.js",
+        static_dir / "style.css",
     )
     return run_dir
 

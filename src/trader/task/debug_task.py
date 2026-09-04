@@ -17,7 +17,7 @@ class DebugTask(BaseTask):
         return f"{self.tcfg.id}.{self.type().name}"
 
     async def start(self, queue: Queue):
-        super().start(queue)
+        await super().start(queue)
 
         count = self.tcfg.limit
 

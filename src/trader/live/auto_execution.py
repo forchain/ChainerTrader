@@ -584,6 +584,36 @@ class AutoExecutionRouter:
             return None
         if self.exchange is None or not hasattr(self.exchange, "get_max_borrowable"):
             return None
+        context = self._margin_borrow_context(order_type, notional, quantity)
+        if context is None:
+            return None
+        if context["estimated_shortfall"] <= 0:
+            return None
+        try:
+            payload = self.exchange.get_max_borrowable(context["asset"], symbol=self.market)
+        except Exception as exc:
+            return {
+                "stage": "precheck",
+                "status": "unavailable",
+                **context,
+                "reason": str(exc),
+            }
+        amount = self._numeric_payload_value(payload, "amount")
+        if amount is None:
+            return None
+        if amount + 1e-12 >= context["estimated_shortfall"]:
+            return None
+        return {
+            "stage": "precheck",
+            "status": "insufficient_capacity",
+            "policy": self.margin_borrow_block_policy,
+            **context,
+            "max_borrowable": amount,
+            "borrow_limit": self._numeric_payload_value(payload, "borrowLimit"),
+            "raw_payload": payload,
+        }
+
+    def _margin_borrow_context(self, order_type: OperateType, notional: float, quantity: float) -> dict[str, Any] | None:
         if order_type == OperateType.BUY:
             asset = self.tcfg.symbol_interval.sy.quote
             balance = self._balance(asset)
@@ -594,35 +624,35 @@ class AutoExecutionRouter:
             shortfall = max(float(quantity) - balance, 0.0)
         else:
             return None
-        if shortfall <= 0:
-            return None
-        try:
-            payload = self.exchange.get_max_borrowable(asset, symbol=self.market)
-        except Exception as exc:
-            return {
-                "stage": "precheck",
-                "status": "unavailable",
-                "asset": asset,
-                "balance": balance,
-                "estimated_shortfall": shortfall,
-                "reason": str(exc),
-            }
-        amount = self._numeric_payload_value(payload, "amount")
-        if amount is None:
-            return None
-        if amount + 1e-12 >= shortfall:
-            return None
         return {
-            "stage": "precheck",
-            "status": "insufficient_capacity",
-            "policy": self.margin_borrow_block_policy,
             "asset": asset,
             "balance": balance,
             "estimated_shortfall": shortfall,
-            "max_borrowable": amount,
-            "borrow_limit": self._numeric_payload_value(payload, "borrowLimit"),
-            "raw_payload": payload,
+            "required_notional": float(notional),
+            "required_quantity": float(quantity),
         }
+
+    def _margin_borrow_capacity_snapshot(self, order_type: OperateType, notional: float, quantity: float) -> dict[str, Any] | None:
+        context = self._margin_borrow_context(order_type, notional, quantity)
+        if context is None:
+            return None
+        snapshot = dict(context)
+        snapshot["stage"] = "post_error_capacity_snapshot"
+        if self.exchange is None or not hasattr(self.exchange, "get_max_borrowable"):
+            snapshot["status"] = "unavailable"
+            snapshot["reason"] = "max_borrowable_not_supported"
+            return snapshot
+        try:
+            payload = self.exchange.get_max_borrowable(context["asset"], symbol=self.market)
+        except Exception as exc:
+            snapshot["status"] = "unavailable"
+            snapshot["reason"] = str(exc)
+            return snapshot
+        snapshot["status"] = "available"
+        snapshot["max_borrowable"] = self._numeric_payload_value(payload, "amount")
+        snapshot["borrow_limit"] = self._numeric_payload_value(payload, "borrowLimit")
+        snapshot["raw_payload"] = payload
+        return snapshot
 
     def _numeric_payload_value(self, payload: Any, key: str) -> float | None:
         value = None
@@ -882,6 +912,9 @@ class AutoExecutionRouter:
             "requested_notional": notional,
             "requested_quantity": quantity,
         }
+        capacity = self._margin_borrow_capacity_snapshot(getattr(op, "otype", None), notional, quantity)
+        if capacity is not None:
+            control["borrow_capacity"] = capacity
         if policy == MarginBorrowBlockPolicy.STOP_TASK.value:
             return self._record(
                 self._outcome(

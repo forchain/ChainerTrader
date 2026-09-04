@@ -2,25 +2,7 @@
   {
     "task_type": "TRADER",
     "symbol": "BTC-USDT",
-    "interval": "1m",
-    "strategy": "macd_triple_divergence",
-    "free": 10000,
-    "live_execution_mode": "small_live_auto",
-    "live_data_mode": "realtime",
-    "live_margin_borrow_block_policy": "repay_all",
-    "strategy_params": {
-      "chainer_mode": "BOTH",
-      "chainer_stoploss_atr_mult": 1,
-      "chainer_enable_breakeven": true,
-      "chainer_risk_reward_ratio": 0,
-      "chainer_need_confirm": false,
-      "macd_stop_enabled": true
-    }
-  },
-  {
-    "task_type": "TRADER",
-    "symbol": "BTC-USDT",
-    "interval": "1d",
+    "interval": "1h",
     "strategy": "macd_triple_divergence",
     "free": 10000,
     "live_execution_mode": "small_live_auto",
@@ -38,7 +20,7 @@
   {
     "task_type": "TRADER",
     "symbol": "ETH-USDT",
-    "interval": "1d",
+    "interval": "1h",
     "strategy": "macd_triple_divergence",
     "free": 10000,
     "live_execution_mode": "small_live_auto",
@@ -56,7 +38,7 @@
   {
     "task_type": "TRADER",
     "symbol": "BNB-USDT",
-    "interval": "1d",
+    "interval": "1h",
     "strategy": "macd_triple_divergence",
     "free": 10000,
     "live_execution_mode": "small_live_auto",
@@ -74,7 +56,7 @@
   {
     "task_type": "TRADER",
     "symbol": "SOL-USDT",
-    "interval": "1d",
+    "interval": "1h",
     "strategy": "macd_triple_divergence",
     "free": 10000,
     "live_execution_mode": "small_live_auto",
@@ -92,7 +74,7 @@
   {
     "task_type": "TRADER",
     "symbol": "XRP-USDT",
-    "interval": "1d",
+    "interval": "1h",
     "strategy": "macd_triple_divergence",
     "free": 10000,
     "live_execution_mode": "small_live_auto",
@@ -110,7 +92,7 @@
   {
     "task_type": "TRADER",
     "symbol": "DOGE-USDT",
-    "interval": "1d",
+    "interval": "1h",
     "strategy": "macd_triple_divergence",
     "free": 10000,
     "live_execution_mode": "small_live_auto",
@@ -128,7 +110,7 @@
   {
     "task_type": "TRADER",
     "symbol": "ADA-USDT",
-    "interval": "1d",
+    "interval": "1h",
     "strategy": "macd_triple_divergence",
     "free": 10000,
     "live_execution_mode": "small_live_auto",
@@ -146,7 +128,7 @@
   {
     "task_type": "TRADER",
     "symbol": "TRX-USDT",
-    "interval": "1d",
+    "interval": "1h",
     "strategy": "macd_triple_divergence",
     "free": 10000,
     "live_execution_mode": "small_live_auto",
@@ -164,7 +146,7 @@
   {
     "task_type": "TRADER",
     "symbol": "AVAX-USDT",
-    "interval": "1d",
+    "interval": "1h",
     "strategy": "macd_triple_divergence",
     "free": 10000,
     "live_execution_mode": "small_live_auto",
@@ -182,7 +164,7 @@
   {
     "task_type": "TRADER",
     "symbol": "LINK-USDT",
-    "interval": "1d",
+    "interval": "1h",
     "strategy": "macd_triple_divergence",
     "free": 10000,
     "live_execution_mode": "small_live_auto",

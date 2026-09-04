@@ -554,6 +554,65 @@ def test_margin_borrow_block_repay_single_policy_retries_once_and_submits():
     assert exchange.repay_calls == 1
 
 
+def test_margin_borrow_block_exception_triggers_auto_repay_retry_with_capacity_context():
+    class BorrowBlockedExceptionThenPassExchange(RecordingExchange):
+        def __init__(self):
+            super().__init__(base_balance=0.02, margin_ready=True)
+            self.short_calls = 0
+            self.repay_calls = 0
+
+        def new_order(self, symbol, op, quantity):
+            self.new_order_calls.append((symbol.name(), op, quantity))
+            if op == OperateType.SHORT:
+                self.short_calls += 1
+                if self.short_calls == 1:
+                    raise RuntimeError('binance {"code":-3006,"msg":"Your borrow amount has exceed maximum borrow amount."}')
+                return {"orderId": "margin-retry-1"}
+            return {"orderId": "spot-1"}
+
+        def auto_repay_for_borrow_block(self, symbol):
+            self.repay_calls += 1
+            return {
+                "ok": True,
+                "symbol": symbol,
+                "results": [
+                    {
+                        "asset": "BTC",
+                        "status": "repaid",
+                        "amount": 0.01,
+                        "borrowed": 0.01,
+                        "interest": 0.0,
+                        "free": 0.02,
+                    }
+                ],
+            }
+
+    exchange = BorrowBlockedExceptionThenPassExchange()
+    router = AutoExecutionRouter(
+        _tcfg(
+            LiveExecutionMode.SMALL_LIVE_AUTO,
+            live_trade_max_notional=10.0,
+            live_short_execution=LiveShortExecution.MARGIN_CROSS,
+            live_margin_borrow_block_policy="repay_single",
+        ),
+        exchange=exchange,
+        cfg=SimpleNamespace(cash=10000.0),
+    )
+
+    outcome = router.route(_op(OperateType.SHORT, 100.0))
+
+    assert outcome.status == AutoExecutionStatus.SUBMITTED
+    assert "auto_repay_retry_passed" in str(outcome.reason)
+    assert exchange.short_calls == 2
+    assert exchange.repay_calls == 1
+    assert outcome.margin_borrow_control["trigger"] == "binance_-3006"
+    assert outcome.margin_borrow_control["borrow_capacity"]["asset"] == "BTC"
+    assert outcome.margin_borrow_control["borrow_capacity"]["balance"] == 0.02
+    assert outcome.margin_borrow_control["borrow_capacity"]["estimated_shortfall"] == pytest.approx(0.08)
+    assert outcome.margin_borrow_control["borrow_capacity"]["max_borrowable"] == 1000000.0
+    assert outcome.margin_borrow_control["repay"]["results"][0]["amount"] == 0.01
+
+
 def test_margin_borrow_precheck_skips_margin_long_when_quote_borrow_capacity_is_too_low():
     class LowBorrowCapacityExchange(RecordingExchange):
         def get_max_borrowable(self, asset, symbol=None):

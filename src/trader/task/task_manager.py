@@ -33,7 +33,7 @@ from trader.task.task_type import TaskType
 from trader.task.trader_task import TraderTask
 from trader.task.update_klines_task import UpdateKlinesTask
 from trader.utils.symbol_interval import SymbolInterval
-from trader.utils.task_state import TaskState
+from trader.utils.task_state import TaskState, TaskStateType
 
 
 class TaskManager:
@@ -55,6 +55,23 @@ class TaskManager:
         self.tasks: dict[int, BaseTask] = {}
         self.async_tasks = []
         self.latest_si: SymbolInterval | None = None
+
+    def _build_task(self, cfg: TaskConfig, exchange: BinanceExchange) -> BaseTask | None:
+        if cfg.ttype == TaskType.TRADER:
+            return TraderTask(cfg, self.cfg, self.log, self.db_manager, exchange)
+        if cfg.ttype == TaskType.BACK_TRADER:
+            return BackTraderTask(cfg, self.cfg, self.log, self.db_manager, exchange)
+        if cfg.ttype == TaskType.UPDATE_KLINES:
+            return UpdateKlinesTask(cfg, self.cfg, self.log, self.db_manager, exchange)
+        if cfg.ttype == TaskType.CHECK_KLINES:
+            return CheckKlinesTask(cfg, self.cfg, self.log, self.db_manager, exchange)
+        if cfg.ttype == TaskType.IMPORT_CSV:
+            return ImportCSVTask(cfg, self.cfg, self.log, self.db_manager, exchange)
+        if cfg.ttype == TaskType.CHECK_KLINES_NUM:
+            return CheckKlinesNumTask(cfg, self.cfg, self.log, self.db_manager, exchange)
+        if cfg.ttype == TaskType.DEBUG:
+            return DebugTask(cfg, self.cfg, self.log, self.db_manager)
+        return None
 
     def start(self, taskcs: list[TaskConfig] | None = None):
         self.log.info("TaskManager start")
@@ -147,22 +164,8 @@ class TaskManager:
             await self.db_manager.task.add_tasks(states)
 
     async def add_task(self, cfg, queue: Queue):
-        task = None
         task_exchange = await self._exchange_for_task(cfg)
-        if cfg.ttype == TaskType.TRADER:
-            task = TraderTask(cfg, self.cfg, self.log, self.db_manager, task_exchange)
-        elif cfg.ttype == TaskType.BACK_TRADER:
-            task = BackTraderTask(cfg, self.cfg, self.log, self.db_manager, task_exchange)
-        elif cfg.ttype == TaskType.UPDATE_KLINES:
-            task = UpdateKlinesTask(cfg, self.cfg, self.log, self.db_manager, task_exchange)
-        elif cfg.ttype == TaskType.CHECK_KLINES:
-            task = CheckKlinesTask(cfg, self.cfg, self.log, self.db_manager, task_exchange)
-        elif cfg.ttype == TaskType.IMPORT_CSV:
-            task = ImportCSVTask(cfg, self.cfg, self.log, self.db_manager, task_exchange)
-        elif cfg.ttype == TaskType.CHECK_KLINES_NUM:
-            task = CheckKlinesNumTask(cfg, self.cfg, self.log, self.db_manager, task_exchange)
-        elif cfg.ttype == TaskType.DEBUG:
-            task = DebugTask(cfg, self.cfg, self.log, self.db_manager)
+        task = self._build_task(cfg, task_exchange)
 
         if task is None:
             self.log.error(f"Can't add task:{cfg.to_dict()}")
@@ -170,6 +173,26 @@ class TaskManager:
         self.tasks[task.id()] = task
 
         await task.start(queue)
+
+    async def recover_task(self, cfg: TaskConfig, queue: Queue):
+        task_exchange = await self._exchange_for_task(cfg)
+        task = self._build_task(cfg, task_exchange)
+
+        if task is None:
+            self.log.error(f"Can't recover task:{cfg.to_dict()}")
+            return
+
+        self.tasks[task.id()] = task
+        runtime = asyncio.create_task(task.start(queue))
+        self.async_tasks.append(runtime)
+
+        while True:
+            if runtime.done():
+                await runtime
+                return
+            if task.ts.is_running():
+                return
+            await asyncio.sleep(0)
 
     async def _exchange_for_task(self, cfg: TaskConfig) -> BinanceExchange:
         if cfg.ttype != TaskType.TRADER:
@@ -641,6 +664,28 @@ class TaskManager:
             task.stop()
             return True
         return False
+
+    async def close_task_state(self, id: int, user_id: int | None = None):
+        task = self.get_task(id)
+        if task:
+            if user_id is not None and getattr(task.ts, "user_id", None) != user_id:
+                return False
+            task.stop()
+            await self._persist_task_states([task.ts])
+            return True
+
+        task_store = getattr(self.db_manager, "task", None)
+        if task_store is None:
+            return False
+        if user_id is not None:
+            state = await task_store.get_task_for_user(id, user_id)
+        else:
+            state = await task_store.get_task(id)
+        if state is None or not state.is_running():
+            return False
+        state.state = TaskStateType.DONE
+        await self._persist_task_states([state])
+        return True
 
     def del_task(self, id: int, user_id: int | None = None):
         task = self.get_task(id)
