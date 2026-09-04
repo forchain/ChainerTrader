@@ -77,6 +77,9 @@ class App:
             msg = self.task_manager.start()
             if msg:
                 msgs.append(msg)
+            elif self.cfg.tasks and not self.cfg.is_server():
+                self.logger.warning("No valid tasks can be executed")
+                return False
 
         self.process(msgs)
         return True

@@ -1,0 +1,801 @@
+//@version=6
+indicator("MACD Triple Divergence", "[I]MACD3Div", overlay=true, format=format.price, precision=6)
+
+// ============================================================================
+// MACD Triple Divergence Strategy for ChainerTrader Framework
+// ============================================================================
+// Implements MACD histogram triple top/bottom divergence detection.
+//
+// Bottom Divergence (Long Signal):
+// - 3 consecutive red (negative) segments with separators
+// - Price makes lower lows: P1 > P2 > P3
+// - MACD histogram absolute values decrease: |M1| > |M2| > |M3|
+//
+// Top Divergence (Short Signal):
+// - 3 consecutive green (positive) segments with separators
+// - Price makes higher highs: H1 < H2 < H3
+// - MACD histogram values decrease: M1 > M2 > M3
+//
+// Special Stop Loss:
+// - Long: exit if histogram becomes more negative than entry
+// - Short: exit if histogram becomes more positive than entry
+// ============================================================================
+
+import outliertony/ChainerTrader/2 as ChainerTraderLib
+
+// ============================================================================
+// MACD Parameters
+// ============================================================================
+macdFast = input.int(title="MACD Fast Length", defval=12, minval=1, group="MACD Parameters")
+macdSlow = input.int(title="MACD Slow Length", defval=26, minval=1, group="MACD Parameters")
+macdSignal = input.int(title="MACD Signal Length", defval=9, minval=1, group="MACD Parameters")
+
+// ============================================================================
+// Divergence Detection Parameters
+// ============================================================================
+oppRatio = input.float(title="Separator Ratio", defval=0.35, minval=0.0, maxval=1.0, step=0.05, group="Divergence Parameters", tooltip="Max ratio of separator segment height to reference segment height")
+zeroEps = input.float(title="Zero Threshold", defval=0.0001, minval=0.0, step=0.0001, group="Divergence Parameters", tooltip="Histogram values below this are considered zero")
+priceEps = input.float(title="Price Tolerance", defval=0.0, minval=0.0, step=0.01, group="Divergence Parameters", tooltip="Price comparison tolerance (0 = strict)")
+macdEps = input.float(title="MACD Tolerance", defval=0.0, minval=0.0, step=0.0001, group="Divergence Parameters", tooltip="MACD comparison tolerance (0 = strict)")
+maxLookbackBars = input.int(title="Max Lookback Bars", defval=200, minval=50, maxval=500, group="Divergence Parameters")
+
+// ============================================================================
+// Special MACD Stop Loss Parameters
+// ============================================================================
+macdStopEnabled = input.bool(title="Enable MACD Stop Loss", defval=true, group="MACD Stop Loss", tooltip="Exit if histogram moves against entry direction")
+macdStopEps = input.float(title="MACD Stop Tolerance", defval=0.0001, minval=0.0, step=0.0001, group="MACD Stop Loss")
+
+// ============================================================================
+// Chainer Framework Parameters
+// ============================================================================
+chainer_mode = input.string(title="Trading Mode", defval="LONG_ONLY", options=["LONG_ONLY", "SHORT_ONLY", "BOTH"], group="Chainer Framework")
+chainer_stoploss_atr_mult = input.float(title="Stop loss ATR multiple (0 = disabled)", defval=1.0, step=0.1, group="Chainer Framework")
+chainer_enter_need_confirm = input.bool(title="Require entry confirmation", defval=true, group="Chainer Framework", tooltip="If true, waits for price to break key bar high/low before entering.")
+chainer_exit_need_confirm = input.bool(title="Require exit confirmation", defval=true, group="Chainer Framework", tooltip="If true, waits for price to break key bar high/low before exiting.")
+chainer_enable_breakeven = input.bool(title="Enable breakeven", defval=true, group="Chainer Framework")
+chainer_risk_reward_ratio = input.float(title="Risk/reward ratio (0 = disabled)", defval=2.0, step=0.1, group="Chainer Framework")
+
+chainer_long_time = input.time(title="Custom long signal time (ms, 0 = disabled)", defval=0, group="Chainer Framework")
+chainer_short_time = input.time(title="Custom short signal time (ms, 0 = disabled)", defval=0, group="Chainer Framework")
+
+chainer_debug_start_time = input.time(title="Debug start time (ms, 0 = disabled)", defval=0, group="Chainer Framework")
+
+// ============================================================================
+// MACD Calculation
+// ============================================================================
+[macdLine, signalLine, histLine] = ta.macd(close, macdFast, macdSlow, macdSignal)
+
+// ============================================================================
+// Segment Data Structure
+// ============================================================================
+// We store segments in arrays: each segment has start_idx, end_idx, sign, extreme_val, extreme_idx, price_extreme
+// sign: -1 = negative (red), 0 = zero, 1 = positive (green)
+
+var array<int> segStartIdx = array.new_int(0)
+var array<int> segEndIdx = array.new_int(0)
+var array<int> segSign = array.new_int(0)
+var array<float> segExtremeVal = array.new_float(0)
+var array<int> segExtremeIdx = array.new_int(0)
+var array<float> segPriceExtreme = array.new_float(0)
+
+// Current segment tracking
+var int currentSegStart = na
+var int currentSegSign = na
+var float currentSegExtreme = na
+var int currentSegExtremeIdx = na
+var float currentSegPriceExtreme = na
+var int prevHistSign = na
+
+// ============================================================================
+// Helper: Get histogram sign
+// ============================================================================
+getHistSign(float histVal) =>
+    if math.abs(histVal) <= zeroEps
+        0
+    else if histVal > 0
+        1
+    else
+        -1
+
+// ============================================================================
+// Update Segments
+// ============================================================================
+updateSegments() =>
+    histVal = histLine
+    currentSign = getHistSign(histVal)
+    
+    // Initialize on first bar with valid MACD
+    if na(currentSegStart)
+        currentSegStart := bar_index
+        currentSegSign := currentSign
+        currentSegExtreme := histVal
+        currentSegExtremeIdx := bar_index
+        currentSegPriceExtreme := currentSign == -1 ? low : high
+        prevHistSign := currentSign
+    else
+        // Check for sign change
+        signChanged = false
+        if currentSign != prevHistSign
+            // Only change on clear sign flip (not just through zero)
+            if currentSign != 0 and prevHistSign != 0
+                signChanged := true
+            else if currentSign != 0 and currentSegSign != currentSign
+                signChanged := true
+        
+        if signChanged
+            // Save current segment to arrays
+            array.push(segStartIdx, currentSegStart)
+            array.push(segEndIdx, bar_index - 1)
+            array.push(segSign, currentSegSign)
+            array.push(segExtremeVal, currentSegExtreme)
+            array.push(segExtremeIdx, currentSegExtremeIdx)
+            array.push(segPriceExtreme, currentSegPriceExtreme)
+            
+            // Limit array size
+            if array.size(segStartIdx) > 20
+                array.shift(segStartIdx)
+                array.shift(segEndIdx)
+                array.shift(segSign)
+                array.shift(segExtremeVal)
+                array.shift(segExtremeIdx)
+                array.shift(segPriceExtreme)
+            
+            // Start new segment
+            currentSegStart := bar_index
+            currentSegSign := currentSign
+            currentSegExtreme := histVal
+            currentSegExtremeIdx := bar_index
+            currentSegPriceExtreme := currentSign == -1 ? low : high
+        else
+            // Update current segment
+            if currentSegSign == -1
+                // Negative segment: track minimum
+                if histVal < currentSegExtreme
+                    currentSegExtreme := histVal
+                    currentSegExtremeIdx := bar_index
+                if low < currentSegPriceExtreme
+                    currentSegPriceExtreme := low
+            else if currentSegSign == 1
+                // Positive segment: track maximum
+                if histVal > currentSegExtreme
+                    currentSegExtreme := histVal
+                    currentSegExtremeIdx := bar_index
+                if high > currentSegPriceExtreme
+                    currentSegPriceExtreme := high
+        
+        prevHistSign := currentSign
+
+// Call updateSegments on each bar
+updateSegments()
+
+// ============================================================================
+// Detect Bottom Triple Divergence (Long Signal)
+// ============================================================================
+detectBottomTripleDivergence() =>
+    result = false
+    
+    // Need at least 5 segments in history
+    if array.size(segStartIdx) >= 5
+        // Current segment should be different from negative (transitioning out of R3)
+        if currentSegSign != -1
+            // Find R3, Sep2, R2, Sep1, R1 from recent history
+            numSegs = array.size(segStartIdx)
+            
+            // Find most recent negative segment (R3)
+            r3Idx = -1
+            for i = numSegs - 1 to 0
+                if array.get(segSign, i) == -1
+                    r3Idx := i
+                    break
+            
+            if r3Idx >= 4
+                // Get R3 data
+                r3Start = array.get(segStartIdx, r3Idx)
+                r3Extreme = array.get(segExtremeVal, r3Idx)
+                r3Price = array.get(segPriceExtreme, r3Idx)
+                
+                // Find Sep2 (segment before R3)
+                sep2Idx = r3Idx - 1
+                sep2Extreme = array.get(segExtremeVal, sep2Idx)
+                sep2Sign = array.get(segSign, sep2Idx)
+                
+                // Find R2
+                r2Idx = -1
+                for i = sep2Idx - 1 to 0
+                    if array.get(segSign, i) == -1
+                        r2Idx := i
+                        break
+                
+                if r2Idx >= 2
+                    r2Extreme = array.get(segExtremeVal, r2Idx)
+                    r2Price = array.get(segPriceExtreme, r2Idx)
+                    
+                    // Find Sep1
+                    sep1Idx = r2Idx - 1
+                    sep1Extreme = array.get(segExtremeVal, sep1Idx)
+                    sep1Sign = array.get(segSign, sep1Idx)
+                    
+                    // Find R1
+                    r1Idx = -1
+                    for i = sep1Idx - 1 to 0
+                        if array.get(segSign, i) == -1
+                            r1Idx := i
+                            break
+                    
+                    if r1Idx >= 0
+                        r1Start = array.get(segStartIdx, r1Idx)
+                        r1Extreme = array.get(segExtremeVal, r1Idx)
+                        r1Price = array.get(segPriceExtreme, r1Idx)
+                        
+                        // Check lookback limit
+                        if bar_index - r1Start <= maxLookbackBars
+                            // Get absolute values
+                            m1 = math.abs(r1Extreme)
+                            m2 = math.abs(r2Extreme)
+                            m3 = math.abs(r3Extreme)
+                            
+                            p1 = r1Price
+                            p2 = r2Price
+                            p3 = r3Price
+                            
+                            // Check MACD condition: |M1| > |M2| > |M3|
+                            macdOk = m1 > m2 + macdEps and m2 > m3 + macdEps
+                            
+                            // Check price condition: P1 > P2 > P3
+                            priceOk = p1 > p2 + priceEps and p2 > p3 + priceEps
+                            
+                            // Check separator conditions
+                            hRef = math.max(m1, m2, m3)
+                            sep1Max = sep1Sign == 1 ? math.abs(sep1Extreme) : 0.0
+                            sep2Max = sep2Sign == 1 ? math.abs(sep2Extreme) : 0.0
+                            sep1Ok = sep1Max <= oppRatio * hRef
+                            sep2Ok = sep2Max <= oppRatio * hRef
+                            
+                            if macdOk and priceOk and sep1Ok and sep2Ok
+                                result := true
+    result
+
+// ============================================================================
+// Detect Top Triple Divergence (Short Signal)
+// ============================================================================
+detectTopTripleDivergence() =>
+    result = false
+    
+    if array.size(segStartIdx) >= 5
+        // Current segment should be different from positive (transitioning out of G3)
+        if currentSegSign != 1
+            numSegs = array.size(segStartIdx)
+            
+            // Find most recent positive segment (G3)
+            g3Idx = -1
+            for i = numSegs - 1 to 0
+                if array.get(segSign, i) == 1
+                    g3Idx := i
+                    break
+            
+            if g3Idx >= 4
+                g3Start = array.get(segStartIdx, g3Idx)
+                g3Extreme = array.get(segExtremeVal, g3Idx)
+                g3Price = array.get(segPriceExtreme, g3Idx)
+                
+                // Find Sep2
+                sep2Idx = g3Idx - 1
+                sep2Extreme = array.get(segExtremeVal, sep2Idx)
+                sep2Sign = array.get(segSign, sep2Idx)
+                
+                // Find G2
+                g2Idx = -1
+                for i = sep2Idx - 1 to 0
+                    if array.get(segSign, i) == 1
+                        g2Idx := i
+                        break
+                
+                if g2Idx >= 2
+                    g2Extreme = array.get(segExtremeVal, g2Idx)
+                    g2Price = array.get(segPriceExtreme, g2Idx)
+                    
+                    // Find Sep1
+                    sep1Idx = g2Idx - 1
+                    sep1Extreme = array.get(segExtremeVal, sep1Idx)
+                    sep1Sign = array.get(segSign, sep1Idx)
+                    
+                    // Find G1
+                    g1Idx = -1
+                    for i = sep1Idx - 1 to 0
+                        if array.get(segSign, i) == 1
+                            g1Idx := i
+                            break
+                    
+                    if g1Idx >= 0
+                        g1Start = array.get(segStartIdx, g1Idx)
+                        g1Extreme = array.get(segExtremeVal, g1Idx)
+                        g1Price = array.get(segPriceExtreme, g1Idx)
+                        
+                        // Check lookback limit
+                        if bar_index - g1Start <= maxLookbackBars
+                            m1 = g1Extreme
+                            m2 = g2Extreme
+                            m3 = g3Extreme
+                            
+                            h1 = g1Price
+                            h2 = g2Price
+                            h3 = g3Price
+                            
+                            // Check MACD condition: M1 > M2 > M3
+                            macdOk = m1 > m2 + macdEps and m2 > m3 + macdEps
+                            
+                            // Check price condition: H1 < H2 < H3
+                            priceOk = h1 + priceEps < h2 and h2 + priceEps < h3
+                            
+                            // Check separator conditions
+                            hRef = math.max(m1, m2, m3)
+                            sep1Max = sep1Sign == -1 ? math.abs(sep1Extreme) : 0.0
+                            sep2Max = sep2Sign == -1 ? math.abs(sep2Extreme) : 0.0
+                            sep1Ok = sep1Max <= oppRatio * hRef
+                            sep2Ok = sep2Max <= oppRatio * hRef
+                            
+                            if macdOk and priceOk and sep1Ok and sep2Ok
+                                result := true
+    result
+
+// ============================================================================
+// Signal Generation Functions
+// ============================================================================
+getLongSignal() =>
+    detectBottomTripleDivergence()
+
+getShortSignal() =>
+    detectTopTripleDivergence()
+
+// ============================================================================
+// Signal Processing
+// ============================================================================
+longSignalRaw = getLongSignal()
+shortSignalRaw = getShortSignal()
+
+useCustomLong = chainer_long_time > 0
+useCustomShort = chainer_short_time > 0
+
+customLongSignal = useCustomLong and time == chainer_long_time
+customShortSignal = useCustomShort and time == chainer_short_time
+
+longSignal = useCustomLong ? customLongSignal : longSignalRaw
+shortSignal = useCustomShort ? customShortSignal : shortSignalRaw
+
+// ============================================================================
+// Trade State Management
+// ============================================================================
+var int tradeId = 0
+var bool hasTrade = false
+var bool pendingLong = false
+var bool pendingShort = false
+var int longKeyBarIndex = na
+var int shortKeyBarIndex = na
+var float initialStop = na
+var float stopPrice = na
+var float entryPrice = na
+var float takeProfitPrice = na
+var int breakevenStep = 0
+var string currentDirection = na
+
+// MACD stop loss tracking
+var float entryHistVal = na
+
+var bool longConfirmSignal = false
+var bool longFailSignal = false
+var bool shortConfirmSignal = false
+var bool shortFailSignal = false
+
+longConfirmSignal := false
+longFailSignal := false
+shortConfirmSignal := false
+shortFailSignal := false
+
+// MACD stop loss signal
+var bool macdStopSignal = false
+macdStopSignal := false
+
+// ============================================================================
+// Mode-specific logic
+// ============================================================================
+isLongOnly = chainer_mode == "LONG_ONLY"
+isShortOnly = chainer_mode == "SHORT_ONLY"
+isBoth = chainer_mode == "BOTH"
+
+// ============================================================================
+// Helper: Reset trade state
+// ============================================================================
+resetTradeState() =>
+    [false, false, int(na), int(na), float(na), float(na), float(na), float(na), 0, string(na), false, float(na)]
+
+// ============================================================================
+// Helper: Execute entry
+// ============================================================================
+executeEntry(string dir, float currentStopPrice) =>
+    ep = close
+    initStop = currentStopPrice
+    sp = currentStopPrice
+    cd = dir
+    step = 0
+    ht = true
+    tp = float(na)
+    entryHist = histLine
+    if chainer_risk_reward_ratio > 0
+        tpCalc = ChainerTraderLib.riskRewardPrice(dir, ep, initStop, chainer_risk_reward_ratio)
+        if not na(tpCalc)
+            tp := tpCalc
+    [ep, initStop, sp, cd, step, ht, tp, entryHist]
+
+plotTakeProfitLabel(float tp) =>
+    tpLabelY = tp + syminfo.mintick * 5
+    label.new(bar_index, tpLabelY, "TP " + str.tostring(chainer_risk_reward_ratio) + "R", style=label.style_label_down, textcolor=color.white, color=color.new(color.teal, 0))
+
+// ============================================================================
+// Pre-calculate stop prices
+// ============================================================================
+stopPriceLong = ChainerTraderLib.stopPrice("LONG", bar_index, chainer_stoploss_atr_mult)
+stopPriceShort = ChainerTraderLib.stopPrice("SHORT", bar_index, chainer_stoploss_atr_mult)
+
+// ============================================================================
+// MACD Stop Loss Check
+// ============================================================================
+checkMacdStopLoss() =>
+    result = false
+    if macdStopEnabled and hasTrade and not na(entryHistVal) and not na(currentDirection)
+        if currentDirection == "LONG"
+            // For long, check if histogram became more negative
+            if histLine < entryHistVal - macdStopEps
+                result := true
+        else if currentDirection == "SHORT"
+            // For short, check if histogram became more positive
+            if histLine > entryHistVal + macdStopEps
+                result := true
+    result
+
+// Check MACD stop loss
+if checkMacdStopLoss()
+    macdStopSignal := true
+    [newPL, newPS, newLK, newSK, newIS, newSP, newEP, newTP, newBS, newCD, newHT, newEH] = resetTradeState()
+    pendingLong := newPL
+    pendingShort := newPS
+    longKeyBarIndex := newLK
+    shortKeyBarIndex := newSK
+    initialStop := newIS
+    stopPrice := newSP
+    entryPrice := newEP
+    takeProfitPrice := newTP
+    breakevenStep := newBS
+    currentDirection := newCD
+    hasTrade := newHT
+    entryHistVal := newEH
+
+// ============================================================================
+// LONG_ONLY Mode
+// ============================================================================
+if isLongOnly
+    if longSignal and not hasTrade and not pendingLong
+        currentStopPrice = stopPriceLong
+        if not na(currentStopPrice)
+            tradeId += 1
+            longKeyBarIndex := bar_index
+            labelPriceOffset = currentStopPrice - syminfo.mintick * 5
+            label.new(bar_index, labelPriceOffset, "SL " + str.tostring(currentStopPrice, format.mintick), style=label.style_label_up, textcolor=color.white, color=color.new(color.red, 0))
+            
+            pendingLong := chainer_enter_need_confirm
+            if not chainer_enter_need_confirm
+                [newEp, newInitStop, newSp, newDir, newStep, newHt, newTp, newEntryHist] = executeEntry("LONG", currentStopPrice)
+                entryPrice := newEp
+                initialStop := newInitStop
+                stopPrice := newSp
+                currentDirection := newDir
+                breakevenStep := newStep
+                hasTrade := newHt
+                takeProfitPrice := newTp
+                entryHistVal := newEntryHist
+                
+                if not na(takeProfitPrice)
+                    plotTakeProfitLabel(takeProfitPrice)
+            else
+                initialStop := currentStopPrice
+                stopPrice := currentStopPrice
+    
+    if shortSignal and hasTrade and not pendingShort
+        if chainer_exit_need_confirm
+            shortKeyBarIndex := bar_index
+            currentStopPrice = stopPriceShort
+            if not na(currentStopPrice)
+                labelPriceOffset = currentStopPrice + syminfo.mintick * 5
+                label.new(bar_index, labelPriceOffset, "X-Key " + str.tostring(currentStopPrice, format.mintick), style=label.style_label_down, textcolor=color.white, color=color.new(color.red, 0))
+            pendingShort := true
+        else
+            [newPL, newPS, newLK, newSK, newIS, newSP, newEP, newTP, newBS, newCD, newHT, newEH] = resetTradeState()
+            pendingLong := newPL
+            pendingShort := newPS
+            longKeyBarIndex := newLK
+            shortKeyBarIndex := newSK
+            initialStop := newIS
+            stopPrice := newSP
+            entryPrice := newEP
+            takeProfitPrice := newTP
+            breakevenStep := newBS
+            currentDirection := newCD
+            hasTrade := newHT
+            entryHistVal := newEH
+
+// ============================================================================
+// SHORT_ONLY Mode
+// ============================================================================
+if isShortOnly
+    if shortSignal and not hasTrade and not pendingShort
+        currentStopPrice = stopPriceShort
+        if not na(currentStopPrice)
+            tradeId += 1
+            shortKeyBarIndex := bar_index
+            labelPriceOffset = currentStopPrice + syminfo.mintick * 5
+            label.new(bar_index, labelPriceOffset, "SL " + str.tostring(currentStopPrice, format.mintick), style=label.style_label_down, textcolor=color.white, color=color.new(color.red, 0))
+            
+            pendingShort := chainer_enter_need_confirm
+            if not chainer_enter_need_confirm
+                [newEp, newInitStop, newSp, newDir, newStep, newHt, newTp, newEntryHist] = executeEntry("SHORT", currentStopPrice)
+                entryPrice := newEp
+                initialStop := newInitStop
+                stopPrice := newSp
+                currentDirection := newDir
+                breakevenStep := newStep
+                hasTrade := newHt
+                takeProfitPrice := newTp
+                entryHistVal := newEntryHist
+
+                if not na(takeProfitPrice)
+                    plotTakeProfitLabel(takeProfitPrice)
+            else
+                initialStop := currentStopPrice
+                stopPrice := currentStopPrice
+    
+    if longSignal and hasTrade and not pendingLong
+        if chainer_exit_need_confirm
+            longKeyBarIndex := bar_index
+            currentStopPrice = stopPriceLong
+            if not na(currentStopPrice)
+                labelPriceOffset = currentStopPrice - syminfo.mintick * 5
+                label.new(bar_index, labelPriceOffset, "X-Key " + str.tostring(currentStopPrice, format.mintick), style=label.style_label_up, textcolor=color.white, color=color.new(color.red, 0))
+            pendingLong := true
+        else
+            [newPL, newPS, newLK, newSK, newIS, newSP, newEP, newTP, newBS, newCD, newHT, newEH] = resetTradeState()
+            pendingLong := newPL
+            pendingShort := newPS
+            longKeyBarIndex := newLK
+            shortKeyBarIndex := newSK
+            initialStop := newIS
+            stopPrice := newSP
+            entryPrice := newEP
+            takeProfitPrice := newTP
+            breakevenStep := newBS
+            currentDirection := newCD
+            hasTrade := newHT
+            entryHistVal := newEH
+
+// ============================================================================
+// BOTH Mode
+// ============================================================================
+if isBoth
+    if longSignal and not hasTrade and not pendingLong and not pendingShort
+        currentStopPrice = stopPriceLong
+        if not na(currentStopPrice)
+            tradeId += 1
+            longKeyBarIndex := bar_index
+            labelPriceOffset = currentStopPrice - syminfo.mintick * 5
+            label.new(bar_index, labelPriceOffset, "SL " + str.tostring(currentStopPrice, format.mintick), style=label.style_label_up, textcolor=color.white, color=color.new(color.red, 0))
+            
+            pendingLong := chainer_enter_need_confirm
+            if not chainer_enter_need_confirm
+                [newEp, newInitStop, newSp, newDir, newStep, newHt, newTp, newEntryHist] = executeEntry("LONG", currentStopPrice)
+                entryPrice := newEp
+                initialStop := newInitStop
+                stopPrice := newSp
+                currentDirection := newDir
+                breakevenStep := newStep
+                hasTrade := newHt
+                takeProfitPrice := newTp
+                entryHistVal := newEntryHist
+
+                if not na(takeProfitPrice)
+                    plotTakeProfitLabel(takeProfitPrice)
+            else
+                initialStop := currentStopPrice
+                stopPrice := currentStopPrice
+    
+    if shortSignal and not hasTrade and not pendingLong and not pendingShort
+        currentStopPrice = stopPriceShort
+        if not na(currentStopPrice)
+            tradeId += 1
+            shortKeyBarIndex := bar_index
+            labelPriceOffset = currentStopPrice + syminfo.mintick * 5
+            label.new(bar_index, labelPriceOffset, "SL " + str.tostring(currentStopPrice, format.mintick), style=label.style_label_down, textcolor=color.white, color=color.new(color.red, 0))
+            
+            pendingShort := chainer_enter_need_confirm
+            if not chainer_enter_need_confirm
+                [newEp, newInitStop, newSp, newDir, newStep, newHt, newTp, newEntryHist] = executeEntry("SHORT", currentStopPrice)
+                entryPrice := newEp
+                initialStop := newInitStop
+                stopPrice := newSp
+                currentDirection := newDir
+                breakevenStep := newStep
+                hasTrade := newHt
+                takeProfitPrice := newTp
+                entryHistVal := newEntryHist
+
+                if not na(takeProfitPrice)
+                    plotTakeProfitLabel(takeProfitPrice)
+            else
+                initialStop := currentStopPrice
+                stopPrice := currentStopPrice
+
+// ============================================================================
+// Long Signal Confirmation
+// ============================================================================
+safeLongKeyBarIndex = not na(longKeyBarIndex) ? longKeyBarIndex : bar_index
+safeShortKeyBarIndex = not na(shortKeyBarIndex) ? shortKeyBarIndex : bar_index
+confirmStatusLong = ChainerTraderLib.longConfirm(safeLongKeyBarIndex)
+confirmStatusShort = ChainerTraderLib.shortConfirm(safeShortKeyBarIndex)
+
+if barstate.isconfirmed and pendingLong
+    if confirmStatusLong == 1
+        longConfirmSignal := true
+        pendingLong := false
+        
+        if isShortOnly and hasTrade
+            [newPL, newPS, newLK, newSK, newIS, newSP, newEP, newTP, newBS, newCD, newHT, newEH] = resetTradeState()
+            pendingLong := newPL
+            pendingShort := newPS
+            longKeyBarIndex := newLK
+            shortKeyBarIndex := newSK
+            initialStop := newIS
+            stopPrice := newSP
+            entryPrice := newEP
+            takeProfitPrice := newTP
+            breakevenStep := newBS
+            currentDirection := newCD
+            hasTrade := newHT
+            entryHistVal := newEH
+        else
+            [newEp, newInitStop, newSp, newDir, newStep, newHt, newTp, newEntryHist] = executeEntry("LONG", stopPrice)
+            entryPrice := newEp
+            initialStop := newInitStop
+            stopPrice := newSp
+            currentDirection := newDir
+            breakevenStep := newStep
+            hasTrade := newHt
+            takeProfitPrice := newTp
+            entryHistVal := newEntryHist
+
+            if not na(takeProfitPrice)
+                plotTakeProfitLabel(takeProfitPrice)
+        
+    else if confirmStatusLong == -1
+        longFailSignal := true
+        pendingLong := false
+        longKeyBarIndex := na
+        initialStop := na
+        stopPrice := na
+
+// ============================================================================
+// Short Signal Confirmation
+// ============================================================================
+if barstate.isconfirmed and pendingShort
+    if confirmStatusShort == 1
+        shortConfirmSignal := true
+        pendingShort := false
+        
+        if isLongOnly and hasTrade
+            [newPL, newPS, newLK, newSK, newIS, newSP, newEP, newTP, newBS, newCD, newHT, newEH] = resetTradeState()
+            pendingLong := newPL
+            pendingShort := newPS
+            longKeyBarIndex := newLK
+            shortKeyBarIndex := newSK
+            initialStop := newIS
+            stopPrice := newSP
+            entryPrice := newEP
+            takeProfitPrice := newTP
+            breakevenStep := newBS
+            currentDirection := newCD
+            hasTrade := newHT
+            entryHistVal := newEH
+        else
+            [newEp, newInitStop, newSp, newDir, newStep, newHt, newTp, newEntryHist] = executeEntry("SHORT", stopPrice)
+            entryPrice := newEp
+            initialStop := newInitStop
+            stopPrice := newSp
+            currentDirection := newDir
+            breakevenStep := newStep
+            hasTrade := newHt
+            takeProfitPrice := newTp
+            entryHistVal := newEntryHist
+
+            if not na(takeProfitPrice)
+                plotTakeProfitLabel(takeProfitPrice)
+        
+    else if confirmStatusShort == -1
+        shortFailSignal := true
+        pendingShort := false
+        shortKeyBarIndex := na
+        initialStop := na
+        stopPrice := na
+
+// ============================================================================
+// Breakeven Management
+// ============================================================================
+if barstate.isconfirmed and hasTrade and chainer_enable_breakeven and not na(entryPrice) and not na(initialStop) and not na(currentDirection)
+    newStop = ChainerTraderLib.breakevenPrice(currentDirection, entryPrice, initialStop)
+    if not na(newStop)
+        isLong = currentDirection == "LONG"
+        shouldUpdate = (isLong and (na(stopPrice) or newStop > stopPrice)) or (not isLong and (na(stopPrice) or newStop < stopPrice))
+        
+        if shouldUpdate
+            stopPrice := newStop
+            breakevenStep += 1
+            beLabelPrice = isLong ? newStop - syminfo.mintick * 5 : newStop + syminfo.mintick * 5
+            label.new(bar_index, beLabelPrice, "BE " + str.tostring(breakevenStep), style=isLong ? label.style_label_up : label.style_label_down, textcolor=color.white, color=color.new(color.orange, 0))
+
+// ============================================================================
+// Stop Loss Check
+// ============================================================================
+stopHit = hasTrade and not na(stopPrice) and not na(currentDirection) and (currentDirection == "LONG" ? low <= stopPrice : high >= stopPrice)
+if stopHit
+    [newPL, newPS, newLK, newSK, newIS, newSP, newEP, newTP, newBS, newCD, newHT, newEH] = resetTradeState()
+    pendingLong := newPL
+    pendingShort := newPS
+    longKeyBarIndex := newLK
+    shortKeyBarIndex := newSK
+    initialStop := newIS
+    stopPrice := newSP
+    entryPrice := newEP
+    takeProfitPrice := newTP
+    breakevenStep := newBS
+    currentDirection := newCD
+    hasTrade := newHT
+    entryHistVal := newEH
+
+// ============================================================================
+// Debug logging
+// ============================================================================
+safeLongKeyForLevels = not na(longKeyBarIndex) ? longKeyBarIndex : bar_index
+safeShortKeyForLevels = not na(shortKeyBarIndex) ? shortKeyBarIndex : bar_index
+[longFound, longTime, longHigh, longLow] = ChainerTraderLib.keyLevelsByBarIndex(safeLongKeyForLevels)
+[shortFound, shortTime, shortHigh, shortLow] = ChainerTraderLib.keyLevelsByBarIndex(safeShortKeyForLevels)
+longFound := not na(longKeyBarIndex) and longFound
+longTime := not na(longKeyBarIndex) ? longTime : 0
+longHigh := not na(longKeyBarIndex) ? longHigh : 0.0
+longLow := not na(longKeyBarIndex) ? longLow : 0.0
+shortFound := not na(shortKeyBarIndex) and shortFound
+shortTime := not na(shortKeyBarIndex) ? shortTime : 0
+shortHigh := not na(shortKeyBarIndex) ? shortHigh : 0.0
+shortLow := not na(shortKeyBarIndex) ? shortLow : 0.0
+
+shouldDebug = chainer_debug_start_time > 0 and time >= chainer_debug_start_time
+if shouldDebug
+    log.info("===== MACD Triple Divergence Debug [time={0}] =====", time)
+    log.info("Mode: {0} Direction: {1}", chainer_mode, currentDirection)
+    log.info("Trade: tradeId={0} hasTrade={1} pendingLong={2} pendingShort={3} step={4}", tradeId, hasTrade ? 1 : 0, pendingLong ? 1 : 0, pendingShort ? 1 : 0, breakevenStep)
+    log.info("MACD: hist={0} entryHist={1}", histLine, entryHistVal)
+    log.info("Segments: count={0} currentSign={1}", array.size(segStartIdx), currentSegSign)
+
+// ============================================================================
+// Plots
+// ============================================================================
+// MACD histogram (in separate pane)
+// plot(histLine, title="MACD Histogram", color=histLine >= 0 ? color.green : color.red, style=plot.style_histogram)
+
+// Signal markers
+plotshape(longSignal, title="Long Signal (Bottom Divergence)", text="BD", style=shape.labelup, location=location.belowbar, color=color.new(color.green, 0), textcolor=color.white, size=size.small)
+plotshape(shortSignal, title="Short Signal (Top Divergence)", text="TD", style=shape.labeldown, location=location.abovebar, color=color.new(color.red, 0), textcolor=color.white, size=size.small)
+
+// Confirmation markers
+plotshape(longConfirmSignal, title="Long Confirm", text="", style=shape.flag, location=location.abovebar, color=color.new(color.green, 0), textcolor=color.white, size=size.tiny)
+plotshape(longFailSignal, title="Long Fail", text="", style=shape.xcross, location=location.belowbar, color=color.new(color.green, 0), textcolor=color.white, size=size.tiny)
+plotshape(shortConfirmSignal, title="Short Confirm", text="", style=shape.flag, location=location.belowbar, color=color.new(color.red, 0), textcolor=color.white, size=size.tiny)
+plotshape(shortFailSignal, title="Short Fail", text="", style=shape.xcross, location=location.abovebar, color=color.new(color.red, 0), size=size.tiny)
+
+// Stop loss markers
+plotshape(stopHit, title="Stop Loss Hit", text="SL", style=shape.circle, location=location.belowbar, color=color.new(color.red, 0), size=size.tiny)
+plotshape(macdStopSignal, title="MACD Stop Loss", text="MS", style=shape.diamond, location=location.belowbar, color=color.new(color.purple, 0), textcolor=color.white, size=size.small)

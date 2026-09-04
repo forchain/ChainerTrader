@@ -1,0 +1,444 @@
+//@version=6
+strategy("MACD Triple Divergence", "[S]MACD3D", overlay=true, format=format.price, precision=6, default_qty_type=strategy.percent_of_equity, default_qty_value=100, commission_type=strategy.commission.percent, commission_value=0.1)
+
+// ============================================================================
+// MACD Triple Divergence Strategy for ChainerTrader Framework
+// ============================================================================
+// Implements MACD histogram triple top/bottom divergence detection.
+//
+// Bottom Divergence (Long Signal):
+// - 3 consecutive red (negative) segments with separators
+// - Price makes lower lows: P1 > P2 > P3
+// - MACD histogram absolute values decrease: |M1| > |M2| > |M3|
+//
+// Top Divergence (Short Signal):
+// - 3 consecutive green (positive) segments with separators
+// - Price makes higher highs: H1 < H2 < H3
+// - MACD histogram values decrease: M1 > M2 > M3
+//
+// Special Stop Loss:
+// - Long: exit if histogram becomes more negative than entry
+// - Short: exit if histogram becomes more positive than entry
+// ============================================================================
+
+import outliertony/ChainerTrader/3 as Lib
+
+// ============================================================================
+// MACD Parameters
+// ============================================================================
+macdFast = input.int(title="MACD Fast Length", defval=12, minval=1, group="MACD Parameters")
+macdSlow = input.int(title="MACD Slow Length", defval=26, minval=1, group="MACD Parameters")
+macdSignal = input.int(title="MACD Signal Length", defval=9, minval=1, group="MACD Parameters")
+
+// ============================================================================
+// Divergence Detection Parameters
+// ============================================================================
+oppRatio = input.float(title="Separator Ratio", defval=0.35, minval=0.0, maxval=1.0, step=0.05, group="Divergence Parameters", tooltip="Max ratio of separator segment height to reference segment height")
+zeroEps = input.float(title="Zero Threshold", defval=0.0001, minval=0.0, step=0.0001, group="Divergence Parameters", tooltip="Histogram values below this are considered zero")
+priceEps = input.float(title="Price Tolerance", defval=0.0, minval=0.0, step=0.01, group="Divergence Parameters", tooltip="Price comparison tolerance (0 = strict)")
+macdEps = input.float(title="MACD Tolerance", defval=0.0, minval=0.0, step=0.0001, group="Divergence Parameters", tooltip="MACD comparison tolerance (0 = strict)")
+maxLookbackBars = input.int(title="Max Lookback Bars", defval=200, minval=50, maxval=500, group="Divergence Parameters")
+
+// ============================================================================
+// Special MACD Stop Loss Parameters
+// ============================================================================
+macdStopEnabled = input.bool(title="Enable MACD Stop Loss", defval=true, group="MACD Stop Loss", tooltip="Exit if histogram moves against entry direction")
+macdStopEps = input.float(title="MACD Stop Tolerance", defval=0.0001, minval=0.0, step=0.0001, group="MACD Stop Loss")
+
+// ============================================================================
+// Chainer Framework Parameters
+// ============================================================================
+chainer_mode = input.string(title="Trading Mode", defval="LONG_ONLY", options=["LONG_ONLY", "SHORT_ONLY", "BOTH"], group="Chainer Framework")
+chainer_stoploss_atr_mult = input.float(title="Stop loss ATR multiple (0 = disabled)", defval=1.0, step=0.1, group="Chainer Framework")
+chainer_enter_need_confirm = input.bool(title="Require entry confirmation", defval=true, group="Chainer Framework", tooltip="If true, waits for price to break key bar high/low before entering.")
+chainer_exit_need_confirm = input.bool(title="Require exit confirmation", defval=true, group="Chainer Framework", tooltip="If true, waits for price to break key bar high/low before exiting.")
+chainer_enable_breakeven = input.bool(title="Enable breakeven", defval=true, group="Chainer Framework")
+chainer_risk_reward_ratio = input.float(title="Risk/reward ratio (0 = disabled)", defval=2.0, step=0.1, group="Chainer Framework")
+
+// 当账户净值低于初始资金的一定百分比时，不再开新仓（0 = 不限制）
+chainer_min_equity_percent = input.float(
+     title="Min equity (percent of initial) to open trade (0 = disabled)",
+     defval=0.0,
+     minval=0.0,
+     maxval=100.0,
+     step=1.0,
+     group="Chainer Framework",
+     tooltip="When > 0, new entries are disabled if current equity falls below this percentage of initial capital.")
+
+chainer_long_time = input.time(title="Custom long signal time (ms, 0 = disabled)", defval=0, group="Chainer Framework")
+chainer_short_time = input.time(title="Custom short signal time (ms, 0 = disabled)", defval=0, group="Chainer Framework")
+
+chainer_debug_start_time = input.time(title="Debug start time (ms, 0 = disabled)", defval=0, group="Chainer Framework")
+
+// ============================================================================
+// MACD Calculation
+// ============================================================================
+[macdLine, signalLine, histLine] = ta.macd(close, macdFast, macdSlow, macdSignal)
+
+// ============================================================================
+// Segment Data Structure
+// ============================================================================
+var array<int> segStartIdx = array.new_int(0)
+var array<int> segEndIdx = array.new_int(0)
+var array<int> segSign = array.new_int(0)
+var array<float> segExtremeVal = array.new_float(0)
+var array<int> segExtremeIdx = array.new_int(0)
+var array<float> segPriceExtreme = array.new_float(0)
+
+var int currentSegStart = na
+var int currentSegSign = na
+var float currentSegExtreme = na
+var int currentSegExtremeIdx = na
+var float currentSegPriceExtreme = na
+var int prevHistSign = na
+
+// ============================================================================
+// Helper: Get histogram sign
+// ============================================================================
+getHistSign(float histVal) =>
+    if math.abs(histVal) <= zeroEps
+        0
+    else if histVal > 0
+        1
+    else
+        -1
+
+// ============================================================================
+// Update Segments (executed every bar)
+// ============================================================================
+histVal = histLine
+currentSign = getHistSign(histVal)
+
+if na(currentSegStart)
+    currentSegStart := bar_index
+    currentSegSign := currentSign
+    currentSegExtreme := histVal
+    currentSegExtremeIdx := bar_index
+    currentSegPriceExtreme := currentSign == -1 ? low : high
+    prevHistSign := currentSign
+else
+    signChanged = false
+    if currentSign != prevHistSign
+        if currentSign != 0 and prevHistSign != 0
+            signChanged := true
+        else if currentSign != 0 and currentSegSign != currentSign
+            signChanged := true
+    
+    if signChanged
+        array.push(segStartIdx, currentSegStart)
+        array.push(segEndIdx, bar_index - 1)
+        array.push(segSign, currentSegSign)
+        array.push(segExtremeVal, currentSegExtreme)
+        array.push(segExtremeIdx, currentSegExtremeIdx)
+        array.push(segPriceExtreme, currentSegPriceExtreme)
+        
+        if array.size(segStartIdx) > 20
+            array.shift(segStartIdx)
+            array.shift(segEndIdx)
+            array.shift(segSign)
+            array.shift(segExtremeVal)
+            array.shift(segExtremeIdx)
+            array.shift(segPriceExtreme)
+        
+        currentSegStart := bar_index
+        currentSegSign := currentSign
+        currentSegExtreme := histVal
+        currentSegExtremeIdx := bar_index
+        currentSegPriceExtreme := currentSign == -1 ? low : high
+    else
+        if currentSegSign == -1
+            if histVal < currentSegExtreme
+                currentSegExtreme := histVal
+                currentSegExtremeIdx := bar_index
+            if low < currentSegPriceExtreme
+                currentSegPriceExtreme := low
+        else if currentSegSign == 1
+            if histVal > currentSegExtreme
+                currentSegExtreme := histVal
+                currentSegExtremeIdx := bar_index
+            if high > currentSegPriceExtreme
+                currentSegPriceExtreme := high
+    
+    prevHistSign := currentSign
+
+// ============================================================================
+// Detect Bottom Triple Divergence
+// ============================================================================
+detectBottomTripleDivergence() =>
+    result = false
+    
+    if array.size(segStartIdx) >= 5
+        if currentSegSign != -1
+            numSegs = array.size(segStartIdx)
+            
+            r3Idx = -1
+            for i = numSegs - 1 to 0
+                if array.get(segSign, i) == -1
+                    r3Idx := i
+                    break
+            
+            if r3Idx >= 4
+                r3Start = array.get(segStartIdx, r3Idx)
+                r3Extreme = array.get(segExtremeVal, r3Idx)
+                r3Price = array.get(segPriceExtreme, r3Idx)
+                
+                sep2Idx = r3Idx - 1
+                sep2Extreme = array.get(segExtremeVal, sep2Idx)
+                sep2Sign = array.get(segSign, sep2Idx)
+                
+                r2Idx = -1
+                for i = sep2Idx - 1 to 0
+                    if array.get(segSign, i) == -1
+                        r2Idx := i
+                        break
+                
+                if r2Idx >= 2
+                    r2Extreme = array.get(segExtremeVal, r2Idx)
+                    r2Price = array.get(segPriceExtreme, r2Idx)
+                    
+                    sep1Idx = r2Idx - 1
+                    sep1Extreme = array.get(segExtremeVal, sep1Idx)
+                    sep1Sign = array.get(segSign, sep1Idx)
+                    
+                    r1Idx = -1
+                    for i = sep1Idx - 1 to 0
+                        if array.get(segSign, i) == -1
+                            r1Idx := i
+                            break
+                    
+                    if r1Idx >= 0
+                        r1Start = array.get(segStartIdx, r1Idx)
+                        r1Extreme = array.get(segExtremeVal, r1Idx)
+                        r1Price = array.get(segPriceExtreme, r1Idx)
+                        
+                        if bar_index - r1Start <= maxLookbackBars
+                            m1 = math.abs(r1Extreme)
+                            m2 = math.abs(r2Extreme)
+                            m3 = math.abs(r3Extreme)
+                            
+                            p1 = r1Price
+                            p2 = r2Price
+                            p3 = r3Price
+                            
+                            macdOk = m1 > m2 + macdEps and m2 > m3 + macdEps
+                            priceOk = p1 > p2 + priceEps and p2 > p3 + priceEps
+                            
+                            hRef = math.max(m1, m2, m3)
+                            sep1Max = sep1Sign == 1 ? math.abs(sep1Extreme) : 0.0
+                            sep2Max = sep2Sign == 1 ? math.abs(sep2Extreme) : 0.0
+                            sep1Ok = sep1Max <= oppRatio * hRef
+                            sep2Ok = sep2Max <= oppRatio * hRef
+                            
+                            if macdOk and priceOk and sep1Ok and sep2Ok
+                                result := true
+    result
+
+// ============================================================================
+// Detect Top Triple Divergence
+// ============================================================================
+detectTopTripleDivergence() =>
+    result = false
+    
+    if array.size(segStartIdx) >= 5
+        if currentSegSign != 1
+            numSegs = array.size(segStartIdx)
+            
+            g3Idx = -1
+            for i = numSegs - 1 to 0
+                if array.get(segSign, i) == 1
+                    g3Idx := i
+                    break
+            
+            if g3Idx >= 4
+                g3Start = array.get(segStartIdx, g3Idx)
+                g3Extreme = array.get(segExtremeVal, g3Idx)
+                g3Price = array.get(segPriceExtreme, g3Idx)
+                
+                sep2Idx = g3Idx - 1
+                sep2Extreme = array.get(segExtremeVal, sep2Idx)
+                sep2Sign = array.get(segSign, sep2Idx)
+                
+                g2Idx = -1
+                for i = sep2Idx - 1 to 0
+                    if array.get(segSign, i) == 1
+                        g2Idx := i
+                        break
+                
+                if g2Idx >= 2
+                    g2Extreme = array.get(segExtremeVal, g2Idx)
+                    g2Price = array.get(segPriceExtreme, g2Idx)
+                    
+                    sep1Idx = g2Idx - 1
+                    sep1Extreme = array.get(segExtremeVal, sep1Idx)
+                    sep1Sign = array.get(segSign, sep1Idx)
+                    
+                    g1Idx = -1
+                    for i = sep1Idx - 1 to 0
+                        if array.get(segSign, i) == 1
+                            g1Idx := i
+                            break
+                    
+                    if g1Idx >= 0
+                        g1Start = array.get(segStartIdx, g1Idx)
+                        g1Extreme = array.get(segExtremeVal, g1Idx)
+                        g1Price = array.get(segPriceExtreme, g1Idx)
+                        
+                        if bar_index - g1Start <= maxLookbackBars
+                            m1 = g1Extreme
+                            m2 = g2Extreme
+                            m3 = g3Extreme
+                            
+                            h1 = g1Price
+                            h2 = g2Price
+                            h3 = g3Price
+                            
+                            macdOk = m1 > m2 + macdEps and m2 > m3 + macdEps
+                            priceOk = h1 + priceEps < h2 and h2 + priceEps < h3
+                            
+                            hRef = math.max(m1, m2, m3)
+                            sep1Max = sep1Sign == -1 ? math.abs(sep1Extreme) : 0.0
+                            sep2Max = sep2Sign == -1 ? math.abs(sep2Extreme) : 0.0
+                            sep1Ok = sep1Max <= oppRatio * hRef
+                            sep2Ok = sep2Max <= oppRatio * hRef
+                            
+                            if macdOk and priceOk and sep1Ok and sep2Ok
+                                result := true
+    result
+
+// ============================================================================
+// Signal Generation
+// ============================================================================
+getLongSignal() =>
+    detectBottomTripleDivergence()
+
+getShortSignal() =>
+    detectTopTripleDivergence()
+
+// ============================================================================
+// Strategy State (managed by library)
+// ============================================================================
+var Lib.StrategyState state = Lib.initState()
+
+// MACD-specific state: entry histogram value for MACD stop loss
+var float entryHistVal = na
+
+// ============================================================================
+// MACD Stop Loss Check
+// ============================================================================
+checkMacdStopLoss() =>
+    result = false
+    if macdStopEnabled and strategy.position_size != 0 and not na(entryHistVal)
+        if strategy.position_size > 0
+            if histLine < entryHistVal - macdStopEps
+                result := true
+        else if strategy.position_size < 0
+            if histLine > entryHistVal + macdStopEps
+                result := true
+    result
+
+macdStopSignal = checkMacdStopLoss()
+
+// ============================================================================
+// Framework Update - Process signals and get actions
+// ============================================================================
+output = Lib.updateFramework(
+     state,
+     strategy.position_size,
+     barstate.isconfirmed,
+     chainer_mode,
+     chainer_stoploss_atr_mult,
+     chainer_enter_need_confirm,
+     chainer_exit_need_confirm,
+     chainer_enable_breakeven,
+     chainer_risk_reward_ratio,
+     chainer_long_time,
+     chainer_short_time,
+     getLongSignal(),
+     getShortSignal(),
+     macdStopSignal,  // extraStopSignal - MACD stop loss
+     false,           // extraExitLongSignal
+     false,           // extraExitShortSignal
+     strategy.equity,
+     strategy.initial_capital,
+     chainer_min_equity_percent)  // minEquityPercent
+
+// Update state
+state := output.newState
+
+// ============================================================================
+// Execute Trading Actions
+// ============================================================================
+if output.shouldEntryLong
+    strategy.entry("Long", strategy.long)
+    entryHistVal := histLine
+    // Draw SL label
+    if not na(state.stopPrice)
+        labelPriceOffset = state.stopPrice - syminfo.mintick * 5
+        label.new(bar_index, labelPriceOffset, "SL " + str.tostring(state.stopPrice, format.mintick), style=label.style_label_up, textcolor=color.white, color=color.new(color.red, 0))
+    // Draw TP label
+    if not na(state.takeProfitPrice)
+        tpLabelY = state.takeProfitPrice + syminfo.mintick * 5
+        label.new(bar_index, tpLabelY, "TP " + str.tostring(chainer_risk_reward_ratio) + "R", style=label.style_label_down, textcolor=color.white, color=color.new(color.teal, 0))
+
+if output.shouldEntryShort
+    strategy.entry("Short", strategy.short)
+    entryHistVal := histLine
+    // Draw SL label
+    if not na(state.stopPrice)
+        labelPriceOffset = state.stopPrice + syminfo.mintick * 5
+        label.new(bar_index, labelPriceOffset, "SL " + str.tostring(state.stopPrice, format.mintick), style=label.style_label_down, textcolor=color.white, color=color.new(color.red, 0))
+    // Draw TP label
+    if not na(state.takeProfitPrice)
+        tpLabelY = state.takeProfitPrice - syminfo.mintick * 5
+        label.new(bar_index, tpLabelY, "TP " + str.tostring(chainer_risk_reward_ratio) + "R", style=label.style_label_up, textcolor=color.white, color=color.new(color.teal, 0))
+
+if output.shouldExitLong
+    strategy.close("Long")
+    entryHistVal := na
+
+if output.shouldExitShort
+    strategy.close("Short")
+    entryHistVal := na
+
+if output.shouldCloseAll
+    if macdStopSignal
+        strategy.close_all(comment="MACD Stop")
+    else
+        strategy.close_all()
+    entryHistVal := na
+
+if output.shouldSetExit
+    if strategy.position_size > 0
+        strategy.exit("Exit", "Long", stop=output.exitStopPrice, limit=not na(output.exitLimitPrice) ? output.exitLimitPrice : na)
+    else if strategy.position_size < 0
+        strategy.exit("Exit", "Short", stop=output.exitStopPrice, limit=not na(output.exitLimitPrice) ? output.exitLimitPrice : na)
+
+// Draw breakeven label when updated
+if output.breakevenUpdated and strategy.position_size != 0
+    isLong = strategy.position_size > 0
+    beLabelPrice = isLong ? state.stopPrice - syminfo.mintick * 5 : state.stopPrice + syminfo.mintick * 5
+    label.new(bar_index, beLabelPrice, "BE " + str.tostring(state.breakevenStep), style=isLong ? label.style_label_up : label.style_label_down, textcolor=color.white, color=color.new(color.orange, 0))
+
+// ============================================================================
+// Debug Logging
+// ============================================================================
+shouldDebug = chainer_debug_start_time > 0 and time >= chainer_debug_start_time
+if shouldDebug
+    log.info("===== MACD Triple Divergence Strategy Debug [time={0}] =====", time)
+    log.info("Mode: {0} Position: {1}", chainer_mode, strategy.position_size)
+    log.info("Trade: tradeId={0} pendingLong={1} pendingShort={2} step={3}", state.tradeId, state.pendingLong ? 1 : 0, state.pendingShort ? 1 : 0, state.breakevenStep)
+    log.info("MACD: hist={0} entryHist={1}", histLine, entryHistVal)
+
+// ============================================================================
+// Plots
+// ============================================================================
+plotshape(output.longSignal, title="Long Signal (Bottom Divergence)", text="BD", style=shape.labelup, location=location.belowbar, color=color.new(color.green, 0), textcolor=color.white, size=size.small)
+plotshape(output.shortSignal, title="Short Signal (Top Divergence)", text="TD", style=shape.labeldown, location=location.abovebar, color=color.new(color.red, 0), textcolor=color.white, size=size.small)
+
+plotshape(output.longConfirmSignal, title="Long Confirm", text="", style=shape.flag, location=location.abovebar, color=color.new(color.green, 0), textcolor=color.white, size=size.tiny)
+plotshape(output.longFailSignal, title="Long Fail", text="", style=shape.xcross, location=location.belowbar, color=color.new(color.green, 0), textcolor=color.white, size=size.tiny)
+plotshape(output.shortConfirmSignal, title="Short Confirm", text="", style=shape.flag, location=location.belowbar, color=color.new(color.red, 0), textcolor=color.white, size=size.tiny)
+plotshape(output.shortFailSignal, title="Short Fail", text="", style=shape.xcross, location=location.abovebar, color=color.new(color.red, 0), size=size.tiny)
+
+plotshape(output.stopHitSignal, title="Stop Loss Hit", text="SL", style=shape.circle, location=location.belowbar, color=color.new(color.red, 0), size=size.tiny)
+plotshape(macdStopSignal and output.shouldCloseAll, title="MACD Stop Loss", text="MS", style=shape.diamond, location=location.belowbar, color=color.new(color.purple, 0), textcolor=color.white, size=size.small)

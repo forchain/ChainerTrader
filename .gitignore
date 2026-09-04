@@ -134,4 +134,5 @@ dmypy.json
 .idea
 .vscode
 tests/output
+reports/
 .sw*

@@ -47,6 +47,8 @@ class ChainerTraderStrategy(BaseStrategy):
         ("chainer_exit_need_confirm", True),   # Require exit signal confirmation
         ("chainer_enable_breakeven", True),  # Enable breakeven
         ("chainer_risk_reward_ratio", 2.0),  # Risk/reward ratio (0 = disabled)
+        # Disable new entries when equity falls below this percentage of initial account value (0 = disabled)
+        ("chainer_min_equity_percent", 0.0),
     )
 
     def __init__(self):
