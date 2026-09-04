@@ -1,6 +1,8 @@
 # ChainerTrader 
 Implement TradvingView Algorithms of Youtube Channel Shi Hun
 
+## Strategies
+- [DeviationMACD Strategy](strategies/DeviationMACD.md) - A sophisticated trading strategy combining MACD with price divergence patterns
 
 ## Install it from PyPI
 
