@@ -94,7 +94,7 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
             limit = tcd["limit"]
 
         if task_type == TaskType.DEBUG:
-            tc = TaskConfig(create_task_id(last_task_id), task_type)
+            tc = TaskConfig(create_task_id(last_task_id), task_type, None)
             tc.limit = limit
             ret.append(tc)
             last_task_id = tc.id

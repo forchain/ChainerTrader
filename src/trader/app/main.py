@@ -79,8 +79,15 @@ def main():
         "--cash",
         help="Init cash for backtesting",
         action="store",
-        type=int,
+        type=float,
         default=100000,
+    )
+    parser.add_argument(
+        "--locked",
+        help="Init locked cash for backtesting",
+        action="store",
+        type=float,
+        default=0,
     )
     parser.add_argument(
         "--stat",
@@ -128,6 +135,7 @@ def main():
         args.window,
         args.tasks,
         args.cash,
+        args.locked,
         args.stat,
         args.notice,
         args.api,

@@ -1,5 +1,7 @@
 import asyncio
 from asyncio import Queue
+
+from trader.common.log_tag import LogTag
 from trader.common.logger import Logger
 from multiprocessing import Manager, Process
 
@@ -18,6 +20,7 @@ from trader.task.task_config import TaskConfig, parse_task_config
 from trader.task.task_type import TaskType
 from trader.task.trader_task import TraderTask
 from trader.task.update_klines_task import UpdateKlinesTask
+from trader.utils.symbol_interval import SymbolInterval
 from trader.utils.task_state import TaskState
 
 
@@ -36,6 +39,7 @@ class TaskManager:
         self.log.info("Init TaskManager")
         self.tasks: dict[int, BaseTask] = {}
         self.async_tasks = []
+        self.latest_si: SymbolInterval | None = None
 
     def start(self):
         self.log.info("TaskManager start")
@@ -70,6 +74,9 @@ class TaskManager:
         for taskc in taskcs:
             if taskc.ttype == TaskType.BACK_TRADER:
                 bttaskcs.append(taskc)
+            if taskc.symbol_interval:
+                self.latest_si = taskc.symbol_interval
+
         if len(bttaskcs) > 0:
             async_tasks.append(asyncio.create_task(self.add_backtrader_task(bttaskcs, queue)))
 
@@ -106,7 +113,7 @@ class TaskManager:
         elif cfg.ttype == TaskType.CHECK_KLINES_NUM:
             task = CheckKlinesNumTask(cfg, self.cfg, self.log, self.db_manager, self.exchange)
         elif cfg.ttype == TaskType.DEBUG:
-            task = DebugTask(cfg, self.cfg, self.log)
+            task = DebugTask(cfg, self.cfg, self.log, self.db_manager)
 
         if task is None:
             self.log.error(f"Can't add task:{cfg.to_dict()}")
@@ -145,8 +152,13 @@ class TaskManager:
             for p in processes:
                 p.join()
 
-            for msg in result:
-                self.log.info(f"Relay process queue message:{msg.name()}")
+            for reArr in result:
+                msg = reArr[0]
+                logs = reArr[1]
+                for log_str in logs:
+                    self.log.info(log_str, LogTag.STRATEGY)
+
+                self.log.info(f"Relay process queue message:{msg.name()}", LogTag.STRATEGY)
                 bts: BackTraderStat = msg.get_data()
                 task = self.get_task(bts.ts.id)
                 if task:

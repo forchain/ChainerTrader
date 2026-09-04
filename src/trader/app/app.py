@@ -58,8 +58,7 @@ class App:
         return "CLI"
 
     def start(self):
-        self.log().info(f"Start {self.name()} App, config:{self.cfg.safe_to_dict()}, running mode:{self.get_running_mode()}")
-        self.logger.info(f"Start {self.name()} App, config:{self.cfg.to_dict()}, running mode:{self.get_running_mode()}", LogTag.PRIVATE)
+        self.logger.info(f"Start {self.name()} App, config:{self.cfg.safe_to_dict()}, running mode:{self.get_running_mode()}", LogTag.PRIVATE)
 
         if not self.cfg.is_server():
             if self.cfg.tasks is None:
@@ -158,7 +157,7 @@ class App:
 
             queue.task_done()
 
-        self.task_manager.close()
+        await self.task_manager.close()
 
         self.logger.info(f"{self.name()} exit handler")
 
