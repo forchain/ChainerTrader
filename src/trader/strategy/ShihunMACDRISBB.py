@@ -4,7 +4,7 @@ from __future__ import (absolute_import, division, print_function,
 import backtrader as bt
 
 from trader.strategy.base_strategy import BaseStrategy
-from trader.utils.chainerrsi import ChainerRSIHisto
+from trader.indicators.chainerrsi import ChainerRSIHisto
 from trader.utils.operate import OperateType
 from trader.utils.trend import TrendType
 

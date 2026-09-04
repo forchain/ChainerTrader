@@ -1,11 +1,9 @@
 from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
 
-import backtrader as bt
 from trader.strategy.base_strategy import BaseStrategy
-from trader.utils.kdj import KDJIndicator
 from trader.utils.operate import OperateType
-from trader.utils.rsrs import RSRSIndicator
+from trader.indicators.rsrs import RSRSIndicator
 
 
 class RSRSStrategy(BaseStrategy):

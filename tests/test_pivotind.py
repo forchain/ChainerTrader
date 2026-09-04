@@ -11,8 +11,8 @@ from trader.common import path
 
 import backtrader as bt
 
-from trader.utils.pivot_high import PivotHigh
-from trader.utils.pivot_low import PivotLow
+from trader.indicators.pivot_high import PivotHigh
+from trader.indicators.pivot_low import PivotLow
 
 
 class TestStrategy(bt.Strategy):

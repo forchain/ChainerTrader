@@ -5,9 +5,9 @@ import backtrader as bt
 
 from trader.strategy.base_strategy import BaseStrategy
 from trader.utils.ma import MAType
-from trader.utils.qqe import QQECalc
-from trader.utils.super_trend import SuperTrend
-from trader.utils.trend_a import TrendIndicatorA
+from trader.indicators.qqe import QQECalc
+from trader.indicators.super_trend import SuperTrend
+from trader.indicators.trend_a import TrendIndicatorA
 
 class SupertrendStrategy(BaseStrategy):
     params = (
