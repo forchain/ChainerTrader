@@ -165,8 +165,9 @@ class Node:
         table.add_row(["冻结资金", format(self.cfg.cash - self.free, ".2f")])
         table.add_row(["可用资金", format(self.free, ".2f")])
         table.add_row(["最终资金", format(finalFund, ".2f")])
-        table.add_row(["操作买单数", optstat["buys"]])
-        table.add_row(["操作卖单数", optstat["sells"]])
+        table.add_row(["做多数", optstat["longs"]])
+        table.add_row(["做空数", optstat["shorts"]])
+        table.add_row(["平仓数", optstat["closes"]])
 
         self.log.info(f"\n{table}", LogTag.STRATEGY)
 

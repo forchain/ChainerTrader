@@ -32,11 +32,11 @@ class _MACrossEntryExitStrategy(BaseStrategy):
         ("atr", True),
         ("atrperiod", 3),
         ("chainer_stoploss_atr_mult", 0.0),
-        ("chainer_entry_need_confirm", True),
-        ("chainer_exit_need_confirm", True),
+        ("chainer_long_need_confirm", True),
+        ("chainer_short_need_confirm", True),
         ("chainer_enable_breakeven", True),
         ("chainer_risk_reward_ratio", 1.0),
-        ("chainer_allow_short", True),
+        ("chainer_mode", "LONG_ONLY"),  # Default to LONG_ONLY for LONG entry tests
     )
 
     def __init__(self):
@@ -101,7 +101,7 @@ def test_entry_confirm_failure_bans_key_time():
         dict(open=104, high=105, low=90, close=94),  # close < key_low => fail confirm
         dict(open=94, high=96, low=93, close=95),
     ]
-    st = _run(_build_df(rows), dict(fastLen=2, slowLen=3, chainer_entry_need_confirm=True, chainer_exit_need_confirm=True))
+    st = _run(_build_df(rows), dict(fastLen=2, slowLen=3, chainer_long_need_confirm=True, chainer_short_need_confirm=True))
 
     cancelled = [t for t in st._trades_by_id.values() if t.status == BaseStrategy.TradeStatus.CANCELLED]  # noqa: SLF001
     assert len(cancelled) == 1
@@ -129,8 +129,8 @@ def test_entry_confirm_success_then_breakeven_then_stop_exit():
         dict(
             fastLen=2,
             slowLen=3,
-            chainer_entry_need_confirm=True,
-            chainer_exit_need_confirm=True,
+            chainer_long_need_confirm=True,
+            chainer_short_need_confirm=True,
             chainer_enable_breakeven=True,
             chainer_risk_reward_ratio=0.0,
             chainer_stoploss_atr_mult=0.0,
@@ -145,10 +145,10 @@ def test_entry_confirm_success_then_breakeven_then_stop_exit():
     assert ctx.exit_price is not None
     assert ctx.breakeven_step >= 1
 
-    # There must be a breakeven move and a stop-trigger log line
+    # There must be a breakeven move and a stop-exit log line
     msgs = [m for _, __, m in st.events]
     assert any("保本移动止损" in m for m in msgs)
-    assert any("触发止损出场" in m for m in msgs)
+    assert any("止损成交出场" in m for m in msgs)
 
 
 def test_breakeven_step_matches_r_level_when_price_jumps_multiple_r():
@@ -169,8 +169,8 @@ def test_breakeven_step_matches_r_level_when_price_jumps_multiple_r():
         dict(
             fastLen=2,
             slowLen=3,
-            chainer_entry_need_confirm=True,
-            chainer_exit_need_confirm=True,
+            chainer_long_need_confirm=True,
+            chainer_short_need_confirm=True,
             chainer_enable_breakeven=True,
             chainer_risk_reward_ratio=0.0,
             chainer_stoploss_atr_mult=0.0,
@@ -187,8 +187,8 @@ def test_breakeven_step_matches_r_level_when_price_jumps_multiple_r():
     assert abs(float(ctx.stop_price) - 120.0) < 1e-9
 
 
-@pytest.mark.parametrize("chainer_entry_need_confirm,chainer_exit_need_confirm", [(False, False)])
-def test_no_confirm_places_orders_immediately(chainer_entry_need_confirm, chainer_exit_need_confirm):
+@pytest.mark.parametrize("chainer_long_need_confirm,chainer_short_need_confirm", [(False, False)])
+def test_no_confirm_places_orders_immediately(chainer_long_need_confirm, chainer_short_need_confirm):
     # Cross up -> immediate buy order; later cross down -> immediate sell order.
     rows = [
         dict(open=100, high=101, low=99, close=100),  # warmup
@@ -204,8 +204,8 @@ def test_no_confirm_places_orders_immediately(chainer_entry_need_confirm, chaine
         dict(
             fastLen=2,
             slowLen=3,
-            chainer_entry_need_confirm=chainer_entry_need_confirm,
-            chainer_exit_need_confirm=chainer_exit_need_confirm,
+            chainer_long_need_confirm=chainer_long_need_confirm,
+            chainer_short_need_confirm=chainer_short_need_confirm,
             chainer_enable_breakeven=False,
             chainer_risk_reward_ratio=0.0,
         ),
@@ -225,9 +225,9 @@ def test_short_entry_confirm_success_then_stop_exit():
             ("name", "SHORT_ENTRY_STOP_TEST"),
             # Disable ATR to avoid minperiod gating; this test uses stoploss_atr_mult=0.
             ("atr", False),
-            ("chainer_allow_short", True),
-            ("chainer_entry_need_confirm", True),
-            ("chainer_exit_need_confirm", True),
+            ("chainer_mode", "SHORT_ONLY"),  # Enable SHORT entries
+            ("chainer_long_need_confirm", True),
+            ("chainer_short_need_confirm", True),
         )
 
         def __init__(self):
@@ -279,7 +279,7 @@ def test_short_entry_confirm_success_then_stop_exit():
 
 def test_short_disabled_raises():
     class ShortDisabledStrategy(BaseStrategy):
-        params = (("name", "SHORT_DISABLED_TEST"), ("chainer_allow_short", False))
+        params = (("name", "SHORT_DISABLED_TEST"), ("chainer_mode", "LONG_ONLY"))  # SHORT is disabled in LONG_ONLY mode
 
         def next(self):
             BaseStrategy.next(self)
@@ -311,3 +311,64 @@ def test_short_disabled_raises():
     cerebro.run()
 
 
+def test_stoploss_atr_mult_applies_even_when_cfg_atr_disabled():
+    # If ATR is created lazily at enter_trade time, Backtrader won't backfill history,
+    # and ATR will be NaN for atrperiod bars => stop won't change.
+    # We require ATR to be initialized from __init__ when stoploss_atr_mult != 0.
+    class AtrStopStrategy(BaseStrategy):
+        params = (
+            ("name", "ATR_STOP_MULT_TEST"),
+            ("atr", False),  # simulate cfg.atr disabled
+            ("atrperiod", 3),
+            ("chainer_mode", "LONG_ONLY"),
+            ("chainer_stoploss_atr_mult", 1.0),
+            ("chainer_long_need_confirm", False),
+            ("chainer_short_need_confirm", True),
+            ("chainer_enable_breakeven", True),
+            ("chainer_risk_reward_ratio", 0.0),
+        )
+
+        def __init__(self):
+            super().__init__()
+            self.entry_ctx = None
+
+        def next(self):
+            super().next()
+            if self.order is not None:
+                return
+            if self.entry_ctx is not None:
+                return
+            if len(self) < 4:
+                return
+            self.entry_ctx = self.enter_trade(
+                trade_key=None,
+                direction="LONG",
+                key_bar_index=self.bar_idx(),
+                stoploss_atr_mult=None,
+                need_confirm=False,
+                enable_breakeven=True,
+                risk_reward_ratio=0.0,
+            )
+
+    # Constant true range => ATR should be stable and > 0 once warmed up.
+    rows = [
+        dict(open=100, high=105, low=95, close=100),
+        dict(open=100, high=105, low=95, close=100),
+        dict(open=100, high=105, low=95, close=100),
+        dict(open=100, high=105, low=95, close=100),
+        dict(open=100, high=105, low=95, close=100),
+    ]
+    cerebro = bt.Cerebro()
+    cerebro.addstrategy(AtrStopStrategy)
+    data_feed = bt.feeds.PandasData(dataname=_build_df(rows), datetime="datetime")
+    cerebro.adddata(data_feed)
+    cerebro.broker.setcash(100000.0)
+    cerebro.broker.setcommission(commission=0.0)
+    strategies = cerebro.run()
+    st = strategies[0]
+
+    assert st.entry_ctx is not None
+    # key_low=95, ATR(3) should be ~10 => stop should be < 95 when mult=1.0
+    assert st.entry_ctx.stoploss_atr_mult == 1.0
+    assert st.entry_ctx.initial_stop_price is not None
+    assert float(st.entry_ctx.initial_stop_price) < float(st.entry_ctx.key_kline_ref.low)

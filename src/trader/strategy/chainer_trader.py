@@ -1,17 +1,21 @@
 """
-ChainerTrader Strategy Template
+ChainerTrader Strategy Template (v3)
 
 A template strategy demonstrating the Chainer framework signal interface.
 Uses MA Cross (Moving Average Crossover) as the example signal generator.
 
-Entry/Exit Logic:
-- Entry Signal (LONG): Golden cross - fast SMA crosses above slow SMA
-- Exit Signal (LONG): Death cross - fast SMA crosses below slow SMA
-- For SHORT direction, signals are swapped automatically by the framework
+Signal Semantics (Fixed):
+- Long Signal: Golden cross - fast SMA crosses above slow SMA (做多信号)
+- Short Signal: Death cross - fast SMA crosses below slow SMA (做空信号)
+
+Trading Modes:
+- LONG_ONLY: Long signal opens long, short signal closes long
+- SHORT_ONLY: Short signal opens short, long signal closes short
+- BOTH: Long signal opens long, short signal opens short, exit via stop/breakeven/TP
 
 This template can be used as a starting point for new strategies by:
 1. Copying this file
-2. Replacing get_entry_signal() and get_exit_signal() implementations
+2. Replacing get_long_signal() and get_short_signal() implementations
 3. Adding any required indicators in __init__()
 """
 
@@ -27,7 +31,7 @@ class ChainerTraderStrategy(BaseStrategy):
     ChainerTrader template strategy using MA Cross signals.
 
     Demonstrates how to use the Chainer framework's signal interface
-    by implementing get_entry_signal() and get_exit_signal() methods.
+    by implementing get_long_signal() and get_short_signal() methods.
     """
 
     params = (
@@ -36,14 +40,13 @@ class ChainerTraderStrategy(BaseStrategy):
         ("fast_length", 9),
         ("slow_length", 21),
         # Chainer Framework parameters
-        ("chainer_allow_short", True),
-        ("chainer_direction", "LONG"),  # LONG or SHORT
-        ("chainer_auto_signal", True),  # Enable auto signal processing via get_entry_signal/get_exit_signal
+        ("chainer_mode", "LONG_ONLY"),  # LONG_ONLY, SHORT_ONLY, BOTH
+        ("chainer_auto_signal", True),  # Enable auto signal processing via get_long_signal/get_short_signal
         ("chainer_stoploss_atr_mult", 1.0),  # Stop loss ATR multiple (0 = disabled)
-        ("chainer_entry_need_confirm", True),  # Require entry confirmation
-        ("chainer_exit_need_confirm", True),  # Require exit confirmation
+        ("chainer_long_need_confirm", True),  # Require long signal confirmation
+        ("chainer_short_need_confirm", True),  # Require short signal confirmation
         ("chainer_enable_breakeven", True),  # Enable breakeven
-        ("chainer_risk_reward_ratio", 0.0),  # Risk/reward ratio (0 = disabled)
+        ("chainer_risk_reward_ratio", 1.0),  # Risk/reward ratio (0 = disabled)
     )
 
     def __init__(self):
@@ -62,9 +65,11 @@ class ChainerTraderStrategy(BaseStrategy):
         # Order tracking
         self.order = None
 
-    def get_entry_signal(self) -> bool:
+    def get_long_signal(self) -> bool:
         """
-        Generate entry signal: Golden cross (fast SMA crosses above slow SMA).
+        Generate long signal: Golden cross (fast SMA crosses above slow SMA).
+
+        Signal semantics are fixed: this always represents the condition to go long.
 
         Returns:
             bool: True when fast SMA crosses above slow SMA.
@@ -76,9 +81,11 @@ class ChainerTraderStrategy(BaseStrategy):
         # Golden cross: fast was below or equal, now above
         return self.fast_sma[-1] <= self.slow_sma[-1] and self.fast_sma[0] > self.slow_sma[0]
 
-    def get_exit_signal(self) -> bool:
+    def get_short_signal(self) -> bool:
         """
-        Generate exit signal: Death cross (fast SMA crosses below slow SMA).
+        Generate short signal: Death cross (fast SMA crosses below slow SMA).
+
+        Signal semantics are fixed: this always represents the condition to go short.
 
         Returns:
             bool: True when fast SMA crosses below slow SMA.
@@ -104,4 +111,3 @@ class ChainerTraderStrategy(BaseStrategy):
 
         # Signal processing is handled by BaseStrategy._process_signals()
         # when chainer_auto_signal is True
-

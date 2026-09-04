@@ -1,6 +1,6 @@
 [project]
 name = "trader"
-version = "0.58.4"
+version = "0.59.4"
 description = "Awesome trader created by socoldlight"
 authors = [
     {name = "socoldlight", email = "socoldlight@example.com"},
@@ -16,6 +16,7 @@ dependencies = [
     "fastapi[standard]",
     "pymongo",
     "statsmodels",
+    "requests",
     "binance-common>=1.0.0",
     "binance-sdk-spot>=1.0.0",
     "fastapi-auto-router>=0.1.1",
