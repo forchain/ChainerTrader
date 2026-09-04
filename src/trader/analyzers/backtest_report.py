@@ -6,6 +6,25 @@ from datetime import datetime
 import backtrader as bt
 
 
+DOCUMENTED_CASES = [
+    {"case_time": "2025-05-23T08:00:00", "signal_type": "top_divergence", "case_status": "success"},
+    {"case_time": "2024-10-31T08:00:00", "signal_type": "top_divergence", "case_status": "success"},
+    {"case_time": "2024-01-11T08:00:00", "signal_type": "top_divergence", "case_status": "success"},
+    {"case_time": "2021-04-16T08:00:00", "signal_type": "top_divergence", "case_status": "success"},
+    {"case_time": "2020-06-02T08:00:00", "signal_type": "top_divergence", "case_status": "success"},
+    {"case_time": "2020-02-10T08:00:00", "signal_type": "top_divergence", "case_status": "failed"},
+    {"case_time": "2020-02-13T08:00:00", "signal_type": "top_divergence", "case_status": "success"},
+    {"case_time": "2025-04-09T08:00:00", "signal_type": "bottom_divergence", "case_status": "success"},
+    {"case_time": "2024-05-03T08:00:00", "signal_type": "bottom_divergence", "case_status": "success"},
+    {"case_time": "2023-06-06T08:00:00", "signal_type": "bottom_divergence", "case_status": "failed"},
+    {"case_time": "2023-06-15T08:00:00", "signal_type": "bottom_divergence", "case_status": "success"},
+    {"case_time": "2019-12-18T08:00:00", "signal_type": "bottom_divergence", "case_status": "success"},
+    {"case_time": "2018-06-25T08:00:00", "signal_type": "bottom_divergence", "case_status": "failed"},
+    {"case_time": "2018-02-03T08:00:00", "signal_type": "bottom_divergence", "case_status": "failed"},
+    {"case_time": "2018-02-06T08:00:00", "signal_type": "bottom_divergence", "case_status": "success"},
+]
+
+
 class BacktestReportAnalyzer(bt.Analyzer):
     """
     Generates a structured JSON report after backtest completion.
@@ -27,6 +46,7 @@ class BacktestReportAnalyzer(bt.Analyzer):
         self._total_signals = 0
         self._entered_signals = 0
         self._confirm_failed = 0
+        self.report = None
 
     def _current_dt_iso(self):
         return self.strategy.datetime.datetime().isoformat()
@@ -34,10 +54,18 @@ class BacktestReportAnalyzer(bt.Analyzer):
     def notify_trade(self, trade):
         if not trade.isclosed:
             if trade.justopened:
+                ctx = getattr(self.strategy, "_trades_by_id", {}).get(trade.ref)
+                entry_px = trade.price
+                direction = "L" if trade.size > 0 else "S"
+                if ctx is not None:
+                    if getattr(ctx, "entry_price", None) is not None:
+                        entry_px = float(ctx.entry_price)
+                    direction = "L" if getattr(ctx, "direction", "LONG") == "LONG" else "S"
                 self._trade_entries[trade.ref] = {
                     "entry_time": self._current_dt_iso(),
-                    "entry_px": trade.price,
+                    "entry_px": entry_px,
                     "size": trade.size,
+                    "dir": direction,
                 }
             return
 
@@ -45,11 +73,14 @@ class BacktestReportAnalyzer(bt.Analyzer):
         entry_time = entry_info.get("entry_time", "")
         entry_px = entry_info.get("entry_px", 0)
         entry_size = entry_info.get("size", 0)
+        ctx = getattr(self.strategy, "_trades_by_id", {}).get(trade.ref)
 
         exit_time = self._current_dt_iso()
         exit_px = self.strategy.data.close[0]
+        if ctx is not None and getattr(ctx, "exit_price", None) is not None:
+            exit_px = float(ctx.exit_price)
 
-        direction = "L" if entry_size > 0 else "S"
+        direction = entry_info.get("dir", "L" if entry_size > 0 else "S")
 
         if entry_px > 0:
             if direction == "L":
@@ -75,6 +106,7 @@ class BacktestReportAnalyzer(bt.Analyzer):
 
     def stop(self):
         report = self._build_report()
+        self.report = report
         self._write_report(report)
 
     def _build_report(self):
@@ -113,6 +145,7 @@ class BacktestReportAnalyzer(bt.Analyzer):
 
         # Monthly PnL
         monthly_pnl = self._calc_monthly_pnl()
+        signals = self._collect_signals()
 
         summary = {
             "total_return_pct": round(total_return_pct, 2),
@@ -125,7 +158,7 @@ class BacktestReportAnalyzer(bt.Analyzer):
             "win_rate_pct": round(win_rate, 2),
             "avg_rr": round(avg_rr, 2),
             "total_trades": total_closed,
-            "total_signals": self._total_signals,
+            "total_signals": len(signals),
         }
 
         return {
@@ -136,6 +169,8 @@ class BacktestReportAnalyzer(bt.Analyzer):
             "summary": summary,
             "monthly_pnl": monthly_pnl,
             "trades": self._trades,
+            "signals": signals,
+            "documented_cases": self._build_documented_cases(signals),
         }
 
     def _get_trade_analyzer(self):
@@ -189,6 +224,32 @@ class BacktestReportAnalyzer(bt.Analyzer):
                 except (ValueError, TypeError):
                     pass
         return {k: round(v, 2) for k, v in sorted(monthly.items())}
+
+    def _collect_signals(self):
+        events = getattr(self.strategy, "_signal_events", [])
+        return list(events)
+
+    def _build_documented_cases(self, signals):
+        index = {signal.get("signal_time"): signal for signal in signals}
+        snapshots = {
+            case.get("case_time"): case
+            for case in getattr(self.strategy, "_documented_case_events", [])
+        }
+        cases = []
+        for case in DOCUMENTED_CASES:
+            signal = index.get(case["case_time"])
+            snapshot = snapshots.get(case["case_time"], {})
+            cases.append({
+                **snapshot,
+                **case,
+                "source": "documented",
+                "matched": signal is not None,
+                "matched_signal_time": signal.get("signal_time") if signal is not None else None,
+                "matched_signal": signal,
+                "trade_outcome": signal.get("trade_outcome") if signal is not None else None,
+                "missing_reason": None if signal is not None else "signal_not_found_in_current_strategy_output",
+            })
+        return cases
 
     def _write_report(self, report):
         reports_dir = os.path.join(os.getcwd(), "reports")

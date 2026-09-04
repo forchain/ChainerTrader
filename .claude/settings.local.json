@@ -1,4 +1,5 @@
 {
+  "enabledMcpjsonServers": ["mongodb"],
   "permissions": {
     "allow": [
       "Bash(head -10 /Users/tonyoutlier/github.com/ChainerLabs/ChainerTrader/.claude/worktrees/jolly-taussig/data/*.csv)",
@@ -30,7 +31,12 @@
       "Bash(ls -t reports/*.json)",
       "Bash(xargs cat:*)",
       "Bash(__NEW_LINE_c3c5edff99883090__ cd:*)",
-      "Bash(bash scripts/backtest_cli.sh scripts/backtest_full_4years.json)"
+      "Bash(bash scripts/backtest_cli.sh scripts/backtest_full_4years.json)",
+      "Bash(claude:*)",
+      "Bash(npm list:*)",
+      "Bash(npm show:*)",
+      "Bash(open:*)",
+      "WebSearch"
     ]
   }
 }
