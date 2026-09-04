@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from logging import Logger
 
+from tortoise.exceptions import IntegrityError
+
 from trader.database.models import ExecutionStateModel
 from trader.execution.models import ExecutionStatus
 from trader.execution.state import ExecutionStateRecord, ExecutionStateReservation
@@ -12,6 +14,31 @@ TERMINAL_STATUSES = {
     ExecutionStatus.SKIPPED.value,
     ExecutionStatus.FAILED.value,
 }
+
+
+def execution_state_record_context(record: ExecutionStateRecord) -> str:
+    gateway = getattr(record.gateway, "value", record.gateway)
+    status = getattr(record.status, "value", record.status)
+    return (
+        f"task_id={record.task_id} "
+        f"idempotency_key={record.idempotency_key} "
+        f"intent_id={record.intent_id} "
+        f"operation_id={record.operation_id} "
+        f"gateway={gateway} "
+        f"mode={record.staged_execution_mode} "
+        f"symbol={record.symbol} "
+        f"trade_id={record.trade_id} "
+        f"order_role={record.order_role} "
+        f"status={status} "
+        f"order_id={record.exchange_order_id} "
+        f"protection_id={record.protection_id} "
+        f"quantity={record.quantity} "
+        f"price={record.price} "
+        f"stop_price={record.stop_price} "
+        f"take_profit_price={record.take_profit_price} "
+        f"created_at={record.created_at} "
+        f"updated_at={record.updated_at}"
+    )
 
 
 def model_to_execution_state(row: ExecutionStateModel) -> ExecutionStateRecord:
@@ -50,31 +77,39 @@ class ExecutionStateCol:
         return ExecutionStateReservation(saved, created=True)
 
     async def save(self, record: ExecutionStateRecord) -> ExecutionStateRecord:
-        await ExecutionStateModel.update_or_create(
-            idempotency_key=record.idempotency_key,
-            defaults={
-                "intent_id": record.intent_id,
-                "operation_id": record.operation_id,
-                "gateway": record.gateway.value,
-                "staged_execution_mode": record.staged_execution_mode,
-                "symbol": record.symbol,
-                "trade_id": record.trade_id,
-                "order_role": record.order_role,
-                "status": record.status.value,
-                "exchange_order_id": record.exchange_order_id,
-                "protection_id": record.protection_id,
-                "quantity": record.quantity,
-                "price": record.price,
-                "stop_price": record.stop_price,
-                "take_profit_price": record.take_profit_price,
-                "raw_payload": dict(record.raw_payload),
-                "created_at": record.created_at,
-                "updated_at": record.updated_at,
-                "task_id": record.task_id,
-            },
-        )
+        defaults = {
+            "intent_id": record.intent_id,
+            "operation_id": record.operation_id,
+            "gateway": record.gateway.value,
+            "staged_execution_mode": record.staged_execution_mode,
+            "symbol": record.symbol,
+            "trade_id": record.trade_id,
+            "order_role": record.order_role,
+            "status": record.status.value,
+            "exchange_order_id": record.exchange_order_id,
+            "protection_id": record.protection_id,
+            "quantity": record.quantity,
+            "price": record.price,
+            "stop_price": record.stop_price,
+            "take_profit_price": record.take_profit_price,
+            "raw_payload": dict(record.raw_payload),
+            "created_at": record.created_at,
+            "updated_at": record.updated_at,
+            "task_id": record.task_id,
+        }
+        try:
+            updated = await ExecutionStateModel.filter(idempotency_key=record.idempotency_key).update(**defaults)
+            if updated == 0:
+                try:
+                    await ExecutionStateModel.create(idempotency_key=record.idempotency_key, **defaults)
+                except IntegrityError:
+                    await ExecutionStateModel.filter(idempotency_key=record.idempotency_key).update(**defaults)
+        except Exception as exc:
+            self.log.error(f"execution state save failed: {execution_state_record_context(record)} error={exc!r}")
+            raise
         saved = await self.get_by_idempotency_key(record.idempotency_key)
         if saved is None:
+            self.log.error(f"execution state save returned no row: {execution_state_record_context(record)}")
             raise RuntimeError(f"execution state save failed for {record.idempotency_key}")
         return saved
 

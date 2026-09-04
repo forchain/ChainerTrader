@@ -96,6 +96,9 @@ def test_base_task_config_json_preserves_live_runtime_controls():
         user_id=7,
         run_id="run-live",
     )
+    original.fund_reservation_asset = "USDT"
+    original.fund_reservation_amount = 12.0
+    original.fund_reservation_remaining = 7.5
     persisted = BaseTask(original, Config(tasks="[]"), Logger(Config(tasks="[]"))).ts.config_json
 
     restored = parse_task_config(persisted, last_task_id=original.id)[0]
@@ -113,6 +116,9 @@ def test_base_task_config_json_preserves_live_runtime_controls():
     assert restored.strategy_params == original.strategy_params
     assert restored.user_id == original.user_id
     assert restored.run_id == original.run_id
+    assert restored.fund_reservation_asset == original.fund_reservation_asset
+    assert restored.fund_reservation_amount == original.fund_reservation_amount
+    assert restored.fund_reservation_remaining == original.fund_reservation_remaining
 
 
 def test_parse_task_config_keeps_legacy_margin_borrow_policy_aliases():

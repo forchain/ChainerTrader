@@ -35,3 +35,11 @@ def test_trader_db_migrate_initializes_required_schema_for_new_sqlite_db(tmp_pat
             )
         }
     assert "task_id" in execution_state_columns
+    with sqlite3.connect(db_path) as connection:
+        availability_columns = {
+            row[1]
+            for row in connection.execute(
+                'PRAGMA table_info("availability")'
+            )
+        }
+    assert {"cached_start_open_time", "cached_end_open_time"} <= availability_columns

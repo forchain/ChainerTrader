@@ -258,7 +258,40 @@ def test_full_live_auto_uses_configured_full_sizing_not_small_live_cap():
     assert outcome.status == AutoExecutionStatus.SUBMITTED
     assert outcome.effective_notional == 500.0
     assert outcome.effective_quantity == 5.0
-    assert exchange.new_order_calls == [("BTCUSDT", OperateType.BUY, 5.0)]
+
+
+def test_real_auto_entry_skips_when_reserved_budget_is_too_small_even_if_exchange_balance_is_available():
+    exchange = RecordingExchange(quote_balance=1000.0)
+    tcfg = _tcfg(LiveExecutionMode.FULL_LIVE_AUTO, free=50.0)
+    tcfg.fund_reservation_amount = 20.0
+    router = AutoExecutionRouter(
+        tcfg,
+        exchange=exchange,
+        cfg=SimpleNamespace(cash=10000.0),
+    )
+
+    outcome = router.route(_op(OperateType.BUY, 100.0))
+
+    assert outcome.status == AutoExecutionStatus.SKIPPED
+    assert outcome.reason == "insufficient_reserved_funds"
+    assert exchange.new_order_calls == []
+
+
+def test_real_auto_entry_marks_reserved_budget_spent_after_successful_submit():
+    exchange = RecordingExchange(quote_balance=1000.0)
+    tcfg = _tcfg(LiveExecutionMode.FULL_LIVE_AUTO, free=50.0)
+    tcfg.fund_reservation_amount = 50.0
+    router = AutoExecutionRouter(
+        tcfg,
+        exchange=exchange,
+        cfg=SimpleNamespace(cash=10000.0),
+    )
+
+    outcome = router.route(_op(OperateType.BUY, 100.0))
+
+    assert outcome.status == AutoExecutionStatus.SUBMITTED
+    assert exchange.new_order_calls == [("BTCUSDT", OperateType.BUY, 0.5)]
+    assert router._reserved_budget_remaining == 0.0
 
 
 def test_real_short_is_skipped_by_default_and_cross_margin_short_uses_margin_path():

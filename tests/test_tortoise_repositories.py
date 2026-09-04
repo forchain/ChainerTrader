@@ -1,9 +1,10 @@
 import asyncio
 from datetime import datetime
+from types import SimpleNamespace
 
 from tortoise import Tortoise
 
-from trader.database.availability import AvailabilityCol
+from trader.database.availability import AvailabilityCol, model_to_availability_state
 from trader.database.config import build_tortoise_config
 from trader.database.kline import KlineCol
 from trader.database.task import TaskCol
@@ -107,5 +108,41 @@ def test_availability_repository_keeps_earliest_known_open_time_monotonic():
         state = await store.get_state("BINANCE", "BTCUSDT", "1h")
         assert state.earliest_known_open_time == 50
         assert state.source == "earlier"
+
+    asyncio.run(_with_db(run))
+
+
+def test_availability_state_handles_legacy_rows_without_cached_range_fields():
+    state = model_to_availability_state(
+        SimpleNamespace(
+            exchange="BINANCE",
+            symbol="BTCUSDT",
+            interval="1h",
+            earliest_known_open_time=100,
+            updated_at=100,
+            source="legacy",
+        )
+    )
+
+    assert state.earliest_known_open_time == 100
+    assert state.cached_start_open_time is None
+    assert state.cached_end_open_time is None
+
+
+def test_availability_repository_merges_cached_open_time_range():
+    async def run():
+        store = AvailabilityCol(_Log())
+
+        assert await store.get_cached_open_time_range("BINANCE", "BTCUSDT", "1h") is None
+        assert await store.update_cached_open_time_range("BINANCE", "BTCUSDT", "1h", 100, 200, source="first") is True
+        assert await store.update_cached_open_time_range("BINANCE", "BTCUSDT", "1h", 120, 180, source="inside") is False
+        assert await store.update_cached_open_time_range("BINANCE", "BTCUSDT", "1h", 50, 250, source="extend") is True
+
+        assert await store.get_earliest_known_open_time("BINANCE", "BTCUSDT", "1h") is None
+        assert await store.get_cached_open_time_range("BINANCE", "BTCUSDT", "1h") == (50, 250)
+        state = await store.get_state("BINANCE", "BTCUSDT", "1h")
+        assert state.cached_start_open_time == 50
+        assert state.cached_end_open_time == 250
+        assert state.source == "extend"
 
     asyncio.run(_with_db(run))

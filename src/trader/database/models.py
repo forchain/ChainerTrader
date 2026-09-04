@@ -115,7 +115,9 @@ class AvailabilityModel(Model):
     exchange = fields.CharField(max_length=32)
     symbol = fields.CharField(max_length=32)
     interval = fields.CharField(max_length=16)
-    earliest_known_open_time = fields.IntField()
+    earliest_known_open_time = fields.IntField(null=True)
+    cached_start_open_time = fields.IntField(null=True)
+    cached_end_open_time = fields.IntField(null=True)
     updated_at = fields.IntField()
     source = fields.CharField(max_length=64)
 
@@ -150,3 +152,24 @@ class ExecutionStateModel(Model):
     class Meta:
         table = "execution_states"
         indexes = (("task_id", "symbol", "trade_id"), ("gateway", "staged_execution_mode"), ("intent_id", "operation_id"))
+
+
+class AccountFundReservationModel(Model):
+    id = fields.IntField(primary_key=True)
+    account_key = fields.CharField(max_length=128)
+    exchange = fields.CharField(max_length=32)
+    credential_id = fields.IntField(null=True)
+    user_id = fields.IntField(null=True)
+    task_id = fields.IntField()
+    asset = fields.CharField(max_length=32)
+    reserved_amount = fields.FloatField(default=0)
+    spent_amount = fields.FloatField(default=0)
+    status = fields.CharField(max_length=16, default="active")
+    reason = fields.CharField(max_length=128, null=True)
+    created_at = fields.DatetimeField(auto_now_add=True)
+    updated_at = fields.DatetimeField(auto_now=True)
+    released_at = fields.DatetimeField(null=True)
+
+    class Meta:
+        table = "account_fund_reservations"
+        indexes = (("account_key", "asset", "status"), ("task_id",), ("user_id",))

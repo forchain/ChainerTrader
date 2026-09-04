@@ -105,6 +105,9 @@ class TaskConfig:
         live_margin_auto_repay_excluded_assets: list[str] | None = None,
         user_id: int | None = None,
         run_id: str | None = None,
+        fund_reservation_asset: str | None = None,
+        fund_reservation_amount: float | None = None,
+        fund_reservation_remaining: float | None = None,
     ):
         self.ttype = ttype
         self.csv = csv
@@ -133,6 +136,9 @@ class TaskConfig:
         self.live_margin_auto_repay_excluded_assets = parse_string_list(live_margin_auto_repay_excluded_assets)
         self.user_id = int(user_id) if user_id is not None else None
         self.run_id = run_id
+        self.fund_reservation_asset = str(fund_reservation_asset).upper() if fund_reservation_asset else None
+        self.fund_reservation_amount = float(fund_reservation_amount) if fund_reservation_amount is not None else None
+        self.fund_reservation_remaining = float(fund_reservation_remaining) if fund_reservation_remaining is not None else None
         if self.live_margin_borrow_block_policy == "repay_all" and (
             self.live_margin_auto_repay_max_total <= 0 or self.live_margin_auto_repay_max_per_asset <= 0
         ):
@@ -199,6 +205,9 @@ class TaskConfig:
             "requires_short_capability": self.requires_short_capability,
             "user_id": self.user_id,
             "run_id": self.run_id,
+            "fund_reservation_asset": self.fund_reservation_asset,
+            "fund_reservation_amount": self.fund_reservation_amount,
+            "fund_reservation_remaining": self.fund_reservation_remaining,
         }
 
     def strategy_name(self):
@@ -304,6 +313,9 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
         live_margin_auto_repay_min_amount = float(tcd.get("live_margin_auto_repay_min_amount", 0.000001) or 0.0)
         live_margin_auto_repay_excluded_assets = parse_string_list(tcd.get("live_margin_auto_repay_excluded_assets"))
         user_id = tcd.get("user_id")
+        fund_reservation_asset = tcd.get("fund_reservation_asset")
+        fund_reservation_amount = tcd.get("fund_reservation_amount")
+        fund_reservation_remaining = tcd.get("fund_reservation_remaining")
 
         csv = None
         if "csv" in tcd:
@@ -377,6 +389,9 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
                     live_margin_auto_repay_excluded_assets=live_margin_auto_repay_excluded_assets,
                     user_id=user_id,
                     run_id=run_id,
+                    fund_reservation_asset=fund_reservation_asset,
+                    fund_reservation_amount=fund_reservation_amount,
+                    fund_reservation_remaining=fund_reservation_remaining,
                 )
                 ret.append(tc)
             else:
@@ -411,6 +426,9 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
                             live_margin_auto_repay_excluded_assets=live_margin_auto_repay_excluded_assets,
                             user_id=user_id,
                             run_id=run_id,
+                            fund_reservation_asset=fund_reservation_asset,
+                            fund_reservation_amount=fund_reservation_amount,
+                            fund_reservation_remaining=fund_reservation_remaining,
                         )
                         ret.append(tc)
 
@@ -441,6 +459,9 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
                         live_margin_auto_repay_excluded_assets=live_margin_auto_repay_excluded_assets,
                         user_id=user_id,
                         run_id=run_id,
+                        fund_reservation_asset=fund_reservation_asset,
+                        fund_reservation_amount=fund_reservation_amount,
+                        fund_reservation_remaining=fund_reservation_remaining,
                     )
                     ret.append(tc)
 

@@ -7,6 +7,7 @@ from trader.common.common import MIN_RECORDS_NUM, sleep, sleep_loop
 from trader.common.config import Config
 from trader.common.logger import Logger
 from trader.common.message import new_stat_msg
+from trader.database.execution_state import execution_state_record_context
 from trader.database.manager import DatabaseManager
 from trader.exchange.binance.data import BinanceData
 from trader.exchange.binance.exchange import BinanceExchange
@@ -73,7 +74,12 @@ class TraderTask(BaseTask):
         super().__init__(tcfg, cfg, log, db_manager, exchange)
         self._manual_cash = self._manual_starting_cash()
         self._manual_position = float(getattr(tcfg, "manual_start_position", 0.0) or 0.0)
-        self._auto_execution_router = AutoExecutionRouter(tcfg, exchange=exchange, cfg=cfg, log=log)
+        self._auto_execution_router = AutoExecutionRouter(
+            tcfg,
+            exchange=exchange,
+            cfg=cfg,
+            log=log,
+        )
         self.ts.auto_execution_outcomes = []
         self.ts.execution_reconcile = []
 
@@ -242,8 +248,9 @@ class TraderTask(BaseTask):
 
         async def handle_live_operation(op):
             ret = self._trader_result_for_live_operation(op)
-            await self.process_result(ret)
             feed_phase = str(getattr(op, "feed_phase", "") or "").lower()
+            if feed_phase != "warmup":
+                await self.process_result(ret)
             notifications = []
             auto_execution_outcomes = []
             if self.is_manual_notify_mode():
@@ -440,10 +447,34 @@ class TraderTask(BaseTask):
 
     async def _persist_auto_execution_state(self, outcome) -> None:
         store = getattr(self.db_manager, "execution_state", None)
-        if store is None:
+        if store is not None:
+            records = list(getattr(outcome, "execution_state_records", []) or [])
+            for index, record in enumerate(records, start=1):
+                try:
+                    await _maybe_await(store.save(record))
+                except Exception as exc:
+                    self.log.error(
+                        "Realtime execution state persist failed: "
+                        f"runtime_task_id={self.tcfg.id} record={index}/{len(records)} "
+                        f"operation_id={getattr(outcome, 'operation_id', None)} "
+                        f"operation_type={getattr(outcome, 'operation_type', None)} "
+                        f"status={getattr(outcome, 'status', None)} "
+                        f"reason={getattr(outcome, 'reason', None)} "
+                        f"{execution_state_record_context(record)} error={exc!r}"
+                    )
+                    raise
+        reservation_store = getattr(self.db_manager, "account_fund_reservation", None)
+        if reservation_store is None:
             return
-        for record in list(getattr(outcome, "execution_state_records", []) or []):
-            await _maybe_await(store.save(record))
+        if str(getattr(outcome, "status", "")) not in {"submitted", "AutoExecutionStatus.SUBMITTED"} and getattr(
+            getattr(outcome, "status", None), "value", None
+        ) != "submitted":
+            return
+        notional = float(getattr(outcome, "effective_notional", 0.0) or 0.0)
+        if notional <= 0:
+            return
+        asset = getattr(self.tcfg, "fund_reservation_asset", None) or self.tcfg.symbol_interval.sy.quote
+        await _maybe_await(reservation_store.mark_spent(self.tcfg.id, asset, notional))
 
     def _execution_state_record_payload(self, record) -> dict:
         gateway = getattr(record, "gateway", None)

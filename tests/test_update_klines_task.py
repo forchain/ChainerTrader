@@ -1,10 +1,8 @@
 import asyncio
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime
 from types import ModuleType, SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
-
-import pytest
 
 
 def _ensure_pymongo_stub():
@@ -266,6 +264,49 @@ def test_download_range_empty_response_retry():
     asyncio.run(_test())
 
 
+def test_download_range_updates_cached_range_metadata():
+    async def _test():
+        log = DummyLog()
+        symbol_interval = SymbolInterval("BTC-USDT", Interval.INTERVAL_1h)
+        collection_name = "BTCUSDT-1h"
+        quit_event = asyncio.Event()
+        start_time = 1_700_000_000
+        end_time = start_time + 3600
+        availability = SimpleNamespace(update_cached_open_time_range=AsyncMock())
+        db_manager = SimpleNamespace(
+            kline=SimpleNamespace(add_klines=AsyncMock(return_value=2)),
+            availability=availability,
+        )
+        exchange = SimpleNamespace(
+            name=lambda: "BINANCE",
+            get_klines=MagicMock(return_value=[create_kline_mock(start_time), create_kline_mock(end_time)]),
+        )
+
+        result = await download_range(
+            "update-task",
+            log,
+            db_manager,
+            collection_name,
+            exchange,
+            symbol_interval,
+            start_time,
+            end_time,
+            quit_event,
+        )
+
+        assert result is True
+        availability.update_cached_open_time_range.assert_awaited_once_with(
+            "BINANCE",
+            "BTCUSDT",
+            "1h",
+            start_time,
+            end_time,
+            source="download_range",
+        )
+
+    asyncio.run(_test())
+
+
 def test_download_range_backward_updates_confirmed_earliest_metadata():
     async def _test():
         log = DummyLog()
@@ -403,8 +444,6 @@ class TestTimeRangeScenarios:
     def test_scenario_no_overlap_end_before_db(self):
         """Case 1: end < db_first - should download [start, end]."""
         db_first = self.now
-        db_last = self.now + self.interval_seconds * 10
-        start_time = self.now - self.interval_seconds * 10
         end_time = self.now - self.interval_seconds * 5
 
         assert end_time < db_first
@@ -451,9 +490,10 @@ class TestDeleteKlinesInRange:
 
     def test_delete_range_called_on_force_update(self):
         """Verify delete is called when force_update is True."""
-        from trader.database.kline import KlineCol
         import asyncio
         from unittest.mock import AsyncMock, MagicMock, patch
+
+        from trader.database.kline import KlineCol
 
         log = DummyLog()
         kline_col = KlineCol(log)

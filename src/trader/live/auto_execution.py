@@ -189,6 +189,7 @@ class AutoExecutionRouter:
         self.exchange = exchange
         self.cfg = cfg
         self.log = log
+        self._reserved_budget_remaining = self._initial_reserved_budget()
         self.mode = normalize_live_execution_mode(getattr(tcfg, "live_execution_mode", None))
         self.short_execution = normalize_live_short_execution(getattr(tcfg, "live_short_execution", None))
         self.margin_borrow_block_policy = normalize_margin_borrow_block_policy(
@@ -416,6 +417,19 @@ class AutoExecutionRouter:
                     effective_quantity=quantity,
                 )
             )
+        reserved_reason = self._reserved_budget_reason(notional)
+        if reserved_reason:
+            return self._record(
+                self._outcome(
+                    op,
+                    AutoExecutionStatus.SKIPPED,
+                    reason=reserved_reason,
+                    requested_notional=notional,
+                    requested_quantity=quantity,
+                    effective_notional=notional,
+                    effective_quantity=quantity,
+                )
+            )
         if self.requires_short_capability and self._margin_ready():
             precheck = self._margin_borrow_precheck(op, OperateType.BUY, notional, quantity)
             if precheck is not None:
@@ -449,6 +463,7 @@ class AutoExecutionRouter:
         outcome = self._submit_spot(op, notional, quantity, op.otype)
         if outcome.status == AutoExecutionStatus.SUBMITTED and op.otype in (OperateType.BUY, OperateType.LONG):
             self.real_long_position += quantity
+            self._mark_reserved_budget_spent(notional)
         return outcome
 
     def _route_real_exit(self, op, price: float) -> AutoExecutionOutcome:
@@ -528,7 +543,29 @@ class AutoExecutionRouter:
         outcome = self._submit_margin(op, notional, quantity, OperateType.SHORT)
         if outcome.status == AutoExecutionStatus.SUBMITTED:
             self.real_short_position += quantity
+            self._mark_reserved_budget_spent(notional)
         return outcome
+
+    def _reserved_budget_reason(self, notional: float) -> str | None:
+        if self._reserved_budget_remaining is None:
+            return None
+        if float(self._reserved_budget_remaining) + 1e-12 < float(notional):
+            return "insufficient_reserved_funds"
+        return None
+
+    def _mark_reserved_budget_spent(self, notional: float) -> None:
+        if self._reserved_budget_remaining is None:
+            return
+        self._reserved_budget_remaining = max(float(self._reserved_budget_remaining) - float(notional), 0.0)
+
+    def _initial_reserved_budget(self) -> float | None:
+        remaining = getattr(self.tcfg, "fund_reservation_remaining", None)
+        if remaining is not None:
+            return float(remaining)
+        amount = getattr(self.tcfg, "fund_reservation_amount", None)
+        if amount is not None:
+            return float(amount)
+        return None
 
     def _route_real_short_close(self, op, price: float) -> AutoExecutionOutcome:
         if self.real_short_position <= 0:
@@ -829,7 +866,10 @@ class AutoExecutionRouter:
             if selection.order is None:
                 return self._record(self._outcome(op, AutoExecutionStatus.SKIPPED, reason="unsupported_operation"))
             gateway = BinanceLiveExecutionGateway(self.exchange, staged_execution_mode=self.mode)
-            result = gateway.open_position(selection.order) if order_type in (OperateType.BUY, OperateType.SHORT) else gateway.close_position(selection.order)
+            if order_type in (OperateType.BUY, OperateType.SHORT):
+                result = gateway.open_position(selection.order)
+            else:
+                result = gateway.close_position(selection.order)
             if order_type in (OperateType.BUY, OperateType.SHORT) and self._is_margin_borrow_block_result(result):
                 return self._handle_margin_borrow_block(
                     op=op,
@@ -898,7 +938,16 @@ class AutoExecutionRouter:
             ).with_native_protection(native_protection)
         )
 
-    def _handle_margin_borrow_block(self, *, op, notional: float, quantity: float, gateway: BinanceLiveExecutionGateway, selection, initial_result) -> AutoExecutionOutcome:
+    def _handle_margin_borrow_block(
+        self,
+        *,
+        op,
+        notional: float,
+        quantity: float,
+        gateway: BinanceLiveExecutionGateway,
+        selection,
+        initial_result,
+    ) -> AutoExecutionOutcome:
         policy = self.margin_borrow_block_policy
         base_reason = f"margin_borrow_blocked_-3006 policy={policy}"
         initial_events = [event.to_dict() for event in initial_result.events]

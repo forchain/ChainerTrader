@@ -294,6 +294,36 @@
     </div>
 </div>
 
+<!-- 操作记录模态框 -->
+<div class="modal fade" id="operationRecordsModal" tabindex="-1" aria-labelledby="operationRecordsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="operationRecordsModalLabel">
+                    <i class="fas fa-list-check me-2"></i>操作记录
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="operationRecordsSummary" class="text-muted small mb-2"></div>
+                <div id="operationRecordsBody">
+                    <div class="text-center py-4">
+                        <div class="loading" style="vertical-align: middle;"></div>
+                        <div class="mt-2 text-muted">正在加载...</div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer justify-content-between">
+                <div class="small text-muted" id="operationRecordsPageInfo"></div>
+                <div class="btn-group" role="group" aria-label="操作记录分页">
+                    <button type="button" class="btn btn-outline-secondary" id="operationRecordsPrevBtn">上一页</button>
+                    <button type="button" class="btn btn-outline-secondary" id="operationRecordsNextBtn">下一页</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- 重跑确认模态框 -->
 <div class="modal fade" id="rerunConfirmModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
@@ -485,6 +515,26 @@
     color: white;
 }
 
+.opts-long {
+    background-color: var(--bs-primary);
+    color: white;
+}
+
+.opts-short {
+    background-color: var(--bs-warning);
+    color: var(--bs-dark);
+}
+
+.opts-close {
+    background-color: var(--bs-info);
+    color: var(--bs-dark);
+}
+
+.opts-risk {
+    background-color: var(--bs-purple, #6f42c1);
+    color: white;
+}
+
 .opts-unknown {
     background-color: var(--bs-secondary);
     color: white;
@@ -529,6 +579,9 @@ const taskDrafts = [];
 let editingDraftIndex = null;
 let pendingRerunTaskId = null;
 let pendingStopTaskId = null;
+let operationRecordsTaskId = null;
+let operationRecordsPage = 1;
+const OPERATION_RECORDS_PAGE_SIZE = 20;
 const STRATEGY_OPTIONS = {{ strategy_options | tojson }};
 const DEFAULT_STRATEGY = STRATEGY_OPTIONS.length > 0 ? STRATEGY_OPTIONS[0] : 'ShihunRSI2';
 const TASK_CONFIG_OPTIONS = {{ task_config_options | tojson }};
@@ -1636,6 +1689,21 @@ document.addEventListener('DOMContentLoaded', function() {
             openTaskDetailModal(taskId);
         });
     }
+    document.getElementById('taskDetailGrid')?.addEventListener('click', function(e) {
+        const recordsBtn = e.target.closest('.operation-records-btn');
+        if (!recordsBtn) return;
+        const taskId = recordsBtn.getAttribute('data-task-id');
+        if (!taskId) return;
+        openOperationRecordsModal(taskId);
+    });
+    document.getElementById('operationRecordsPrevBtn')?.addEventListener('click', function() {
+        if (!operationRecordsTaskId || operationRecordsPage <= 1) return;
+        loadOperationRecords(operationRecordsTaskId, operationRecordsPage - 1);
+    });
+    document.getElementById('operationRecordsNextBtn')?.addEventListener('click', function() {
+        if (!operationRecordsTaskId) return;
+        loadOperationRecords(operationRecordsTaskId, operationRecordsPage + 1);
+    });
     initTaskConfigPathFilters().then(() => {
         if (taskInputMode.value === 'config_file') {
             loadSelectedTaskConfigTemplate();
@@ -1777,7 +1845,7 @@ function renderTaskDetailTree(container, rawData) {
     const basicInfoHtml = renderBasicInfoSection(data);
     
     // 交易结果部分
-    const traderResultHtml = renderTraderResultSection(data.tret);
+    const traderResultHtml = renderTraderResultSection(data);
     
     tableContainer.innerHTML = basicInfoHtml + traderResultHtml;
     container.innerHTML = '';
@@ -1848,7 +1916,8 @@ function renderBasicInfoSection(data) {
 }
 
 // 渲染交易结果部分
-function renderTraderResultSection(tret) {
+function renderTraderResultSection(data) {
+    const tret = data ? data.tret : null;
     if (!tret) {
         return `
             <div class="section-header">交易结果</div>
@@ -1856,38 +1925,7 @@ function renderTraderResultSection(tret) {
         `;
     }
 
-    let optsTableHtml = '';
-    if (tret.opts && tret.opts.length > 0) {
-        optsTableHtml = `
-            <div class="section-header">操作记录</div>
-            <div class="opts-table-container">
-                <table class="opts-table">
-                    <thead>
-                        <tr>
-                            <th>序号</th>
-                            <th>操作类型</th>
-                            <th>时间</th>
-                            <th>价格</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${tret.opts.map((opt, index) => `
-                            <tr>
-                                <td>${index + 1}</td>
-                                <td>
-                                    <span class="opts-badge ${opt.type === 'BUY' ? 'opts-buy' : opt.type === 'SELL' ? 'opts-sell' : 'opts-unknown'}">
-                                        ${opt.type === 'BUY' ? '买入' : opt.type === 'SELL' ? '卖出' : '未知'}
-                                    </span>
-                                </td>
-                                <td><span class="property-value">${formatDateTime(opt.datetime)}</span></td>
-                                <td><span class="property-value">${formatNumber(opt.price)}</span></td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            </div>
-        `;
-    }
+    const operationRecordHtml = renderOperationRecordsButton(data);
 
     return `
         <div class="section-header">交易结果</div>
@@ -1941,7 +1979,109 @@ function renderTraderResultSection(tret) {
                 <td><span class="property-value">${formatNumber(tret.data_len)}</span></td>
             </tr>
         </table>
-        ${optsTableHtml}
+        ${operationRecordHtml}
+    `;
+}
+
+function renderOperationRecordsButton(data) {
+    const count = Array.isArray(data?.tret?.opts) ? data.tret.opts.length : 0;
+    if (count <= 0) {
+        return '';
+    }
+    return `
+        <div class="section-header">操作记录</div>
+        <div class="d-flex align-items-center justify-content-between gap-3 flex-wrap">
+            <div class="text-muted small">共 ${formatNumber(count)} 条操作记录</div>
+            <button type="button" class="btn btn-outline-primary operation-records-btn" data-task-id="${escapeHtml(String(data.task_id || ''))}">
+                <i class="fas fa-list-check me-1"></i>查看操作记录
+            </button>
+        </div>
+    `;
+}
+
+function operationTypeMeta(type) {
+    const map = {
+        'BUY': { className: 'opts-buy', label: '买入' },
+        'SELL': { className: 'opts-sell', label: '卖出' },
+        'LONG': { className: 'opts-long', label: '做多' },
+        'SHORT': { className: 'opts-short', label: '做空' },
+        'CLOSE': { className: 'opts-close', label: '平仓' },
+        'RISK_UPDATE': { className: 'opts-risk', label: '风控更新' },
+    };
+    return map[type] || { className: 'opts-unknown', label: type || '未知' };
+}
+
+function openOperationRecordsModal(taskId) {
+    operationRecordsTaskId = taskId;
+    operationRecordsPage = 1;
+    const modalEl = document.getElementById('operationRecordsModal');
+    if (modalEl) bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    loadOperationRecords(taskId, 1);
+}
+
+async function loadOperationRecords(taskId, page) {
+    const bodyEl = document.getElementById('operationRecordsBody');
+    const summaryEl = document.getElementById('operationRecordsSummary');
+    const pageInfoEl = document.getElementById('operationRecordsPageInfo');
+    const prevBtn = document.getElementById('operationRecordsPrevBtn');
+    const nextBtn = document.getElementById('operationRecordsNextBtn');
+    bodyEl.innerHTML = `
+        <div class="text-center py-4">
+            <div class="loading" style="vertical-align: middle;"></div>
+            <div class="mt-2 text-muted">正在加载...</div>
+        </div>
+    `;
+    summaryEl.textContent = '';
+    pageInfoEl.textContent = '';
+    prevBtn.disabled = true;
+    nextBtn.disabled = true;
+
+    try {
+        const response = await fetch(`/api/task/${encodeURIComponent(taskId)}/operations?page=${page}&per_page=${OPERATION_RECORDS_PAGE_SIZE}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const payload = await response.json();
+        if (payload.error) throw new Error(payload.error);
+        operationRecordsPage = payload.page || 1;
+        summaryEl.textContent = `任务 ${payload.task_id} · 共 ${payload.total} 条`;
+        pageInfoEl.textContent = payload.total_pages > 0 ? `第 ${payload.page} / ${payload.total_pages} 页` : '无记录';
+        prevBtn.disabled = payload.page <= 1;
+        nextBtn.disabled = payload.total_pages <= 0 || payload.page >= payload.total_pages;
+        bodyEl.innerHTML = renderOperationRecordsTable(payload.operations || []);
+    } catch (err) {
+        bodyEl.innerHTML = `<div class="alert alert-danger" role="alert">加载失败：${escapeHtml((err && err.message) || '未知错误')}</div>`;
+    }
+}
+
+function renderOperationRecordsTable(operations) {
+    if (!operations.length) {
+        return '<div class="no-data">暂无操作记录</div>';
+    }
+    return `
+        <div class="opts-table-container">
+            <table class="opts-table">
+                <thead>
+                    <tr>
+                        <th>序号</th>
+                        <th>操作类型</th>
+                        <th>时间</th>
+                        <th>价格</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${operations.map((opt) => {
+                        const meta = operationTypeMeta(opt.type);
+                        return `
+                            <tr>
+                                <td>${formatNumber(opt.sequence)}</td>
+                                <td><span class="opts-badge ${meta.className}">${escapeHtml(opt.type_label || meta.label)}</span></td>
+                                <td><span class="property-value">${formatDateTime(opt.datetime)}</span></td>
+                                <td><span class="property-value">${formatNumber(opt.price)}</span></td>
+                            </tr>
+                        `;
+                    }).join('')}
+                </tbody>
+            </table>
+        </div>
     `;
 }
 

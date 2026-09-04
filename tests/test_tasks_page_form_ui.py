@@ -1,8 +1,11 @@
 from types import SimpleNamespace
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
 from trader.rpc.app import app
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_admin_tasks_page_renders_visual_task_form_with_strategy_options(monkeypatch):
@@ -78,3 +81,18 @@ def test_admin_tasks_page_renders_visual_task_form_with_strategy_options(monkeyp
     assert "addTask(editorValue)" in html
     assert "body: json_str" in html
     assert "const errorPayload = await response.json()" in html
+
+
+def test_tasks_page_loads_operation_records_on_demand_in_paginated_modal():
+    template = (ROOT / "src/trader/rpc/templates/tasks.html").read_text(encoding="utf-8")
+
+    assert "renderOperationRecordsButton" in template
+    assert "id=\"operationRecordsModal\"" in template
+    assert "loadOperationRecords" in template
+    assert "fetch(`/api/task/${encodeURIComponent(taskId)}/operations?page=${page}&per_page=${OPERATION_RECORDS_PAGE_SIZE}`)" in template
+    assert "operationTypeMeta" in template
+    assert "'LONG': { className: 'opts-long', label: '做多' }" in template
+    assert "'SHORT': { className: 'opts-short', label: '做空' }" in template
+    assert "'CLOSE': { className: 'opts-close', label: '平仓' }" in template
+    assert "'RISK_UPDATE': { className: 'opts-risk', label: '风控更新' }" in template
+    assert "tret.opts.map" not in template

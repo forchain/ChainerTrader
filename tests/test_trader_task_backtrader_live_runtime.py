@@ -10,7 +10,6 @@ from trader.common.config import Config
 from trader.common.logger import Logger
 from trader.execution.models import ExecutionSide, ExecutionStatus, GatewayMode, OrderIntent
 from trader.execution.state import ExecutionStateRecord
-from trader.live.auto_execution import AUTO_EXECUTION_EVENT_TYPE
 from trader.live.market_data import BackfillPlan, BackfillRequestKind, normalize_binance_kline_message
 from trader.task.task_config import TaskConfig
 from trader.task.task_type import TaskType
@@ -57,6 +56,23 @@ class FakeDb:
     def __init__(self):
         self.kline = FakeKlineStore()
         self.task = SimpleNamespace(get_task=lambda task_id: None, add_tasks=lambda tasks: None)
+
+
+class CaptureLog:
+    def __init__(self):
+        self.errors = []
+
+    def error(self, message):
+        self.errors.append(message)
+
+    def info(self, *_args, **_kwargs):
+        pass
+
+    def debug(self, *_args, **_kwargs):
+        pass
+
+    def warning(self, *_args, **_kwargs):
+        pass
 
 
 class FakeExchange:
@@ -184,6 +200,63 @@ async def test_trader_task_persists_live_auto_execution_state_records():
     await task._persist_auto_execution_state(SimpleNamespace(execution_state_records=[record]))
 
     assert db.execution_state.saved == [record]
+
+
+@pytest.mark.anyio
+async def test_trader_task_logs_execution_state_context_when_persist_fails():
+    class StateStore:
+        async def save(self, _record):
+            raise RuntimeError("partial model")
+
+    db = FakeDb()
+    db.execution_state = StateStore()
+    tcfg = TaskConfig(
+        87,
+        TaskType.TRADER,
+        SymbolInterval("BTC-USDT", Interval.INTERVAL_1m),
+        strategies=["macd_triple_divergence"],
+        free=1000,
+        live_execution_mode="small_live_auto",
+        live_data_mode="realtime",
+    )
+    log = CaptureLog()
+    task = TraderTask(tcfg, Config(window=500), log, db, FakeExchange([]))
+    intent = OrderIntent.entry(
+        intent_id="intent-2",
+        operation_id="signal_event_id:2",
+        symbol="BTCUSDT",
+        side=ExecutionSide.LONG,
+        quantity=0.25,
+    )
+    record = ExecutionStateRecord.from_order_intent(
+        intent,
+        task_id=87,
+        gateway=GatewayMode.BINANCE_LIVE,
+        staged_execution_mode="small_live_auto",
+        status=ExecutionStatus.FAILED,
+        timestamp=BASE,
+    )
+
+    with pytest.raises(RuntimeError, match="partial model"):
+        await task._persist_auto_execution_state(
+            SimpleNamespace(
+                operation_id="signal_event_id:2",
+                operation_type="LONG",
+                status="failed",
+                reason="gateway_rejected",
+                execution_state_records=[record],
+            )
+        )
+
+    assert len(log.errors) == 1
+    assert "Realtime execution state persist failed" in log.errors[0]
+    assert "runtime_task_id=87" in log.errors[0]
+    assert "operation_id=signal_event_id:2" in log.errors[0]
+    assert "operation_type=LONG" in log.errors[0]
+    assert "reason=gateway_rejected" in log.errors[0]
+    assert "task_id=87" in log.errors[0]
+    assert "status=failed" in log.errors[0]
+    assert "error=RuntimeError('partial model')" in log.errors[0]
 
 
 def _update(open_time, closed):
@@ -592,6 +665,66 @@ async def test_trader_task_realtime_warmup_operations_do_not_route_auto_executio
     monkeypatch.setattr("trader.task.trader_task.GLOBAL_MARKET_STREAM_HUB", hub)
 
     await task.start_realtime(asyncio.Queue(), [NoopStrategy])
+
+
+@pytest.mark.anyio
+async def test_trader_task_realtime_warmup_operations_are_not_persisted(monkeypatch):
+    class WarmupOperationRunner(FakeRunner):
+        def start(self, warmup=None):
+            super().start(warmup=warmup)
+            operation_handler = self.kwargs["operation_handler"]
+            first = self.started_warmup[0]
+            op = SimpleNamespace(
+                otype=OperateType.CLOSE,
+                dtime=first.open_time,
+                price=first.close,
+                feed_phase="warmup",
+                signal_event_id="warmup-close-sig-1",
+                to_dict=lambda: {"type": "CLOSE", "datetime": first.open_time, "price": first.close},
+            )
+            operation_handler(op)
+
+    class RecordingTaskStore:
+        def __init__(self):
+            self.saved = []
+
+        async def get_task(self, task_id):
+            return None
+
+        async def add_tasks(self, tasks):
+            self.saved.extend(tasks)
+            return len(tasks)
+
+    class QuitOnSubscribeHub(FakeHub):
+        async def subscribe(self, key, reconnect_callback=None):
+            subscription = await super().subscribe(key, reconnect_callback=reconnect_callback)
+            self.quit_event.set()
+            return subscription
+
+    FakeRunner.instances = []
+    fetched = [_kline(BASE + i * 60, close=100 + i) for i in range(2)]
+    db = FakeDb()
+    db.task = RecordingTaskStore()
+    cfg = Config(window=500)
+    tcfg = TaskConfig(
+        802,
+        TaskType.TRADER,
+        SymbolInterval("BTC-USDT", Interval.INTERVAL_1m),
+        strategies=["macd_triple_divergence"],
+        free=1000,
+        live_execution_mode="small_live_auto",
+        live_trade_max_notional=11,
+        live_data_mode="realtime",
+    )
+    task = TraderTask(tcfg, cfg, Logger(cfg), db, FakeExchange(fetched))
+    hub = QuitOnSubscribeHub([], task.quit)
+
+    monkeypatch.setattr("trader.task.trader_task.BacktraderLiveRunner", WarmupOperationRunner)
+    monkeypatch.setattr("trader.task.trader_task.GLOBAL_MARKET_STREAM_HUB", hub)
+
+    await task.start_realtime(asyncio.Queue(), [NoopStrategy])
+
+    assert db.task.saved == []
 
 
 @pytest.mark.anyio

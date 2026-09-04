@@ -12,13 +12,14 @@ from trader.common.config import Config
 from trader.common.log_tag import LogTag
 from trader.common.logger import Logger
 from trader.common.message import new_add_tasks_msg, new_exit_msg, new_stat_msg
+from trader.database.account_fund_reservation import FundReservationError
 from trader.database.manager import DatabaseManager
 from trader.exchange.binance.exchange import BinanceExchange
 from trader.exchange.exchange_config import MarginMode
 from trader.live.auto_execution import is_real_auto_mode
 from trader.statistics.stat import BackTraderStat
 from trader.strategy.trader_result import parse_trader_result
-from trader.task.backtrader_task import BacktestSampleResult, BackTraderTask, build_backtest_sample_spec, run_backtest_sample
+from trader.task.backtrader_task import BacktestSampleResult, BackTraderTask, build_backtest_sample_spec, process_backtrader, run_backtest_sample
 from trader.task.base_task import BaseTask
 from trader.task.check_klines_num_task import CheckKlinesNumTask
 from trader.task.check_klines_task import CheckKlinesTask
@@ -55,6 +56,7 @@ class TaskManager:
         self.tasks: dict[int, BaseTask] = {}
         self.async_tasks = []
         self.latest_si: SymbolInterval | None = None
+        self._closing = False
 
     def _build_task(self, cfg: TaskConfig, exchange: BinanceExchange) -> BaseTask | None:
         if cfg.ttype == TaskType.TRADER:
@@ -94,6 +96,7 @@ class TaskManager:
         pass
 
     async def close(self):
+        self._closing = True
         closing_states = []
         for task in self.tasks.values():
             task.close()
@@ -120,38 +123,50 @@ class TaskManager:
 
         self.log.info(f"Try to add tasks:{len(taskcs)}")
         await self._ensure_routed_exchanges(taskcs)
+        await self._reserve_task_funds(taskcs)
 
         async_tasks = []
         bttaskcs = []
-        for taskc in taskcs:
-            if taskc.free < 0:
-                taskc.free = self.cfg.cash
+        try:
+            for taskc in taskcs:
+                if taskc.free < 0:
+                    taskc.free = self.cfg.cash
 
-            if taskc.ttype == TaskType.BACK_TRADER:
-                bttaskcs.append(taskc)
-            if taskc.symbol_interval:
-                self.latest_si = taskc.symbol_interval
+                if taskc.ttype == TaskType.BACK_TRADER:
+                    bttaskcs.append(taskc)
+                if taskc.symbol_interval:
+                    self.latest_si = taskc.symbol_interval
 
-        if len(bttaskcs) > 0:
-            async_tasks.append(asyncio.create_task(self.add_backtrader_task(bttaskcs, queue)))
+            if len(bttaskcs) > 0:
+                async_tasks.append(asyncio.create_task(self.add_backtrader_task(bttaskcs, queue)))
 
-        for taskc in taskcs:
-            if taskc.ttype == TaskType.BACK_TRADER:
-                continue
-            async_tasks.append(asyncio.create_task(self.add_task(taskc, queue)))
+            for taskc in taskcs:
+                if taskc.ttype == TaskType.BACK_TRADER:
+                    continue
+                async_tasks.append(asyncio.create_task(self.add_task(taskc, queue)))
 
-        self.log.info(f"All tasks are created to running:{len(async_tasks)}")
-        await asyncio.gather(*async_tasks)
+            self.log.info(f"All tasks are created to running:{len(async_tasks)}")
+            await asyncio.gather(*async_tasks)
 
-        completed_states = []
-        for tc in taskcs:
-            task = self.get_task(tc.id)
-            if task:
-                task.stop()
-                completed_states.append(task.ts)
-                self.tasks.pop(tc.id)
+            completed_states = []
+            releasable_task_ids = []
+            for tc in taskcs:
+                task = self.get_task(tc.id)
+                if task:
+                    if self._closing:
+                        continue
+                    task.stop()
+                    completed_states.append(task.ts)
+                    releasable_task_ids.append(tc.id)
+                    self.tasks.pop(tc.id)
 
-        await self._persist_task_states(completed_states)
+            await self._persist_task_states(completed_states)
+            for task_id in releasable_task_ids:
+                await self._release_task_funds(task_id, reason="task_done")
+        except Exception:
+            for tc in taskcs:
+                await self._release_task_funds(tc.id, reason="task_failed")
+            raise
 
         if not self.cfg.is_server():
             self.log.info("Try to actively exit")
@@ -193,6 +208,88 @@ class TaskManager:
             if task.ts.is_running():
                 return
             await asyncio.sleep(0)
+
+    async def _reserve_task_funds(self, taskcs: list[TaskConfig]) -> None:
+        store = getattr(self.db_manager, "account_fund_reservation", None)
+        if store is None:
+            return
+        reserved_task_ids: list[int] = []
+        try:
+            for cfg in taskcs:
+                requirement = await self._reservation_requirement(cfg)
+                if requirement is None:
+                    continue
+                result = await store.reserve(**requirement)
+                cfg.fund_reservation_account_key = requirement["account_key"]
+                cfg.fund_reservation_asset = requirement["asset"]
+                cfg.fund_reservation_amount = float(result.reservation.reserved_amount)
+                cfg.fund_reservation_remaining = float(result.reservation.remaining_amount)
+                reserved_task_ids.append(cfg.id)
+        except Exception:
+            for task_id in reserved_task_ids:
+                await self._release_task_funds(task_id, reason="reservation_rollback")
+            raise
+
+    async def _reservation_requirement(self, cfg: TaskConfig) -> dict | None:
+        if cfg.ttype != TaskType.TRADER:
+            return None
+        if not is_real_auto_mode(getattr(cfg, "live_execution_mode", None)):
+            return None
+        if getattr(cfg, "symbol_interval", None) is None:
+            return None
+        amount = self._reservation_amount(cfg)
+        if amount <= 0:
+            return None
+        exchange = await self._exchange_for_task(cfg)
+        asset = str(cfg.symbol_interval.sy.quote).upper()
+        balance_reader = getattr(exchange, "get_account_balance", None)
+        if not callable(balance_reader):
+            raise FundReservationError(f"cannot read exchange balance for reservation: task_id={cfg.id} asset={asset}")
+        capacity = float(balance_reader(asset) or 0.0)
+        return {
+            "account_key": await self._reservation_account_key(cfg),
+            "exchange": getattr(exchange, "name", lambda: "BINANCE")() if callable(getattr(exchange, "name", None)) else "BINANCE",
+            "credential_id": await self._reservation_credential_id(cfg),
+            "user_id": getattr(cfg, "user_id", None),
+            "task_id": int(cfg.id),
+            "asset": asset,
+            "amount": amount,
+            "capacity": capacity,
+            "reason": "live_task_start",
+        }
+
+    def _reservation_amount(self, cfg: TaskConfig) -> float:
+        if getattr(cfg, "live_execution_mode", None) == "small_live_auto":
+            return float(getattr(cfg, "live_trade_max_notional", 0.0) or 0.0)
+        if getattr(cfg, "free", -1) >= 0:
+            return float(cfg.free)
+        return float(getattr(self.cfg, "cash", 0.0) or 0.0)
+
+    async def _reservation_account_key(self, cfg: TaskConfig) -> str:
+        credential_id = await self._reservation_credential_id(cfg)
+        if credential_id is not None:
+            return f"BINANCE:credential:{credential_id}"
+        user_id = getattr(cfg, "user_id", None)
+        if user_id is not None:
+            return f"BINANCE:user:{user_id}:default"
+        return "BINANCE:default"
+
+    async def _reservation_credential_id(self, cfg: TaskConfig) -> int | None:
+        user_id = getattr(cfg, "user_id", None)
+        credential_repo = getattr(self.db_manager, "exchange_credential", None)
+        if user_id is None or credential_repo is None:
+            return None
+        credential = await credential_repo.get_default(user_id, "BINANCE")
+        return getattr(credential, "id", None)
+
+    async def _release_task_funds(self, task_id: int, *, reason: str) -> None:
+        store = getattr(self.db_manager, "account_fund_reservation", None)
+        if store is None:
+            return
+        try:
+            await store.release_task(task_id, reason=reason)
+        except Exception as exc:
+            self.log.error(f"Failed to release task fund reservation: task_id={task_id} reason={reason} error={exc}")
 
     async def _exchange_for_task(self, cfg: TaskConfig) -> BinanceExchange:
         if cfg.ttype != TaskType.TRADER:
@@ -296,6 +393,7 @@ class TaskManager:
                 }
             )
         sample_specs = []
+        regular_results = []
         task_by_id = {}
         for cfg in cfgs:
             if cfg.id in failed_task_ids:
@@ -304,12 +402,33 @@ class TaskManager:
                 continue
             task = BackTraderTask(cfg, self.cfg, self.log, self.db_manager, self.exchange)
             self.tasks[task.id()] = task
-            BaseTask.start(task, queue)
             task_by_id[task.id()] = task
-            sample_specs.append(build_backtest_sample_spec(self.cfg, cfg))
+            if cfg.optimization_run_id:
+                persist_result = BaseTask.start(task, queue)
+                if inspect.isawaitable(persist_result):
+                    await persist_result
+                sample_specs.append(build_backtest_sample_spec(self.cfg, cfg))
+                continue
+
+            task_params = await task.start(queue)
+            if task_params is None:
+                continue
+            result = []
+            await asyncio.to_thread(
+                process_backtrader,
+                [self.cfg, task_params[1], task_params[0], cfg, task.ts],
+                result,
+            )
+            regular_results.extend(result)
 
         sample_records = []
         execution_failures = []
+        for msg, logs, _report_record in regular_results:
+            for log_str in logs:
+                self.log.add_log_buffer(log_str, LogTag.STRATEGY)
+            self.log.info(f"Relay process queue message:{msg.name()}", LogTag.STRATEGY)
+            await queue.put(msg)
+
         for sample_spec in sample_specs:
             runtime = runtimes.get(sample_spec.optimization_run_id)
             if runtime:
@@ -672,6 +791,7 @@ class TaskManager:
                 return False
             task.stop()
             await self._persist_task_states([task.ts])
+            await self._release_task_funds(id, reason="task_closed")
             return True
 
         task_store = getattr(self.db_manager, "task", None)
@@ -685,6 +805,7 @@ class TaskManager:
             return False
         state.state = TaskStateType.DONE
         await self._persist_task_states([state])
+        await self._release_task_funds(id, reason="task_closed")
         return True
 
     def del_task(self, id: int, user_id: int | None = None):

@@ -1,0 +1,277 @@
+import asyncio
+from types import SimpleNamespace
+
+import pytest
+from tortoise import Tortoise
+
+from trader.common.config import Config
+from trader.common.logger import Logger
+from trader.database.account_fund_reservation import AccountFundReservationCol, FundReservationError
+from trader.database.config import build_tortoise_config
+from trader.task.base_task import BaseTask
+from trader.task.task_config import TaskConfig
+from trader.task.task_manager import TaskManager
+from trader.task.task_type import TaskType
+from trader.task.trader_task import TraderTask
+from trader.utils.symbol_interval import Interval, SymbolInterval
+
+
+class _Log:
+    def debug(self, *_args, **_kwargs):
+        pass
+
+    def info(self, *_args, **_kwargs):
+        pass
+
+    def warning(self, *_args, **_kwargs):
+        pass
+
+    def error(self, *_args, **_kwargs):
+        pass
+
+
+class _Exchange:
+    def __init__(self, quote_balance=100.0):
+        self.quote_balance = quote_balance
+
+    def get_account_balance(self, asset):
+        if asset == "USDT":
+            return self.quote_balance
+        return 0.0
+
+
+async def _with_db(fn):
+    await Tortoise.init(config=build_tortoise_config("sqlite://:memory:"))
+    await Tortoise.generate_schemas()
+    try:
+        await fn()
+    finally:
+        await Tortoise.close_connections()
+
+
+def test_account_fund_reservation_rejects_over_capacity_and_releases():
+    async def run():
+        store = AccountFundReservationCol(_Log())
+
+        first = await store.reserve(
+            account_key="BINANCE:credential:1",
+            exchange="BINANCE",
+            credential_id=1,
+            user_id=7,
+            task_id=101,
+            asset="USDT",
+            amount=60.0,
+            capacity=100.0,
+            reason="live_task_start",
+        )
+        assert first.created is True
+        assert await store.active_reserved_amount("BINANCE:credential:1", "USDT") == 60.0
+
+        with pytest.raises(FundReservationError, match="insufficient reserved capacity"):
+            await store.reserve(
+                account_key="BINANCE:credential:1",
+                exchange="BINANCE",
+                credential_id=1,
+                user_id=7,
+                task_id=102,
+                asset="USDT",
+                amount=50.0,
+                capacity=100.0,
+                reason="live_task_start",
+            )
+
+        assert await store.release_task(101, reason="task_done") == 1
+        assert await store.active_reserved_amount("BINANCE:credential:1", "USDT") == 0.0
+
+        second = await store.reserve(
+            account_key="BINANCE:credential:1",
+            exchange="BINANCE",
+            credential_id=1,
+            user_id=7,
+            task_id=102,
+            asset="USDT",
+            amount=50.0,
+            capacity=100.0,
+            reason="live_task_start",
+        )
+        assert second.created is True
+        assert await store.remaining_for_task(102, "USDT") == 50.0
+
+    asyncio.run(_with_db(run))
+
+
+def test_account_fund_reservation_tracks_spent_budget():
+    async def run():
+        store = AccountFundReservationCol(_Log())
+        await store.reserve(
+            account_key="BINANCE:credential:1",
+            exchange="BINANCE",
+            credential_id=1,
+            user_id=7,
+            task_id=101,
+            asset="USDT",
+            amount=60.0,
+            capacity=100.0,
+            reason="live_task_start",
+        )
+
+        await store.mark_spent(101, "USDT", 25.0)
+
+        assert await store.remaining_for_task(101, "USDT") == 35.0
+
+    asyncio.run(_with_db(run))
+
+
+def test_task_manager_reserves_live_task_budget_before_start_and_releases_on_completion():
+    async def run():
+        cfg = Config(tasks="[]", cash=1000.0)
+        logger = Logger(cfg)
+        reservation_store = AccountFundReservationCol(_Log())
+
+        async def add_tasks(_states):
+            return len(_states)
+
+        db_manager = SimpleNamespace(task=SimpleNamespace(add_tasks=add_tasks), account_fund_reservation=reservation_store)
+        manager = TaskManager(cfg, logger, db_manager, _Exchange(quote_balance=100.0))
+        task_config = TaskConfig(
+            id=201,
+            ttype=TaskType.TRADER,
+            symbol_interval=SymbolInterval("BTC-USDT", Interval("1m")),
+            strategies=["macd_triple_divergence"],
+            free=40.0,
+            live_execution_mode="full_live_auto",
+        )
+
+        async def fake_add_task(taskc, queue):
+            task = BaseTask(taskc, cfg, logger, db_manager, manager.exchange)
+            manager.tasks[task.id()] = task
+            await task.start(queue)
+
+        manager.add_task = fake_add_task
+
+        await manager.do_add_tasks([task_config], asyncio.Queue())
+
+        assert await reservation_store.active_reserved_amount("BINANCE:default", "USDT") == 0.0
+
+    asyncio.run(_with_db(run))
+
+
+def test_task_manager_rejects_batch_when_reserved_budget_exceeds_exchange_balance():
+    async def run():
+        cfg = Config(tasks="[]", cash=1000.0)
+        logger = Logger(cfg)
+        reservation_store = AccountFundReservationCol(_Log())
+
+        async def add_tasks(_states):
+            return len(_states)
+
+        db_manager = SimpleNamespace(task=SimpleNamespace(add_tasks=add_tasks), account_fund_reservation=reservation_store)
+        manager = TaskManager(cfg, logger, db_manager, _Exchange(quote_balance=50.0))
+        first = TaskConfig(
+            id=301,
+            ttype=TaskType.TRADER,
+            symbol_interval=SymbolInterval("BTC-USDT", Interval("1m")),
+            strategies=["macd_triple_divergence"],
+            free=40.0,
+            live_execution_mode="full_live_auto",
+        )
+        second = TaskConfig(
+            id=302,
+            ttype=TaskType.TRADER,
+            symbol_interval=SymbolInterval("ETH-USDT", Interval("1m")),
+            strategies=["macd_triple_divergence"],
+            free=20.0,
+            live_execution_mode="full_live_auto",
+        )
+
+        with pytest.raises(FundReservationError, match="insufficient reserved capacity"):
+            await manager.do_add_tasks([first, second], asyncio.Queue())
+
+        assert await reservation_store.active_reserved_amount("BINANCE:default", "USDT") == 0.0
+
+    asyncio.run(_with_db(run))
+
+
+def test_trader_task_persists_auto_execution_spent_budget():
+    async def run():
+        cfg = Config(tasks="[]", cash=1000.0)
+        logger = Logger(cfg)
+        reservation_store = AccountFundReservationCol(_Log())
+        await reservation_store.reserve(
+            account_key="BINANCE:default",
+            exchange="BINANCE",
+            credential_id=None,
+            user_id=None,
+            task_id=401,
+            asset="USDT",
+            amount=50.0,
+            capacity=100.0,
+            reason="live_task_start",
+        )
+
+        async def add_tasks(_states):
+            return len(_states)
+
+        db_manager = SimpleNamespace(
+            task=SimpleNamespace(add_tasks=add_tasks),
+            execution_state=None,
+            account_fund_reservation=reservation_store,
+        )
+        task_config = TaskConfig(
+            id=401,
+            ttype=TaskType.TRADER,
+            symbol_interval=SymbolInterval("BTC-USDT", Interval("1m")),
+            strategies=["macd_triple_divergence"],
+            free=50.0,
+            live_execution_mode="full_live_auto",
+        )
+        task_config.fund_reservation_amount = 50.0
+        task_config.fund_reservation_asset = "USDT"
+        task = TraderTask(task_config, cfg, logger, db_manager, _Exchange(quote_balance=100.0))
+        outcome = SimpleNamespace(status="submitted", effective_notional=30.0, execution_state_records=[])
+
+        await task._persist_auto_execution_state(outcome)
+
+        assert await reservation_store.remaining_for_task(401, "USDT") == 20.0
+
+    asyncio.run(_with_db(run))
+
+
+def test_task_manager_shutdown_preserves_running_live_task_reservation_for_recovery():
+    async def run():
+        cfg = Config(tasks="[]", cash=1000.0)
+        logger = Logger(cfg)
+        reservation_store = AccountFundReservationCol(_Log())
+        saved_batches = []
+
+        async def add_tasks(states):
+            saved_batches.append([state.to_dict() for state in states])
+            return len(states)
+
+        class _LongRunningTask(BaseTask):
+            async def start(self, queue):
+                await super().start(queue)
+                await self.quit.wait()
+
+        db_manager = SimpleNamespace(task=SimpleNamespace(add_tasks=add_tasks), account_fund_reservation=reservation_store)
+        manager = TaskManager(cfg, logger, db_manager, _Exchange(quote_balance=100.0))
+        task_config = TaskConfig(
+            id=501,
+            ttype=TaskType.TRADER,
+            symbol_interval=SymbolInterval("BTC-USDT", Interval("1m")),
+            strategies=["macd_triple_divergence"],
+            free=40.0,
+            live_execution_mode="full_live_auto",
+        )
+        manager._build_task = lambda task_cfg, exchange: _LongRunningTask(task_cfg, cfg, logger, db_manager, exchange)
+
+        manager.add_tasks([task_config], asyncio.Queue())
+        while task_config.id not in manager.tasks:
+            await asyncio.sleep(0)
+
+        await manager.close()
+
+        assert manager.tasks[task_config.id].ts.state.name == "RUNNING"
+        assert await reservation_store.active_reserved_amount("BINANCE:default", "USDT") == 40.0
+
+    asyncio.run(_with_db(run))

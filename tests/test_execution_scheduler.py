@@ -516,6 +516,48 @@ def test_add_backtrader_task_builds_sample_specs_from_shared_dataset_refs(monkey
     asyncio.run(_test())
 
 
+def test_add_backtrader_task_runs_regular_db_backtest_without_sample_worker(monkeypatch):
+    async def _test():
+        cfg = Config()
+        task_manager = TaskManager(cfg, DummyLog(), db_manager=SimpleNamespace(kline=SimpleNamespace()), exchange=SimpleNamespace())
+        queue = asyncio.Queue()
+        task = _make_backtest_task(1, "BTC-USDT", Interval.INTERVAL_1h, 1_700_000_000, 1_700_000_000 + 3600)
+        task.optimization_run_id = None
+        task.param_id = None
+
+        async def fake_prepare(self, cfgs, runtimes=None):
+            for cfg in cfgs:
+                cfg.dataset_ref = SimpleNamespace(
+                    path=None,
+                    source_type="db",
+                    dataset_key=f"{cfg.symbol_interval.name()}|{cfg.start_time}|{cfg.end_time}",
+                )
+            return []
+
+        async def fake_execute(self, sample_specs):
+            raise AssertionError("regular backtest should not use sample worker")
+
+        async def fake_task_start(self, queue):
+            return [["fake-strategy"], object()]
+
+        def fake_process_backtrader(params, result):
+            result.append([SimpleNamespace(name=lambda: "stat"), [], {"report": {"summary": {"total_trades": 1}}, "report_path": "reports/1.json"}])
+
+        monkeypatch.setattr(TaskManager, "_prepare_backtest_datasets", fake_prepare)
+        monkeypatch.setattr(TaskManager, "_execute_sample_specs", fake_execute)
+        monkeypatch.setattr("trader.task.backtrader_task.BackTraderTask.start", fake_task_start)
+
+        import trader.task.task_manager as task_manager_module
+
+        monkeypatch.setattr(task_manager_module, "process_backtrader", fake_process_backtrader, raising=False)
+
+        await task_manager.add_backtrader_task([task], queue)
+
+        assert queue.qsize() == 1
+
+    asyncio.run(_test())
+
+
 def test_add_backtrader_task_propagates_execution_failures_to_optimization_artifacts(monkeypatch, tmp_path: Path):
     async def _test():
         cfg = Config()
