@@ -89,15 +89,24 @@ def parse_task_config(cfg)->[TaskConfig]:
             auto_download = tcd['auto_download']
 
         for si in sis.symbol_intervals:
-            for strategy in strategys:
-                tc = TaskConfig(task_type, si, csv, start_time, end_time, strategy,auto_download)
+            if task_type == TaskType.IMPORT_CSV:
+                tc = TaskConfig(task_type, si, csv, start_time, end_time, None, auto_download)
                 if id == 0:
-                    tc.id=index
-                    index+=1
+                    tc.id = index
+                    index += 1
                 else:
-                    tc.id=id
-
+                    tc.id = id
                 ret.append(tc)
+            else:
+                for strategy in strategys:
+                    tc = TaskConfig(task_type, si, csv, start_time, end_time, strategy, auto_download)
+                    if id == 0:
+                        tc.id = index
+                        index += 1
+                    else:
+                        tc.id = id
+
+                    ret.append(tc)
 
     return ret
 

@@ -18,6 +18,7 @@ class BaseStrategy(bt.Strategy):
         ('period', 14),
         ('log', None),
         ('stoploss', False),
+        ('takeprofit', False),
     )
 
     def __init__(self):
@@ -27,6 +28,10 @@ class BaseStrategy(bt.Strategy):
         # Stop loss point
         if self.params.stoploss:
             self.stopLossPoint = 0
+
+        # take profit
+        if self.params.takeprofit:
+            self.takeProfitPoint = 0
 
         # To set the stop price
         if self.params.atr:
@@ -106,3 +111,12 @@ class BaseStrategy(bt.Strategy):
         if self.params.atr:
             pdist = self.atr[0] * self.params.atrdist
         self.stopLossPoint = self.datas[0].close[0] - pdist
+
+    def update_takeprofit_point(self):
+        if not self.params.takeprofit:
+            return
+
+        pdist = 0
+        if self.params.atr:
+            pdist = self.atr[0] * self.params.atrdist
+        self.takeProfitPoint = self.datas[0].close[0] + pdist
