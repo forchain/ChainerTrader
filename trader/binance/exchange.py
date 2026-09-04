@@ -6,6 +6,7 @@ from binance.websocket.spot.websocket_api import SpotWebsocketAPIClient
 
 from trader.binance.restapi import get_restapi
 from trader.common.logger import default
+from trader.task.task_config import get_symbols_from_cfg
 from trader.utils.kline import Kline
 from trader.utils.symbol_interval import SymbolInterval, add_time_duration
 
@@ -68,7 +69,7 @@ class BinanceExchange:
     def update_exchange_info(self):
         if self.cfg.symbols:
             self.log.debug(f"update_exchange_info:{self.cfg.symbols}")
-            self.exchange_info = self.spot_client.exchange_info(symbols=self.cfg.symbols_list())
+            self.exchange_info = self.spot_client.exchange_info(symbols=get_symbols_from_cfg(self.cfg.tasks))
         else:
             self.exchange_info = None
         return self.exchange_info

@@ -7,8 +7,7 @@ from trader.utils.trend import TrendType, parseTrendType
 
 
 class Config:
-    def __init__(self,strategy_type=None,
-                      commission=0.001,
+    def __init__(self,commission=0.001,
                       atr=True,
                       period=14,
                       log_file=False,
@@ -16,13 +15,9 @@ class Config:
                       mode=None,
                       log_level="INFO",
                       exchange=None,
-                      symbols="BTCUSDT",
-                      intervals="1d",
-                      data_file=None,
                       db_uri=None,
                       window=1000,
                       tasks=None):
-        self.strategy=parseStrategyType(strategy_type)
         self.mode=parseTrendType(mode)
         self.commission=commission
         self.atr=atr
@@ -31,17 +26,11 @@ class Config:
         self.plot=plot
         self.log_level=log_level
         self.exchange=exchange
-        self.symbols=symbols
-        self.intervals=intervals
-        self.data_file=data_file
         self.db_uri=db_uri
         self.window=window
         self.tasks=tasks
 
     def exportEnv(self):
-        if self.strategy:
-            os.environ['strategy_type'] = self.strategy.name
-
         os.environ['commission'] = str(self.commission)
         os.environ['atr'] = str(self.atr)
         os.environ['period'] = str(self.period)
@@ -52,23 +41,14 @@ class Config:
 
         if self.exchange:
             os.environ['exchange'] = self.exchange
-        os.environ['symbols'] = self.symbols
-        if self.data_file:
-            os.environ['data_file'] = self.data_file
         if self.db_uri:
             os.environ['db_uri'] = self.db_uri
-        os.environ['intervals'] = self.intervals
         os.environ['window'] = str(self.window)
-        if self.task:
+        if self.tasks:
             os.environ['tasks'] = self.tasks
 
     def to_dict(self):
-        strategy_type = None
-        if self.strategy:
-            strategy_type=self.strategy.name
-
         return {
-            "strategy_type":strategy_type,
             'commission':self.commission,
             'atr':self.atr,
             'period':self.period,
@@ -77,44 +57,10 @@ class Config:
             'mode':self.mode.name,
             'log_level':self.log_level,
             'exchange':self.exchange,
-            'symbols':self.symbols,
-            'intervals': self.intervals,
-            'data_file':self.data_file,
             'db_uri': self.db_uri,
             'window': self.window,
             'tasks':self.tasks,
         }
-
-    def symbols_list(self):
-        return self.symbols.split(',')
-
-    def intervals_list(self):
-        return self.intervals.split(',')
-
-    def check_symbols_intervals(self):
-        if self.symbols is None or self.intervals is None:
-            return False
-
-        intervals_len = len(self.intervals_list())
-        if len(self.symbols_list()) != intervals_len and intervals_len != 1:
-            return False
-        return True
-
-    def get_symbol_interval_list(self)->[SymbolInterval]:
-        intervals = self.intervals_list()
-        symbols = self.symbols_list()
-        intervals_len = len(intervals)
-
-        ret:[SymbolInterval]=[]
-        index=0
-        for sy in symbols:
-            if intervals_len == 1:
-                ret.append(SymbolInterval(sy,Interval(intervals[0])))
-            else:
-                ret.append(SymbolInterval(sy,Interval(intervals[index])))
-            index+=1
-
-        return ret
 
     def get_log_level(self)->int:
         return logging.getLevelName(self.log_level)
@@ -131,7 +77,6 @@ def NewConfigFromEnv():
         window="0"
 
     return Config(
-        os.environ.get('strategy_type'),
         float(commission),
         bool(os.environ.get('atr')),
         int(period),
@@ -140,9 +85,6 @@ def NewConfigFromEnv():
         os.environ.get('mode'),
         os.environ.get('log_level'),
         os.environ.get('exchange'),
-        os.environ.get('symbols'),
-        os.environ.get('intervals'),
-        os.environ.get('data_file'),
         os.environ.get('db_uri'),
         int(window),
         os.environ.get('tasks'),

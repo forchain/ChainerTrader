@@ -91,3 +91,29 @@ class DatabaseManager:
             total+=len(insert_data)
         self.log.debug(f"add klines, total:{total}")
         return total
+
+    def get_first_kline(self,col:Collection)->Kline|None:
+        max_record = col.find_one(sort=[(PRIMARY_KEY, ASCENDING)])
+        if max_record is None:
+            return None
+        kl = parse_kline(max_record)
+        self.log.debug(f"get first kline({max_record['_id']}):{kl.to_json()}")
+        return kl
+
+    def get_kline(self,col:Collection,open_time:int)->Kline|None:
+        result = col.find_one({PRIMARY_KEY: open_time})
+        if result is None:
+            return None
+        kl = parse_kline(result)
+        self.log.debug(f"get kline({result['_id']}):{kl.to_json()}")
+        return kl
+
+    def get_all_klines(self, col: Collection) -> [Kline]:
+        results = col.find().sort(PRIMARY_KEY, ASCENDING)
+        if results is None:
+            return None
+
+        kls = []
+        for ret in results:
+            kls.append(parse_kline(ret))
+        return kls
