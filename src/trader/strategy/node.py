@@ -75,7 +75,7 @@ class Node:
         data_len = len(self.cerebro.datas[0])
         start_price = self.cerebro.datas[0].open[1 - data_len]
         end_price = self.cerebro.datas[0].close[0]
-        hold_rate = end_price / start_price * 100
+        hold_rate = (end_price-start_price) / start_price * 100
         return hold_rate
 
     def start(self):
