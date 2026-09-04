@@ -7,7 +7,7 @@ import backtrader as bt
 from trader.strategy.base_strategy import BaseStrategy
 
 
-class DeviationMACDClaude4Strategy(BaseStrategy):
+class DeviationMACDClaude4(BaseStrategy):
     """
     DeviationMACD Strategy - Python implementation of Pine Script
     Based on MACD divergence detection with ATR-based stop loss
@@ -43,10 +43,7 @@ class DeviationMACDClaude4Strategy(BaseStrategy):
 
         # Initialize MACD indicator
         self.macd = bt.indicators.MACD(
-            self.data.close,
-            period_me1=self.params.macd_fast,
-            period_me2=self.params.macd_slow,
-            period_signal=self.params.macd_signal,
+            self.data.close, period_me1=self.params.macd_fast, period_me2=self.params.macd_slow, period_signal=self.params.macd_signal
         )
 
         # Delta MACD (histogram)
@@ -54,29 +51,13 @@ class DeviationMACDClaude4Strategy(BaseStrategy):
 
         # Initialize ATR with proper smoothing
         if self.params.atr_smoothing == "RMA":
-            self.atr_indicator = bt.indicators.ATR(
-                self.data,
-                period=self.params.atr_period,
-                movav=bt.indicators.SmoothedMovingAverage,
-            )
+            self.atr_indicator = bt.indicators.ATR(self.data, period=self.params.atr_period, movav=bt.indicators.SmoothedMovingAverage)
         elif self.params.atr_smoothing == "SMA":
-            self.atr_indicator = bt.indicators.ATR(
-                self.data,
-                period=self.params.atr_period,
-                movav=bt.indicators.SimpleMovingAverage,
-            )
+            self.atr_indicator = bt.indicators.ATR(self.data, period=self.params.atr_period, movav=bt.indicators.SimpleMovingAverage)
         elif self.params.atr_smoothing == "EMA":
-            self.atr_indicator = bt.indicators.ATR(
-                self.data,
-                period=self.params.atr_period,
-                movav=bt.indicators.ExponentialMovingAverage,
-            )
+            self.atr_indicator = bt.indicators.ATR(self.data, period=self.params.atr_period, movav=bt.indicators.ExponentialMovingAverage)
         else:  # WMA
-            self.atr_indicator = bt.indicators.ATR(
-                self.data,
-                period=self.params.atr_period,
-                movav=bt.indicators.WeightedMovingAverage,
-            )
+            self.atr_indicator = bt.indicators.ATR(self.data, period=self.params.atr_period, movav=bt.indicators.WeightedMovingAverage)
 
         # Initialize pivot point storage
         self.ph_positions = deque(maxlen=self.params.max_pivot_points)

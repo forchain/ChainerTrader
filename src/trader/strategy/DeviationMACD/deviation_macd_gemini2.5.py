@@ -76,12 +76,7 @@ class DeviationMACDGeminiStrategy(BaseStrategy):
         super().__init__()
         self.set_default_period(self.p.period)
 
-        self.macd = bt.indicators.MACD(
-            self.data,
-            period_me1=self.p.fast_length,
-            period_me2=self.p.slow_length,
-            period_signal=self.p.signal_length,
-        )
+        self.macd = bt.indicators.MACD(self.data, period_me1=self.p.fast_length, period_me2=self.p.slow_length, period_signal=self.p.signal_length)
         self.macd_hist = self.macd.histo
 
         atr_period = self.p.period

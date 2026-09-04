@@ -1,5 +1,6 @@
 import backtrader as bt
 
+
 class WinRateAnalyzer(bt.Analyzer):
     def __init__(self):
         self.totalTrades = 0

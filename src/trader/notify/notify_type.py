@@ -1,11 +1,11 @@
-from enum import Enum
 import json
 import os
 import smtplib
 from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+from enum import Enum
 
 from trader.common import path
+
 
 class NotifyType(Enum):
     UNKNOWN = 0
@@ -16,7 +16,14 @@ class NotifyType(Enum):
     MAIL_LARK = 5
 
     def is_mail(self):
-        return self == NotifyType.MAIL_QQ or self == NotifyType.MAIL_GMAIL or self == NotifyType.MAIL_OUTLOOK or self == NotifyType.MAIL_163 or self == NotifyType.MAIL_LARK
+        return (
+            self == NotifyType.MAIL_QQ
+            or self == NotifyType.MAIL_GMAIL
+            or self == NotifyType.MAIL_OUTLOOK
+            or self == NotifyType.MAIL_163
+            or self == NotifyType.MAIL_LARK
+        )
+
 
 def parse_notify_type(name):
     if name == NotifyType.UNKNOWN.name:
@@ -33,26 +40,35 @@ def parse_notify_type(name):
         return NotifyType.MAIL_LARK
     return None
 
+
 class NotifyMail:
-    def __init__(self,tp:NotifyType,stmp_server:str,stmp_port:int,sender:str=None,password:str=None,recipient:str=None):
-        self.tp=tp
-        self.stmp_server=stmp_server
-        self.stmp_port=stmp_port
-        self.sender=sender
-        self.password=password
-        self.recipient=recipient
+    def __init__(
+        self,
+        tp: NotifyType,
+        stmp_server: str,
+        stmp_port: int,
+        sender: str = None,
+        password: str = None,
+        recipient: str = None,
+    ):
+        self.tp = tp
+        self.stmp_server = stmp_server
+        self.stmp_port = stmp_port
+        self.sender = sender
+        self.password = password
+        self.recipient = recipient
 
     def to_dict(self):
         return {
-            "type":self.tp.name,
-            "stmp_server":self.stmp_server,
-            "stmp_port":self.stmp_port,
-            "sender":self.sender,
-            "password":self.password,
-            "recipient":self.recipient
+            "type": self.tp.name,
+            "stmp_server": self.stmp_server,
+            "stmp_port": self.stmp_port,
+            "sender": self.sender,
+            "password": self.password,
+            "recipient": self.recipient,
         }
 
-    def send(self,content:str,title:str="Trader"):
+    def send(self, content: str, title: str = "Trader"):
         msg = MIMEText(content, "plain", "utf-8")
         msg["Subject"] = title
         msg["From"] = self.sender
@@ -60,19 +76,20 @@ class NotifyMail:
 
         try:
             server = smtplib.SMTP_SSL(self.stmp_server, self.stmp_port)
-            #if self.tp == NotifyType.MAIL_GMAIL:
-                #server.starttls()
+            # if self.tp == NotifyType.MAIL_GMAIL:
+            # server.starttls()
 
-            server.login(self.sender,self.password)
+            server.login(self.sender, self.password)
             server.sendmail(self.sender, self.recipient, msg.as_string())
             server.quit()
             return None
         except Exception as e:
             return e
 
+
 def default_notify_mail_template():
     ret = {}
-    ret[NotifyType.MAIL_QQ] = NotifyMail(NotifyType.MAIL_QQ,"smtp.qq.com",465)
+    ret[NotifyType.MAIL_QQ] = NotifyMail(NotifyType.MAIL_QQ, "smtp.qq.com", 465)
     ret[NotifyType.MAIL_GMAIL] = NotifyMail(NotifyType.MAIL_GMAIL, "smtp.gmail.com", 465)
     ret[NotifyType.MAIL_OUTLOOK] = NotifyMail(NotifyType.MAIL_OUTLOOK, "smtp.office365.com", 465)
     ret[NotifyType.MAIL_163] = NotifyMail(NotifyType.MAIL_163, "smtp.163.com", 465)
@@ -80,11 +97,12 @@ def default_notify_mail_template():
 
     return ret
 
+
 def parse_notice_config(cfg):
     file_path = path.get_file_path(cfg)
     if os.path.isfile(file_path):
         try:
-            with open(file_path, 'r', encoding='utf-8') as file:
+            with open(file_path, "r", encoding="utf-8") as file:
                 parsed_list = json.load(file)
         except json.JSONDecodeError:
             return []
@@ -94,19 +112,19 @@ def parse_notice_config(cfg):
         parsed_list = json.loads(cfg)
 
     ret = []
-    mail_template=default_notify_mail_template()
+    mail_template = default_notify_mail_template()
 
     for nc in parsed_list:
-        ntype = parse_notify_type(nc['type'])
+        ntype = parse_notify_type(nc["type"])
         if ntype.is_mail():
-            password=nc['password']
+            password = nc["password"]
             if password == "your_smtp_auth_code":
                 continue
-            sender = nc['sender']
+            sender = nc["sender"]
             recipient = sender
             if "recipient" in nc:
-                recipient = nc['recipient']
-            tm=mail_template[ntype]
-            nm=NotifyMail(tm.tp,tm.stmp_server,tm.stmp_port,sender,password,recipient)
+                recipient = nc["recipient"]
+            tm = mail_template[ntype]
+            nm = NotifyMail(tm.tp, tm.stmp_server, tm.stmp_port, sender, password, recipient)
             ret.append(nm)
     return ret

@@ -1,23 +1,21 @@
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals)
+from __future__ import absolute_import, division, print_function, unicode_literals
 
 import datetime
 import os.path
 
-from backtrader import num2date
-
-from trader.binance_exchange.csvdata import BinanceCSVData
-from trader.common import path
-
 import backtrader as bt
 import backtrader.indicators as btind
+from backtrader import num2date
 
+from trader.common import path
+from trader.exchange.binance.csvdata import BinanceCSVData
 from trader.strategy.trilogy_strategy import TrilogyStrategy
+
 
 class SMAStrategy(TrilogyStrategy):
     params = (
-        ('confirm', 3),
-        ('period', 14),
+        ("confirm", 3),
+        ("period", 14),
     )
 
     def log(self, txt, dt=None):
@@ -40,22 +38,15 @@ class SMAStrategy(TrilogyStrategy):
 
         if order.status in [order.Completed]:
             if order.isbuy():
-                self.log(
-                    '买入, 价格: %.2f, 花费: %.2f, 手续费: %.2f' %
-                    (order.executed.price,
-                     order.executed.value,
-                     order.executed.comm))
+                self.log("买入, 价格: %.2f, 花费: %.2f, 手续费: %.2f" % (order.executed.price, order.executed.value, order.executed.comm))
 
                 self.buyprice = order.executed.price
                 self.buycomm = order.executed.comm
             else:  # Sell
-                self.log('卖出, 价格: %.2f, 花费: %.2f, 手续费: %.2f' %
-                         (order.executed.price,
-                          order.executed.value,
-                          order.executed.comm))
+                self.log("卖出, 价格: %.2f, 花费: %.2f, 手续费: %.2f" % (order.executed.price, order.executed.value, order.executed.comm))
 
         elif order.status in [order.Canceled, order.Margin, order.Rejected]:
-            self.log('Order Canceled/Margin/Rejected')
+            self.log("Order Canceled/Margin/Rejected")
 
         self.order = None
 
@@ -63,11 +54,10 @@ class SMAStrategy(TrilogyStrategy):
         if not trade.isclosed:
             return
 
-        self.log('营业利润, 毛利润: %.2f, 净利润: %.2f' %
-                 (trade.pnl, trade.pnlcomm))
+        self.log("营业利润, 毛利润: %.2f, 净利润: %.2f" % (trade.pnl, trade.pnlcomm))
 
     def next(self):
-        self.log('收盘价, %.2f' % self.dataclose[0])
+        self.log("收盘价, %.2f" % self.dataclose[0])
 
         if self.order:
             return
@@ -81,13 +71,12 @@ class SMAStrategy(TrilogyStrategy):
                     self.buy()
 
 
-
 def test_sma():
     cerebro = bt.Cerebro()
 
     cerebro.addstrategy(SMAStrategy)
 
-    datapath = os.path.join(path.GetDataDir(), 'ETHUSDT-1h-202301-202401.csv')
+    datapath = os.path.join(path.GetDataDir(), "ETHUSDT-1h-202301-202401.csv")
 
     data = BinanceCSVData(
         dataname=datapath,
@@ -103,8 +92,8 @@ def test_sma():
 
     cerebro.broker.setcommission(commission=0.0)
 
-    print('\n初始资产: %.2f' % cerebro.broker.getvalue())
+    print("\n初始资产: %.2f" % cerebro.broker.getvalue())
 
     cerebro.run()
 
-    print('最终资产: %.2f' % cerebro.broker.getvalue())
+    print("最终资产: %.2f" % cerebro.broker.getvalue())

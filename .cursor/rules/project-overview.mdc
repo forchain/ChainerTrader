@@ -14,7 +14,7 @@ The main entry point is [src/trader/__main__.py](mdc:src/trader/__main__.py), wh
 The central application class is [src/trader/app/app.py](mdc:src/trader/app/app.py), which orchestrates all components:
 - **Configuration Management**: [src/trader/common/config.py](mdc:src/trader/common/config.py)
 - **Database Management**: [src/trader/app/database_manager.py](mdc:src/trader/app/database_manager.py)
-- **Exchange Integration**: [src/trader/binance_exchange/exchange.py](mdc:src/trader/binance_exchange/exchange.py)
+- **Exchange Integration**: [src/trader/exchange/binance/exchange.py](mdc:src/trader/exchange/binance/exchange.py)
 - **Task Management**: [src/trader/task/task_manager.py](mdc:src/trader/task/task_manager.py)
 - **Statistics & Reporting**: [src/trader/statistics/statistics.py](mdc:src/trader/statistics/statistics.py)
 - **Notification System**: [src/trader/notify/notify_manager.py](mdc:src/trader/notify/notify_manager.py)

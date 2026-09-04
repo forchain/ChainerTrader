@@ -1,5 +1,4 @@
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals)
+from __future__ import absolute_import, division, print_function, unicode_literals
 
 from trader.strategy.base_strategy import BaseStrategy
 from trader.utils.inflectionpoint import InflectionType
@@ -21,17 +20,17 @@ class TrilogyStrategy(BaseStrategy):
 
         # Current trend judgment
         minK = 3
-        l = len(self.datas[0].close)
-        if l <= minK:
+        le = len(self.datas[0].close)
+        if le <= minK:
             return False
         curTrend = TrendType.NORMAL
 
-        av1=(self.datas[0].open[-1] + self.datas[0].close[-1]) / 2
+        av1 = (self.datas[0].open[-1] + self.datas[0].close[-1]) / 2
 
         if self.datas[0].close[0] <= av1:
-            curTrend=TrendType.DOWN
+            curTrend = TrendType.DOWN
         elif self.datas[0].close[0] >= av1:
-            curTrend=TrendType.UP
+            curTrend = TrendType.UP
         else:
             curTrend = TrendType.NORMAL
         # We only operate in an upward trend
@@ -58,31 +57,30 @@ class TrilogyStrategy(BaseStrategy):
             return True
         return False
 
-
     def getInflectionPoints(self):
         minK = 5
-        l = len(self.datas[0].close)
-        if l <= minK:
+        le = len(self.datas[0].close)
+        if le <= minK:
             return None
 
-        band=5
+        band = 5
         points = []
         index = -2
         high = 0
         low = 0
-        while index > -l and len(points) <= band:
-            av_0 = (self.datas[0].open[index-2] + self.datas[0].close[index-2]) / 2
-            av_1 = (self.datas[0].open[index-1] + self.datas[0].close[index-1]) / 2
+        while index > -le and len(points) <= band:
+            av_0 = (self.datas[0].open[index - 2] + self.datas[0].close[index - 2]) / 2
+            av_1 = (self.datas[0].open[index - 1] + self.datas[0].close[index - 1]) / 2
             av_2 = (self.datas[0].open[index] + self.datas[0].close[index]) / 2
-            av_3 = (self.datas[0].open[index+1] + self.datas[0].close[index+1]) / 2
-            av_4 = (self.datas[0].open[index+2] + self.datas[0].close[index+2]) / 2
+            av_3 = (self.datas[0].open[index + 1] + self.datas[0].close[index + 1]) / 2
+            av_4 = (self.datas[0].open[index + 2] + self.datas[0].close[index + 2]) / 2
             if av_0 < av_1 and av_1 < av_2 and av_2 > av_3 and av_3 > av_4:
-                points.append((index,InflectionType.HIGH,av_2))
-                high+=1
+                points.append((index, InflectionType.HIGH, av_2))
+                high += 1
             elif av_0 > av_1 and av_1 > av_2 and av_2 < av_3 and av_3 < av_4:
-                points.append((index,InflectionType.LOW,av_2))
-                low+=1
-            index-=1
+                points.append((index, InflectionType.LOW, av_2))
+                low += 1
+            index -= 1
         if high < 2 or low < 2:
             return None
 
@@ -90,24 +88,48 @@ class TrilogyStrategy(BaseStrategy):
         i = 0
         for point in points:
             if i == 0:
-                i+=1
+                i += 1
                 continue
-            if point[1] == InflectionType.HIGH and points[i-1][1] != InflectionType.LOW:
+            if point[1] == InflectionType.HIGH and points[i - 1][1] != InflectionType.LOW:
                 return None
-            if point[1] == InflectionType.LOW and points[i-1][1] != InflectionType.HIGH:
+            if point[1] == InflectionType.LOW and points[i - 1][1] != InflectionType.HIGH:
                 return None
             i += 1
 
         return points
 
-    def buy(self, data=None,
-            size=None, price=None, plimit=None,
-            exectype=None, valid=None, tradeid=0, oco=None,
-            trailamount=None, trailpercent=None,
-            parent=None, transmit=True,
-            **kwargs):
+    def buy(
+        self,
+        data=None,
+        size=None,
+        price=None,
+        plimit=None,
+        exectype=None,
+        valid=None,
+        tradeid=0,
+        oco=None,
+        trailamount=None,
+        trailpercent=None,
+        parent=None,
+        transmit=True,
+        **kwargs,
+    ):
         """buy
-            Process buy
+        Process buy
         """
         self.update_stop_loss_point()
-        super().buy(data=data,size=size,price=price,plimit=plimit,exectype=exectype,valid=valid,tradeid=tradeid,oco=oco,trailamount=trailamount,trailpercent=trailpercent,parent=parent,transmit=transmit,**kwargs)
+        super().buy(
+            data=data,
+            size=size,
+            price=price,
+            plimit=plimit,
+            exectype=exectype,
+            valid=valid,
+            tradeid=tradeid,
+            oco=oco,
+            trailamount=trailamount,
+            trailpercent=trailpercent,
+            parent=parent,
+            transmit=transmit,
+            **kwargs,
+        )

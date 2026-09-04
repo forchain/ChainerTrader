@@ -1,23 +1,20 @@
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals)
+from __future__ import absolute_import, division, print_function, unicode_literals
 
 import backtrader as bt
 
-from trader.strategy.base_strategy import BaseStrategy
 from trader.indicators.chainerrsi import ChainerRSIHisto
+from trader.strategy.base_strategy import BaseStrategy
 from trader.utils.operate import OperateType
 from trader.utils.trend import TrendType
 
 
 # Shihun MACD RSI BollingerBand strategy
 class ShihunMACDRISBBStrategy(BaseStrategy):
-    params = (
-        ('devfactor', 2),       # 标准差系数
-    )
+    params = (("devfactor", 2),)  # 标准差系数
 
     def __init__(self):
         super().__init__()
-        self.params.period=20  # 布林带周期
+        self.params.period = 20  # 布林带周期
         self.dataclose = self.datas[0].close
 
         self.order = None
@@ -26,7 +23,7 @@ class ShihunMACDRISBBStrategy(BaseStrategy):
         self.bollinger = bt.indicators.BollingerBands(
             self.datas[0].close,
             period=self.params.period,
-            devfactor=self.params.devfactor
+            devfactor=self.params.devfactor,
         )
         self.rsi = ChainerRSIHisto(self.datas[0])
 
@@ -48,7 +45,7 @@ class ShihunMACDRISBBStrategy(BaseStrategy):
             willOpt = self.processTrend()
 
         if willOpt == OperateType.SELL:
-            self.log_info(f'Kline:{self.cur_datetime()}, 创建 卖单:{self.dataclose[0]:.2f}')
+            self.log_info(f"Kline:{self.cur_datetime()}, 创建 卖单:{self.dataclose[0]:.2f}")
             self.order = self.sell()
             self.criticalBuyK = None
             self.criticalSellK = None
@@ -65,7 +62,7 @@ class ShihunMACDRISBBStrategy(BaseStrategy):
             self.stopLossPoint = pdist
             self.criticalBuyK = None
             self.criticalSellK = None
-            self.log_info(f'Kline:{self.cur_datetime()}, 创建 买单:{self.dataclose[0]:.2f}, 止损点:{self.stopLossPoint:.2f}')
+            self.log_info(f"Kline:{self.cur_datetime()}, 创建 买单:{self.dataclose[0]:.2f}, 止损点:{self.stopLossPoint:.2f}")
 
     def getTrend(self):
         if self.macd.macd[0] > 0:
@@ -82,7 +79,12 @@ class ShihunMACDRISBBStrategy(BaseStrategy):
         if self.datas[0].close[0] < lowerBand and self.datas[0].close[0] > self.datas[0].open[0]:
             if self.macd.histo[0] < 0 and self.macd.histo[0] > self.macd.histo[-1] and self.macd.histo[-1] < self.macd.histo[-2]:
                 find = True
-            if self.rsi.histo[0] > 0 and self.rsi.histo[0] > self.rsi.histo[-1] and self.rsi.histo[-1] > self.rsi.histo[-2] and self.rsi.histo[-2] < 0:
+            if (
+                self.rsi.histo[0] > 0
+                and self.rsi.histo[0] > self.rsi.histo[-1]
+                and self.rsi.histo[-1] > self.rsi.histo[-2]
+                and self.rsi.histo[-2] < 0
+            ):
                 find = True
             if find:
                 self.criticalBuyK = self.datas[0].high[0]
@@ -102,19 +104,21 @@ class ShihunMACDRISBBStrategy(BaseStrategy):
                     willOpt = OperateType.SELL
                 if self.datas[0].close[0] < midBand:
                     willOpt = OperateType.SELL
-                if self.macd.histo[0] < self.macd.histo[-1] and self.macd.histo[-1] > self.macd.histo[-2] and \
-                        self.macd.histo[-2] > 0:
+                if self.macd.histo[0] < self.macd.histo[-1] and self.macd.histo[-1] > self.macd.histo[-2] and self.macd.histo[-2] > 0:
                     willOpt = OperateType.SELL
 
-                if self.rsi.histo[0] < 0 and self.rsi.histo[0] < self.rsi.histo[-1] and self.rsi.histo[-1] < \
-                        self.rsi.histo[-2] and self.rsi.histo[-2] > 0:
+                if (
+                    self.rsi.histo[0] < 0
+                    and self.rsi.histo[0] < self.rsi.histo[-1]
+                    and self.rsi.histo[-1] < self.rsi.histo[-2]
+                    and self.rsi.histo[-2] > 0
+                ):
                     willOpt = OperateType.SELL
 
         return willOpt
 
     def processTrend(self):
         upperBand = self.bollinger.lines.top[0]
-        lowerBand = self.bollinger.lines.bot[0]
         midBand = self.bollinger.lines.mid[0]
 
         # find criticalK
@@ -155,12 +159,9 @@ class ShihunMACDRISBBStrategy(BaseStrategy):
                 if self.data.low[0] < midBand:
                     willOpt = OperateType.SELL
 
-            if self.macd.histo[0] < self.macd.histo[-1] and self.macd.histo[-1] > self.macd.histo[-2] and \
-                    self.macd.histo[-2] > 0:
+            if self.macd.histo[0] < self.macd.histo[-1] and self.macd.histo[-1] > self.macd.histo[-2] and self.macd.histo[-2] > 0:
                 willOpt = OperateType.SELL
-            if self.criticalSellK and self.datas[0].close[0] < self.datas[0].open[0] and self.datas[0].close[
-                0] < self.criticalSellK:
+            if self.criticalSellK and self.datas[0].close[0] < self.datas[0].open[0] and self.datas[0].close[0] < self.criticalSellK:
                 willOpt = OperateType.SELL
-
 
         return willOpt

@@ -5,16 +5,16 @@ from trader.common.config import Config
 
 
 class Logger:
-    def __init__(self,cfg:Config):
-        self.cfg=cfg
-        self.name=NAME
+    def __init__(self, cfg: Config):
+        self.cfg = cfg
+        self.name = NAME
         self.logger = logging.getLogger(self.name)
 
         self.logger.setLevel(cfg.log_level)
 
         self.initRoot()
 
-    def setLevel(self,level):
+    def setLevel(self, level):
         self.logger.setLevel(level)
         logging.getLogger("root").setLevel(level)
 
@@ -39,33 +39,30 @@ class Logger:
         self.logger.addHandler(file_handler)
         return file_handler
 
-
     def file_name(self):
-        return self.name + '.log'
+        return self.name + ".log"
 
     def initRoot(self):
         if self.cfg.log_file:
             logging.basicConfig(
                 filename=self.file_name(),
-                filemode='a',
+                filemode="a",
                 level=self.cfg.log_level,
-                format=formatter_str()
+                format=formatter_str(),
             )
         else:
-            logging.basicConfig(
-                level=self.cfg.log_level,
-                format=formatter_str()
-            )
+            logging.basicConfig(level=self.cfg.log_level, format=formatter_str())
 
         logging.info("Init root logger")
-
 
 
 def get_formatter():
     return logging.Formatter(formatter_str())
 
-def formatter_str():
-    return '%(asctime)s[%(levelname)s:%(name)s] %(message)s'
 
-def default()->logging.Logger:
+def formatter_str():
+    return "%(asctime)s[%(levelname)s:%(name)s] %(message)s"
+
+
+def default() -> logging.Logger:
     return logging.getLogger("root")

@@ -1,5 +1,4 @@
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals)
+from __future__ import absolute_import, division, print_function, unicode_literals
 
 import backtrader as bt
 
@@ -8,19 +7,17 @@ from trader.strategy.base_strategy import BaseStrategy
 
 # Bollinger Bands Mean Regression Strategy
 class BOLLMEANREGStrategy(BaseStrategy):
-    params = (
-        ('devfactor', 2),       # 标准差系数
-    )
+    params = (("devfactor", 2),)  # 标准差系数
 
     def __init__(self):
         super().__init__()
-        self.params.period=20  # 布林带周期
+        self.params.period = 20  # 布林带周期
         self.order = None
 
         self.bollinger = bt.indicators.BollingerBands(
             self.datas[0].close,
             period=self.params.period,
-            devfactor=self.params.devfactor
+            devfactor=self.params.devfactor,
         )
 
     def next(self):
@@ -41,5 +38,3 @@ class BOLLMEANREGStrategy(BaseStrategy):
             else:
                 if self.data.high[0] > upperBand and self.data.close[0] > self.data.open[0]:
                     self.sell()
-
-

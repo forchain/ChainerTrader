@@ -1,5 +1,5 @@
-
 from enum import Enum
+
 
 class TaskType(Enum):
     TRADER = 0
@@ -8,6 +8,7 @@ class TaskType(Enum):
     CHECK_KLINES = 3
     IMPORT_CSV = 4
     CHECK_KLINES_NUM = 5
+
 
 def parse_task_type(name):
     if name == TaskType.TRADER.name:

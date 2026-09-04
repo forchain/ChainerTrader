@@ -1,5 +1,6 @@
 import backtrader as bt
 
+
 class ProfitLossRatioAnalyzer(bt.Analyzer):
     def __init__(self):
         self.profitTrades = []  # 存储盈利交易的 pnl
@@ -19,6 +20,10 @@ class ProfitLossRatioAnalyzer(bt.Analyzer):
         avgLoss = sum(self.lossTrades) / len(self.lossTrades) if self.lossTrades else 0
 
         # 计算盈亏比
-        profitLossRatio = abs(avgProfit / avgLoss) if avgLoss != 0 else float('inf')
+        profitLossRatio = abs(avgProfit / avgLoss) if avgLoss != 0 else float("inf")
 
-        return {'profitLossRatio': profitLossRatio, 'avgProfit': avgProfit, 'avgLoss': avgLoss}
+        return {
+            "profitLossRatio": profitLossRatio,
+            "avgProfit": avgProfit,
+            "avgLoss": avgLoss,
+        }

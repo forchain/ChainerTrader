@@ -1,15 +1,15 @@
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals)
+from __future__ import absolute_import, division, print_function, unicode_literals
 
 import backtrader as bt
+
 from trader.strategy.trilogy_strategy import TrilogyStrategy
 
 
 # Shihun RSI strategy
 class ShihunRSIStrategy(TrilogyStrategy):
     params = (
-        ('overbought', 70),
-        ('oversold', 30),
+        ("overbought", 70),
+        ("oversold", 30),
     )
 
     def __init__(self):

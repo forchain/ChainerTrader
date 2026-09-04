@@ -5,9 +5,7 @@ from trader.utils.operate import Operate, OperateType
 
 
 class OptStatAnalyzer(bt.Analyzer):
-    params = (
-        ('si', None),
-    )
+    params = (("si", None),)
 
     def __init__(self):
         self.buys = 0
@@ -17,16 +15,21 @@ class OptStatAnalyzer(bt.Analyzer):
     def notify_order(self, order):
         if order.status == order.Completed:
             if order.isbuy():
-                self.buys +=1
+                self.buys += 1
                 otype = OperateType.BUY
             else:
                 self.sells += 1
                 otype = OperateType.SELL
 
-            self.latest = Operate(otype, self.params.si, num2date(self.data.datetime[0]).timestamp(), self.data.close[0])
+            self.latest = Operate(
+                otype,
+                self.params.si,
+                num2date(self.data.datetime[0]).timestamp(),
+                self.data.close[0],
+            )
 
     def notify_trade(self, trade):
         pass
 
     def get_analysis(self):
-        return {"buys":self.buys,"sells":self.sells,"latest":self.latest}
+        return {"buys": self.buys, "sells": self.sells, "latest": self.latest}

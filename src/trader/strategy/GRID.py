@@ -1,9 +1,7 @@
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals)
-
-import backtrader as bt
+from __future__ import absolute_import, division, print_function, unicode_literals
 
 from trader.strategy.base_strategy import BaseStrategy
+
 
 class GRIDStrategy(BaseStrategy):
     params = (
@@ -26,8 +24,8 @@ class GRIDStrategy(BaseStrategy):
         levels = self.params.grid_levels
 
         for i in range(0, levels):
-            self.buy_levels.append(self.latest_price - (i+1) * grid_size)
-            self.sell_levels.append(self.latest_price + (i+1) * grid_size)
+            self.buy_levels.append(self.latest_price - (i + 1) * grid_size)
+            self.sell_levels.append(self.latest_price + (i + 1) * grid_size)
 
     def next(self):
         super().next()
@@ -36,15 +34,15 @@ class GRIDStrategy(BaseStrategy):
         cash = self.broker.get_cash()
         positions = self.getposition(self.data).size
 
-        if current_price - self.latest_price > self.params.grid_size*self.params.grid_levels:
-            self.latest_price=current_price
+        if current_price - self.latest_price > self.params.grid_size * self.params.grid_levels:
+            self.latest_price = current_price
             self.buy_levels.clear()
             self.sell_levels.clear()
             for i in range(0, self.params.grid_levels):
                 self.buy_levels.append(self.latest_price - (i + 1) * self.params.grid_size)
                 self.sell_levels.append(self.latest_price + (i + 1) * self.params.grid_size)
 
-        if self.latest_price - current_price > self.params.grid_size*self.params.grid_levels:
+        if self.latest_price - current_price > self.params.grid_size * self.params.grid_levels:
             self.latest_price = current_price
             self.buy_levels.clear()
             self.sell_levels.clear()
@@ -71,7 +69,6 @@ class GRIDStrategy(BaseStrategy):
                     order = self.sell(size=self.params.once_size, price=current_price)
                     self.order_dict[sell_level] = order
                     self.log_debug(f"Will sell placed at {sell_level}, Cash: {cash}, Position: {positions}")
-
 
     def notify_order(self, order):
         super().notify_order(order)

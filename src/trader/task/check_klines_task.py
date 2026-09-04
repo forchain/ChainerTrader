@@ -1,24 +1,31 @@
-from asyncio import Queue, Event
+from asyncio import Event, Queue
 from logging import Logger
 
 from trader.app.database_manager import DatabaseManager
-from trader.binance_exchange.exchange import BinanceExchange
 from trader.common.config import Config
+from trader.exchange.binance.exchange import BinanceExchange
 from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig
 from trader.utils.symbol_interval import add_time_duration
 
 
 class CheckKlinesTask(BaseTask):
-    def __init__(self,tcfg:TaskConfig,cfg:Config,log:Logger,db_manager:DatabaseManager,exchange:BinanceExchange):
-        super().__init__(tcfg,cfg,log,db_manager,exchange)
+    def __init__(
+        self,
+        tcfg: TaskConfig,
+        cfg: Config,
+        log: Logger,
+        db_manager: DatabaseManager,
+        exchange: BinanceExchange,
+    ):
+        super().__init__(tcfg, cfg, log, db_manager, exchange)
 
-    async def start(self,queue:Queue,quit:Event):
+    async def start(self, queue: Queue, quit: Event):
         if not self.db_manager:
             self.log.error(f"No config db_uri for {self.tcfg.to_dict()}")
             return
 
-        super().start(queue,quit)
+        super().start(queue, quit)
 
         self.log.info(f"Start {self.name()}")
         collection = self.db_manager.get_collection(self.cfg.db_name, self.tcfg.symbol_interval.name())
@@ -42,16 +49,16 @@ class CheckKlinesTask(BaseTask):
         while True:
             if quit.is_set():
                 break
-            total +=1
+            total += 1
             next_time = add_time_duration(next_time, self.tcfg.symbol_interval.interval, 1)
             if next_time < latest_kl.open_time:
-               kl = self.db_manager.get_kline(collection,next_time)
-               if kl is None:
-                   count +=1
-                   self.log.warning(f"{self.name()} no kline: open_time={next_time}")
+                kl = self.db_manager.get_kline(collection, next_time)
+                if kl is None:
+                    count += 1
+                    self.log.warning(f"{self.name()} no kline: open_time={next_time}")
             else:
-               self.log.info(f"{self.name()} is completed")
-               break
+                self.log.info(f"{self.name()} is completed")
+                break
 
         self.log.info(f"{self.name()} process result:{count}/{total}")
         self.stop()

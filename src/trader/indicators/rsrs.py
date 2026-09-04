@@ -2,12 +2,10 @@ import backtrader as bt
 import numpy as np
 import statsmodels.api as sm
 
+
 class RSRSIndicator(bt.Indicator):
-    lines = ('beta', 'zscore')
-    params = (
-        ('period', 15),
-        ('std_period', 500)
-    )
+    lines = ("beta", "zscore")
+    params = (("period", 15), ("std_period", 500))
 
     def __init__(self):
         self.addminperiod(self.params.period)

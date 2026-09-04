@@ -1,14 +1,12 @@
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals)
+from __future__ import absolute_import, division, print_function, unicode_literals
 
-from trader.strategy.base_strategy import BaseStrategy
-from trader.utils.operate import OperateType
 import backtrader as bt
 
+from trader.strategy.base_strategy import BaseStrategy
+
+
 class AberrationStrategy(BaseStrategy):
-    params = (
-        ('devfactor', 2.0),
-    )
+    params = (("devfactor", 2.0),)
 
     def __init__(self):
         super().__init__()

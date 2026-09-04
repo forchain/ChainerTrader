@@ -24,7 +24,7 @@ self-contained under the *DeviationMACD* package.
 """
 
 
-class DeviationMACDO3Strategy(BaseStrategy):
+class DeviationMACDO3(BaseStrategy):
     """DeviationMACD strategy – o3 implementation"""
 
     params = (
@@ -272,10 +272,5 @@ class DeviationMACDO3Strategy(BaseStrategy):
     def notify_order(self, order):
         super().notify_order(order)
         # Reset local order tracker so new signals can be executed
-        if order.status in (
-            order.Completed,
-            order.Canceled,
-            order.Margin,
-            order.Rejected,
-        ):
+        if order.status in (order.Completed, order.Canceled, order.Margin, order.Rejected):
             self.order = None
