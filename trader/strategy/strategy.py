@@ -1,5 +1,6 @@
 from enum import Enum
 
+from trader.strategy.grid import GridStrategy
 from trader.strategy.macdrsi import MACDRSIStrategy
 from trader.strategy.shihunmacd import ShihunMACDStrategy
 from trader.strategy.shihunmacd2 import ShihunMACD2Strategy
@@ -15,6 +16,7 @@ class StrategyType(Enum):
     ShihunRSI2 = 3        # RSI2 from ShiHun
     ShihunMACDRISBB = 4   # MACD + RSI + BollingerBand from ShiHun
     MACDRSI = 5           # MACD + RSI
+    GRID = 6              # GRID
 
 def parseStrategyType(name):
     if name == StrategyType.ShihunMACD.name:
@@ -29,6 +31,8 @@ def parseStrategyType(name):
         return StrategyType.ShihunMACDRISBB
     elif name == StrategyType.MACDRSI.name:
         return StrategyType.MACDRSI
+    elif name == StrategyType.GRID.name:
+        return StrategyType.GRID
 
     return None
 
@@ -50,6 +54,9 @@ def parseStrategy(stype):
 
     elif stype == StrategyType.MACDRSI:
         return MACDRSIStrategy
+
+    elif stype == StrategyType.GRID:
+        return GridStrategy
 
     else:
         return None

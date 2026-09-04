@@ -58,9 +58,9 @@ class TraderTask(BaseTask):
             if len(kls_cache) <= 0:
                 continue
             latest_kline = kls_cache[len(kls_cache) - 1]
-            node = Node(strategy, self.cfg, self.log,BinanceData(kls_cache))
+            node = Node(self.tcfg.strategy.name,strategy, self.cfg, self.log,BinanceData(kls_cache))
             ret=node.start()
-            await queue.put(new_stat_msg(TraderStat(self.tcfg.strategy, self.tcfg.symbol_interval.name(), ret),self.tcfg.id))
+            await queue.put(new_stat_msg(TraderStat(self.tcfg.strategy.name, self.tcfg.symbol_interval.name(), ret),self.tcfg.id))
 
             while Context.running:
                 next_time = add_time_duration(latest_kline.open_time, self.tcfg.symbol_interval.interval, 1)

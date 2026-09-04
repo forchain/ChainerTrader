@@ -22,6 +22,8 @@ class BaseStrategy(bt.Strategy):
 
     def __init__(self):
         super().__init__()
+        self.order = None
+
         # Stop loss point
         if self.params.stoploss:
             self.stopLossPoint = 0
