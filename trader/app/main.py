@@ -1,13 +1,11 @@
 import argparse,os
 
-from trader.app.app import App
+from trader.app.app import App, version
 from trader.common.config import Config
 from trader.rpc.rpc import start
 
 
 def main():
-    app = App()
-
     parser = argparse.ArgumentParser(
         description="Implement TradvingView Algorithms of Youtube Channel Shi Hun",
         epilog="Chainer Labs",
@@ -29,7 +27,7 @@ def main():
     parser.add_argument("--data_file", help="Local data file", type=str)
     parser.add_argument("--db_uri", help="Database URI for MongoDB", type=str)
     parser.add_argument('--window', help='Window for backtesting', action='store', type=int, default=1000)
-    parser.add_argument("--task", help="Tasks:TRADER,BACK_TRADER,UPDATE_KLINES",type=str)
+    parser.add_argument("--tasks", help="Tasks config:TRADER,BACK_TRADER,UPDATE_KLINES",type=str)
 
 
     args = parser.parse_args()
@@ -47,13 +45,14 @@ def main():
                  args.data_file,
                  args.db_uri,
                  args.window,
-                 args.task)
+                 args.tasks)
     if args.version:
-        print(app.version())
+        print(version())
         return
     if args.api:
         start(cfg)
         return
 
-    if app.start(cfg):
+    app = App(cfg)
+    if app.start():
         app.stop()
