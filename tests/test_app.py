@@ -1,6 +1,9 @@
-from trader.app.app import NAME, App
+import logging
+
+from trader.app.app import App
 from trader.common import path
-from trader.common.config import Config, NewConfigFromEnv
+from trader.common.common import NAME
+from trader.common.config import Config, NewConfigFromEnv, default
 
 
 def test_app():
@@ -11,10 +14,12 @@ def test_path():
     print(path.GetProjectDir())
 
 def test_log():
+    cfg = default()
+    cfg.log_level='DEBUG'
     app = App()
     app.log().debug("I am test logger by debug")
     app.log().info("I am test logger by info")
-    app.log().warn("I am test logger by warn")
+    app.log().warning("I am test logger by warn")
     app.log().error("I am test logger by error")
     app.log().critical("I am test logger by critical")
 

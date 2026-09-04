@@ -6,7 +6,7 @@ from trader.utils.symbol_interval import Interval, get_time_duration
 
 def test_get_latest_klines():
     cfg = Config()
-    exchange = BinanceExchange(cfg,Logger("trader").log())
+    exchange = BinanceExchange(cfg)
     exchange.start()
     ret=exchange.get_latest_klines(cfg.get_symbol_interval_list()[0],3)
     assert ret is not None
@@ -16,7 +16,7 @@ def test_get_latest_klines():
 
 def test_get_klines():
     cfg = Config()
-    exchange = BinanceExchange(cfg,Logger("trader").log())
+    exchange = BinanceExchange(cfg)
     exchange.start()
     start_time = 1503446400 # 2017-08-23 08:00:00
     end_time = 1504051200 # 2017-08-30 08:00:00
@@ -29,7 +29,7 @@ def test_get_klines():
 
 def test_get_klines_limit():
     cfg = Config()
-    exchange = BinanceExchange(cfg,Logger("trader").log())
+    exchange = BinanceExchange(cfg)
     exchange.start()
     start_time = 1503446400 # 2017-08-23 08:00:00
     end_time = 1504051200 # 2017-08-30 08:00:00
@@ -42,7 +42,7 @@ def test_get_klines_limit():
 
 def test_get_klines_by_start():
     cfg = Config()
-    exchange = BinanceExchange(cfg,Logger("trader").log())
+    exchange = BinanceExchange(cfg)
     exchange.start()
     ret=exchange.get_klines_by_start(cfg.get_symbol_interval_list()[0],None,1)
     assert ret is not None

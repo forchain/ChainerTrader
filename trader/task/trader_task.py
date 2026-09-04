@@ -9,12 +9,13 @@ from trader.common.common import Context
 from trader.common.config import Config
 from trader.strategy.node import Node
 from trader.strategy.strategy import parseStrategy
+from trader.task.task_type import TaskType
 from trader.utils.kline import Kline
 from trader.utils.symbol_interval import SymbolInterval, add_time_duration
 
 DOWLOAD_SPACE_TIME = 5
 
-class DynamicTask:
+class TraderTask:
     def __init__(self,cfg:Config,log:Logger,db_manager:DatabaseManager,exchange:BinanceExchange):
         self.log = log
         self.cfg = cfg
@@ -24,7 +25,10 @@ class DynamicTask:
         self.log.info(f"Init {self.name()}")
 
     def name(self):
-        return f"DynamicTask({self.symbol_interval.name()})"
+        return f"{self.type()}({self.symbol_interval.name()})"
+
+    def type(self):
+        return TaskType.TRADER
 
     def start(self):
         if self.cfg.strategy is None:
@@ -34,6 +38,9 @@ class DynamicTask:
         if strategy is None:
             self.log.error(f"Not support strategy:{self.cfg.strategy}")
             return
+
+        if self.exchange.spot_ws_client:
+            self.exchange.spot_ws_client.klines(symbol=self.symbol_interval.symbol, interval=self.symbol_interval.interval.value, limit=1)
 
         self.log.info(f"Start {self.name()}")
         self.collection = self.db_manager.get_collection("trader", self.symbol_interval.name())

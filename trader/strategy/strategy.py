@@ -43,3 +43,6 @@ def parseStrategy(stype):
 
     elif stype == StrategyType.ShihunMACDRISBB:
         return ShihunMacdRsiBollingerBandStrategy
+
+    else:
+        return None

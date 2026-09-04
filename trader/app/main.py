@@ -14,7 +14,7 @@ def main():
         fromfile_prefix_chars='@')
 
     parser.add_argument("-v", "--version",help="Version",action="store_true")
-    parser.add_argument("-s", "--strategy", help="strategy type: ShihunMACD, ShihunRSI, ShihunMACD2, ShihunRSI2, ShihunMACDRISBB",type=str)
+    parser.add_argument("-s", "--strategy", help="strategy type: ShihunMACD, ShihunRSI, ShihunMACD2, ShihunRSI2, ShihunMACDRISBB",type=str,default="ShihunRSI2")
     parser.add_argument('--period', help='Period for the moving average',action='store',type=int, default=14,required=False)
     parser.add_argument('--commission', help='Transaction commission', action='store', type=float, default=0.001,required=False)
     parser.add_argument("--atr", help="Use atr for stop-loss-point", action="store_true")
@@ -29,10 +29,25 @@ def main():
     parser.add_argument("--data_file", help="Local data file", type=str)
     parser.add_argument("--db_uri", help="Database URI for MongoDB", type=str)
     parser.add_argument('--window', help='Window for backtesting', action='store', type=int, default=1000)
+    parser.add_argument("--task", help="Tasks:TRADER,BACK_TRADER,UPDATE_KLINES",type=str)
 
 
     args = parser.parse_args()
-    cfg = Config(args.strategy,args.commission,args.atr,args.period,args.log_file,args.plot,args.mode,args.log_level,args.exchange,args.symbols,args.intervals,args.data_file,args.db_uri,args.window)
+    cfg = Config(args.strategy,
+                 args.commission,
+                 args.atr,
+                 args.period,
+                 args.log_file,
+                 args.plot,
+                 args.mode,
+                 args.log_level,
+                 args.exchange,
+                 args.symbols,
+                 args.intervals,
+                 args.data_file,
+                 args.db_uri,
+                 args.window,
+                 args.task)
     if args.version:
         print(app.version())
         return
