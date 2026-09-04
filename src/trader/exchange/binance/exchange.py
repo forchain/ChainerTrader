@@ -266,6 +266,26 @@ class BinanceExchange:
         except Exception as e:
             self.log.error(e)
 
+    def delete_order(self, symbol: str):
+        if self.has_rate_limit("ORDERS"):
+            self.log.error("Rate limit")
+            return None
+
+        try:
+            response = self.spot_client.rest_api.delete_order(
+                symbol=symbol,
+            )
+
+            rate_limits = response.rate_limits
+            if rate_limits:
+                self.update_rate_limits(rate_limits)
+
+            data = response.data()
+            self.log.info(f"delete_order() response: {data}")
+
+        except Exception as e:
+            self.log.error(e)
+
     def update_rate_limits(self, rate_limits: list[RateLimit]):
         for rl in rate_limits:
             if rl.retryAfter:
