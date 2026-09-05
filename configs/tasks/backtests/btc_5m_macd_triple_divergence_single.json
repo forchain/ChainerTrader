@@ -2,8 +2,9 @@
   {
     "task_type": "BACK_TRADER",
     "symbol": "BTC-USDT",
-    "interval": "1d",
+    "interval": "5m",
     "strategy": "macd_triple_divergence",
+    "start_time": "1w",
     "auto_download": true,
     "strategy_params": {
       "chainer_enable_breakeven": true,

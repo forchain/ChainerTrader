@@ -103,3 +103,38 @@ def test_registration_enabled_does_not_shift_legacy_positional_config_args():
     )
     assert cfg.leverage_ratio == 3.0
     assert cfg.registration_enabled is True
+
+
+def test_app_start_cleans_up_threads_with_sqlite_db(tmp_path, monkeypatch):
+    import asyncio
+    import threading
+    from tortoise import Tortoise
+    from trader.database.config import build_tortoise_config
+    from trader.common.message import new_exit_msg
+
+    db_path = tmp_path / "test_app_exit.db"
+    db_url = f"sqlite://{db_path}"
+
+    async def _init_schema():
+        await Tortoise.init(config=build_tortoise_config(db_url))
+        await Tortoise.generate_schemas()
+        await Tortoise.close_connections()
+
+    asyncio.run(_init_schema())
+
+    cfg = Config(db=db_url, tasks="[]")
+    app = App(cfg)
+
+    # Return exit message immediately so start() finishes without hanging
+    monkeypatch.setattr(app.task_manager, "start", lambda *args, **kwargs: new_exit_msg())
+
+    started = app.start()
+    app.stop()
+
+    assert started is True
+    active_thread_names = [t.name for t in threading.enumerate()]
+    assert not any("_connection_worker_thread" in name for name in active_thread_names), (
+        f"aiosqlite worker threads were leaked: {active_thread_names}"
+    )
+
+
