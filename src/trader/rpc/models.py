@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, Any
 from pydantic import BaseModel, Field
 
 from trader.exchange.balance import Balance
-from trader.live.account_lifecycle import LiveAccountLifecycle, operable_amount
+from trader.live.account_lifecycle import LiveAccountLifecycle, open_order_rows, operable_amount
 from trader.task.task_config_codec import TaskConfigCodec
 from trader.utils.symbol_interval import Symbol
 from trader.utils.task_state import TaskStateType
@@ -182,11 +182,11 @@ def _open_orders_from_exchange(exchange: Any, balances: list[Balance], symbol: A
         except Exception:
             rows = []
         if rows:
-            return _open_order_rows(rows)
+            return open_order_rows(rows)
     rows: list[Any] = []
     for order_symbol in open_order_symbols_from_locked_balances(balances, symbol=symbol, quote_asset=quote):
         rows.extend(reader(order_symbol) or [])
-    return _open_order_rows(rows)
+    return open_order_rows(rows)
 
 
 def open_orders_for_symbol_from_exchange(exchange: Any, symbol: Symbol) -> list[dict[str, Any]]:
@@ -262,29 +262,6 @@ def _append_symbol_once(ret: list[Symbol], seen: set[str], symbol: Symbol) -> No
         return
     seen.add(name)
     ret.append(symbol)
-
-
-def _open_order_rows(rows: Any) -> list[dict[str, Any]]:
-    reasons: list[dict[str, Any]] = []
-    for row in rows or []:
-        if not isinstance(row, dict):
-            continue
-        info = row.get("info") if isinstance(row.get("info"), dict) else {}
-        symbol = str(row.get("symbol") or info.get("symbol") or "")
-        symbol = symbol.replace("/", "")
-        order_id = row.get("orderId") or row.get("order_id") or row.get("id") or info.get("orderId") or info.get("order_id")
-        reasons.append(
-            {
-                "symbol": symbol,
-                "side": str(row.get("side") or info.get("side") or ""),
-                "quantity": float(row.get("origQty") or row.get("amount") or row.get("quantity") or 0.0),
-                "order_id": str(order_id or ""),
-                "order_type": str(row.get("type") or info.get("type") or ""),
-                "price": float(row.get("price") or 0.0),
-                "status": str(row.get("status") or info.get("status") or ""),
-            }
-        )
-    return reasons
 
 
 def _operable_amount(balances: list[Balance], borrow_asset: str, borrowable_amount: float) -> float:

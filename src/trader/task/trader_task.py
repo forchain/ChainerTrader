@@ -354,6 +354,7 @@ class TraderTask(BaseTask):
             start_time,
             end_time,
             allow_download=True,
+            allow_incomplete_coverage=True,
         )
         if not result.ok:
             reason = result.failure.reason if result.failure is not None else "unknown"

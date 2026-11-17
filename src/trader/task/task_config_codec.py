@@ -76,8 +76,8 @@ class TaskConfigCodec:
         taskc.id = task_id
         if state_user_id is not None:
             taskc.user_id = state_user_id
-        if saved_config.get("run_id"):
-            taskc.run_id = saved_config["run_id"]
+        # Restore the persisted run_id verbatim; parse mints one when absent, but recovery must not.
+        taskc.run_id = saved_config.get("run_id")
         apply_persisted_task_runtime_metadata(taskc, saved_config)
         return taskc
 
@@ -97,7 +97,7 @@ class TaskConfigCodec:
             cash = float(cfg.free) if cfg.free >= 0 else 0.0
         return TaskState(
             cfg.id,
-            name or cls._state_name(cfg),
+            name or cls.state_name(cfg),
             start_time or datetime.now(),
             None,
             commission,
@@ -133,6 +133,14 @@ class TaskConfigCodec:
             config_dict["auto_download"] = True
         if cfg.free >= 0:
             config_dict["free"] = cfg.free
+        if cfg.limit > 0:
+            config_dict["limit"] = cfg.limit
+        if getattr(cfg, "force_update", False):
+            config_dict["force_update"] = True
+        if getattr(cfg, "param_id", None):
+            config_dict["param_id"] = cfg.param_id
+        if getattr(cfg, "optimization_run_id", None):
+            config_dict["optimization_run_id"] = cfg.optimization_run_id
         if getattr(cfg, "live_execution_mode", "auto_trade") != "auto_trade":
             config_dict["live_execution_mode"] = cfg.live_execution_mode
         if getattr(cfg, "manual_start_position", 0.0):
@@ -190,7 +198,7 @@ class TaskConfigCodec:
         return item
 
     @staticmethod
-    def _state_name(cfg: TaskConfig) -> str:
+    def state_name(cfg: TaskConfig) -> str:
         symbol_interval = getattr(cfg, "symbol_interval", None)
         symbol_name = symbol_interval.name() if symbol_interval is not None else ""
         return f"{cfg.id}.{cfg.ttype.name}.{symbol_name}"

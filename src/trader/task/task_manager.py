@@ -214,7 +214,7 @@ class TaskManager:
             else:
                 state = TaskState(
                     tc.id,
-                    self._task_state_name(tc),
+                    TaskConfigCodec.state_name(tc),
                     datetime.now(),
                     commission=getattr(self.cfg, "commission", 0),
                     strategy_start_time=getattr(tc, "start_time", 0),
@@ -228,16 +228,11 @@ class TaskManager:
             failed_states.append(state)
         await self._persist_task_states(failed_states)
 
-    def _task_state_name(self, cfg: TaskConfig) -> str:
-        symbol_interval = getattr(cfg, "symbol_interval", None)
-        symbol_name = symbol_interval.name() if symbol_interval is not None else ""
-        return f"{cfg.id}.{cfg.ttype.name}.{symbol_name}"
-
     def _task_config_json(self, cfg: TaskConfig) -> str:
         initial_cash = cfg.free if getattr(cfg, "free", -1) >= 0 else getattr(self.cfg, "cash", 0)
         state = TaskConfigCodec.to_task_state(
             cfg,
-            name=self._task_state_name(cfg),
+            name=TaskConfigCodec.state_name(cfg),
             commission=getattr(self.cfg, "commission", 0),
             initial_cash=initial_cash,
         )

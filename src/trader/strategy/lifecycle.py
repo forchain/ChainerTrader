@@ -161,15 +161,18 @@ class OperateFactory:
     def _enrich(op: Operate, ctx: TradeContext | None) -> Operate:
         if ctx is None:
             return op
-        if ctx.stop_price is not None:
-            op.stop_loss = float(ctx.stop_price)
+        stop_price = ctx.stop_price if ctx.stop_price is not None else ctx.initial_stop_price
+        if stop_price is not None:
+            op.stop_loss = float(stop_price)
         if ctx.tp_price is not None:
             op.take_profit = float(ctx.tp_price)
         op.risk_reward_ratio = float(ctx.risk_reward_ratio)
-        op.signal_metadata = dict(ctx.signal_metadata or {})
-        signal_event_id = op.signal_metadata.get("signal_event_id") or op.signal_metadata.get("event_id")
-        if signal_event_id:
-            op.signal_event_id = signal_event_id
+        signal_metadata = dict(ctx.signal_metadata or {})
+        if signal_metadata:
+            op.signal_metadata = signal_metadata
+            signal_event_id = signal_metadata.get("signal_event_id") or signal_metadata.get("event_id")
+            if signal_event_id:
+                op.signal_event_id = signal_event_id
         op.framework_trade = {
             "trade_id": ctx.trade_id,
             "direction": ctx.direction,
@@ -177,9 +180,13 @@ class OperateFactory:
             "stop_price": ctx.stop_price,
             "take_profit": ctx.tp_price,
             "risk_reward_ratio": ctx.risk_reward_ratio,
+            "breakeven_step": ctx.breakeven_step,
             "exit_reason_code": ctx.exit_reason_code,
             "exit_reason_label": ctx.exit_reason_label,
             "exit_reason_detail": ctx.exit_reason_detail,
+            "replacement_trade_id": ctx.replacement_trade_id,
+            "stop_multiple_r": ctx.stop_multiple_r,
+            "exit_risk_reward_ratio": ctx.exit_risk_reward_ratio,
         }
         return op
 

@@ -149,3 +149,47 @@ def test_codec_to_public_view_redacts_persisted_runtime_markers_and_derives_fiel
     assert view["symbol"] == "BTC-USDT"
     assert view["interval"] == "1m"
     assert view["strategy"] == "ShihunRSI"
+
+
+def test_codec_round_trip_preserves_update_klines_fields():
+    cfg = TaskConfig(
+        321,
+        TaskType.UPDATE_KLINES,
+        SymbolInterval("BTC-USDT", Interval("1h")),
+        limit=250,
+        force_update=True,
+    )
+
+    restored = TaskConfigCodec.from_persisted_state(TaskConfigCodec.to_task_state(cfg))
+
+    assert restored is not None
+    assert restored.limit == 250
+    assert restored.force_update is True
+
+
+def test_codec_round_trip_preserves_param_and_optimization_ids():
+    cfg = TaskConfig(
+        322,
+        TaskType.BACK_TRADER,
+        SymbolInterval("BTC-USDT", Interval("1h")),
+        strategies=["ShihunRSI"],
+        strategy_params={"rsi_period": 14},
+        param_id="param-abc",
+        optimization_run_id="opt-run-9",
+    )
+
+    restored = TaskConfigCodec.from_persisted_state(TaskConfigCodec.to_task_state(cfg))
+
+    assert restored is not None
+    assert restored.param_id == "param-abc"
+    assert restored.optimization_run_id == "opt-run-9"
+
+
+def test_codec_round_trip_preserves_missing_run_id_without_minting():
+    cfg = _trader_config()
+    cfg.run_id = None
+
+    restored = TaskConfigCodec.from_persisted_state(TaskConfigCodec.to_task_state(cfg))
+
+    assert restored is not None
+    assert restored.run_id is None

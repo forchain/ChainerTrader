@@ -88,16 +88,22 @@ class UpdateKlinesTask(BaseTask):
     async def _handle_force_update(self, collection_name: str, start_time: int, end_time: int):
         deleted = await self.db_manager.kline.delete_klines_in_range(collection_name, start_time, end_time)
         self.log.info(f"{self.name()} force_update: deleted {deleted} records")
-        await self._sync_range(start_time, end_time)
+        await self._sync_range(start_time, end_time, force_sync=True)
 
     async def _handle_normal_update(self, collection_name: str, start_time: int, end_time: int):
         await self._sync_range(start_time, end_time)
 
-    async def _sync_range(self, start_time: int, end_time: int) -> None:
+    async def _sync_range(self, start_time: int, end_time: int, *, force_sync: bool = False) -> None:
         from trader.task.dataset_resolver import DatasetResolver
 
         resolver = DatasetResolver(self.db_manager, self.exchange, self.log)
-        result = await resolver.sync_range(self.tcfg.symbol_interval, start_time, end_time, allow_download=True)
+        result = await resolver.sync_range(
+            self.tcfg.symbol_interval,
+            start_time,
+            end_time,
+            allow_download=True,
+            force_sync=force_sync,
+        )
         if not result.ok:
             reason = result.failure.reason if result.failure is not None else "unknown"
             message = result.failure.message if result.failure is not None else ""

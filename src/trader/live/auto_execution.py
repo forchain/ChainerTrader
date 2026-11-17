@@ -202,22 +202,47 @@ class AutoExecutionRouter:
         self.real_short_position = 0.0
         self._protection_order_ids_by_trade.clear()
         payload: list[dict[str, Any]] = []
+        terminal_statuses = {
+            ExecutionStatus.CANCELED.value,
+            ExecutionStatus.REJECTED.value,
+            ExecutionStatus.SKIPPED.value,
+            ExecutionStatus.FAILED.value,
+        }
+        long_quantity = 0.0
+        short_quantity = 0.0
+        closed_trade_ids: set[str] = set()
         for record in records or []:
             payload.append(self.execution_state_payload(record))
+            status = getattr(record, "status", None)
+            status_value = str(getattr(status, "value", status) or "").lower()
+            if status_value in terminal_statuses:
+                continue
             role = str(getattr(record, "order_role", "") or "").lower()
             raw_payload = getattr(record, "raw_payload", None)
             raw_payload = raw_payload if isinstance(raw_payload, dict) else {}
             trade_id = getattr(record, "trade_id", None)
+            side = str(raw_payload.get("side") or raw_payload.get("direction") or "").upper()
+            is_short = side == ExecutionSide.SHORT.value.upper()
+            quantity = float(getattr(record, "quantity", 0.0) or 0.0)
             if role == "entry":
-                side = str(raw_payload.get("side") or raw_payload.get("direction") or "").upper()
-                quantity = float(getattr(record, "quantity", 0.0) or 0.0)
-                if side == ExecutionSide.SHORT.value or side == "SHORT":
-                    self.real_short_position += quantity
+                if is_short:
+                    short_quantity += quantity
                 elif quantity > 0:
-                    self.real_long_position += quantity
+                    long_quantity += quantity
+            elif role == "close":
+                if is_short:
+                    short_quantity = max(short_quantity - quantity, 0.0)
+                else:
+                    long_quantity = max(long_quantity - quantity, 0.0)
+                if trade_id is not None:
+                    closed_trade_ids.add(str(trade_id))
             protection_id = getattr(record, "protection_id", None) or getattr(record, "exchange_order_id", None)
             if role in {"stop_loss", "take_profit"} and trade_id is not None and protection_id:
                 self._protection_order_ids_by_trade[str(trade_id)] = str(protection_id)
+        for trade_id in closed_trade_ids:
+            self._protection_order_ids_by_trade.pop(trade_id, None)
+        self.real_long_position = max(long_quantity, 0.0)
+        self.real_short_position = max(short_quantity, 0.0)
         return payload
 
     @staticmethod
@@ -650,29 +675,29 @@ class AutoExecutionRouter:
                 requested_notional=requested_notional,
                 requested_quantity=requested_quantity,
             )
-            return outcome
-        cash = self._balance(self.tcfg.symbol_interval.sy.quote)
-        if cash < notional:
-            return self._record(
-                self._outcome(
-                    op,
-                    AutoExecutionStatus.SKIPPED,
-                    reason="insufficient_quote_balance",
-                    requested_notional=requested_notional,
-                    requested_quantity=requested_quantity,
-                    effective_notional=notional,
-                    effective_quantity=quantity,
+        else:
+            cash = self._balance(self.tcfg.symbol_interval.sy.quote)
+            if cash < notional:
+                return self._record(
+                    self._outcome(
+                        op,
+                        AutoExecutionStatus.SKIPPED,
+                        reason="insufficient_quote_balance",
+                        requested_notional=requested_notional,
+                        requested_quantity=requested_quantity,
+                        effective_notional=notional,
+                        effective_quantity=quantity,
+                    )
                 )
+            outcome = self._submit_order(
+                op,
+                notional,
+                quantity,
+                op.otype,
+                margin=False,
+                requested_notional=requested_notional,
+                requested_quantity=requested_quantity,
             )
-        outcome = self._submit_order(
-            op,
-            notional,
-            quantity,
-            op.otype,
-            margin=False,
-            requested_notional=requested_notional,
-            requested_quantity=requested_quantity,
-        )
         if outcome.status == AutoExecutionStatus.SUBMITTED and op.otype in (OperateType.BUY, OperateType.LONG):
             self.real_long_position += quantity
             self._mark_reserved_budget_spent(notional)
@@ -696,9 +721,13 @@ class AutoExecutionRouter:
                     effective_quantity=base_balance,
                 )
             )
-        if self._uses_margin_for_long_path():
-            return self._submit_order(op, notional, base_balance, OperateType.SELL, margin=True)
-        outcome = self._submit_order(op, notional, base_balance, OperateType.SELL, margin=False)
+        outcome = self._submit_order(
+            op,
+            notional,
+            base_balance,
+            OperateType.SELL,
+            margin=self._uses_margin_for_long_path(),
+        )
         if outcome.status == AutoExecutionStatus.SUBMITTED and self.real_long_position > 0:
             self.real_long_position = 0.0
         return outcome
@@ -1115,8 +1144,14 @@ class AutoExecutionRouter:
             return self._record(self._outcome(op, AutoExecutionStatus.SKIPPED, reason=empty_reason))
         notional = quantity * price
         try:
-            self._attach_known_protection_order_id(op)
-            selection = select_order_semantics(op, symbol=self.market, side=side, quantity=quantity, notional=notional)
+            selection = select_order_semantics(
+                op,
+                symbol=self.market,
+                side=side,
+                quantity=quantity,
+                notional=notional,
+                protection_order_id=self._known_protection_order_id(op),
+            )
             if selection.risk is None:
                 return self._record(self._outcome(op, AutoExecutionStatus.SKIPPED, reason="missing_protection_intent"))
             result = BinanceLiveExecutionGateway(self.exchange, staged_execution_mode=self.mode).replace_protection(selection.risk)
@@ -1269,6 +1304,7 @@ class AutoExecutionRouter:
                 )
             )
         protection_result = gateway.place_protection(selection.risk) if selection.risk is not None else None
+        fail_safe_result = self._fail_safe_close(gateway, selection.order, protection_result)
         events = initial_events + retry_events
         records = initial_records + retry_records
         native_protection = False
@@ -1283,6 +1319,10 @@ class AutoExecutionRouter:
             else:
                 status = AutoExecutionStatus.FAILED
                 reason = f"{base_reason} protection_failed_after_retry"
+                if fail_safe_result is not None:
+                    events.extend(event.to_dict() for event in fail_safe_result.events)
+                    records.append(self._state_record_for_order(self._close_intent_for_fail_safe(selection.order), fail_safe_result, op))
+                    reason = f"{reason}; fail_safe_close_submitted"
         return self._record(
             self._outcome(
                 op,
@@ -1348,16 +1388,15 @@ class AutoExecutionRouter:
             return ExecutionSide.SHORT
         return ExecutionSide.LONG
 
-    def _attach_known_protection_order_id(self, op) -> None:
-        if str(getattr(op, "protection_order_id", "") or "").strip():
-            return
+    def _known_protection_order_id(self, op) -> str | None:
+        existing = str(getattr(op, "protection_order_id", "") or "").strip()
+        if existing:
+            return existing
         framework_trade = getattr(op, "framework_trade", None)
         trade_id = framework_trade.get("trade_id") if isinstance(framework_trade, dict) else None
         if trade_id is None:
-            return
-        order_id = self._protection_order_ids_by_trade.get(str(trade_id))
-        if order_id:
-            setattr(op, "protection_order_id", order_id)
+            return None
+        return self._protection_order_ids_by_trade.get(str(trade_id))
 
     def _remember_protection_order(self, intent, result) -> None:
         trade_id = str(getattr(intent, "trade_id", "") or "").strip()

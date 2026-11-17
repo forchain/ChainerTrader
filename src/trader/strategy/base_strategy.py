@@ -720,17 +720,7 @@ class BaseStrategy(bt.Strategy):
         If need_confirm is enabled, exit order will be placed only when close < key_low; it will be
         cancelled when close > key_high and the key time will be banned for future confirmations.
         """
-        ctx: Optional[BaseStrategy.TradeContext] = None
-        if trade_ref is None:
-            ctx = self._active_trade
-        elif isinstance(trade_ref, int):
-            ctx = self._trades_by_id.get(int(trade_ref))
-        else:
-            ref_str = str(trade_ref)
-            if ref_str.isdigit():
-                ctx = self._trades_by_id.get(int(ref_str))
-            else:
-                ctx = self._trades_by_key.get(ref_str)
+        ctx: Optional[BaseStrategy.TradeContext] = self._lifecycle.resolve(trade_ref)
 
         if ctx is None:
             return None

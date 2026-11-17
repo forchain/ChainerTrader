@@ -136,3 +136,38 @@ def test_credential_context_requires_credential():
             user_id=7,
             margin_mode=MarginMode.SPOT,
         )
+
+
+def test_parse_symbol_accepts_wider_quote_asset_list():
+    assert parse_symbol("BTCTUSD").name() == "BTCTUSD"
+    assert parse_symbol("ETHDAI").name() == "ETHDAI"
+
+
+@pytest.mark.anyio
+async def test_task_scoped_cleanup_fires_on_canceled_once_per_record_even_with_many_orders():
+    exchange = InMemoryExchangeAdapter()
+    lifecycle = LiveAccountLifecycle()
+    seen: set[tuple[int, str]] = set()
+
+    class Record:
+        symbol = "SOL-USDT"
+        exchange_order_id = "order-1,order-2"
+        raw_payload = {}
+
+    canceled = []
+
+    async def on_canceled(record):
+        canceled.append(record.exchange_order_id)
+
+    result = await lifecycle.cancel_task_open_orders(
+        7,
+        exchange,
+        reason="task_closed",
+        records=[Record()],
+        seen=seen,
+        on_canceled=on_canceled,
+    )
+
+    assert result is True
+    assert exchange.cancelled == [("SOLUSDT", "order-1"), ("SOLUSDT", "order-2")]
+    assert canceled == ["order-1,order-2"]

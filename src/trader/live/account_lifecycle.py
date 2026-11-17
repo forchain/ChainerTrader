@@ -21,7 +21,7 @@ from trader.exchange.user_credentials import (
 from trader.utils.symbol_interval import Symbol
 
 # Quote assets used to split compact symbols such as SOLUSDT.
-QUOTE_ASSETS = ("USDT", "USDC", "FDUSD", "BUSD", "BTC", "ETH", "BNB")
+QUOTE_ASSETS = ("USDT", "USDC", "FDUSD", "BUSD", "TUSD", "USDP", "DAI", "BTC", "ETH", "BNB", "EUR", "TRY", "USD")
 
 
 class LiveAccountError(RuntimeError):
@@ -324,6 +324,7 @@ class LiveAccountLifecycle:
             if not order_ids or not callable(cancel_order):
                 fallback_for_incomplete.append(symbol)
                 continue
+            record_canceled = True
             for order_id in order_ids:
                 key = (id(exchange), f"{symbol.name()}:{order_id}")
                 if seen is not None:
@@ -336,16 +337,17 @@ class LiveAccountLifecycle:
                     result = cancel_order(symbol, order_id)
                     if inspect.isawaitable(result):
                         await result
-                    if on_canceled is not None:
-                        callback_result = on_canceled(record)
-                        if inspect.isawaitable(callback_result):
-                            await callback_result
                 except Exception as exc:
+                    record_canceled = False
                     if self.log is not None and hasattr(self.log, "error"):
                         self.log.error(
                         f"cancel_order failed: reason={reason} task_id={task_id} "
                         f"symbol={symbol.name()} order_id={order_id} error={exc}"
                     )
+            if record_canceled and on_canceled is not None:
+                callback_result = on_canceled(record)
+                if inspect.isawaitable(callback_result):
+                    await callback_result
 
         self._cancel_symbols(fallback_for_incomplete, exchange, reason=reason, task_id=task_id, seen=seen)
         return True

@@ -588,3 +588,38 @@ class TestTaskConfigForceUpdate:
         tasks = parse_task_config(config)
         assert len(tasks) == 1
         assert tasks[0].force_update is False
+
+
+def test_force_update_requests_force_sync_from_dataset_resolver():
+    from trader.common.config import Config
+    from trader.common.logger import Logger
+    from trader.task.task_config import TaskConfig
+    from trader.task.task_type import TaskType
+    from trader.task.update_klines_task import UpdateKlinesTask
+
+    cfg = Config(tasks="[]")
+    tcfg = TaskConfig(
+        1,
+        TaskType.UPDATE_KLINES,
+        SymbolInterval("BTC-USDT", Interval.INTERVAL_1h),
+        force_update=True,
+    )
+    deleted = []
+
+    async def delete_klines_in_range(name, start, end):
+        deleted.append((name, start, end))
+        return 3
+
+    db = SimpleNamespace(kline=SimpleNamespace(delete_klines_in_range=delete_klines_in_range))
+    task = UpdateKlinesTask(tcfg, cfg, Logger(cfg), db, None)
+    captured = {}
+
+    async def fake_sync_range(self, symbol_interval, start_time, end_time, **kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(ok=True, failure=None, dataset_ref=None)
+
+    with patch("trader.task.dataset_resolver.DatasetResolver.sync_range", fake_sync_range):
+        asyncio.run(task._handle_force_update("BTCUSDT-1h", 1000, 2000))
+
+    assert deleted == [("BTCUSDT-1h", 1000, 2000)]
+    assert captured["force_sync"] is True

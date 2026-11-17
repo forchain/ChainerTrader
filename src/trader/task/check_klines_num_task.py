@@ -45,9 +45,10 @@ class CheckKlinesNumTask(BaseTask):
             return
 
         total = self.tcfg.limit
-        range_start = latest_kl.open_time
         if total > 0:
-            range_start = add_time_duration(latest_kl.open_time, self.tcfg.symbol_interval.interval, -total)
+            range_start = add_time_duration(latest_kl.open_time, self.tcfg.symbol_interval.interval, -(total - 1))
+        else:
+            range_start = first_kl.open_time
         range_start = max(range_start, first_kl.open_time)
         report = await DatasetResolver(self.db_manager, self.exchange, self.log).inspect_coverage(
             self.tcfg.symbol_interval,

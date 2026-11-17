@@ -127,3 +127,172 @@ async def test_persist_outcome_owns_state_records_and_budget_deduction():
 
     assert saved == ["record-1"]
     assert spent == [(9, "USDT", 25.0)]
+
+
+def test_reconcile_nets_close_records_and_drops_terminal_entries():
+    router = _router()
+    records = [
+        _record(order_role="entry", quantity=2.0, raw_payload={"side": "long"}, trade_id="t1"),
+        _record(order_role="entry", quantity=1.5, raw_payload={"side": "short"}, trade_id="t2"),
+        _record(order_role="entry", quantity=3.0, raw_payload={"side": "long"}, trade_id="t3", status="failed"),
+        _record(order_role="close", quantity=2.0, raw_payload={"side": "long"}, trade_id="t1"),
+        _record(order_role="stop_loss", quantity=2.0, raw_payload={"side": "long"}, trade_id="t1", protection_id="stop-1"),
+    ]
+
+    router.reconcile(records)
+
+    assert router.real_long_position == 0.0
+    assert router.real_short_position == 1.5
+    assert router._protection_order_ids_by_trade == {}
+
+
+def test_reconcile_partial_close_never_goes_negative():
+    router = _router()
+    records = [
+        _record(order_role="entry", quantity=1.0, raw_payload={"side": "long"}, trade_id="t1"),
+        _record(order_role="close", quantity=2.0, raw_payload={"side": "long"}, trade_id="t1"),
+    ]
+
+    router.reconcile(records)
+
+    assert router.real_long_position == 0.0
+
+
+class _MarginExchange:
+    def __init__(self, balance: float = 1000.0):
+        self.balance = balance
+
+    def is_cross_margin_ready(self):
+        return True
+
+    def get_account_balance(self, asset):
+        return self.balance
+
+
+def _margin_router(**overrides):
+    options = {"strategy_params": {"chainer_mode": "BOTH"}, "fund_reservation_amount": 500.0, **overrides}
+    router = _router(**options)
+    router.exchange = _MarginExchange()
+    return router
+
+
+def test_margin_long_path_records_position_and_spends_reserved_budget():
+    router = _margin_router()
+    submitted = SimpleNamespace(status=AutoExecutionStatus.SUBMITTED)
+    calls = []
+
+    def fake_submit(*args, **kwargs):
+        calls.append(kwargs)
+        return submitted
+
+    router._submit_order = fake_submit
+    outcome = router._route_real_long(Operate(OperateType.BUY, 1, 10.0), 10.0)
+
+    assert outcome is submitted
+    assert router.real_long_position == 50.0
+    assert router._reserved_budget_remaining == 0.0
+    assert calls[0]["margin"] is True
+
+
+def test_margin_exit_clears_real_long_position():
+    router = _margin_router()
+    router.real_long_position = 50.0
+    submitted = SimpleNamespace(status=AutoExecutionStatus.SUBMITTED)
+    router._submit_order = lambda *args, **kwargs: submitted
+
+    outcome = router._route_real_exit(Operate(OperateType.SELL, 2, 10.0), 10.0)
+
+    assert outcome is submitted
+    assert router.real_long_position == 0.0
+
+
+def test_margin_borrow_retry_protection_failure_triggers_fail_safe_close():
+    from trader.execution.models import ExecutionSide, ExecutionStatus
+    from trader.execution.order_semantics import select_order_semantics
+
+    router = _margin_router(live_margin_borrow_block_policy="repay_single")
+
+    class RepayExchange(_MarginExchange):
+        def auto_repay_for_borrow_block(self, symbol):
+            return {"ok": True}
+
+    router.exchange = RepayExchange()
+
+    op = Operate(OperateType.LONG, 1, 10.0)
+    op.framework_trade = {"trade_id": "t1"}
+    op.stop_loss = 9.0
+    selection = select_order_semantics(op, symbol="BTCUSDT", side=ExecutionSide.LONG, quantity=50.0, notional=500.0)
+
+    initial = SimpleNamespace(accepted=False, reason="-3006 borrow blocked", events=[], gateway_order_id=None, status=ExecutionStatus.REJECTED)
+    retry = SimpleNamespace(accepted=True, reason=None, events=[], gateway_order_id="entry-1", status=ExecutionStatus.ACCEPTED)
+    protection = SimpleNamespace(accepted=False, reason="protection_rejected", events=[], gateway_order_id=None, status=ExecutionStatus.REJECTED)
+    closed = SimpleNamespace(accepted=True, reason=None, events=[], gateway_order_id="close-1", status=ExecutionStatus.ACCEPTED)
+
+    class Gateway:
+        def __init__(self):
+            self.closed_intents = []
+
+        def open_position(self, intent):
+            return retry
+
+        def place_protection(self, intent):
+            return protection
+
+        def close_position(self, intent):
+            self.closed_intents.append(intent)
+            return closed
+
+    gateway = Gateway()
+    outcome = router._handle_margin_borrow_block(
+        op=op,
+        notional=500.0,
+        quantity=50.0,
+        gateway=gateway,
+        selection=selection,
+        initial_result=initial,
+        requested_notional=500.0,
+        requested_quantity=50.0,
+    )
+
+    assert len(gateway.closed_intents) == 1
+    assert outcome.status == AutoExecutionStatus.FAILED
+    assert any(getattr(record, "order_role", "") == "close" for record in outcome.execution_state_records)
+
+
+class _OrderExchange:
+    def __init__(self, fail_protection: bool = False):
+        self.orders = []
+        self.fail_protection = fail_protection
+
+    def new_order(self, symbol, order_type, quantity):
+        self.orders.append((symbol.name(), order_type, quantity))
+        return {"orderId": str(len(self.orders))}
+
+    def new_stop_order(self, symbol, side, quantity, stop_price):
+        if self.fail_protection:
+            raise RuntimeError("stop rejected")
+        return {"orderId": "stop-1"}
+
+
+def test_submit_order_spot_path_submits_and_records_entry():
+    router = _router()
+    router.exchange = _OrderExchange()
+
+    outcome = router._submit_order(Operate(OperateType.BUY, 1, 10.0), 500.0, 50.0, OperateType.BUY, margin=False)
+
+    assert outcome.status == AutoExecutionStatus.SUBMITTED
+    assert router.exchange.orders == [("BTCUSDT", OperateType.BUY, 50.0)]
+    assert [record.order_role for record in outcome.execution_state_records] == ["entry"]
+
+
+def test_submit_order_protection_failure_triggers_fail_safe_close():
+    router = _router()
+    router.exchange = _OrderExchange(fail_protection=True)
+    op = Operate(OperateType.BUY, 1, 10.0)
+    op.stop_loss = 9.0
+
+    outcome = router._submit_order(op, 500.0, 50.0, OperateType.BUY, margin=False)
+
+    assert outcome.status == AutoExecutionStatus.FAILED
+    assert router.exchange.orders == [("BTCUSDT", OperateType.BUY, 50.0), ("BTCUSDT", OperateType.SELL, 50.0)]
+    assert any(record.order_role == "close" for record in outcome.execution_state_records)

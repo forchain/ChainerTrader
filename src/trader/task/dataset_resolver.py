@@ -120,6 +120,7 @@ class DatasetResolver:
         allow_download: bool = True,
         max_download_ranges: int | None = None,
         allow_incomplete_coverage: bool = False,
+        force_sync: bool = False,
     ) -> DatasetPreparationResult:
         """Synchronize one kline range: inspect gaps, download them, and cache the result."""
         return await self.prepare(
@@ -129,6 +130,7 @@ class DatasetResolver:
             allow_download=allow_download,
             max_download_ranges=max_download_ranges,
             allow_incomplete_coverage=allow_incomplete_coverage,
+            force_sync=force_sync,
         )
 
     async def inspect_coverage(
@@ -144,11 +146,13 @@ class DatasetResolver:
         effective_start = start_time or (first_open_time or 0)
         effective_end = end_time or (latest_open_time or 0)
         if not klines:
+            step = int(get_time_duration(symbol_interval.interval)) or 1
+            expected_count = max(0, (effective_end - effective_start) // step + 1) if effective_start <= effective_end else 0
             return CoverageReport(
                 symbol_interval=symbol_interval.name(),
                 start_time=effective_start,
                 end_time=effective_end,
-                expected_count=0,
+                expected_count=expected_count,
                 present_count=0,
                 missing_ranges=[(effective_start, effective_end)] if effective_start <= effective_end else [],
             )
@@ -194,7 +198,7 @@ class DatasetResolver:
         from trader.utils.symbol_interval import Interval
 
         collection_name = SymbolInterval(dataset_ref.symbol, Interval(dataset_ref.interval)).name()
-        start_time = data_start_time or dataset_ref.start_time
+        start_time = data_start_time if data_start_time is not None else dataset_ref.start_time
         klines = list(await _maybe_await(self.db_manager.kline.get_klines(collection_name, start_time, dataset_ref.end_time)) or [])
         if not klines:
             raise ValueError(f"no kline data available for dataset={dataset_ref.dataset_key}")
@@ -225,6 +229,7 @@ class DatasetResolver:
         allow_download: bool = True,
         max_download_ranges: int | None = None,
         allow_incomplete_coverage: bool = False,
+        force_sync: bool = False,
     ) -> DatasetPreparationResult:
         started_at = time.perf_counter()
         cache_start, cache_end = self._cache_range(symbol_interval, start_time, end_time)
@@ -253,7 +258,7 @@ class DatasetResolver:
             )
             cache_start = first_available_open_time
         dataset_key = self._build_dataset_key(symbol_interval, cache_start, cache_end)
-        if dataset_key in self._prepared:
+        if dataset_key in self._prepared and not force_sync:
             result = self._prepared[dataset_key]
             self._log_prepare_result(symbol_interval, start_time, end_time, result, time.perf_counter() - started_at)
             return result
@@ -272,7 +277,9 @@ class DatasetResolver:
 
         dataset_ref = self._build_dataset_ref(symbol_interval, cache_start, cache_end)
         klines = list(await _maybe_await(self.db_manager.kline.get_klines(symbol_interval.name(), cache_start, cache_end)) or [])
-        if supports_cached_range:
+        if force_sync:
+            missing_ranges = [(cache_start, cache_end)]
+        elif supports_cached_range:
             missing_ranges = self._detect_uncached_ranges(
                 symbol_interval,
                 cache_start,

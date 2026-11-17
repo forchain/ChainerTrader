@@ -29,7 +29,7 @@ from trader.common.config import Config
 from trader.exchange.binance.exchange import BinanceExchange
 from trader.exchange.exchange_config import ExchangeConfig, MarginMode, parse_exchange_config
 from trader.exchange.user_credentials import UserExchangeCredentialError, attach_user_exchange_context, base_exchange_config
-from trader.live.account_lifecycle import LiveAccountLifecycle, parse_symbol
+from trader.live.account_lifecycle import LiveAccountError, LiveAccountLifecycle, parse_symbol
 from trader.live.monitor import GLOBAL_LIVE_EVENT_BUS
 from trader.rpc.models import (
     AcctsInfo,
@@ -443,7 +443,7 @@ def _validate_exchange_credential_connectivity(cfg: Config, exchange: str, api_k
 def _user_accounts_info(cfg: Config, rpc_app: RpcApp, user, credentials: list) -> AcctsInfo:
     try:
         exchange = _account_exchange_for_user(cfg, rpc_app, user, credentials)
-    except UserExchangeCredentialError as exc:
+    except (UserExchangeCredentialError, LiveAccountError) as exc:
         return AcctsInfo(total=0, balances=[], account_error=str(exc))
     except Exception as exc:
         logger = getattr(rpc_app, "logger", None)
