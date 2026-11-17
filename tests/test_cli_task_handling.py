@@ -174,7 +174,7 @@ def test_app_start_restores_running_tasks_from_database(monkeypatch):
     )
     app.process = _fake_process
 
-    monkeypatch.setattr("trader.app.app.parse_task_config", lambda _cfg: [recovered])
+    monkeypatch.setattr("trader.app.app.TaskConfigCodec.from_persisted_state", lambda _state: recovered)
 
     assert app.start() is True
     assert "db.get_all_tasks" in events

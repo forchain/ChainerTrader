@@ -52,6 +52,9 @@ class FakeKlineStore:
     def get_latest_klines(self, name, limit):
         return self.added[-limit:]
 
+    async def get_klines(self, name, start_time=0, end_time=0):
+        return [kline for kline in self.added if start_time <= kline.open_time <= end_time]
+
 
 class FakeDb:
     def __init__(self):

@@ -1,19 +1,21 @@
+import importlib
 import json
 import os
 import re
-import importlib
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
 
 from trader.auth.context import current_user
-from trader.auth.credentials import decrypt_secret, service_key_available
+from trader.auth.credentials import service_key_available
 from trader.common import path as trader_path
-from trader.rpc.task_state_payload import public_task_state_dict
 from trader.exchange.binance.exchange import BinanceExchange
-from trader.exchange.exchange_config import ExchangeConfig, parse_exchange_config
-from trader.task.task_config import parse_task_config
+from trader.exchange.exchange_config import MarginMode
+from trader.exchange.user_credentials import base_exchange_config
+from trader.live.account_lifecycle import LiveAccountLifecycle
+from trader.rpc.task_state_payload import public_task_state_dict
+from trader.task.task_config_codec import TaskConfigCodec
 from trader.task.task_type import TaskType
 
 router = APIRouter()
@@ -30,7 +32,7 @@ async def add_tasks(request: Request):
     source = _task_submission_source(cfg)
     try:
         _validate_config_file_source(cfg)
-        taskcs = parse_task_config(cfg) if cfg else []
+        taskcs = TaskConfigCodec.from_input(cfg) if cfg else []
         _enforce_current_user_ownership(taskcs, user.id)
         await _stop_running_tasks_for_user(request, user)
         await _preflight_user_live_tasks(request, user, taskcs)
@@ -342,23 +344,16 @@ def _log_task_submission_success(rpc_app, user_id: int, source: str, task_count:
         logger.info(f"Task submission accepted: user_id={user_id} source={source} task_count={task_count}")
 
 
-def _build_exchange_config(cfg, api_key: str, api_secret: str) -> ExchangeConfig:
-    raw_exchange_cfg = getattr(cfg, "exchange", "") if cfg is not None else ""
-    base = parse_exchange_config(raw_exchange_cfg) if raw_exchange_cfg else ExchangeConfig()
-    payload = base.model_dump()
-    payload["api_key"] = api_key
-    payload["api_secret"] = api_secret
-    return ExchangeConfig(**payload)
-
-
 def _user_exchange_ping_ok(cfg, service_key: str, credential) -> bool:
     try:
-        exchange_cfg = _build_exchange_config(
-            cfg,
-            decrypt_secret(service_key, credential.encrypted_api_key),
-            decrypt_secret(service_key, credential.encrypted_api_secret),
+        context = LiveAccountLifecycle.build_credential_context(
+            base_cfg=base_exchange_config(None, cfg),
+            service_key=service_key,
+            credential=credential,
+            user_id=0,
+            margin_mode=MarginMode.SPOT,
         )
-        exchange = BinanceExchange(exchange_cfg)
+        exchange = BinanceExchange(context.cfg)
         return bool(exchange.ping())
     except Exception:
         return False

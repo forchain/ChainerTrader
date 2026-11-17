@@ -7,9 +7,9 @@ import backtrader as bt
 from backtrader import num2date
 
 from trader.live.feed import LiveKlineDataFeed
+from trader.strategy.lifecycle import OperateFactory
 from trader.utils.kline import Kline
-from trader.utils.operate import Operate, OperateType
-from trader.utils.operation_state import enrich_operation_from_trade_context
+from trader.utils.operate import OperateType
 
 
 class LiveOperationAnalyzer(bt.Analyzer):
@@ -44,9 +44,9 @@ class LiveOperationAnalyzer(bt.Analyzer):
             else:
                 otype = OperateType.SELL
             self.position_size -= abs(order_size)
-        op = Operate(otype, dtime, float(order.executed.price))
-        enrich_operation_from_trade_context(op, self._trade_context_for_order(order))
-        self.p.operation_handler(op)
+        ctx = self._trade_context_for_order(order)
+        factory = OperateFactory.entry if otype in (OperateType.LONG, OperateType.SHORT, OperateType.BUY) else OperateFactory.exit
+        self.p.operation_handler(factory(otype, dtime, float(order.executed.price), ctx))
 
     def notify_trade(self, trade):
         self.position_size = float(getattr(self.strategy.position, "size", self.position_size) or 0.0)
@@ -56,9 +56,13 @@ class LiveOperationAnalyzer(bt.Analyzer):
         if tradeid is None:
             return None
         try:
-            return getattr(self.strategy, "_trades_by_id", {}).get(int(tradeid))
+            trade_ref = int(tradeid)
         except (TypeError, ValueError):
             return None
+        resolver = getattr(self.strategy, "trade_context", None)
+        if callable(resolver):
+            return resolver(trade_ref)
+        return getattr(self.strategy, "_trades_by_id", {}).get(trade_ref)
 
 
 class LiveProgressAnalyzer(bt.Analyzer):

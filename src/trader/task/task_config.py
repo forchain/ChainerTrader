@@ -245,7 +245,10 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
         raise ValueError(f"task config file does not exist: {cfg}")
     else:
         parsed_list = json.loads(cfg)
+    return parse_task_config_payload(parsed_list, last_task_id)
 
+
+def parse_task_config_payload(parsed_list, last_task_id: int = 0) -> list[TaskConfig]:
     ret = []
     optimization_run_id = None
     run_id = None

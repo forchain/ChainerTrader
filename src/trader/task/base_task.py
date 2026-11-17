@@ -1,5 +1,4 @@
 import asyncio
-import json
 from asyncio import Event, Queue
 from datetime import datetime
 
@@ -7,18 +6,9 @@ from trader.common.config import Config
 from trader.common.logger import Logger
 from trader.database.manager import DatabaseManager
 from trader.exchange.binance.exchange import BinanceExchange
-from trader.task.persisted_live_config_migration import canonicalize_persisted_task_config_dict
 from trader.task.task_config import TaskConfig
-from trader.utils.task_state import TaskState, TaskStateType
-
-
-def _task_config_symbol(symbol_interval) -> str:
-    symbol = getattr(symbol_interval, "sy", None)
-    base = getattr(symbol, "base", "")
-    quote = getattr(symbol, "quote", "")
-    if base and quote:
-        return f"{base}-{quote}"
-    return symbol_interval.symbol()
+from trader.task.task_config_codec import TaskConfigCodec
+from trader.utils.task_state import TaskStateType
 
 
 class BaseTask:
@@ -39,86 +29,13 @@ class BaseTask:
         self.start_time = datetime.now()
         self.quit: Event = asyncio.Event()
 
-        # Generate config JSON for display
-        config_json = self._generate_config_json()
-
-        self.ts = TaskState(
-            tcfg.id,
-            self.name(),
-            self.start_time,
-            None,
-            self.cfg.commission,
-            strategy_start_time=tcfg.start_time,
-            strategy_end_time=tcfg.end_time,
+        self.ts = TaskConfigCodec.to_task_state(
+            tcfg,
+            name=self.name(),
+            start_time=self.start_time,
+            commission=self.cfg.commission,
             initial_cash=cfg.cash if tcfg.free < 0 else tcfg.free,
-            config_json=config_json,
-            user_id=getattr(tcfg, "user_id", None),
         )
-
-    def _generate_config_json(self) -> str:
-        """Generate JSON configuration for easy copying"""
-        config_dict = {
-            "task_type": self.tcfg.ttype.name,
-        }
-        if self.tcfg.symbol_interval:
-            config_dict["symbol"] = _task_config_symbol(self.tcfg.symbol_interval)
-            config_dict["interval"] = self.tcfg.symbol_interval.interval.value
-
-        if self.tcfg.csv:
-            config_dict["csv"] = self.tcfg.csv
-
-        if self.tcfg.start_time > 0:
-            config_dict["start_time"] = datetime.fromtimestamp(self.tcfg.start_time).strftime("%Y-%m-%d %H:%M:%S")
-
-        if self.tcfg.end_time > 0:
-            config_dict["end_time"] = datetime.fromtimestamp(self.tcfg.end_time).strftime("%Y-%m-%d %H:%M:%S")
-
-        if self.tcfg.strategies:
-            if len(self.tcfg.strategies) == 1:
-                config_dict["strategy"] = self.tcfg.strategies[0]
-            else:
-                config_dict["strategies"] = ",".join(self.tcfg.strategies)
-
-        if self.tcfg.auto_download:
-            config_dict["auto_download"] = True
-
-        if self.tcfg.free >= 0:
-            config_dict["free"] = self.tcfg.free
-        if getattr(self.tcfg, "live_execution_mode", "auto_trade") != "auto_trade":
-            config_dict["live_execution_mode"] = self.tcfg.live_execution_mode
-        if getattr(self.tcfg, "manual_start_position", 0.0):
-            config_dict["manual_start_position"] = self.tcfg.manual_start_position
-        if getattr(self.tcfg, "live_trade_max_notional", 0.0):
-            config_dict["live_trade_max_notional"] = self.tcfg.live_trade_max_notional
-        if getattr(self.tcfg, "live_margin_borrow_block_policy", "skip_continue") != "skip_continue":
-            config_dict["live_margin_borrow_block_policy"] = self.tcfg.live_margin_borrow_block_policy
-        if getattr(self.tcfg, "live_margin_borrow_precheck", True) is not True:
-            config_dict["live_margin_borrow_precheck"] = self.tcfg.live_margin_borrow_precheck
-        if getattr(self.tcfg, "live_margin_auto_repay_max_total", 100.0) != 100.0:
-            config_dict["live_margin_auto_repay_max_total"] = self.tcfg.live_margin_auto_repay_max_total
-        if getattr(self.tcfg, "live_margin_auto_repay_max_per_asset", 50.0) != 50.0:
-            config_dict["live_margin_auto_repay_max_per_asset"] = self.tcfg.live_margin_auto_repay_max_per_asset
-        if getattr(self.tcfg, "live_margin_auto_repay_min_amount", 0.000001) != 0.000001:
-            config_dict["live_margin_auto_repay_min_amount"] = self.tcfg.live_margin_auto_repay_min_amount
-        if getattr(self.tcfg, "live_margin_auto_repay_excluded_assets", None):
-            config_dict["live_margin_auto_repay_excluded_assets"] = list(self.tcfg.live_margin_auto_repay_excluded_assets)
-        if getattr(self.tcfg, "strategy_params", None):
-            config_dict["strategy_params"] = self.tcfg.strategy_params
-        if getattr(self.tcfg, "requires_short_capability", False):
-            config_dict["requires_short_capability"] = True
-        if getattr(self.tcfg, "user_id", None) is not None:
-            config_dict["user_id"] = self.tcfg.user_id
-        if getattr(self.tcfg, "run_id", None):
-            config_dict["run_id"] = self.tcfg.run_id
-        if getattr(self.tcfg, "fund_reservation_asset", None):
-            config_dict["fund_reservation_asset"] = self.tcfg.fund_reservation_asset
-        if getattr(self.tcfg, "fund_reservation_amount", None) is not None:
-            config_dict["fund_reservation_amount"] = self.tcfg.fund_reservation_amount
-        if getattr(self.tcfg, "fund_reservation_remaining", None) is not None:
-            config_dict["fund_reservation_remaining"] = self.tcfg.fund_reservation_remaining
-
-        config_dict = canonicalize_persisted_task_config_dict(config_dict)
-        return json.dumps([config_dict], indent=2, ensure_ascii=False)
 
     def start(self, queue: Queue):
         self.start_time = datetime.now()

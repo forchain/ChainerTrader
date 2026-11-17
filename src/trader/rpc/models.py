@@ -1,10 +1,10 @@
-import json
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
 from trader.exchange.balance import Balance
-from trader.rpc.task_state_payload import public_task_state_dict
+from trader.live.account_lifecycle import LiveAccountLifecycle, operable_amount
+from trader.task.task_config_codec import TaskConfigCodec
 from trader.utils.symbol_interval import Symbol
 from trader.utils.task_state import TaskStateType
 
@@ -51,18 +51,7 @@ async def get_taskinfo(app: "App", user=None, page: int = 1, per_page: int | Non
     for ts in tss:
         if ts.state == TaskStateType.DONE:
             completed += 1
-        item = public_task_state_dict(ts)
-        try:
-            payload = json.loads(item.get("config_json") or "[]")
-            cfg = payload[0] if isinstance(payload, list) and payload and isinstance(payload[0], dict) else {}
-        except Exception:
-            cfg = {}
-        run_id = str(cfg.get("run_id") or "").strip() or str(cfg.get("task_batch_id") or "").strip() or None
-        item["run_id"] = run_id
-        item["symbol"] = str(cfg.get("symbol") or "").strip()
-        item["interval"] = str(cfg.get("interval") or "").strip()
-        item["strategy"] = str(cfg.get("strategy") or cfg.get("strategies") or "").strip()
-        tasks.append(item)
+        tasks.append(TaskConfigCodec.to_public_view(ts))
 
     # Assign ordinal labels for grouped runs.
     run_groups: dict[str, list[dict[str, Any]]] = {}
@@ -201,10 +190,7 @@ def _open_orders_from_exchange(exchange: Any, balances: list[Balance], symbol: A
 
 
 def open_orders_for_symbol_from_exchange(exchange: Any, symbol: Symbol) -> list[dict[str, Any]]:
-    reader = getattr(exchange, "get_open_orders", None)
-    if not callable(reader):
-        return []
-    return _open_order_rows(reader(symbol) or [])
+    return LiveAccountLifecycle.preview_open_orders(exchange, symbol)
 
 
 def open_order_symbols_from_locked_balances(
@@ -302,12 +288,7 @@ def _open_order_rows(rows: Any) -> list[dict[str, Any]]:
 
 
 def _operable_amount(balances: list[Balance], borrow_asset: str, borrowable_amount: float) -> float:
-    free_balance = 0.0
-    for balance in balances:
-        if balance.asset == borrow_asset:
-            free_balance = float(balance.free or 0.0)
-            break
-    return free_balance + float(borrowable_amount or 0.0)
+    return operable_amount(balances, borrow_asset, borrowable_amount)
 
 
 def get_logs_info(app: "App") -> LogsInfo:

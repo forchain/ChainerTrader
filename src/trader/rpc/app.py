@@ -28,12 +28,8 @@ from trader.common.common import NAME
 from trader.common.config import Config
 from trader.exchange.binance.exchange import BinanceExchange
 from trader.exchange.exchange_config import ExchangeConfig, MarginMode, parse_exchange_config
-from trader.exchange.user_credentials import (
-    UserExchangeCredentialError,
-    attach_user_exchange_context,
-    base_exchange_config,
-    build_user_exchange_context,
-)
+from trader.exchange.user_credentials import UserExchangeCredentialError, attach_user_exchange_context, base_exchange_config
+from trader.live.account_lifecycle import LiveAccountLifecycle, parse_symbol
 from trader.live.monitor import GLOBAL_LIVE_EVENT_BUS
 from trader.rpc.models import (
     AcctsInfo,
@@ -463,11 +459,16 @@ def _user_accounts_info(cfg: Config, rpc_app: RpcApp, user, credentials: list) -
 
 
 def _account_exchange_for_user(cfg: Config, rpc_app: RpcApp, user, credentials: list):
-    credential = _default_binance_credential(credentials)
-    context = build_user_exchange_context(
+    lifecycle = LiveAccountLifecycle(
+        base_exchange=getattr(rpc_app, "exchange", None),
+        cfg=cfg,
+        log=getattr(rpc_app, "logger", None),
+        exchange_factory=BinanceExchange,
+    )
+    context = lifecycle.build_credential_context(
         base_cfg=base_exchange_config(getattr(rpc_app, "exchange", None), cfg),
         service_key=getattr(cfg, "secret_key", None),
-        credential=credential,
+        credential=lifecycle.default_credential(credentials),
         user_id=user.id,
         margin_mode=MarginMode.CROSS_MARGIN,
     )
@@ -498,44 +499,15 @@ def _account_cancel_preview(cfg: Config, rpc_app: RpcApp, user, credentials: lis
 
 
 def _default_binance_credential(credentials: list):
-    for credential in credentials or []:
-        if str(getattr(credential, "exchange", "") or "").upper() == "BINANCE":
-            return credential
-    return None
+    return LiveAccountLifecycle.default_credential(credentials)
 
 
 def _symbol_from_cancel_request(raw_symbol: str, quote_asset: str = "USDT") -> Symbol | None:
-    normalized = str(raw_symbol or "").strip().upper().replace("/", "-").replace("_", "-")
-    if not normalized:
-        return None
-    if "-" in normalized:
-        symbol = Symbol(normalized)
-        return symbol if not symbol.is_empty() else None
-
-    compact = normalized.replace("-", "")
-    quote_candidates = [quote_asset, "USDT", "USDC", "FDUSD", "BUSD", "BTC", "ETH", "BNB"]
-    seen: set[str] = set()
-    for quote in quote_candidates:
-        quote = str(quote or "").strip().upper()
-        if not quote or quote in seen:
-            continue
-        seen.add(quote)
-        if compact.endswith(quote) and len(compact) > len(quote):
-            return Symbol(f"{compact[:-len(quote)]}-{quote}")
-    return None
+    return parse_symbol(raw_symbol, quote_asset=quote_asset)
 
 
 def _cancel_requested_open_order_symbol(exchange, symbol: Symbol, logger=None) -> int:
-    cancel_all = getattr(exchange, "cancel_all_open_orders", None)
-    if not callable(cancel_all):
-        return 0
-    try:
-        cancel_all(symbol)
-        return 1
-    except Exception as exc:
-        if logger is not None and hasattr(logger, "error"):
-            logger.error(f"account cancel_all_open_orders failed: symbol={symbol.name()} error={exc}")
-        return 0
+    return LiveAccountLifecycle.cancel_open_orders_for_symbol(exchange, symbol, logger)
 
 
 @app.get("/admin", response_class=HTMLResponse)

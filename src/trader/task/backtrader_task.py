@@ -11,15 +11,13 @@ from trader.common.config import Config
 from trader.common.logger import Logger
 from trader.common.message import new_stat_msg
 from trader.database.manager import DatabaseManager
-from trader.exchange.binance.csvdata import BinanceCSVData
-from trader.exchange.binance.data import BinanceData
 from trader.exchange.binance.exchange import BinanceExchange
 from trader.statistics.stat import BackTraderStat
 from trader.strategy.node import Node
 from trader.strategy.strategy import parse_strategies
 from trader.strategy.trader_result import TraderResult, parse_trader_result
 from trader.task.base_task import BaseTask
-from trader.task.dataset_resolver import DatasetResolver
+from trader.task.dataset_resolver import DatasetRef, DatasetResolver
 from trader.task.task_config import TaskConfig
 from trader.utils.symbol_interval import Interval, SymbolInterval, get_time_duration
 
@@ -114,25 +112,12 @@ def build_backtest_sample_spec(cfg: Config, tcfg: TaskConfig) -> BacktestSampleS
 def _build_csv_data_for_spec(spec: BacktestSampleSpec):
     if spec.data_path is None:
         raise ValueError(f"missing CSV path for backtest sample task_id={spec.task_id}")
-    if not spec.use_data_range:
-        return BinanceCSVData(dataname=spec.data_path)
     data_start_time = spec.data_start_time if spec.data_start_time is not None else spec.start_time
-    if data_start_time <= 0 and spec.end_time <= 0:
-        return BinanceCSVData(dataname=spec.data_path)
-    if data_start_time <= 0:
-        return BinanceCSVData(
-            dataname=spec.data_path,
-            todate=datetime.fromtimestamp(spec.end_time),
-        )
-    if spec.end_time <= 0:
-        return BinanceCSVData(
-            dataname=spec.data_path,
-            fromdate=datetime.fromtimestamp(data_start_time),
-        )
-    return BinanceCSVData(
-        dataname=spec.data_path,
-        fromdate=datetime.fromtimestamp(data_start_time),
-        todate=datetime.fromtimestamp(spec.end_time),
+    return DatasetResolver.build_csv_feed(
+        spec.data_path,
+        data_start_time=data_start_time,
+        end_time=spec.end_time,
+        use_range=spec.use_data_range,
     )
 
 
@@ -140,12 +125,15 @@ async def _build_db_data_for_spec(spec: BacktestSampleSpec, cfg: Config, logger:
     db_manager = DatabaseManager(cfg, logger)
     await db_manager.start()
     try:
-        symbol_interval = SymbolInterval(spec.symbol, Interval(spec.interval))
         data_start_time = spec.data_start_time if spec.data_start_time is not None else spec.start_time
-        klines = await db_manager.kline.get_klines(symbol_interval.name(), data_start_time, spec.end_time) or []
-        if not klines:
-            raise ValueError(f"no kline data available for dataset={spec.dataset_key}")
-        return BinanceData(klines)
+        dataset_ref = DatasetRef(
+            dataset_key=spec.dataset_key or spec.symbol,
+            symbol=spec.symbol,
+            interval=spec.interval,
+            start_time=data_start_time,
+            end_time=spec.end_time,
+        )
+        return await DatasetResolver(db_manager, None, logger).load_backtest_feed(dataset_ref)
     finally:
         await db_manager.stop()
 
@@ -280,34 +268,19 @@ class BackTraderTask(BaseTask):
 
         data = None
         data_start_time = backtest_data_start_time(self.cfg, self.tcfg)
+        resolver = DatasetResolver(self.db_manager, self.exchange, self.log)
         if self.tcfg.csv:
-            data_file = path.get_file_path(self.tcfg.csv)
-            if self.tcfg.start_time <= 0 and self.tcfg.end_time <= 0:
-                data = BinanceCSVData(
-                    dataname=data_file,
-                )
-            elif self.tcfg.start_time <= 0:
-                data = BinanceCSVData(
-                    dataname=data_file,
-                    todate=datetime.fromtimestamp(self.tcfg.end_time),
-                )
-            elif self.tcfg.end_time <= 0:
-                data = BinanceCSVData(
-                    dataname=data_file,
-                    fromdate=datetime.fromtimestamp(data_start_time),
-                )
-            else:
-                data = BinanceCSVData(
-                    dataname=data_file,
-                    fromdate=datetime.fromtimestamp(data_start_time),
-                    todate=datetime.fromtimestamp(self.tcfg.end_time),
-                )
+            data = DatasetResolver.build_csv_feed(
+                path.get_file_path(self.tcfg.csv),
+                data_start_time=data_start_time,
+                end_time=self.tcfg.end_time,
+                use_range=self.tcfg.start_time > 0 or self.tcfg.end_time > 0,
+            )
         if data is None and self.tcfg.dataset_ref is not None and getattr(self.tcfg.dataset_ref, "path", None):
-            data = BinanceCSVData(dataname=self.tcfg.dataset_ref.path)
+            data = await resolver.load_backtest_feed(self.tcfg.dataset_ref, use_data_range=True)
         if self.db_manager and data is None:
-            resolver = DatasetResolver(self.db_manager, self.exchange, self.log)
             allow_download = self.tcfg.auto_download or self.tcfg.optimization_run_id is not None
-            prepare_result = await resolver.prepare(
+            prepare_result = await resolver.sync_range(
                 self.tcfg.symbol_interval,
                 data_start_time,
                 self.tcfg.end_time,
@@ -317,18 +290,7 @@ class BackTraderTask(BaseTask):
                 self.log.error(f"Dataset preparation failed for {self.name()}: {prepare_result.failure.message}")
                 return None
             self.tcfg.dataset_ref = prepare_result.dataset_ref
-            klines = (
-                await self.db_manager.kline.get_klines(
-                    self.tcfg.symbol_interval.name(),
-                    self.tcfg.dataset_ref.start_time,
-                    self.tcfg.dataset_ref.end_time,
-                )
-                or []
-            )
-            if not klines:
-                self.log.error(f"No kline data for {self.name()} dataset={self.tcfg.dataset_ref.dataset_key}")
-                return None
-            data = BinanceData(klines)
+            data = await resolver.load_backtest_feed(self.tcfg.dataset_ref)
 
         if data is None:
             self.log.error(f"No strategy data for {self.name()}")

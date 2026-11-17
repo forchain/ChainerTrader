@@ -16,7 +16,10 @@ from trader.strategy.lifecycle import (
     ORDER_ROLE_KEY,
     ORDER_ROLE_STOP,
     ORDER_ROLE_TP,
+    EntryConfirmation,
+    ExitConfirmation,
     KlineRef,
+    OperateFactory,
     SignalSnapshot,
     TradeContext,
     TradeLifecycleEngine,
@@ -25,7 +28,6 @@ from trader.strategy.lifecycle import (
 )
 from trader.strategy.risk import BREAKEVEN_EPS, StrategyRiskEngine
 from trader.strategy.signal_router import SignalRouteActionType, SignalRouter, SignalRoutingState
-from trader.utils.operate import Operate, OperateType
 from trader.utils.trend import TrendType
 
 _DEFAULT_POSITION_PRICE_BUFFER = 0.002  # 0.2% safety buffer for next-open fills
@@ -98,20 +100,11 @@ class BaseStrategy(bt.Strategy):
         if float(self.params.chainer_stoploss_atr_mult) != 0.0:
             self.atr = bt.indicators.ATR(self.datas[0], period=self.params.chainer_atr_period)
 
-        # Entry/Exit engine state (lazy-activated when enter_trade/exit_trade is used)
-        self._trade_registry = TradeRegistry()
+        # Entry/Exit engine owns registry, router, and replacement queue.
         self._lifecycle = TradeLifecycleEngine()
         self._risk_engine = StrategyRiskEngine()
-        self._signal_router = SignalRouter()
         self._bt_execution = BacktraderStrategyExecutionAdapter(self)
-        self._trade_seq: int = self._trade_registry.trade_seq
-        self._active_trade: Optional[BaseStrategy.TradeContext] = self._trade_registry.active_trade
-        self._trades_by_id: Dict[int, BaseStrategy.TradeContext] = self._trade_registry.trades_by_id
-        self._trades_by_key: Dict[str, BaseStrategy.TradeContext] = self._trade_registry.trades_by_key
-        self._banned_entry_key_bar_index: Set[int] = self._trade_registry.banned_entry_key_bar_index
-        self._banned_exit_key_bar_index: Set[int] = self._trade_registry.banned_exit_key_bar_index
         self._signal_snapshot: Optional[BaseStrategy.SignalSnapshot] = None
-        self._pending_replacement: Optional[Dict[str, Any]] = None
 
         self.start_time = datetime.fromtimestamp(0)
         self.end_time = datetime.fromtimestamp(0)
@@ -530,16 +523,56 @@ class BaseStrategy(bt.Strategy):
     def _default_trade_key(self, ref: "BaseStrategy.KlineRef") -> str:
         return ref.dt.strftime("%Y%m%d%H%M")
 
+    @property
+    def _trade_registry(self) -> TradeRegistry:
+        return self._lifecycle.registry
+
+    @property
+    def _signal_router(self) -> SignalRouter:
+        return self._lifecycle.signal_router
+
+    @property
+    def _active_trade(self) -> Optional["BaseStrategy.TradeContext"]:
+        return self._lifecycle.registry.active_trade
+
+    @property
+    def _trades_by_id(self) -> Dict[int, "BaseStrategy.TradeContext"]:
+        return self._lifecycle.registry.trades_by_id
+
+    @property
+    def _trades_by_key(self) -> Dict[str, "BaseStrategy.TradeContext"]:
+        return self._lifecycle.registry.trades_by_key
+
+    @property
+    def _banned_entry_key_bar_index(self) -> Set[int]:
+        return self._lifecycle.registry.banned_entry_key_bar_index
+
+    @property
+    def _banned_exit_key_bar_index(self) -> Set[int]:
+        return self._lifecycle.registry.banned_exit_key_bar_index
+
+    @property
+    def _pending_replacement(self) -> Optional[Dict[str, Any]]:
+        return self._lifecycle.pending_replacement
+
+    @_pending_replacement.setter
+    def _pending_replacement(self, value: Optional[Dict[str, Any]]) -> None:
+        self._lifecycle.pending_replacement = value
+
+    def trade_context(self, trade_ref: Union[int, str, None]) -> Optional["BaseStrategy.TradeContext"]:
+        return self._lifecycle.resolve(trade_ref)
+
+    def trade_contexts(self) -> Dict[int, "BaseStrategy.TradeContext"]:
+        return dict(self._lifecycle.registry.trades_by_id)
+
     def _allocate_trade_id(self) -> int:
-        self._trade_seq = self._trade_registry.allocate_trade_id()
-        return self._trade_seq
+        return self._lifecycle.allocate_trade_id()
 
     def _register_trade(self, ctx: "BaseStrategy.TradeContext") -> None:
-        self._trade_registry.register(ctx)
+        self._lifecycle.register(ctx)
 
     def _set_active_trade(self, ctx: Optional["BaseStrategy.TradeContext"]) -> None:
-        self._active_trade = ctx
-        self._trade_registry.active_trade = ctx
+        self._lifecycle.set_active_trade(ctx)
 
     def enter_trade(
         self,
@@ -837,7 +870,7 @@ class BaseStrategy(bt.Strategy):
         if snapshot.long_signal or snapshot.short_signal:
             self.log_debug(f"信号触发: mode={mode} long_signal={snapshot.long_signal} short_signal={snapshot.short_signal}")
 
-        actions = self._signal_router.route(
+        actions = self._lifecycle.route_signals(
             snapshot,
             SignalRoutingState(
                 mode=mode,
@@ -1021,60 +1054,32 @@ class BaseStrategy(bt.Strategy):
         # Entry confirmation
         if ctx.status == BaseStrategy.TradeStatus.PENDING_ENTRY_CONFIRM:
             close = float(self.data.close[0])
-            key_high = float(ctx.key_kline_ref.high)
-            key_low = float(ctx.key_kline_ref.low)
-            confirm_ok = close > key_high if ctx.direction == "LONG" else close < key_low
-            confirm_fail = close < key_low if ctx.direction == "LONG" else close > key_high
-
-            # If opposing signal appears before confirmation, cancel this trade.
-            # This matches TradingView behavior: confirmation is invalid once an opposing signal appears.
             snapshot = self._signal_snapshot_for_current_bar()
-            long_signal = snapshot.long_signal
-            short_signal = snapshot.short_signal
             mode = str(self.params.chainer_mode).upper()
             if mode not in ("LONG_ONLY", "SHORT_ONLY", "BOTH"):
                 mode = "LONG_ONLY"
-
-            # Determine if opposing signal appeared
-            # For LONG entry pending: short signal is the exit signal
-            # For SHORT entry pending: long signal is the exit signal
-            # In BOTH mode, no opposing signal logic (entries are independent)
             opposing_signal = False
             if mode == "LONG_ONLY" and ctx.direction == "LONG":
-                opposing_signal = short_signal
+                opposing_signal = snapshot.short_signal
             elif mode == "SHORT_ONLY" and ctx.direction == "SHORT":
-                opposing_signal = long_signal
-            # In BOTH mode, no opposing signal cancels entry
+                opposing_signal = snapshot.long_signal
 
-            if opposing_signal:
-                self._lifecycle.cancel_entry(ctx, "entry_pending_exit_signal")
-                self._banned_entry_key_bar_index.add(int(ctx.entry_key_bar_index))
-                if ctx.direction == "LONG":
-                    self.log_info(
-                        f"进场取消(未确认前出现出场信号): trade_id={ctx.trade_id} key={ctx.key} close={close:.6f}"
-                    )
-                else:
-                    self.log_info(
-                        f"进场取消(未确认前出现出场信号): trade_id={ctx.trade_id} key={ctx.key} close={close:.6f}"
-                    )
+            decision = self._lifecycle.entry_confirmation(
+                ctx,
+                close=close,
+                opposing_signal=opposing_signal,
+                can_open=self._can_open_new_position(),
+            )
+            if decision == EntryConfirmation.CANCELLED_OPPOSING_SIGNAL:
+                self.log_info(f"进场取消(未确认前出现出场信号): trade_id={ctx.trade_id} key={ctx.key} close={close:.6f}")
                 self._set_active_trade(None)
                 return
-
-            # If equity protection is enabled and current equity is below threshold,
-            # cancel the pending entry as if confirmation failed.
-            if not self._can_open_new_position():
-                self._lifecycle.cancel_entry(ctx, "entry_equity_below_min")
-                self._banned_entry_key_bar_index.add(int(ctx.entry_key_bar_index))
-                self.log_info(
-                    f"进场取消(账户净值低于最小进场阈值): trade_id={ctx.trade_id} key={ctx.key} close={close:.6f}"
-                )
+            if decision == EntryConfirmation.CANCELLED_EQUITY:
+                self.log_info(f"进场取消(账户净值低于最小进场阈值): trade_id={ctx.trade_id} key={ctx.key} close={close:.6f}")
                 self._set_active_trade(None)
                 return
-
-            if confirm_ok:
-                order = (
-                    self._bt_execution.open_entry(ctx)
-                )
+            if decision == EntryConfirmation.CONFIRMED:
+                order = self._bt_execution.open_entry(ctx)
                 self._lifecycle.mark_entry_opening(ctx, order)
                 self.order = order
                 if ctx.direction == "LONG":
@@ -1085,9 +1090,7 @@ class BaseStrategy(bt.Strategy):
                     self.log_info(f"进场确认成功: trade_id={ctx.trade_id} key={ctx.key} close={close:.6f} < key_low")
                     self.log_info(f"创建卖出订单(开空): trade_id={ctx.trade_id} key={ctx.key}")
                     self.log_info("下单时机: 本K线收盘确认后提交市价单，默认在下一根K线开盘成交")
-            elif confirm_fail:
-                self._lifecycle.cancel_entry(ctx, "entry_confirm_failed")
-                self._banned_entry_key_bar_index.add(int(ctx.entry_key_bar_index))
+            elif decision == EntryConfirmation.CANCELLED_FAILED:
                 if ctx.direction == "LONG":
                     self.log_info(f"进场确认失败: trade_id={ctx.trade_id} key={ctx.key} close={close:.6f} < key_low")
                 else:
@@ -1098,11 +1101,8 @@ class BaseStrategy(bt.Strategy):
         # Exit confirmation
         if ctx.status == BaseStrategy.TradeStatus.PENDING_EXIT_CONFIRM and ctx.exit_key_kline_ref is not None:
             close = float(self.data.close[0])
-            key_low = float(ctx.exit_key_kline_ref.low)
-            key_high = float(ctx.exit_key_kline_ref.high)
-            confirm_ok = close < key_low if ctx.direction == "LONG" else close > key_high
-            confirm_fail = close > key_high if ctx.direction == "LONG" else close < key_low
-            if confirm_ok:
+            decision = self._lifecycle.exit_confirmation(ctx, close=close)
+            if decision == ExitConfirmation.CONFIRMED:
                 oco_order = ctx.stop_order if ctx.stop_order is not None and ctx.tp_order is None else None
                 if oco_order is None:
                     self._bt_execution.cancel_stop(ctx)
@@ -1122,10 +1122,7 @@ class BaseStrategy(bt.Strategy):
                 else:
                     self.log_info(f"出场确认成功: trade_id={ctx.trade_id} key={ctx.key} close={close:.6f} > key_high")
                 self.log_info(f"创建平仓订单: trade_id={ctx.trade_id} key={ctx.key} size={close_size}")
-            elif confirm_fail:
-                self._lifecycle.mark_exit_confirm_failed(ctx)
-                if ctx.exit_key_bar_index is not None:
-                    self._banned_exit_key_bar_index.add(int(ctx.exit_key_bar_index))
+            elif decision == ExitConfirmation.FAILED:
                 if ctx.direction == "LONG":
                     self.log_info(f"出场确认失败: trade_id={ctx.trade_id} key={ctx.key} close={close:.6f} > key_high")
                 else:
@@ -1138,11 +1135,8 @@ class BaseStrategy(bt.Strategy):
         if ctx.entry_price is None or ctx.stop_price is None or ctx.initial_stop_price is None:
             return
 
-        adjustment = self._risk_engine.breakeven_adjustment(ctx, close_price=float(self.data.close[0]))
+        adjustment = self._lifecycle.advance_breakeven(ctx, close_price=float(self.data.close[0]), risk_engine=self._risk_engine)
         if adjustment is not None:
-            ctx.stop_price = float(adjustment.new_stop)
-            ctx.breakeven_step = int(adjustment.step)
-            ctx.stop_source = "breakeven"
             self.log_info(
                 f"保本移动止损: trade_id={ctx.trade_id} key={ctx.key} direction={ctx.direction} "
                 f"step={ctx.breakeven_step} stop={ctx.stop_price:.6f}"
@@ -1151,60 +1145,21 @@ class BaseStrategy(bt.Strategy):
             self._bt_execution.place_or_replace_stop(ctx)
 
         if ctx.trailing_stop_ratio > 0.0:
-            observed_price = float(self.data.high[0]) if ctx.direction == "LONG" else float(self.data.low[0])
-            if ctx.trailing_best_price is None:
-                ctx.trailing_best_price = observed_price
-            elif ctx.direction == "LONG":
-                if observed_price > float(ctx.trailing_best_price):
-                    ctx.trailing_best_price = observed_price
-                    ctx.trailing_peak_confirmed = False
-                elif (
-                    observed_price < float(ctx.trailing_best_price)
-                    and float(ctx.trailing_best_price) > float(ctx.entry_price)
-                    and not ctx.trailing_peak_confirmed
-                ):
-                    ctx.trailing_peak_confirmed = True
-            else:
-                if observed_price < float(ctx.trailing_best_price):
-                    ctx.trailing_best_price = observed_price
-                    ctx.trailing_peak_confirmed = False
-                elif (
-                    observed_price > float(ctx.trailing_best_price)
-                    and float(ctx.trailing_best_price) < float(ctx.entry_price)
-                    and not ctx.trailing_peak_confirmed
-                ):
-                    ctx.trailing_peak_confirmed = True
-
-            trailing_adjustment = (
-                self._risk_engine.trailing_stop_adjustment(
-                    ctx,
-                    best_price=float(ctx.trailing_best_price),
-                    ratio=float(ctx.trailing_stop_ratio),
-                )
-                if ctx.trailing_peak_confirmed
-                else None
+            trailing = self._lifecycle.advance_trailing(
+                ctx,
+                high=float(self.data.high[0]),
+                low=float(self.data.low[0]),
+                close=float(self.data.close[0]),
+                risk_engine=self._risk_engine,
             )
-            trailing_stop_updated = trailing_adjustment is not None
-            if trailing_adjustment is not None:
-                ctx.stop_price = float(trailing_adjustment.new_stop)
-                ctx.trailing_stop_price = float(trailing_adjustment.new_stop)
-                ctx.trailing_update_count += 1
-                ctx.stop_source = "trailing"
+            if trailing.adjustment is not None:
                 self.log_info(
                     f"移动止盈止损: trade_id={ctx.trade_id} key={ctx.key} direction={ctx.direction} "
                     f"best={ctx.trailing_best_price:.6f} stop={ctx.stop_price:.6f}"
                 )
-                self._emit_trailing_stop_operation(ctx, old_stop=trailing_adjustment.old_stop, new_stop=trailing_adjustment.new_stop)
+                self._emit_trailing_stop_operation(ctx, old_stop=trailing.adjustment.old_stop, new_stop=trailing.adjustment.new_stop)
 
-            trailing_stop_broken = (
-                not trailing_stop_updated
-                and ctx.trailing_stop_price is not None
-                and (
-                    (ctx.direction == "LONG" and float(self.data.close[0]) < float(ctx.trailing_stop_price))
-                    or (ctx.direction == "SHORT" and float(self.data.close[0]) > float(ctx.trailing_stop_price))
-                )
-            )
-            if trailing_stop_broken:
+            if trailing.stop_broken:
                 self.exit_trade(
                     trade_ref=ctx.trade_id,
                     key_bar_index=self.bar_idx(),
@@ -1231,49 +1186,27 @@ class BaseStrategy(bt.Strategy):
         sink = getattr(self.params, "live_operation_sink", None)
         if sink is None:
             return
-        op = Operate(OperateType.RISK_UPDATE, int(self.cur_datetime().timestamp()), float(new_stop))
-        op.trigger_reason = "breakeven_move"
-        op.stop_loss = float(new_stop)
-        op.breakeven_old_stop = float(old_stop)
-        op.breakeven_new_stop = float(new_stop)
-        op.breakeven_step = int(ctx.breakeven_step)
-        op.signal_metadata = dict(ctx.signal_metadata or {})
-        signal_event_id = op.signal_metadata.get("signal_event_id") or op.signal_metadata.get("event_id")
-        if signal_event_id:
-            op.signal_event_id = signal_event_id
-        op.framework_trade = {
-            "trade_id": ctx.trade_id,
-            "direction": ctx.direction,
-            "initial_stop_price": ctx.initial_stop_price,
-            "stop_price": ctx.stop_price,
-            "take_profit": ctx.tp_price,
-            "risk_reward_ratio": ctx.risk_reward_ratio,
-            "breakeven_step": ctx.breakeven_step,
-        }
-        sink(op)
+        sink(
+            OperateFactory.risk_update_breakeven(
+                ctx,
+                dtime=int(self.cur_datetime().timestamp()),
+                old_stop=old_stop,
+                new_stop=new_stop,
+            )
+        )
 
     def _emit_trailing_stop_operation(self, ctx: "BaseStrategy.TradeContext", *, old_stop: float, new_stop: float) -> None:
         sink = getattr(self.params, "live_operation_sink", None)
         if sink is None:
             return
-        op = Operate(OperateType.RISK_UPDATE, int(self.cur_datetime().timestamp()), float(new_stop))
-        op.trigger_reason = "trailing_stop_move"
-        op.stop_loss = float(new_stop)
-        op.signal_metadata = dict(ctx.signal_metadata or {})
-        op.framework_trade = {
-            "trade_id": ctx.trade_id,
-            "direction": ctx.direction,
-            "initial_stop_price": ctx.initial_stop_price,
-            "stop_price": ctx.stop_price,
-            "take_profit": ctx.tp_price,
-            "risk_reward_ratio": ctx.risk_reward_ratio,
-            "trailing_stop_ratio": ctx.trailing_stop_ratio,
-            "trailing_best_price": ctx.trailing_best_price,
-            "trailing_stop_price": ctx.trailing_stop_price,
-            "trailing_update_count": ctx.trailing_update_count,
-            "old_stop_price": float(old_stop),
-        }
-        sink(op)
+        sink(
+            OperateFactory.risk_update_trailing(
+                ctx,
+                dtime=int(self.cur_datetime().timestamp()),
+                old_stop=old_stop,
+                new_stop=new_stop,
+            )
+        )
 
     def set_default_period(self, period):
         if self.params.period == DEFAULT_PERIOD:

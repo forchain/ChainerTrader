@@ -1,3 +1,4 @@
+import inspect
 from asyncio import Event, Queue
 from datetime import datetime
 
@@ -13,6 +14,10 @@ from trader.utils.symbol_interval import SymbolInterval, add_time_duration, get_
 DOWNLOAD_SPACE_TIME = 5
 DOWNLOAD_RETRY_MAX = 5
 KLINE_REQUEST_LIMIT_MAX = KLINE_LIMIT_MAX
+
+
+async def _maybe_await(value):
+    return await value if inspect.isawaitable(value) else value
 
 
 def _compute_limit_for_range(symbol_interval: SymbolInterval, start_time: int, end_time: int) -> int:
@@ -83,138 +88,22 @@ class UpdateKlinesTask(BaseTask):
     async def _handle_force_update(self, collection_name: str, start_time: int, end_time: int):
         deleted = await self.db_manager.kline.delete_klines_in_range(collection_name, start_time, end_time)
         self.log.info(f"{self.name()} force_update: deleted {deleted} records")
-
-        await download_range(
-            self.name(),
-            self.log,
-            self.db_manager,
-            collection_name,
-            self.exchange,
-            self.tcfg.symbol_interval,
-            start_time,
-            end_time,
-            self.quit,
-        )
+        await self._sync_range(start_time, end_time)
 
     async def _handle_normal_update(self, collection_name: str, start_time: int, end_time: int):
-        db_first = await self.db_manager.kline.get_first_kline(collection_name)
-        db_last = await self.db_manager.kline.get_latest_kline(collection_name)
+        await self._sync_range(start_time, end_time)
 
-        if db_first is None or db_last is None:
-            self.log.info(f"{self.name()} no existing records, download full range")
-            await download_range(
-                self.name(),
-                self.log,
-                self.db_manager,
-                collection_name,
-                self.exchange,
-                self.tcfg.symbol_interval,
-                start_time,
-                end_time,
-                self.quit,
-            )
+    async def _sync_range(self, start_time: int, end_time: int) -> None:
+        from trader.task.dataset_resolver import DatasetResolver
+
+        resolver = DatasetResolver(self.db_manager, self.exchange, self.log)
+        result = await resolver.sync_range(self.tcfg.symbol_interval, start_time, end_time, allow_download=True)
+        if not result.ok:
+            reason = result.failure.reason if result.failure is not None else "unknown"
+            message = result.failure.message if result.failure is not None else ""
+            self.log.error(f"{self.name()} dataset sync failed: reason={reason} message={message}")
             return
-
-        db_first_time = db_first.open_time
-        db_last_time = db_last.open_time
-        interval = self.tcfg.symbol_interval.interval
-
-        self.log.info(
-            f"{self.name()} db range: first={datetime.fromtimestamp(db_first_time)}, last={datetime.fromtimestamp(db_last_time)}"
-        )
-
-        # Case 1: end < db_first - download [start, end]
-        if end_time < db_first_time:
-            self.log.info(f"{self.name()} case: end < db_first, download [start, end]")
-            await download_range(
-                self.name(),
-                self.log,
-                self.db_manager,
-                collection_name,
-                self.exchange,
-                self.tcfg.symbol_interval,
-                start_time,
-                end_time,
-                self.quit,
-            )
-            return
-
-        # Case 2: start < db_first <= end <= db_last - download [start, db_first)
-        if start_time < db_first_time <= end_time <= db_last_time:
-            range_end = add_time_duration(db_first_time, interval, -1)
-            self.log.info(f"{self.name()} case: start < db_first <= end <= db_last, download [start, db_first)")
-            await download_range(
-                self.name(),
-                self.log,
-                self.db_manager,
-                collection_name,
-                self.exchange,
-                self.tcfg.symbol_interval,
-                start_time,
-                range_end,
-                self.quit,
-            )
-            return
-
-        # Case 3: db_first <= start <= end <= db_last - skip
-        if db_first_time <= start_time and end_time <= db_last_time:
-            self.log.info(f"{self.name()} case: db_first <= start <= end <= db_last, skip download")
-            return
-
-        # Case 4: start <= db_last < end - download (db_last, end]
-        if start_time >= db_first_time and db_last_time < end_time:
-            range_start = add_time_duration(db_last_time, interval, 1)
-            self.log.info(f"{self.name()} case: start >= db_first and db_last < end, download (db_last, end]")
-            await download_range(
-                self.name(),
-                self.log,
-                self.db_manager,
-                collection_name,
-                self.exchange,
-                self.tcfg.symbol_interval,
-                range_start,
-                end_time,
-                self.quit,
-            )
-            return
-
-        # Case 5: start < db_first and db_last < end - download two segments
-        if start_time < db_first_time and db_last_time < end_time:
-            self.log.info(f"{self.name()} case: start < db_first and db_last < end, download two segments")
-
-            # Download [start, db_first)
-            range_end = add_time_duration(db_first_time, interval, -1)
-            await download_range(
-                self.name(),
-                self.log,
-                self.db_manager,
-                collection_name,
-                self.exchange,
-                self.tcfg.symbol_interval,
-                start_time,
-                range_end,
-                self.quit,
-            )
-
-            if self.quit.is_set():
-                return
-
-            # Download (db_last, end]
-            range_start = add_time_duration(db_last_time, interval, 1)
-            await download_range(
-                self.name(),
-                self.log,
-                self.db_manager,
-                collection_name,
-                self.exchange,
-                self.tcfg.symbol_interval,
-                range_start,
-                end_time,
-                self.quit,
-            )
-            return
-
-        self.log.warning(f"{self.name()} unexpected case: start={start_time}, end={end_time}, db_first={db_first_time}, db_last={db_last_time}")
+        self.log.info(f"{self.name()} dataset sync completed: dataset={result.dataset_ref.dataset_key if result.dataset_ref else None}")
 
 
 async def download_range(
@@ -261,7 +150,7 @@ async def download_range(
 
         retry_count = 0
 
-        ret = await db_manager.kline.add_klines(col_name, kls, source="exchange")
+        ret = await _maybe_await(db_manager.kline.add_klines(col_name, kls, source="exchange"))
         total_records += ret
 
         if ret != len(kls):
@@ -351,7 +240,7 @@ async def download_range_backward(
             break
 
         retry_count = 0
-        ret = await db_manager.kline.add_klines(col_name, kls, source="exchange")
+        ret = await _maybe_await(db_manager.kline.add_klines(col_name, kls, source="exchange"))
         total_records += ret
 
         batch_first_open_time = kls[0].open_time

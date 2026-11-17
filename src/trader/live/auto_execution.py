@@ -176,6 +176,8 @@ class AutoExecutionRouter:
         self._protection_order_ids_by_trade: dict[str, str] = {}
         self._seen_operation_ids: set[str] = set()
         self.outcomes: list[AutoExecutionOutcome] = []
+        self.manual_cash = float(getattr(tcfg, "free", -1)) if getattr(tcfg, "free", -1) >= 0 else float(getattr(cfg, "cash", 0.0) or 0.0)
+        self.manual_position = float(getattr(tcfg, "manual_start_position", 0.0) or 0.0)
 
     def _resolved_runtime_mode(self) -> str:
         return normalize_live_execution_mode(getattr(self.tcfg, "live_execution_mode", None))
@@ -193,6 +195,209 @@ class AutoExecutionRouter:
         if self.mode == LiveExecutionMode.MANUAL_NOTIFY.value:
             return self._record(self._outcome(op, AutoExecutionStatus.SKIPPED, reason="manual_notify_no_order"))
         return self._route_real(op)
+
+    def reconcile(self, records) -> list[dict[str, Any]]:
+        """Rehydrate exposure and protection ids from persisted 执行状态记录."""
+        self.real_long_position = 0.0
+        self.real_short_position = 0.0
+        self._protection_order_ids_by_trade.clear()
+        payload: list[dict[str, Any]] = []
+        for record in records or []:
+            payload.append(self.execution_state_payload(record))
+            role = str(getattr(record, "order_role", "") or "").lower()
+            raw_payload = getattr(record, "raw_payload", None)
+            raw_payload = raw_payload if isinstance(raw_payload, dict) else {}
+            trade_id = getattr(record, "trade_id", None)
+            if role == "entry":
+                side = str(raw_payload.get("side") or raw_payload.get("direction") or "").upper()
+                quantity = float(getattr(record, "quantity", 0.0) or 0.0)
+                if side == ExecutionSide.SHORT.value or side == "SHORT":
+                    self.real_short_position += quantity
+                elif quantity > 0:
+                    self.real_long_position += quantity
+            protection_id = getattr(record, "protection_id", None) or getattr(record, "exchange_order_id", None)
+            if role in {"stop_loss", "take_profit"} and trade_id is not None and protection_id:
+                self._protection_order_ids_by_trade[str(trade_id)] = str(protection_id)
+        return payload
+
+    @staticmethod
+    def execution_state_payload(record) -> dict[str, Any]:
+        gateway = getattr(record, "gateway", None)
+        status = getattr(record, "status", None)
+        return {
+            "idempotency_key": getattr(record, "idempotency_key", None),
+            "intent_id": getattr(record, "intent_id", None),
+            "operation_id": getattr(record, "operation_id", None),
+            "gateway": getattr(gateway, "value", gateway),
+            "staged_execution_mode": getattr(record, "staged_execution_mode", None),
+            "symbol": getattr(record, "symbol", None),
+            "trade_id": getattr(record, "trade_id", None),
+            "order_role": getattr(record, "order_role", None),
+            "status": getattr(status, "value", status),
+            "exchange_order_id": getattr(record, "exchange_order_id", None),
+            "protection_id": getattr(record, "protection_id", None),
+            "quantity": getattr(record, "quantity", None),
+            "price": getattr(record, "price", None),
+            "stop_price": getattr(record, "stop_price", None),
+            "take_profit_price": getattr(record, "take_profit_price", None),
+            "updated_at": getattr(record, "updated_at", None),
+        }
+
+    async def persist_outcome(self, outcome, *, state_store=None, reservation_store=None) -> None:
+        """Persist 执行状态记录 and deduct reserved budget for a submitted outcome."""
+        if state_store is not None:
+            records = list(getattr(outcome, "execution_state_records", []) or [])
+            for index, record in enumerate(records, start=1):
+                try:
+                    saved = state_store.save(record)
+                    if hasattr(saved, "__await__"):
+                        await saved
+                except Exception as exc:
+                    log = getattr(self, "log", None)
+                    if log is not None and hasattr(log, "error"):
+                        log.error(
+                            "Realtime execution state persist failed: "
+                            f"runtime_task_id={self.tcfg.id} record={index}/{len(records)} "
+                            f"operation_id={getattr(outcome, 'operation_id', None)} "
+                            f"operation_type={getattr(outcome, 'operation_type', None)} "
+                            f"status={getattr(outcome, 'status', None)} "
+                            f"reason={getattr(outcome, 'reason', None)} error={exc!r}"
+                        )
+                    raise
+        if reservation_store is None or not self._outcome_submitted(outcome):
+            return
+        notional = float(getattr(outcome, "effective_notional", 0.0) or 0.0)
+        if notional <= 0:
+            return
+        asset = getattr(self.tcfg, "fund_reservation_asset", None) or self.tcfg.symbol_interval.sy.quote
+        result = reservation_store.mark_spent(self.tcfg.id, asset, notional)
+        if hasattr(result, "__await__"):
+            await result
+
+    @staticmethod
+    def _outcome_submitted(outcome) -> bool:
+        status = getattr(outcome, "status", None)
+        return getattr(status, "value", status) == AutoExecutionStatus.SUBMITTED.value
+
+    def handle_manual_trade_notifications(self, ret):
+        if not ret.opts:
+            return []
+        op = ret.opts[-1]
+        if not hasattr(op, "otype"):
+            return []
+        price = float(op.price or 0.0)
+        if price <= 0:
+            if self.log is not None and hasattr(self.log, "warning"):
+                self.log.warning(f"Skip manual notification due to invalid price: operateType={getattr(op, 'otype', None)} price={op.price}")
+            return []
+        if op.otype in (OperateType.BUY, OperateType.LONG, OperateType.SHORT):
+            return [self._manual_entry_event(op, price)]
+        if op.otype in (OperateType.SELL, OperateType.CLOSE):
+            event = self._manual_exit_event(op, price)
+            return [event] if event is not None else []
+        if op.otype == OperateType.RISK_UPDATE:
+            return [self._manual_risk_update_event(op, price)]
+        if self.log is not None and hasattr(self.log, "warning"):
+            self.log.warning(f"Skip unsupported manual notify operateType: {op.otype}")
+        return []
+
+    def _manual_event_common_kwargs(self, op) -> dict:
+        return {
+            "interval": self.tcfg.symbol_interval.interval.value,
+            "strategy_id": str(self.tcfg.id),
+            "signal_event_id": getattr(op, "signal_event_id", None),
+            "breakeven_new_stop": getattr(op, "breakeven_new_stop", None),
+            "breakeven_step": getattr(op, "breakeven_step", None),
+            "divergence_metadata": getattr(op, "divergence_metadata", None) or getattr(op, "signal_metadata", None),
+        }
+
+    def _manual_entry_event(self, op, price: float):
+        from trader.notify.trade_notification import ManualTradeAccountState, ManualTradeNotificationEvent
+
+        cash_before = float(self.manual_cash)
+        position_before = float(self.manual_position)
+        amount = max(cash_before, 0.0)
+        quantity = amount / price if price > 0 else 0.0
+        if op.otype == OperateType.SHORT:
+            position_after = position_before - quantity
+        else:
+            position_after = position_before + quantity
+        self.manual_cash = cash_before - amount
+        self.manual_position = position_after
+        return ManualTradeNotificationEvent(
+            market=self.tcfg.symbol_interval.symbol(),
+            strategy=self.tcfg.strategy_name(),
+            task_id=self.tcfg.id,
+            mode=MANUAL_NOTIFY_MODE,
+            action="ENTRY",
+            side=op.otype.name,
+            signal_time=int(op.dtime),
+            signal_price=price,
+            suggested_amount=amount,
+            suggested_quantity=quantity,
+            trigger_reason="signal_entry",
+            local_state=ManualTradeAccountState(cash_before, self.manual_cash, position_before, position_after),
+            stop_loss=getattr(op, "stop_loss", None),
+            take_profit=getattr(op, "take_profit", None),
+            risk_reward_ratio=getattr(op, "risk_reward_ratio", None),
+            **self._manual_event_common_kwargs(op),
+        )
+
+    def _manual_risk_update_event(self, op, price: float):
+        from trader.notify.trade_notification import ManualTradeAccountState, ManualTradeNotificationEvent
+
+        cash = float(self.manual_cash)
+        position = float(self.manual_position)
+        return ManualTradeNotificationEvent(
+            market=self.tcfg.symbol_interval.symbol(),
+            strategy=self.tcfg.strategy_name(),
+            task_id=self.tcfg.id,
+            mode=MANUAL_NOTIFY_MODE,
+            action="RISK_UPDATE",
+            side=op.otype.name,
+            signal_time=int(op.dtime),
+            signal_price=price,
+            suggested_amount=0.0,
+            suggested_quantity=0.0,
+            trigger_reason=getattr(op, "trigger_reason", "risk_update"),
+            local_state=ManualTradeAccountState(cash, cash, position, position),
+            stop_loss=getattr(op, "stop_loss", None),
+            take_profit=getattr(op, "take_profit", None),
+            risk_reward_ratio=getattr(op, "risk_reward_ratio", None),
+            **self._manual_event_common_kwargs(op),
+        )
+
+    def _manual_exit_event(self, op, price: float):
+        from trader.notify.trade_notification import ManualTradeAccountState, ManualTradeNotificationEvent
+
+        cash_before = float(self.manual_cash)
+        position_before = float(self.manual_position)
+        if position_before == 0.0:
+            if self.log is not None and hasattr(self.log, "info"):
+                self.log.info(f"Skip manual exit notification due to empty local position: operateType={op.otype}")
+            return None
+        quantity = abs(position_before)
+        amount = quantity * price
+        self.manual_cash = cash_before + amount
+        self.manual_position = 0.0
+        return ManualTradeNotificationEvent(
+            market=self.tcfg.symbol_interval.symbol(),
+            strategy=self.tcfg.strategy_name(),
+            task_id=self.tcfg.id,
+            mode=MANUAL_NOTIFY_MODE,
+            action="EXIT",
+            side=op.otype.name,
+            signal_time=int(op.dtime),
+            signal_price=price,
+            suggested_amount=amount,
+            suggested_quantity=quantity,
+            trigger_reason=getattr(op, "trigger_reason", "signal_exit"),
+            local_state=ManualTradeAccountState(cash_before, self.manual_cash, position_before, 0.0),
+            stop_loss=getattr(op, "stop_loss", None),
+            take_profit=getattr(op, "take_profit", None),
+            risk_reward_ratio=getattr(op, "risk_reward_ratio", None),
+            **self._manual_event_common_kwargs(op),
+        )
 
     def _outcome(
         self,
@@ -436,11 +641,12 @@ class AutoExecutionRouter:
                         margin_borrow_control=precheck,
                     )
                 )
-            outcome = self._submit_margin(
+            outcome = self._submit_order(
                 op,
                 notional,
                 quantity,
                 OperateType.BUY,
+                margin=True,
                 requested_notional=requested_notional,
                 requested_quantity=requested_quantity,
             )
@@ -458,11 +664,12 @@ class AutoExecutionRouter:
                     effective_quantity=quantity,
                 )
             )
-        outcome = self._submit_spot(
+        outcome = self._submit_order(
             op,
             notional,
             quantity,
             op.otype,
+            margin=False,
             requested_notional=requested_notional,
             requested_quantity=requested_quantity,
         )
@@ -490,8 +697,8 @@ class AutoExecutionRouter:
                 )
             )
         if self._uses_margin_for_long_path():
-            return self._submit_margin(op, notional, base_balance, OperateType.SELL)
-        outcome = self._submit_spot(op, notional, base_balance, OperateType.SELL)
+            return self._submit_order(op, notional, base_balance, OperateType.SELL, margin=True)
+        outcome = self._submit_order(op, notional, base_balance, OperateType.SELL, margin=False)
         if outcome.status == AutoExecutionStatus.SUBMITTED and self.real_long_position > 0:
             self.real_long_position = 0.0
         return outcome
@@ -554,11 +761,12 @@ class AutoExecutionRouter:
                     margin_borrow_control=precheck,
                 )
             )
-        outcome = self._submit_margin(
+        outcome = self._submit_order(
             op,
             notional,
             quantity,
             OperateType.SHORT,
+            margin=True,
             requested_notional=requested_notional,
             requested_quantity=requested_quantity,
         )
@@ -608,7 +816,7 @@ class AutoExecutionRouter:
                     effective_quantity=quantity,
                 )
             )
-        outcome = self._submit_margin(op, notional, quantity, OperateType.CLOSE)
+        outcome = self._submit_order(op, notional, quantity, OperateType.CLOSE, margin=True)
         if outcome.status == AutoExecutionStatus.SUBMITTED:
             self.real_short_position = 0.0
         return outcome
@@ -790,170 +998,24 @@ class AutoExecutionRouter:
             f"policy={precheck.get('policy')}"
         )
 
-    def _submit_spot(
+    def _submit_order(
         self,
         op,
         notional: float,
         quantity: float,
         order_type: OperateType,
         *,
-        requested_notional: float | None = None,
-        requested_quantity: float | None = None,
-    ) -> AutoExecutionOutcome:
-        requested_notional = float(notional if requested_notional is None else requested_notional)
-        requested_quantity = float(quantity if requested_quantity is None else requested_quantity)
-        side = ExecutionSide.LONG
-        try:
-            selection = select_order_semantics(
-                op,
-                symbol=self.market,
-                side=side,
-                quantity=quantity,
-                notional=notional,
-                allow_native_protection=True,
-            )
-        except OrderSemanticsError as exc:
-            return self._record(
-                self._outcome(
-                    op,
-                    AutoExecutionStatus.SKIPPED,
-                    reason=str(exc),
-                    requested_notional=requested_notional,
-                    requested_quantity=requested_quantity,
-                    effective_notional=notional,
-                    effective_quantity=quantity,
-                )
-            )
-        if selection.order is None:
-            return self._record(self._outcome(op, AutoExecutionStatus.SKIPPED, reason="unsupported_operation"))
-
-        try:
-            gateway = BinanceLiveExecutionGateway(self.exchange, staged_execution_mode=self.mode)
-            if order_type in (OperateType.BUY, OperateType.LONG):
-                result = gateway.open_position(selection.order)
-            else:
-                result = gateway.close_position(selection.order)
-            protection_result = gateway.place_protection(selection.risk) if result.accepted and selection.risk is not None else None
-            fail_safe_result = self._fail_safe_close(gateway, selection.order, protection_result)
-        except Exception as exc:
-            return self._record(
-                self._outcome(
-                    op,
-                    AutoExecutionStatus.FAILED,
-                    reason=str(exc),
-                    requested_notional=requested_notional,
-                    requested_quantity=requested_quantity,
-                    effective_notional=notional,
-                    effective_quantity=quantity,
-                )
-            )
-        status = AutoExecutionStatus.SUBMITTED if result.accepted else AutoExecutionStatus.FAILED
-        reason = None if result.accepted else str(result.reason or "exchange_order_failed")
-        events = [event.to_dict() for event in result.events]
-        records = [self._state_record_for_order(selection.order, result, op)]
-        native_protection = False
-        exchange_order = {"orderId": result.gateway_order_id} if result.gateway_order_id is not None else None
-        if protection_result is not None:
-            events.extend(event.to_dict() for event in protection_result.events)
-            records.append(self._state_record_for_risk(selection.risk, protection_result, op))
-            if protection_result.accepted:
-                native_protection = True
-                self._remember_protection_order(selection.risk, protection_result)
-            else:
-                status = AutoExecutionStatus.FAILED
-                reason = str(protection_result.reason or "protection_failed")
-                if fail_safe_result is not None:
-                    events.extend(event.to_dict() for event in fail_safe_result.events)
-                    records.append(self._state_record_for_order(self._close_intent_for_fail_safe(selection.order), fail_safe_result, op))
-                    reason = f"{reason}; fail_safe_close_submitted"
-        return self._record(
-            self._outcome(
-                op,
-                status,
-                reason=reason,
-                requested_notional=requested_notional,
-                requested_quantity=requested_quantity,
-                effective_notional=notional,
-                effective_quantity=quantity,
-                exchange_order=exchange_order,
-                execution_events=events,
-                execution_state_records=records,
-            )
-            .with_native_protection(native_protection)
-        )
-
-    def _route_real_risk_update(self, op, price: float) -> AutoExecutionOutcome:
-        side = self._risk_update_side(op)
-        if side == ExecutionSide.SHORT:
-            if not self.requires_short_capability or not self._margin_ready():
-                return self._record(self._outcome(op, AutoExecutionStatus.SKIPPED, reason="margin_not_ready"))
-            quantity = self.real_short_position
-            empty_reason = "unknown_short_exposure"
-        else:
-            quantity = self.real_long_position if self.real_long_position > 0 else self._balance(self.tcfg.symbol_interval.sy.base)
-            empty_reason = "empty_or_unknown_position"
-        if quantity <= 0:
-            return self._record(self._outcome(op, AutoExecutionStatus.SKIPPED, reason=empty_reason))
-        notional = quantity * price
-        try:
-            self._attach_known_protection_order_id(op)
-            selection = select_order_semantics(op, symbol=self.market, side=side, quantity=quantity, notional=notional)
-            if selection.risk is None:
-                return self._record(self._outcome(op, AutoExecutionStatus.SKIPPED, reason="missing_protection_intent"))
-            result = BinanceLiveExecutionGateway(self.exchange, staged_execution_mode=self.mode).replace_protection(selection.risk)
-        except OrderSemanticsError as exc:
-            return self._record(
-                self._outcome(
-                    op,
-                    AutoExecutionStatus.SKIPPED,
-                    reason=str(exc),
-                    requested_notional=notional,
-                    requested_quantity=quantity,
-                    effective_notional=notional,
-                    effective_quantity=quantity,
-                )
-            )
-        except Exception as exc:
-            return self._record(
-                self._outcome(
-                    op,
-                    AutoExecutionStatus.FAILED,
-                    reason=str(exc),
-                    requested_notional=notional,
-                    requested_quantity=quantity,
-                    effective_notional=notional,
-                    effective_quantity=quantity,
-                )
-            )
-        return self._record(
-            self._outcome(
-                op,
-                AutoExecutionStatus.SUBMITTED if result.accepted else AutoExecutionStatus.FAILED,
-                reason=None if result.accepted else str(result.reason or "protection_failed"),
-                requested_notional=notional,
-                requested_quantity=quantity,
-                effective_notional=notional,
-                effective_quantity=quantity,
-                exchange_order={"orderId": result.gateway_order_id} if result.gateway_order_id is not None else None,
-                execution_events=[event.to_dict() for event in result.events],
-                execution_state_records=[self._state_record_for_risk(selection.risk, result, op)],
-            ).with_native_protection(result.accepted)
-        )
-
-    def _submit_margin(
-        self,
-        op,
-        notional: float,
-        quantity: float,
-        order_type: OperateType,
-        *,
+        margin: bool,
         requested_notional: float | None = None,
         requested_quantity: float | None = None,
     ) -> AutoExecutionOutcome:
         requested_notional = float(notional if requested_notional is None else requested_notional)
         requested_quantity = float(quantity if requested_quantity is None else requested_quantity)
         try:
-            execution_side = ExecutionSide.LONG if order_type in (OperateType.BUY, OperateType.SELL) else ExecutionSide.SHORT
+            if margin:
+                execution_side = ExecutionSide.LONG if order_type in (OperateType.BUY, OperateType.SELL) else ExecutionSide.SHORT
+            else:
+                execution_side = ExecutionSide.LONG
             selection = select_order_semantics(
                 op,
                 symbol=self.market,
@@ -969,7 +1031,7 @@ class AutoExecutionRouter:
                 result = gateway.open_position(selection.order)
             else:
                 result = gateway.close_position(selection.order)
-            if order_type in (OperateType.BUY, OperateType.SHORT) and self._is_margin_borrow_block_result(result):
+            if margin and order_type in (OperateType.BUY, OperateType.SHORT) and self._is_margin_borrow_block_result(result):
                 return self._handle_margin_borrow_block(
                     op=op,
                     notional=notional,
@@ -1037,6 +1099,64 @@ class AutoExecutionRouter:
                 execution_events=events,
                 execution_state_records=records,
             ).with_native_protection(native_protection)
+        )
+
+    def _route_real_risk_update(self, op, price: float) -> AutoExecutionOutcome:
+        side = self._risk_update_side(op)
+        if side == ExecutionSide.SHORT:
+            if not self.requires_short_capability or not self._margin_ready():
+                return self._record(self._outcome(op, AutoExecutionStatus.SKIPPED, reason="margin_not_ready"))
+            quantity = self.real_short_position
+            empty_reason = "unknown_short_exposure"
+        else:
+            quantity = self.real_long_position if self.real_long_position > 0 else self._balance(self.tcfg.symbol_interval.sy.base)
+            empty_reason = "empty_or_unknown_position"
+        if quantity <= 0:
+            return self._record(self._outcome(op, AutoExecutionStatus.SKIPPED, reason=empty_reason))
+        notional = quantity * price
+        try:
+            self._attach_known_protection_order_id(op)
+            selection = select_order_semantics(op, symbol=self.market, side=side, quantity=quantity, notional=notional)
+            if selection.risk is None:
+                return self._record(self._outcome(op, AutoExecutionStatus.SKIPPED, reason="missing_protection_intent"))
+            result = BinanceLiveExecutionGateway(self.exchange, staged_execution_mode=self.mode).replace_protection(selection.risk)
+        except OrderSemanticsError as exc:
+            return self._record(
+                self._outcome(
+                    op,
+                    AutoExecutionStatus.SKIPPED,
+                    reason=str(exc),
+                    requested_notional=notional,
+                    requested_quantity=quantity,
+                    effective_notional=notional,
+                    effective_quantity=quantity,
+                )
+            )
+        except Exception as exc:
+            return self._record(
+                self._outcome(
+                    op,
+                    AutoExecutionStatus.FAILED,
+                    reason=str(exc),
+                    requested_notional=notional,
+                    requested_quantity=quantity,
+                    effective_notional=notional,
+                    effective_quantity=quantity,
+                )
+            )
+        return self._record(
+            self._outcome(
+                op,
+                AutoExecutionStatus.SUBMITTED if result.accepted else AutoExecutionStatus.FAILED,
+                reason=None if result.accepted else str(result.reason or "protection_failed"),
+                requested_notional=notional,
+                requested_quantity=quantity,
+                effective_notional=notional,
+                effective_quantity=quantity,
+                exchange_order={"orderId": result.gateway_order_id} if result.gateway_order_id is not None else None,
+                execution_events=[event.to_dict() for event in result.events],
+                execution_state_records=[self._state_record_for_risk(selection.risk, result, op)],
+            ).with_native_protection(result.accepted)
         )
 
     def _handle_margin_borrow_block(
