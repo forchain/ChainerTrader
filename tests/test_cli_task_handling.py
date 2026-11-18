@@ -157,10 +157,10 @@ def test_app_start_restores_running_tasks_from_database(monkeypatch):
 
     recovered_calls = []
 
-    def _fake_process(msgs):
+    async def _fake_handler(msgs, quit):
         app.queue = asyncio.Queue()
         app._mark_handler_ready()
-        asyncio.run(app._recover_running_tasks_in_background())
+        await app._recover_running_tasks_in_background()
         events.append(("process", len(msgs)))
 
     app.db_manager = _FakeDbManager()
@@ -172,7 +172,7 @@ def test_app_start_restores_running_tasks_from_database(monkeypatch):
         start=lambda *_args, **_kwargs: None,
         recover_task=_recover_task,
     )
-    app.process = _fake_process
+    app.handler = _fake_handler
 
     monkeypatch.setattr("trader.app.app.parse_task_config", lambda _cfg: [recovered])
 
@@ -222,10 +222,10 @@ def test_app_start_recovers_live_task_state_persisted_by_current_base_task():
         async def get_startup_admin(self):
             return SimpleNamespace(id=1)
 
-    def _fake_process(msgs):
+    async def _fake_handler(msgs, quit):
         app.queue = asyncio.Queue()
         app._mark_handler_ready()
-        asyncio.run(app._recover_running_tasks_in_background())
+        await app._recover_running_tasks_in_background()
         events.append(("process", len(msgs)))
 
     async def _recover_task(taskc, queue):
@@ -241,7 +241,7 @@ def test_app_start_recovers_live_task_state_persisted_by_current_base_task():
 
     app.db_manager = _FakeDbManager()
     app.task_manager = SimpleNamespace(start=lambda *_args, **_kwargs: None, recover_task=_recover_task)
-    app.process = _fake_process
+    app.handler = _fake_handler
 
     assert app.start() is True
     assert "db.get_all_tasks" in events
@@ -274,10 +274,10 @@ def test_app_start_skips_startup_task_when_matching_running_task_will_recover(mo
         async def get_startup_admin(self):
             return SimpleNamespace(id=1)
 
-    def _fake_process(msgs):
+    async def _fake_handler(msgs, quit):
         app.queue = asyncio.Queue()
         app._mark_handler_ready()
-        asyncio.run(app._recover_running_tasks_in_background())
+        await app._recover_running_tasks_in_background()
         events.append(("process", len(msgs)))
 
     recovered_calls = []
@@ -290,7 +290,7 @@ def test_app_start_skips_startup_task_when_matching_running_task_will_recover(mo
         start=lambda taskcs: new_add_tasks_msg(taskcs) if taskcs else None,
         recover_task=_recover_task,
     )
-    app.process = _fake_process
+    app.handler = _fake_handler
 
     assert app.start() is True
     assert ("process", 0) in events
@@ -338,7 +338,11 @@ def test_app_start_skips_all_startup_tasks_when_any_running_task_will_recover():
         start=lambda taskcs: new_add_tasks_msg(taskcs) if taskcs else None,
         recover_task=lambda *_args, **_kwargs: None,
     )
-    app.process = lambda msgs: events.append(("process", len(msgs)))
+
+    async def _fake_handler(msgs, quit):
+        events.append(("process", len(msgs)))
+
+    app.handler = _fake_handler
 
     assert app.start() is True
     assert ("process", 0) in events
@@ -417,7 +421,11 @@ def test_app_start_skips_startup_task_when_migrated_persisted_row_matches_startu
         start=lambda taskcs: new_add_tasks_msg(taskcs) if taskcs else None,
         recover_task=lambda *_args, **_kwargs: None,
     )
-    app.process = lambda msgs: events.append(("process", len(msgs)))
+
+    async def _fake_handler(msgs, quit):
+        events.append(("process", len(msgs)))
+
+    app.handler = _fake_handler
 
     assert app.start() is True
     assert ("process", 0) in events
@@ -462,7 +470,11 @@ def test_app_start_ignores_recovery_only_live_data_mode_when_deduping_startup_ta
         start=lambda taskcs: new_add_tasks_msg(taskcs) if taskcs else None,
         recover_task=lambda *_args, **_kwargs: None,
     )
-    app.process = lambda msgs: events.append(("process", len(msgs)))
+
+    async def _fake_handler(msgs, quit):
+        events.append(("process", len(msgs)))
+
+    app.handler = _fake_handler
 
     assert app.start() is True
     assert ("process", 0) in events
