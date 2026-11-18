@@ -5,6 +5,8 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
+from trader.utils.operate import Operate, OperateType
+
 ORDER_ROLE_KEY = "chainer_role"
 ORDER_ROLE_ENTRY = "entry"
 ORDER_ROLE_EXIT = "exit"
@@ -131,8 +133,215 @@ class TradeRegistry:
             self.active_trade = None
 
 
+class EntryConfirmation(str, Enum):
+    PENDING = "pending"
+    CONFIRMED = "confirmed"
+    CANCELLED_OPPOSING_SIGNAL = "cancelled_opposing_signal"
+    CANCELLED_EQUITY = "cancelled_equity"
+    CANCELLED_FAILED = "cancelled_failed"
+
+
+class ExitConfirmation(str, Enum):
+    PENDING = "pending"
+    CONFIRMED = "confirmed"
+    FAILED = "failed"
+
+
+@dataclass(frozen=True)
+class TrailingDecision:
+    peak_confirmed: bool
+    adjustment: Any = None
+    stop_broken: bool = False
+
+
+class OperateFactory:
+    """Typed factory for framework Operate events; no ad-hoc attribute mutation at call sites."""
+
+    @staticmethod
+    def _enrich(op: Operate, ctx: TradeContext | None) -> Operate:
+        if ctx is None:
+            return op
+        stop_price = ctx.stop_price if ctx.stop_price is not None else ctx.initial_stop_price
+        if stop_price is not None:
+            op.stop_loss = float(stop_price)
+        if ctx.tp_price is not None:
+            op.take_profit = float(ctx.tp_price)
+        op.risk_reward_ratio = float(ctx.risk_reward_ratio)
+        signal_metadata = dict(ctx.signal_metadata or {})
+        if signal_metadata:
+            op.signal_metadata = signal_metadata
+            signal_event_id = signal_metadata.get("signal_event_id") or signal_metadata.get("event_id")
+            if signal_event_id:
+                op.signal_event_id = signal_event_id
+        op.framework_trade = {
+            "trade_id": ctx.trade_id,
+            "direction": ctx.direction,
+            "initial_stop_price": ctx.initial_stop_price,
+            "stop_price": ctx.stop_price,
+            "take_profit": ctx.tp_price,
+            "risk_reward_ratio": ctx.risk_reward_ratio,
+            "breakeven_step": ctx.breakeven_step,
+            "exit_reason_code": ctx.exit_reason_code,
+            "exit_reason_label": ctx.exit_reason_label,
+            "exit_reason_detail": ctx.exit_reason_detail,
+            "replacement_trade_id": ctx.replacement_trade_id,
+            "stop_multiple_r": ctx.stop_multiple_r,
+            "exit_risk_reward_ratio": ctx.exit_risk_reward_ratio,
+        }
+        return op
+
+    @classmethod
+    def entry(cls, op_type: OperateType, dtime: int, price: float, ctx: TradeContext | None = None) -> Operate:
+        return cls._enrich(Operate(op_type, dtime, float(price)), ctx)
+
+    @classmethod
+    def exit(cls, op_type: OperateType, dtime: int, price: float, ctx: TradeContext | None = None) -> Operate:
+        return cls._enrich(Operate(op_type, dtime, float(price)), ctx)
+
+    @classmethod
+    def risk_update_breakeven(cls, ctx: TradeContext, *, dtime: int, old_stop: float, new_stop: float) -> Operate:
+        op = cls._enrich(Operate(OperateType.RISK_UPDATE, int(dtime), float(new_stop)), ctx)
+        op.trigger_reason = "breakeven_move"
+        op.breakeven_old_stop = float(old_stop)
+        op.breakeven_new_stop = float(new_stop)
+        op.breakeven_step = int(ctx.breakeven_step)
+        op.framework_trade["breakeven_step"] = int(ctx.breakeven_step)
+        return op
+
+    @classmethod
+    def risk_update_trailing(cls, ctx: TradeContext, *, dtime: int, old_stop: float, new_stop: float) -> Operate:
+        op = cls._enrich(Operate(OperateType.RISK_UPDATE, int(dtime), float(new_stop)), ctx)
+        op.trigger_reason = "trailing_stop_move"
+        op.framework_trade.update(
+            {
+                "trailing_stop_ratio": ctx.trailing_stop_ratio,
+                "trailing_best_price": ctx.trailing_best_price,
+                "trailing_stop_price": ctx.trailing_stop_price,
+                "trailing_update_count": ctx.trailing_update_count,
+                "old_stop_price": float(old_stop),
+            }
+        )
+        return op
+
+
 class TradeLifecycleEngine:
     terminal_statuses = {TradeStatus.CLOSED, TradeStatus.CANCELLED}
+
+    def __init__(self, registry: TradeRegistry | None = None, signal_router: Any = None):
+        self.registry = registry or TradeRegistry()
+        if signal_router is None:
+            from trader.strategy.signal_router import SignalRouter
+
+            signal_router = SignalRouter()
+        self.signal_router = signal_router
+        self.pending_replacement: dict[str, Any] | None = None
+
+    def allocate_trade_id(self) -> int:
+        return self.registry.allocate_trade_id()
+
+    def register(self, ctx: TradeContext) -> None:
+        self.registry.register(ctx)
+
+    def resolve(self, trade_ref: int | str | None) -> TradeContext | None:
+        return self.registry.resolve(trade_ref)
+
+    def set_active_trade(self, ctx: TradeContext | None) -> None:
+        self.registry.active_trade = ctx
+
+    def route_signals(self, snapshot: SignalSnapshot, state: Any) -> list[Any]:
+        return self.signal_router.route(snapshot, state)
+
+    def entry_confirmation(self, ctx: TradeContext, *, close: float, opposing_signal: bool, can_open: bool) -> EntryConfirmation:
+        if ctx.status != TradeStatus.PENDING_ENTRY_CONFIRM:
+            return EntryConfirmation.PENDING
+        key_high = float(ctx.key_kline_ref.high)
+        key_low = float(ctx.key_kline_ref.low)
+        if opposing_signal:
+            self.cancel_entry(ctx, "entry_pending_exit_signal")
+            self.registry.banned_entry_key_bar_index.add(int(ctx.entry_key_bar_index))
+            return EntryConfirmation.CANCELLED_OPPOSING_SIGNAL
+        if not can_open:
+            self.cancel_entry(ctx, "entry_equity_below_min")
+            self.registry.banned_entry_key_bar_index.add(int(ctx.entry_key_bar_index))
+            return EntryConfirmation.CANCELLED_EQUITY
+        confirm_ok = close > key_high if ctx.direction == "LONG" else close < key_low
+        confirm_fail = close < key_low if ctx.direction == "LONG" else close > key_high
+        if confirm_ok:
+            return EntryConfirmation.CONFIRMED
+        if confirm_fail:
+            self.cancel_entry(ctx, "entry_confirm_failed")
+            self.registry.banned_entry_key_bar_index.add(int(ctx.entry_key_bar_index))
+            return EntryConfirmation.CANCELLED_FAILED
+        return EntryConfirmation.PENDING
+
+    def exit_confirmation(self, ctx: TradeContext, *, close: float) -> ExitConfirmation:
+        if ctx.status != TradeStatus.PENDING_EXIT_CONFIRM or ctx.exit_key_kline_ref is None:
+            return ExitConfirmation.PENDING
+        key_low = float(ctx.exit_key_kline_ref.low)
+        key_high = float(ctx.exit_key_kline_ref.high)
+        confirm_ok = close < key_low if ctx.direction == "LONG" else close > key_high
+        confirm_fail = close > key_high if ctx.direction == "LONG" else close < key_low
+        if confirm_ok:
+            return ExitConfirmation.CONFIRMED
+        if confirm_fail:
+            self.mark_exit_confirm_failed(ctx)
+            if ctx.exit_key_bar_index is not None:
+                self.registry.banned_exit_key_bar_index.add(int(ctx.exit_key_bar_index))
+            return ExitConfirmation.FAILED
+        return ExitConfirmation.PENDING
+
+    def advance_breakeven(self, ctx: TradeContext, *, close_price: float, risk_engine: Any):
+        adjustment = risk_engine.breakeven_adjustment(ctx, close_price=close_price)
+        if adjustment is None:
+            return None
+        ctx.stop_price = float(adjustment.new_stop)
+        ctx.breakeven_step = int(adjustment.step)
+        ctx.stop_source = "breakeven"
+        return adjustment
+
+    def advance_trailing(self, ctx: TradeContext, *, high: float, low: float, close: float, risk_engine: Any) -> TrailingDecision:
+        observed_price = float(high) if ctx.direction == "LONG" else float(low)
+        if ctx.trailing_best_price is None:
+            ctx.trailing_best_price = observed_price
+        elif ctx.direction == "LONG":
+            if observed_price > float(ctx.trailing_best_price):
+                ctx.trailing_best_price = observed_price
+                ctx.trailing_peak_confirmed = False
+            elif (
+                observed_price < float(ctx.trailing_best_price)
+                and float(ctx.trailing_best_price) > float(ctx.entry_price)
+                and not ctx.trailing_peak_confirmed
+            ):
+                ctx.trailing_peak_confirmed = True
+        else:
+            if observed_price < float(ctx.trailing_best_price):
+                ctx.trailing_best_price = observed_price
+                ctx.trailing_peak_confirmed = False
+            elif (
+                observed_price > float(ctx.trailing_best_price)
+                and float(ctx.trailing_best_price) < float(ctx.entry_price)
+                and not ctx.trailing_peak_confirmed
+            ):
+                ctx.trailing_peak_confirmed = True
+
+        adjustment = None
+        if ctx.trailing_peak_confirmed:
+            adjustment = risk_engine.trailing_stop_adjustment(
+                ctx,
+                best_price=float(ctx.trailing_best_price),
+                ratio=float(ctx.trailing_stop_ratio),
+            )
+        stop_broken = False
+        if adjustment is not None:
+            ctx.stop_price = float(adjustment.new_stop)
+            ctx.trailing_stop_price = float(adjustment.new_stop)
+            ctx.trailing_update_count += 1
+            ctx.stop_source = "trailing"
+        elif ctx.trailing_stop_price is not None:
+            stop_broken = (ctx.direction == "LONG" and float(close) < float(ctx.trailing_stop_price)) or (
+                ctx.direction == "SHORT" and close > float(ctx.trailing_stop_price)
+            )
+        return TrailingDecision(peak_confirmed=ctx.trailing_peak_confirmed, adjustment=adjustment, stop_broken=stop_broken)
 
     def create_trade(
         self,

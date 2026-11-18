@@ -1,10 +1,12 @@
 from asyncio import Queue
+from datetime import datetime
 
 from trader.common.config import Config
 from trader.common.logger import Logger
 from trader.database.manager import DatabaseManager
 from trader.exchange.binance.exchange import BinanceExchange
 from trader.task.base_task import BaseTask
+from trader.task.dataset_resolver import DatasetResolver
 from trader.task.task_config import TaskConfig
 from trader.utils.symbol_interval import add_time_duration
 
@@ -42,25 +44,20 @@ class CheckKlinesNumTask(BaseTask):
             self.log.error(f"{self.name()} no need check")
             return
 
-        count = 0
         total = self.tcfg.limit
-        next_time = latest_kl.open_time
-        while True:
-            if self.quit.is_set():
-                self.log.info(f"{self.name()} exit. Process:{count}/{total}")
-                break
-            next_time = add_time_duration(next_time, self.tcfg.symbol_interval.interval, -1)
-            if next_time > first_kl.open_time:
-                kl = await self.db_manager.kline.get_kline(self.tcfg.symbol_interval.name(), next_time)
-                if kl is None:
-                    self.log.warning(f"{self.name()} no kline: open_time={next_time}. Process:{count}/{total}")
-                    break
-                else:
-                    count += 1
-                    if total > 0 and count >= total:
-                        self.log.info(f"{self.name()} is completed. Process:{count}/{total}")
-                        break
-
-            else:
-                self.log.info(f"{self.name()} is all completed. Process:{count}/{total}")
-                break
+        if total > 0:
+            range_start = add_time_duration(latest_kl.open_time, self.tcfg.symbol_interval.interval, -(total - 1))
+        else:
+            range_start = first_kl.open_time
+        range_start = max(range_start, first_kl.open_time)
+        report = await DatasetResolver(self.db_manager, self.exchange, self.log).inspect_coverage(
+            self.tcfg.symbol_interval,
+            range_start,
+            latest_kl.open_time,
+        )
+        for missing_start, missing_end in report.missing_ranges:
+            self.log.warning(
+                f"{self.name()} no kline range: "
+                f"{datetime.fromtimestamp(missing_start)}..{datetime.fromtimestamp(missing_end)}"
+            )
+        self.log.info(f"{self.name()} is completed. Process:{report.present_count}/{report.expected_count}")

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import csv
+import inspect
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -13,6 +14,10 @@ from trader.utils.kline import Kline
 from trader.utils.symbol_interval import SymbolInterval, get_time_duration
 
 RangeDownloader = Callable[..., Awaitable[bool]]
+
+
+async def _maybe_await(value):
+    return await value if inspect.isawaitable(value) else value
 
 
 @dataclass(frozen=True)
@@ -39,6 +44,26 @@ class DatasetPreparationResult:
     dataset_ref: DatasetRef | None = None
     failure: DatasetPreparationFailure | None = None
     cache_hit: bool = False
+
+
+@dataclass(frozen=True)
+class CoverageReport:
+    symbol_interval: str
+    start_time: int
+    end_time: int
+    expected_count: int
+    present_count: int
+    missing_ranges: list[tuple[int, int]]
+    first_open_time: int | None = None
+    latest_open_time: int | None = None
+
+    @property
+    def missing_count(self) -> int:
+        return int(self.expected_count) - int(self.present_count)
+
+    @property
+    def complete(self) -> bool:
+        return not self.missing_ranges
 
 
 class DatasetResolver:
@@ -87,6 +112,115 @@ class DatasetResolver:
             f"status={status} reason={reason} cache_hit={cache_hit} elapsed={elapsed_seconds:.3f}s"
         )
 
+    async def sync_range(
+        self,
+        symbol_interval: SymbolInterval,
+        start_time: int,
+        end_time: int,
+        allow_download: bool = True,
+        max_download_ranges: int | None = None,
+        allow_incomplete_coverage: bool = False,
+        force_sync: bool = False,
+    ) -> DatasetPreparationResult:
+        """Synchronize one kline range: inspect gaps, download them, and cache the result."""
+        return await self.prepare(
+            symbol_interval,
+            start_time,
+            end_time,
+            allow_download=allow_download,
+            max_download_ranges=max_download_ranges,
+            allow_incomplete_coverage=allow_incomplete_coverage,
+            force_sync=force_sync,
+        )
+
+    async def inspect_coverage(
+        self,
+        symbol_interval: SymbolInterval,
+        start_time: int = 0,
+        end_time: int = 0,
+    ) -> CoverageReport:
+        """Inspect coverage with one range query; never issue per-candle lookups."""
+        klines = list(await _maybe_await(self.db_manager.kline.get_klines(symbol_interval.name(), start_time, end_time)) or [])
+        first_open_time = klines[0].open_time if klines else None
+        latest_open_time = klines[-1].open_time if klines else None
+        effective_start = start_time or (first_open_time or 0)
+        effective_end = end_time or (latest_open_time or 0)
+        if not klines:
+            step = int(get_time_duration(symbol_interval.interval)) or 1
+            expected_count = max(0, (effective_end - effective_start) // step + 1) if effective_start <= effective_end else 0
+            return CoverageReport(
+                symbol_interval=symbol_interval.name(),
+                start_time=effective_start,
+                end_time=effective_end,
+                expected_count=expected_count,
+                present_count=0,
+                missing_ranges=[(effective_start, effective_end)] if effective_start <= effective_end else [],
+            )
+        missing_ranges = self._detect_missing_ranges(
+            symbol_interval,
+            effective_start,
+            effective_end,
+            klines,
+            first_available_open_time=first_open_time,
+        )
+        step = int(get_time_duration(symbol_interval.interval)) or 1
+        aligned = self._aligned_expected_range(effective_start, effective_end, step, first_open_time)
+        aligned_start, aligned_end = aligned if aligned is not None else (effective_start, effective_end)
+        expected_count = max(0, (aligned_end - aligned_start) // step + 1) if aligned_start <= aligned_end else 0
+        present_count = sum(1 for kl in klines if aligned_start <= kl.open_time <= aligned_end)
+        return CoverageReport(
+            symbol_interval=symbol_interval.name(),
+            start_time=effective_start,
+            end_time=effective_end,
+            expected_count=expected_count,
+            present_count=present_count,
+            missing_ranges=missing_ranges,
+            first_open_time=first_open_time,
+            latest_open_time=latest_open_time,
+        )
+
+    async def load_backtest_feed(
+        self,
+        dataset_ref: DatasetRef,
+        *,
+        data_path: str | Path | None = None,
+        data_start_time: int | None = None,
+        use_data_range: bool = False,
+    ):
+        """Build a Backtrader data feed for a resolved dataset (CSV cache or DB)."""
+        if dataset_ref.source_type == "csv" or data_path is not None or dataset_ref.path is not None:
+            return self.build_csv_feed(
+                data_path or dataset_ref.path,
+                data_start_time=data_start_time if data_start_time is not None else dataset_ref.start_time,
+                end_time=dataset_ref.end_time,
+                use_range=use_data_range,
+            )
+        from trader.utils.symbol_interval import Interval
+
+        collection_name = SymbolInterval(dataset_ref.symbol, Interval(dataset_ref.interval)).name()
+        start_time = data_start_time if data_start_time is not None else dataset_ref.start_time
+        klines = list(await _maybe_await(self.db_manager.kline.get_klines(collection_name, start_time, dataset_ref.end_time)) or [])
+        if not klines:
+            raise ValueError(f"no kline data available for dataset={dataset_ref.dataset_key}")
+        from trader.exchange.binance.data import BinanceData
+
+        return BinanceData(klines)
+
+    @staticmethod
+    def build_csv_feed(csv_path: str | Path | None, *, data_start_time: int = 0, end_time: int = 0, use_range: bool = False):
+        from trader.exchange.binance.csvdata import BinanceCSVData
+
+        if csv_path is None:
+            raise ValueError("missing CSV path for backtest dataset")
+        if not use_range or (data_start_time <= 0 and end_time <= 0):
+            return BinanceCSVData(dataname=str(csv_path))
+        kwargs = {}
+        if data_start_time > 0:
+            kwargs["fromdate"] = datetime.fromtimestamp(data_start_time)
+        if end_time > 0:
+            kwargs["todate"] = datetime.fromtimestamp(end_time)
+        return BinanceCSVData(dataname=str(csv_path), **kwargs)
+
     async def prepare(
         self,
         symbol_interval: SymbolInterval,
@@ -95,6 +229,7 @@ class DatasetResolver:
         allow_download: bool = True,
         max_download_ranges: int | None = None,
         allow_incomplete_coverage: bool = False,
+        force_sync: bool = False,
     ) -> DatasetPreparationResult:
         started_at = time.perf_counter()
         cache_start, cache_end = self._cache_range(symbol_interval, start_time, end_time)
@@ -123,7 +258,7 @@ class DatasetResolver:
             )
             cache_start = first_available_open_time
         dataset_key = self._build_dataset_key(symbol_interval, cache_start, cache_end)
-        if dataset_key in self._prepared:
+        if dataset_key in self._prepared and not force_sync:
             result = self._prepared[dataset_key]
             self._log_prepare_result(symbol_interval, start_time, end_time, result, time.perf_counter() - started_at)
             return result
@@ -141,8 +276,10 @@ class DatasetResolver:
             return result
 
         dataset_ref = self._build_dataset_ref(symbol_interval, cache_start, cache_end)
-        klines = list(await self.db_manager.kline.get_klines(symbol_interval.name(), cache_start, cache_end) or [])
-        if supports_cached_range:
+        klines = list(await _maybe_await(self.db_manager.kline.get_klines(symbol_interval.name(), cache_start, cache_end)) or [])
+        if force_sync:
+            missing_ranges = [(cache_start, cache_end)]
+        elif supports_cached_range:
             missing_ranges = self._detect_uncached_ranges(
                 symbol_interval,
                 cache_start,
@@ -219,7 +356,7 @@ class DatasetResolver:
                     return result
 
             if did_download:
-                klines = list(await self.db_manager.kline.get_klines(symbol_interval.name(), cache_start, cache_end) or [])
+                klines = list(await _maybe_await(self.db_manager.kline.get_klines(symbol_interval.name(), cache_start, cache_end)) or [])
                 first_available_open_time = await self._get_first_available_open_time(symbol_interval)
                 if supports_cached_range:
                     if klines:

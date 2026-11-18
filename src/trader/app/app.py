@@ -1,5 +1,4 @@
 import asyncio
-import json
 import os
 import signal
 from asyncio import Event
@@ -18,11 +17,9 @@ from trader.exchange.exchange_type import ExchangeType
 from trader.notify.notify_manager import NotifyManager
 from trader.statistics.statistics import Statistics
 from trader.task.live_startup_self_check import evaluate_live_startup_self_check, infer_required_margin_mode
-from trader.task.persisted_live_config_migration import (
-    assert_persisted_task_config_json_is_migrated,
-    migrate_persisted_live_task_configs,
-)
-from trader.task.task_config import TaskConfig, apply_persisted_task_runtime_metadata, parse_task_config
+from trader.task.persisted_live_config_migration import migrate_persisted_live_task_configs
+from trader.task.task_config import TaskConfig
+from trader.task.task_config_codec import TaskConfigCodec
 from trader.task.task_manager import TaskManager
 
 RECOVERY_TASK_CONCURRENCY = 10
@@ -43,7 +40,7 @@ class App:
             self.db_manager = DatabaseManager(cfg, self.logger)
 
         if self.cfg.tasks:
-            self.tasks_cfg = parse_task_config(self.cfg.tasks)
+            self.tasks_cfg = TaskConfigCodec.from_input(self.cfg.tasks)
 
         if self.cfg.exchange:
             ex_cfg = parse_exchange_config(self.cfg.exchange)
@@ -186,32 +183,15 @@ class App:
         for state in states:
             if getattr(getattr(state, "state", None), "name", None) != "RUNNING":
                 continue
-            saved_config = {}
             try:
-                config_json = getattr(state, "config_json", None)
-                if not config_json:
-                    raise RuntimeError(f"persisted running task({getattr(state, 'id', 'unknown')}) is missing config_json")
-                saved_config = self._first_task_config(config_json)
-                assert_persisted_task_config_json_is_migrated(config_json)
-                recovered = parse_task_config(config_json)
+                taskc = TaskConfigCodec.from_persisted_state(state)
             except Exception as exc:
-                task_kind = "live task" if self._is_persisted_live_task_config(saved_config) else "running task"
-                if str(exc).startswith("persisted running task("):
-                    message = str(exc)
-                else:
-                    message = f"persisted {task_kind}({getattr(state, 'id', 'unknown')}) recovery failed: {exc}"
-                error = RuntimeError(message)
+                error = RuntimeError(str(exc))
                 recovery_errors.append(error)
-                self.logger.error(message)
+                self.logger.error(str(error))
                 continue
-            for taskc in recovered:
-                taskc.id = int(getattr(state, "id", taskc.id) or taskc.id)
-                if getattr(state, "user_id", None) is not None:
-                    taskc.user_id = state.user_id
-                if saved_config.get("run_id"):
-                    taskc.run_id = saved_config["run_id"]
-                apply_persisted_task_runtime_metadata(taskc, saved_config)
-            taskcs.extend(recovered)
+            if taskc is not None:
+                taskcs.append(taskc)
 
         if taskcs:
             self.logger.info(f"Recovered {len(taskcs)} running task config(s) from persisted state")
@@ -268,20 +248,6 @@ class App:
                 await self.task_manager.recover_task(taskc, self.queue)
 
         await asyncio.gather(*[asyncio.create_task(_recover(taskc)) for taskc in taskcs])
-
-    @staticmethod
-    def _first_task_config(config_json: str) -> dict:
-        try:
-            payload = json.loads(config_json or "[]")
-        except (TypeError, json.JSONDecodeError):
-            return {}
-        if isinstance(payload, list) and payload and isinstance(payload[0], dict):
-            return payload[0]
-        return {}
-
-    @staticmethod
-    def _is_persisted_live_task_config(saved_config: dict) -> bool:
-        return str(saved_config.get("task_type") or "").strip().upper() == "TRADER"
 
     def stop(self):
         self.stat.report()
@@ -408,7 +374,7 @@ class App:
     def send_add_tasks_msg(self, tasks_cfg: str, user_id: int | None = None):
         taskcs: list[TaskConfig] = []
         if tasks_cfg:
-            taskcs = parse_task_config(tasks_cfg)
+            taskcs = TaskConfigCodec.from_input(tasks_cfg)
         if user_id is not None:
             for taskc in taskcs:
                 taskc.user_id = user_id

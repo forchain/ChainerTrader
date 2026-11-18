@@ -5,6 +5,7 @@ from datetime import datetime
 
 import backtrader as bt
 
+
 class BacktestReportAnalyzer(bt.Analyzer):
     """
     Generates a structured JSON report after backtest completion.
@@ -30,6 +31,18 @@ class BacktestReportAnalyzer(bt.Analyzer):
         self.report = None
         self.report_path = None
 
+    def _trade_context(self, trade_key):
+        resolver = getattr(self.strategy, "trade_context", None)
+        if callable(resolver):
+            return resolver(trade_key)
+        return getattr(self.strategy, "_trades_by_id", {}).get(trade_key)
+
+    def _trade_contexts(self):
+        getter = getattr(self.strategy, "trade_contexts", None)
+        if callable(getter):
+            return getter()
+        return getattr(self.strategy, "_trades_by_id", {})
+
     def _current_dt_iso(self):
         return self.strategy.datetime.datetime().isoformat()
 
@@ -39,7 +52,7 @@ class BacktestReportAnalyzer(bt.Analyzer):
             trade_key = trade.ref
         if not trade.isclosed:
             if trade.justopened:
-                ctx = getattr(self.strategy, "_trades_by_id", {}).get(trade_key)
+                ctx = self._trade_context(trade_key)
                 entry_px = trade.price
                 direction = "L" if trade.size > 0 else "S"
                 entry_signal_time = None
@@ -63,7 +76,7 @@ class BacktestReportAnalyzer(bt.Analyzer):
         entry_time = entry_info.get("entry_time", "")
         entry_px = entry_info.get("entry_px", 0)
         entry_size = entry_info.get("size", 0)
-        ctx = getattr(self.strategy, "_trades_by_id", {}).get(trade_key)
+        ctx = self._trade_context(trade_key)
 
         exit_time = self._current_dt_iso()
         exit_signal_time = None
@@ -288,7 +301,7 @@ class BacktestReportAnalyzer(bt.Analyzer):
         return list(events)
 
     def _collect_open_trade_records_from_contexts(self):
-        contexts = getattr(self.strategy, "_trades_by_id", {})
+        contexts = self._trade_contexts()
         open_statuses = {"active", "opening", "pending_entry_confirm", "pending_exit_confirm", "closing"}
         records = []
         for trade_id, ctx in sorted(contexts.items()):
@@ -355,7 +368,7 @@ class BacktestReportAnalyzer(bt.Analyzer):
         return (current_px - entry_price) / entry_price * 100
 
     def _append_missing_closed_trade_records_from_contexts(self):
-        contexts = getattr(self.strategy, "_trades_by_id", {})
+        contexts = self._trade_contexts()
         existing_ids = {trade.get("id") for trade in self._trades}
         for trade_id, ctx in sorted(contexts.items()):
             record_id = int(getattr(ctx, "trade_id", trade_id))
@@ -442,7 +455,7 @@ class BacktestReportAnalyzer(bt.Analyzer):
         return str(value)
 
     def _enrich_trade_records_from_contexts(self):
-        contexts = getattr(self.strategy, "_trades_by_id", {})
+        contexts = self._trade_contexts()
         for trade_record in self._trades:
             ctx = contexts.get(trade_record.get("id"))
             if ctx is None:

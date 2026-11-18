@@ -27,6 +27,7 @@ def select_order_semantics(
     notional: float | None = None,
     trade_id: str | int | None = None,
     allow_native_protection: bool = True,
+    protection_order_id: str | None = None,
 ) -> OrderSemanticSelection:
     resolved_side = side if isinstance(side, ExecutionSide) else ExecutionSide(str(side))
     resolved_trade_id = str(trade_id or _trade_id_from_operation(op) or _intent_id(op))
@@ -47,7 +48,7 @@ def select_order_semantics(
                 trade_id=resolved_trade_id,
                 quantity=quantity,
                 stop_price=stop_price,
-                replacement_of_order_id=getattr(op, "protection_order_id", None),
+                replacement_of_order_id=protection_order_id or getattr(op, "protection_order_id", None),
                 signal_event_id=getattr(op, "signal_event_id", None),
                 metadata=_metadata_from_operation(op),
             )

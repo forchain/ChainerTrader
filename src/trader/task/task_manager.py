@@ -7,7 +7,6 @@ from concurrent.futures import TimeoutError as FutureTimeoutError
 from datetime import datetime
 from pathlib import Path
 
-from trader.auth.credentials import service_key_available
 from trader.common.common import sleep
 from trader.common.config import Config
 from trader.common.log_tag import LogTag
@@ -17,12 +16,8 @@ from trader.database.account_fund_reservation import FundReservationError
 from trader.database.manager import DatabaseManager
 from trader.exchange.binance.exchange import BinanceExchange
 from trader.exchange.exchange_config import MarginMode
-from trader.exchange.user_credentials import (
-    attach_user_exchange_context,
-    base_exchange_config,
-    build_user_exchange_context,
-)
 from trader.execution.models import ExecutionStatus
+from trader.live.account_lifecycle import LiveAccountLifecycle, capacity_snapshot
 from trader.live.auto_execution import is_real_auto_mode
 from trader.statistics.stat import BackTraderStat
 from trader.strategy.trader_result import parse_trader_result
@@ -43,7 +38,8 @@ from trader.task.import_csv_task import ImportCSVTask
 from trader.task.live_startup_self_check import infer_required_margin_mode, task_requires_short_capability
 from trader.task.optimization_report import write_optimization_artifacts
 from trader.task.optimization_runtime import OptimizationRuntimeStatus, evaluate_abort_reason
-from trader.task.task_config import TaskConfig, parse_task_config
+from trader.task.task_config import TaskConfig
+from trader.task.task_config_codec import TaskConfigCodec
 from trader.task.task_type import TaskType
 from trader.task.trader_task import TraderTask
 from trader.task.update_klines_task import UpdateKlinesTask
@@ -63,9 +59,15 @@ class TaskManager:
         self.cfg = cfg
         self.db_manager = db_manager
         self.exchange = exchange
-        self._exchange_by_mode: dict[str, BinanceExchange] = {}
+        self.live_account = LiveAccountLifecycle(
+            base_exchange=exchange,
+            cfg=cfg,
+            log=log,
+            credential_repo=getattr(db_manager, "exchange_credential", None),
+            exchange_factory=BinanceExchange,
+        )
         if getattr(exchange, "margin_mode", None) is not None:
-            self._exchange_by_mode[exchange.margin_mode.value] = exchange
+            self.live_account.exchanges_by_mode[exchange.margin_mode.value] = exchange
         self.log.info("Init TaskManager")
         self.tasks: dict[int, BaseTask] = {}
         self.async_tasks = []
@@ -92,7 +94,7 @@ class TaskManager:
     def start(self, taskcs: list[TaskConfig] | None = None):
         self.log.info("TaskManager start")
         if taskcs is None and self.cfg.tasks:
-            taskcs = parse_task_config(self.cfg.tasks)
+            taskcs = TaskConfigCodec.from_input(self.cfg.tasks)
         if taskcs is not None:
             required_margin_mode = infer_required_margin_mode(taskcs)
             if getattr(self.exchange, "margin_mode", None) is not None and required_margin_mode.value != self.exchange.margin_mode.value:
@@ -212,7 +214,7 @@ class TaskManager:
             else:
                 state = TaskState(
                     tc.id,
-                    self._task_state_name(tc),
+                    TaskConfigCodec.state_name(tc),
                     datetime.now(),
                     commission=getattr(self.cfg, "commission", 0),
                     strategy_start_time=getattr(tc, "start_time", 0),
@@ -226,13 +228,15 @@ class TaskManager:
             failed_states.append(state)
         await self._persist_task_states(failed_states)
 
-    def _task_state_name(self, cfg: TaskConfig) -> str:
-        symbol_interval = getattr(cfg, "symbol_interval", None)
-        symbol_name = symbol_interval.name() if symbol_interval is not None else ""
-        return f"{cfg.id}.{cfg.ttype.name}.{symbol_name}"
-
     def _task_config_json(self, cfg: TaskConfig) -> str:
-        return BaseTask(cfg, self.cfg, self.log, self.db_manager).ts.config_json
+        initial_cash = cfg.free if getattr(cfg, "free", -1) >= 0 else getattr(self.cfg, "cash", 0)
+        state = TaskConfigCodec.to_task_state(
+            cfg,
+            name=TaskConfigCodec.state_name(cfg),
+            commission=getattr(self.cfg, "commission", 0),
+            initial_cash=initial_cash,
+        )
+        return state.config_json
 
     def _call_add_task_after_startup_cleanup(self, cfg, queue: Queue):
         add_task = self.add_task
@@ -431,36 +435,22 @@ class TaskManager:
         return float(self._reservation_capacity_snapshot(cfg, exchange, asset)["operable_capacity"])
 
     def _reservation_capacity_snapshot(self, cfg: TaskConfig, exchange: BinanceExchange, asset: str) -> dict[str, float | None]:
-        balance_reader = getattr(exchange, "get_account_balance", None)
-        if not callable(balance_reader):
+        if not callable(getattr(exchange, "get_account_balance", None)):
             raise FundReservationError(f"cannot read exchange balance for reservation: task_id={cfg.id} asset={asset}")
-        balance = float(balance_reader(asset) or 0.0)
-        snapshot = {
-            "balance": balance,
-            "max_borrowable": 0.0,
-            "borrow_limit": None,
-            "operable_capacity": balance,
+        symbol = cfg.symbol_interval.symbol() if getattr(cfg, "symbol_interval", None) is not None else None
+        snapshot = capacity_snapshot(
+            exchange,
+            asset,
+            symbol=symbol,
+            requires_borrow=task_requires_short_capability(cfg),
+            borrow_precheck=bool(getattr(cfg, "live_margin_borrow_precheck", True)),
+        )
+        return {
+            "balance": snapshot.balance,
+            "max_borrowable": snapshot.max_borrowable,
+            "borrow_limit": snapshot.borrow_limit,
+            "operable_capacity": snapshot.operable_capacity,
         }
-        if not task_requires_short_capability(cfg):
-            return snapshot
-        if not bool(getattr(cfg, "live_margin_borrow_precheck", True)):
-            return snapshot
-        borrow_reader = getattr(exchange, "get_max_borrowable", None)
-        if not callable(borrow_reader):
-            return snapshot
-        payload = borrow_reader(asset, symbol=cfg.symbol_interval.symbol())
-        borrowable = self._numeric_payload_value(payload, "amount")
-        snapshot["max_borrowable"] = float(borrowable or 0.0)
-        snapshot["borrow_limit"] = self._numeric_payload_value(payload, "borrowLimit")
-        snapshot["operable_capacity"] = balance + snapshot["max_borrowable"]
-        return snapshot
-
-    def _numeric_payload_value(self, payload, key: str) -> float | None:
-        value = payload.get(key) if isinstance(payload, dict) else getattr(payload, key, None)
-        try:
-            return float(value)
-        except (TypeError, ValueError):
-            return None
 
     async def _reservation_account_key(self, cfg: TaskConfig) -> str:
         credential_id = await self._reservation_credential_id(cfg)
@@ -491,93 +481,35 @@ class TaskManager:
     async def _exchange_for_task(self, cfg: TaskConfig) -> BinanceExchange:
         if cfg.ttype != TaskType.TRADER:
             return self.exchange
+        routed = await self.live_account.exchange_for_task(
+            cfg,
+            runtime_live_execution_mode=self._runtime_live_execution_mode(cfg),
+        )
         target_mode = MarginMode.CROSS_MARGIN if task_requires_short_capability(cfg) else MarginMode.SPOT
         chainer_mode = str((getattr(cfg, "strategy_params", {}) or {}).get("chainer_mode", "LONG_ONLY")).strip().upper()
-        requires_short_capability = task_requires_short_capability(cfg)
-        if getattr(cfg, "user_id", None) is not None:
-            routed = await self._exchange_for_user_mode(cfg.user_id, target_mode)
-            self.log.info(
-                "TaskManager selected execution exchange "
-                f"task_id={cfg.id} user_id={cfg.user_id} strategy={cfg.strategy_name()} "
-                f"chainer_mode={chainer_mode} requires_short_capability={requires_short_capability} "
-                f"target_margin_mode={target_mode.value} actual_margin_mode={getattr(getattr(routed, 'margin_mode', None), 'value', 'unknown')} "
-                f"credential_id={getattr(routed, 'credential_id', None)} api_key={getattr(routed, 'masked_api_key', '')}"
-            )
-            return routed
-        if not is_real_auto_mode(self._runtime_live_execution_mode(cfg)):
-            return self.exchange
-        cached = self._exchange_by_mode.get(target_mode.value)
-        if cached is not None:
-            self.log.info(
-                "TaskManager selected execution exchange "
-                f"task_id={cfg.id} user_id={getattr(cfg, 'user_id', None)} strategy={cfg.strategy_name()} "
-                f"chainer_mode={chainer_mode} requires_short_capability={requires_short_capability} "
-                f"target_margin_mode={target_mode.value} actual_margin_mode={getattr(getattr(cached, 'margin_mode', None), 'value', 'unknown')}"
-            )
-            return cached
-        try:
-            routed = self._exchange_for_mode(target_mode)
-            self.log.info(f"TaskManager created routed exchange for mode={target_mode.value} task_id={cfg.id} strategy={cfg.strategy_name()}")
-            self.log.info(
-                "TaskManager selected execution exchange "
-                f"task_id={cfg.id} user_id={getattr(cfg, 'user_id', None)} strategy={cfg.strategy_name()} "
-                f"chainer_mode={chainer_mode} requires_short_capability={requires_short_capability} "
-                f"target_margin_mode={target_mode.value} actual_margin_mode={getattr(getattr(routed, 'margin_mode', None), 'value', 'unknown')}"
-            )
-            return routed
-        except Exception as exc:
-            self.log.warning(f"TaskManager failed to create routed exchange for mode={target_mode.value}, falling back to default exchange: {exc}")
-            self.log.info(
-                "TaskManager selected execution exchange "
-                f"task_id={cfg.id} user_id={getattr(cfg, 'user_id', None)} strategy={cfg.strategy_name()} "
-                f"chainer_mode={chainer_mode} requires_short_capability={requires_short_capability} "
-                f"target_margin_mode={target_mode.value} "
-                f"actual_margin_mode={getattr(getattr(self.exchange, 'margin_mode', None), 'value', 'unknown')} "
-                "fallback=true"
-            )
-            return self.exchange
+        self.log.info(
+            "TaskManager selected execution exchange "
+            f"task_id={cfg.id} user_id={getattr(cfg, 'user_id', None)} strategy={cfg.strategy_name()} "
+            f"chainer_mode={chainer_mode} requires_short_capability={task_requires_short_capability(cfg)} "
+            f"target_margin_mode={target_mode.value} actual_margin_mode={getattr(getattr(routed, 'margin_mode', None), 'value', 'unknown')} "
+            f"credential_id={getattr(routed, 'credential_id', None)} api_key={getattr(routed, 'masked_api_key', '')}"
+        )
+        return routed
 
     async def _exchange_for_user_mode(self, user_id: int, mode: MarginMode) -> BinanceExchange:
-        if not self.db_manager or not getattr(self.db_manager, "exchange_credential", None):
-            raise RuntimeError("live trading requires a user exchange credential store")
-        service_key = getattr(self.cfg, "secret_key", None)
-        if not service_key_available(service_key):
-            raise RuntimeError("TRADER_SECRET_KEY is required to start user-owned live trading tasks")
-        credential = self.db_manager.exchange_credential.get_default(user_id, "BINANCE")
-        if inspect.isawaitable(credential):
-            credential = await credential
-        context = build_user_exchange_context(
-            base_cfg=base_exchange_config(self.exchange, self.cfg),
-            service_key=service_key,
-            credential=credential,
-            user_id=user_id,
-            margin_mode=mode,
-        )
-        return attach_user_exchange_context(BinanceExchange(context.cfg, self.log), context)
+        return await self.live_account.exchange_for_user(user_id, mode)
 
     async def _ensure_routed_exchanges(self, taskcs: list[TaskConfig]) -> None:
         for tc in taskcs:
             if tc.ttype != TaskType.TRADER:
                 continue
-            target_mode = MarginMode.CROSS_MARGIN if task_requires_short_capability(tc) else MarginMode.SPOT
-            if getattr(tc, "user_id", None) is not None:
-                await self._exchange_for_user_mode(tc.user_id, target_mode)
-                continue
-            if not is_real_auto_mode(self._runtime_live_execution_mode(tc)):
-                continue
-            _ = self._exchange_by_mode.get(target_mode.value) or self._exchange_for_mode(target_mode)
+            await self.live_account.exchange_for_task(
+                tc,
+                runtime_live_execution_mode=self._runtime_live_execution_mode(tc),
+            )
 
     def _exchange_for_mode(self, mode: MarginMode) -> BinanceExchange:
-        cached = self._exchange_by_mode.get(mode.value)
-        if cached is not None:
-            return cached
-        base_cfg = getattr(self.exchange, "cfg", None)
-        if base_cfg is None or not hasattr(base_cfg, "with_margin_mode"):
-            return self.exchange
-        cloned_cfg = base_cfg.with_margin_mode(mode)
-        routed = BinanceExchange(cloned_cfg, self.log)
-        self._exchange_by_mode[mode.value] = routed
-        return routed
+        return self.live_account.exchange_for_mode(mode)
 
     async def add_backtrader_task(self, cfgs, queue: Queue):
         runtimes = self._optimization_runtimes(cfgs)
@@ -1046,18 +978,11 @@ class TaskManager:
         return True
 
     def _task_config_from_state(self, state: TaskState) -> TaskConfig | None:
-        config_json = str(getattr(state, "config_json", "") or "").strip()
-        if not config_json:
-            return None
         try:
-            taskcs = parse_task_config(config_json)
+            return TaskConfigCodec.from_persisted_state(state)
         except Exception as exc:
             self.log.error(f"task state config parse failed: task_id={getattr(state, 'id', None)} error={exc}")
             return None
-        for cfg in taskcs:
-            if int(getattr(cfg, "id", 0) or 0) == int(getattr(state, "id", 0) or 0):
-                return cfg
-        return taskcs[0] if taskcs else None
 
     def del_task(self, id: int, user_id: int | None = None):
         task = self.get_task(id)
@@ -1171,48 +1096,16 @@ class TaskManager:
         fallback_symbols=None,
         seen: set[tuple[int, str]] | None = None,
     ) -> bool:
-        if task_id is None:
-            self._cancel_open_orders_for_symbols(fallback_symbols or [], exchange, reason=reason, task_id=task_id, seen=seen)
-            return False
-
-        records = await self._open_execution_records_for_task(int(task_id))
-        if not records:
-            self._cancel_open_orders_for_symbols(fallback_symbols or [], exchange, reason=reason, task_id=task_id, seen=seen)
-            return False
-
-        fallback_for_incomplete_records: list[Symbol] = []
-        cancel_order = getattr(exchange, "cancel_order", None)
-        for record in records:
-            symbol = self._symbol_from_value(getattr(record, "symbol", None))
-            if symbol is None:
-                continue
-            order_ids = self._record_exchange_order_ids(record)
-            if not order_ids or not callable(cancel_order):
-                fallback_for_incomplete_records.append(symbol)
-                continue
-            for order_id in order_ids:
-                key = (id(exchange), f"{symbol.name()}:{order_id}")
-                if seen is not None:
-                    if key in seen:
-                        continue
-                    seen.add(key)
-                try:
-                    self.log.info(f"cancel_order: reason={reason} task_id={task_id} symbol={symbol.name()} order_id={order_id}")
-                    result = cancel_order(symbol, order_id)
-                    if inspect.isawaitable(result):
-                        await result
-                    await self._mark_execution_record_canceled(record)
-                except Exception as exc:
-                    self.log.error(f"cancel_order failed: reason={reason} task_id={task_id} symbol={symbol.name()} order_id={order_id} error={exc}")
-
-        self._cancel_open_orders_for_symbols(
-            fallback_for_incomplete_records,
+        records = await self._open_execution_records_for_task(int(task_id)) if task_id is not None else []
+        return await self.live_account.cancel_task_open_orders(
+            task_id,
             exchange,
             reason=reason,
-            task_id=task_id,
+            fallback_symbols=fallback_symbols,
+            records=records,
             seen=seen,
+            on_canceled=self._mark_execution_record_canceled,
         )
-        return True
 
     async def _open_execution_records_for_task(self, task_id: int):
         store = getattr(self.db_manager, "execution_state", None)
@@ -1225,27 +1118,6 @@ class TaskManager:
         if isinstance(records, list):
             return records
         return list(records or [])
-
-    def _record_exchange_order_ids(self, record) -> list[str]:
-        values: list[str] = []
-        raw = str(getattr(record, "exchange_order_id", "") or "").strip()
-        if raw:
-            values.extend(raw.split(","))
-        raw_payload = getattr(record, "raw_payload", None)
-        if isinstance(raw_payload, dict):
-            for key in ("orderId", "order_id", "clientOrderId", "id"):
-                value = raw_payload.get(key)
-                if value is not None:
-                    values.append(str(value))
-        ret: list[str] = []
-        seen: set[str] = set()
-        for value in values:
-            order_id = str(value or "").strip()
-            if not order_id or order_id in seen:
-                continue
-            seen.add(order_id)
-            ret.append(order_id)
-        return ret
 
     async def _mark_execution_record_canceled(self, record) -> None:
         store = getattr(self.db_manager, "execution_state", None)

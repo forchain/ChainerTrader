@@ -1,12 +1,13 @@
 from asyncio import Queue
+from datetime import datetime
 
 from trader.common.config import Config
 from trader.common.logger import Logger
 from trader.database.manager import DatabaseManager
 from trader.exchange.binance.exchange import BinanceExchange
 from trader.task.base_task import BaseTask
+from trader.task.dataset_resolver import DatasetResolver
 from trader.task.task_config import TaskConfig
-from trader.utils.symbol_interval import add_time_duration
 
 
 class CheckKlinesTask(BaseTask):
@@ -42,21 +43,14 @@ class CheckKlinesTask(BaseTask):
             self.log.error(f"{self.name()} no need check")
             return
 
-        count = 0
-        total = 0
-        next_time = first_kl.open_time
-        while True:
-            if self.quit.is_set():
-                break
-            total += 1
-            next_time = add_time_duration(next_time, self.tcfg.symbol_interval.interval, 1)
-            if next_time < latest_kl.open_time:
-                kl = await self.db_manager.kline.get_kline(self.tcfg.symbol_interval.name(), next_time)
-                if kl is None:
-                    count += 1
-                    self.log.warning(f"{self.name()} no kline: open_time={next_time}")
-            else:
-                self.log.info(f"{self.name()} is completed")
-                break
-
-        self.log.info(f"{self.name()} process result:{count}/{total}")
+        report = await DatasetResolver(self.db_manager, self.exchange, self.log).inspect_coverage(
+            self.tcfg.symbol_interval,
+            first_kl.open_time,
+            latest_kl.open_time,
+        )
+        for range_start, range_end in report.missing_ranges:
+            self.log.warning(
+                f"{self.name()} no kline range: "
+                f"{datetime.fromtimestamp(range_start)}..{datetime.fromtimestamp(range_end)}"
+            )
+        self.log.info(f"{self.name()} process result:{report.missing_count}/{report.expected_count}")

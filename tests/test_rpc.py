@@ -867,3 +867,21 @@ def test_read_root_follow_redirect_returns_503_when_rpc_app_not_initialized(monk
         response = client.get("/", follow_redirects=True)
     assert response.status_code == 200
     assert "欢迎使用 ChainerTrader" in response.text
+
+
+def test_user_accounts_info_treats_live_account_error_as_credential_error(monkeypatch):
+    from trader.live.account_lifecycle import LiveAccountError
+    from trader.rpc.app import _user_accounts_info
+
+    errors = []
+    rpc_app = SimpleNamespace(logger=SimpleNamespace(error=lambda message: errors.append(message)))
+
+    def raise_live_account_error(*_args, **_kwargs):
+        raise LiveAccountError("missing BINANCE API credential for user_id=7")
+
+    monkeypatch.setattr("trader.rpc.app._account_exchange_for_user", raise_live_account_error)
+
+    info = _user_accounts_info(Config(tasks="[]"), rpc_app, SimpleNamespace(id=7), [])
+
+    assert info.account_error == "missing BINANCE API credential for user_id=7"
+    assert errors == []

@@ -6,7 +6,6 @@ from datetime import datetime, timedelta
 from trader.common.config import Config
 from trader.common.logger import Logger
 from trader.common.message import new_stat_msg
-from trader.database.execution_state import execution_state_record_context
 from trader.database.manager import DatabaseManager
 from trader.exchange.binance.exchange import BinanceExchange
 from trader.live.auto_execution import AutoExecutionRouter, execution_outcome_event
@@ -24,7 +23,6 @@ from trader.live.monitor import GLOBAL_LIVE_EVENT_BUS
 from trader.live.stream import GLOBAL_MARKET_STREAM_HUB, MarketStreamKey
 from trader.notify.trade_notification import (
     MANUAL_NOTIFY_MODE,
-    ManualTradeAccountState,
     ManualTradeNotificationEvent,
     normalize_live_execution_mode,
 )
@@ -35,6 +33,7 @@ from trader.strategy.trader_result import TraderResult
 from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig
 from trader.utils.operate import OperateType
+from trader.utils.symbol_interval import get_time_duration
 
 DOWLOAD_SPACE_TIME = 5
 REALTIME_STREAM_QUEUE_TIMEOUT_SECONDS = 1.0
@@ -72,8 +71,6 @@ class TraderTask(BaseTask):
         exchange: BinanceExchange,
     ):
         super().__init__(tcfg, cfg, log, db_manager, exchange)
-        self._manual_cash = self._manual_starting_cash()
-        self._manual_position = float(getattr(tcfg, "manual_start_position", 0.0) or 0.0)
         self._auto_execution_router = AutoExecutionRouter(
             tcfg,
             exchange=exchange,
@@ -85,11 +82,6 @@ class TraderTask(BaseTask):
 
     def is_manual_notify_mode(self) -> bool:
         return normalize_live_execution_mode(getattr(self.tcfg, "live_execution_mode", None)) == MANUAL_NOTIFY_MODE
-
-    def _manual_starting_cash(self) -> float:
-        if getattr(self.tcfg, "free", -1) >= 0:
-            return float(self.tcfg.free)
-        return float(self.cfg.cash)
 
     async def start(self, queue: Queue):
         if not self.tcfg.strategies:
@@ -133,25 +125,10 @@ class TraderTask(BaseTask):
             f"Realtime startup backfill started: task_id={self.tcfg.id} collection={collection_name} "
             f"stream={key.stream_name()} kind={plan.kind.value} limit={plan.limit} missing_count={plan.missing_count}"
         )
-        fetched = []
-        if plan.kind == BackfillRequestKind.LATEST:
-            fetched = await _run_blocking(self.exchange.get_latest_klines, self.tcfg.symbol_interval, plan.limit) or []
-        elif plan.kind == BackfillRequestKind.RANGE:
-            fetched = (
-                await _run_blocking(
-                    self.exchange.get_klines,
-                    self.tcfg.symbol_interval,
-                    start_time=plan.start_time,
-                    end_time=plan.end_time,
-                    limit=plan.limit,
-                )
-                or []
-            )
-        if fetched:
-            await _add_repository_klines(self.db_manager.kline, collection_name, fetched)
+        synced = await self._sync_realtime_backfill(plan)
         self.log.info(
             f"Realtime startup backfill completed: task_id={self.tcfg.id} collection={collection_name} "
-            f"stream={key.stream_name()} fetched={len(fetched)}"
+            f"stream={key.stream_name()} synced={synced}"
         )
 
         warmup_cap = max(1, int(getattr(self.cfg, "warmup_candles", 500) or 500))
@@ -183,7 +160,7 @@ class TraderTask(BaseTask):
             notifications = []
             auto_execution_outcomes = []
             if self.is_manual_notify_mode():
-                notifications = [] if feed_phase == "warmup" else self.handle_manual_trade_notifications(ret)
+                notifications = [] if feed_phase == "warmup" else self._auto_execution_router.handle_manual_trade_notifications(ret)
             else:
                 if feed_phase == "warmup":
                     self.log.info(
@@ -246,11 +223,12 @@ class TraderTask(BaseTask):
         strategy_kwargs = build_strategy_kwargs(
             self.cfg,
             self.log,
-            self._manual_position,
+            getattr(self._auto_execution_router, "manual_position", float(getattr(self.tcfg, "manual_start_position", 0.0) or 0.0)),
             True,
             getattr(self.tcfg, "strategy_params", None),
         )
-        free_cash = self._manual_cash
+        starting_cash = float(self.tcfg.free) if getattr(self.tcfg, "free", -1) >= 0 else float(self.cfg.cash)
+        free_cash = getattr(self._auto_execution_router, "manual_cash", starting_cash)
         runner = BacktraderLiveRunner(
             strategy,
             cash=free_cash,
@@ -291,17 +269,16 @@ class TraderTask(BaseTask):
             latest = await _maybe_await(self.db_manager.kline.get_latest_kline(collection_name))
             plan = plan_initial_backfill(latest, now=int(datetime.now().timestamp()), interval=self.tcfg.symbol_interval.interval)
             fetched = []
-            if plan.kind == BackfillRequestKind.LATEST:
-                fetched = await _run_blocking(self.exchange.get_latest_klines, self.tcfg.symbol_interval, plan.limit) or []
-            elif plan.kind == BackfillRequestKind.RANGE:
+            if plan.kind != BackfillRequestKind.NONE:
+                await self._sync_realtime_backfill(plan)
+                step = int(get_time_duration(self.tcfg.symbol_interval.interval))
+                if plan.kind == BackfillRequestKind.RANGE:
+                    fetch_start, fetch_end = int(plan.start_time), int(plan.end_time)
+                else:
+                    fetch_start = int(latest.open_time) + step if latest is not None else 0
+                    fetch_end = int(datetime.now().timestamp())
                 fetched = (
-                    await _run_blocking(
-                        self.exchange.get_klines,
-                        self.tcfg.symbol_interval,
-                        start_time=plan.start_time,
-                        end_time=plan.end_time,
-                        limit=plan.limit,
-                    )
+                    await _maybe_await(self.db_manager.kline.get_klines(collection_name, fetch_start, fetch_end))
                     or []
                 )
             if not fetched:
@@ -359,6 +336,33 @@ class TraderTask(BaseTask):
                 await asyncio.gather(*live_operation_tasks, return_exceptions=True)
             await subscription.unsubscribe()
 
+    async def _sync_realtime_backfill(self, plan) -> int:
+        """Sync a backfill range through the canonical dataset resolver seam."""
+        from trader.task.dataset_resolver import DatasetResolver
+
+        step = int(get_time_duration(self.tcfg.symbol_interval.interval))
+        if plan.kind == BackfillRequestKind.LATEST:
+            end_time = int(datetime.now().timestamp())
+            start_time = end_time - max(1, int(plan.limit)) * step
+        elif plan.kind == BackfillRequestKind.RANGE:
+            start_time, end_time = int(plan.start_time), int(plan.end_time)
+        else:
+            return 0
+        resolver = DatasetResolver(self.db_manager, self.exchange, self.log)
+        result = await resolver.sync_range(
+            self.tcfg.symbol_interval,
+            start_time,
+            end_time,
+            allow_download=True,
+            allow_incomplete_coverage=True,
+        )
+        if not result.ok:
+            reason = result.failure.reason if result.failure is not None else "unknown"
+            message = result.failure.message if result.failure is not None else ""
+            self.log.error(f"Realtime backfill sync failed: reason={reason} message={message}")
+            return 0
+        return max(0, int(plan.missing_count))
+
     async def _reconcile_execution_state(self) -> list[dict]:
         if self.is_manual_notify_mode():
             self.ts.execution_reconcile = []
@@ -372,63 +376,16 @@ class TraderTask(BaseTask):
             records = await _maybe_await(list_open_by_task(self.tcfg.id))
         else:
             records = await _maybe_await(store.list_open_by_symbol(self.tcfg.symbol_interval.symbol()))
-        payload = [self._execution_state_record_payload(record) for record in records]
+        payload = self._auto_execution_router.reconcile(records)
         self.ts.execution_reconcile = payload
         return payload
 
     async def _persist_auto_execution_state(self, outcome) -> None:
-        store = getattr(self.db_manager, "execution_state", None)
-        if store is not None:
-            records = list(getattr(outcome, "execution_state_records", []) or [])
-            for index, record in enumerate(records, start=1):
-                try:
-                    await _maybe_await(store.save(record))
-                except Exception as exc:
-                    self.log.error(
-                        "Realtime execution state persist failed: "
-                        f"runtime_task_id={self.tcfg.id} record={index}/{len(records)} "
-                        f"operation_id={getattr(outcome, 'operation_id', None)} "
-                        f"operation_type={getattr(outcome, 'operation_type', None)} "
-                        f"status={getattr(outcome, 'status', None)} "
-                        f"reason={getattr(outcome, 'reason', None)} "
-                        f"{execution_state_record_context(record)} error={exc!r}"
-                    )
-                    raise
-        reservation_store = getattr(self.db_manager, "account_fund_reservation", None)
-        if reservation_store is None:
-            return
-        if (
-            str(getattr(outcome, "status", "")) not in {"submitted", "AutoExecutionStatus.SUBMITTED"}
-            and getattr(getattr(outcome, "status", None), "value", None) != "submitted"
-        ):
-            return
-        notional = float(getattr(outcome, "effective_notional", 0.0) or 0.0)
-        if notional <= 0:
-            return
-        asset = getattr(self.tcfg, "fund_reservation_asset", None) or self.tcfg.symbol_interval.sy.quote
-        await _maybe_await(reservation_store.mark_spent(self.tcfg.id, asset, notional))
-
-    def _execution_state_record_payload(self, record) -> dict:
-        gateway = getattr(record, "gateway", None)
-        status = getattr(record, "status", None)
-        return {
-            "idempotency_key": getattr(record, "idempotency_key", None),
-            "intent_id": getattr(record, "intent_id", None),
-            "operation_id": getattr(record, "operation_id", None),
-            "gateway": getattr(gateway, "value", gateway),
-            "staged_execution_mode": getattr(record, "staged_execution_mode", None),
-            "symbol": getattr(record, "symbol", None),
-            "trade_id": getattr(record, "trade_id", None),
-            "order_role": getattr(record, "order_role", None),
-            "status": getattr(status, "value", status),
-            "exchange_order_id": getattr(record, "exchange_order_id", None),
-            "protection_id": getattr(record, "protection_id", None),
-            "quantity": getattr(record, "quantity", None),
-            "price": getattr(record, "price", None),
-            "stop_price": getattr(record, "stop_price", None),
-            "take_profit_price": getattr(record, "take_profit_price", None),
-            "updated_at": getattr(record, "updated_at", None),
-        }
+        await self._auto_execution_router.persist_outcome(
+            outcome,
+            state_store=getattr(self.db_manager, "execution_state", None),
+            reservation_store=getattr(self.db_manager, "account_fund_reservation", None),
+        )
 
     def _trader_result_for_live_operation(self, op) -> TraderResult:
         return TraderResult(
@@ -457,182 +414,5 @@ class TraderTask(BaseTask):
         self.ts.tret = ret
         await _maybe_await(self.db_manager.task.add_tasks([self.ts]))
 
-    def operate_exchange(self, ret: TraderResult, position: float):
-        if not ret.opts:
-            return
-
-        op = ret.opts[-1]
-        symbol = self.tcfg.symbol_interval.sy
-
-        if not op.price or op.price <= 0:
-            self.log.warning(f"Skip order due to invalid price: symbol={symbol.name()} operateType={op.otype} price={op.price}")
-            return
-
-        trade_quantity = self.tcfg.free / op.price
-        if trade_quantity <= 0:
-            self.log.warning(f"Skip order due to invalid quantity: symbol={symbol.name()} operateType={op.otype} quantity={trade_quantity}")
-            return
-
-        if op.otype in (OperateType.BUY, OperateType.LONG):
-            cash = self.exchange.get_account_balance(symbol.quote)
-            if getattr(self.exchange, "margin_mode", None) is not None and self.exchange.margin_mode.name != "SPOT":
-                cash_ok = True
-            else:
-                cash_ok = self.tcfg.free <= cash
-
-            if not cash_ok:
-                self.log.info("Due to insufficient balance, we have given up placing orders with the exchange")
-                return
-
-            self.log.info(f"New order:symbol={symbol.name()},operateType={op.otype},quantity={trade_quantity}")
-            self.exchange.new_order(symbol, op.otype, trade_quantity)
-            return
-
-        if op.otype == OperateType.SHORT:
-            if getattr(self.exchange, "margin_mode", None) is not None and self.exchange.margin_mode.name == "SPOT":
-                self.log.warning(f"Skip SHORT order in SPOT mode: symbol={symbol.name()}")
-                return
-            self.log.info(f"New order:symbol={symbol.name()},operateType={op.otype},quantity={trade_quantity}")
-            self.exchange.new_order(symbol, op.otype, trade_quantity)
-            return
-
-        if op.otype == OperateType.SELL:
-            if position <= 0:
-                self.log.info(f"Skip SELL due to empty position: symbol={symbol.name()} position={position}")
-                return
-            self.log.info(f"New order:symbol={symbol.name()},operateType={op.otype},quantity={position}")
-            self.exchange.new_order(symbol, op.otype, position)
-            return
-
-        if op.otype == OperateType.CLOSE:
-            if position > 0:
-                self.log.info(f"New order:symbol={symbol.name()},operateType={op.otype},quantity={position}")
-                self.exchange.new_order(symbol, OperateType.SELL, position)
-            else:
-                self.log.warning(f"Skip CLOSE due to unknown short position size: symbol={symbol.name()} position={position}")
-            return
-
-        self.log.warning(f"Skip unsupported operateType: symbol={symbol.name()} operateType={op.otype}")
-
     def handle_manual_trade_notifications(self, ret: TraderResult) -> list[ManualTradeNotificationEvent]:
-        if not ret.opts:
-            return []
-
-        op = ret.opts[-1]
-        if not isinstance(op, object) or not hasattr(op, "otype"):
-            return []
-
-        price = float(op.price or 0.0)
-        if price <= 0:
-            self.log.warning(f"Skip manual notification due to invalid price: operateType={getattr(op, 'otype', None)} price={op.price}")
-            return []
-
-        if op.otype in (OperateType.BUY, OperateType.LONG, OperateType.SHORT):
-            return [self._manual_entry_event(op, price)]
-        if op.otype in (OperateType.SELL, OperateType.CLOSE):
-            event = self._manual_exit_event(op, price)
-            return [event] if event is not None else []
-        if op.otype == OperateType.RISK_UPDATE:
-            return [self._manual_risk_update_event(op, price)]
-
-        self.log.warning(f"Skip unsupported manual notify operateType: {op.otype}")
-        return []
-
-    def _risk_reference(self, op, name: str):
-        if hasattr(op, name):
-            return getattr(op, name)
-        return None
-
-    def _manual_event_common_kwargs(self, op) -> dict:
-        return {
-            "interval": self.tcfg.symbol_interval.interval.value,
-            "strategy_id": str(self.tcfg.id),
-            "signal_event_id": self._risk_reference(op, "signal_event_id"),
-            "breakeven_new_stop": self._risk_reference(op, "breakeven_new_stop"),
-            "breakeven_step": self._risk_reference(op, "breakeven_step"),
-            "divergence_metadata": self._risk_reference(op, "divergence_metadata") or self._risk_reference(op, "signal_metadata"),
-        }
-
-    def _manual_entry_event(self, op, price: float) -> ManualTradeNotificationEvent:
-        cash_before = float(self._manual_cash)
-        position_before = float(self._manual_position)
-        amount = max(cash_before, 0.0)
-        quantity = amount / price if price > 0 else 0.0
-        if op.otype == OperateType.SHORT:
-            position_after = position_before - quantity
-        else:
-            position_after = position_before + quantity
-        cash_after = cash_before - amount
-        self._manual_cash = cash_after
-        self._manual_position = position_after
-        return ManualTradeNotificationEvent(
-            market=self.tcfg.symbol_interval.symbol(),
-            strategy=self.tcfg.strategy_name(),
-            task_id=self.tcfg.id,
-            mode=MANUAL_NOTIFY_MODE,
-            action="ENTRY",
-            side=op.otype.name,
-            signal_time=int(op.dtime),
-            signal_price=price,
-            suggested_amount=amount,
-            suggested_quantity=quantity,
-            trigger_reason="signal_entry",
-            local_state=ManualTradeAccountState(cash_before, cash_after, position_before, position_after),
-            stop_loss=self._risk_reference(op, "stop_loss"),
-            take_profit=self._risk_reference(op, "take_profit"),
-            risk_reward_ratio=self._risk_reference(op, "risk_reward_ratio"),
-            **self._manual_event_common_kwargs(op),
-        )
-
-    def _manual_risk_update_event(self, op, price: float) -> ManualTradeNotificationEvent:
-        cash = float(self._manual_cash)
-        position = float(self._manual_position)
-        return ManualTradeNotificationEvent(
-            market=self.tcfg.symbol_interval.symbol(),
-            strategy=self.tcfg.strategy_name(),
-            task_id=self.tcfg.id,
-            mode=MANUAL_NOTIFY_MODE,
-            action="RISK_UPDATE",
-            side=op.otype.name,
-            signal_time=int(op.dtime),
-            signal_price=price,
-            suggested_amount=0.0,
-            suggested_quantity=0.0,
-            trigger_reason=getattr(op, "trigger_reason", "risk_update"),
-            local_state=ManualTradeAccountState(cash, cash, position, position),
-            stop_loss=self._risk_reference(op, "stop_loss"),
-            take_profit=self._risk_reference(op, "take_profit"),
-            risk_reward_ratio=self._risk_reference(op, "risk_reward_ratio"),
-            **self._manual_event_common_kwargs(op),
-        )
-
-    def _manual_exit_event(self, op, price: float) -> ManualTradeNotificationEvent | None:
-        cash_before = float(self._manual_cash)
-        position_before = float(self._manual_position)
-        if position_before == 0.0:
-            self.log.info(f"Skip manual exit notification due to empty local position: operateType={op.otype}")
-            return None
-        quantity = abs(position_before)
-        amount = quantity * price
-        cash_after = cash_before + amount
-        position_after = 0.0
-        self._manual_cash = cash_after
-        self._manual_position = position_after
-        return ManualTradeNotificationEvent(
-            market=self.tcfg.symbol_interval.symbol(),
-            strategy=self.tcfg.strategy_name(),
-            task_id=self.tcfg.id,
-            mode=MANUAL_NOTIFY_MODE,
-            action="EXIT",
-            side=op.otype.name,
-            signal_time=int(op.dtime),
-            signal_price=price,
-            suggested_amount=amount,
-            suggested_quantity=quantity,
-            trigger_reason=getattr(op, "trigger_reason", "signal_exit"),
-            local_state=ManualTradeAccountState(cash_before, cash_after, position_before, position_after),
-            stop_loss=self._risk_reference(op, "stop_loss"),
-            take_profit=self._risk_reference(op, "take_profit"),
-            risk_reward_ratio=self._risk_reference(op, "risk_reward_ratio"),
-            **self._manual_event_common_kwargs(op),
-        )
+        return self._auto_execution_router.handle_manual_trade_notifications(ret)
