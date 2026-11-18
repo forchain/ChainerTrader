@@ -9,6 +9,7 @@ from trader.common.config import Config
 from trader.common.logger import Logger
 from trader.common.message import new_stat_msg
 from trader.core.shared.domain import OperateType
+from trader.core.strategy.domain.node import build_strategy_kwargs
 from trader.exchange.binance.exchange import BinanceExchange
 from trader.live.auto_execution import AutoExecutionRouter, execution_outcome_event
 from trader.live.backtrader_runtime import BacktraderLiveRunner
@@ -30,7 +31,6 @@ from trader.notify.trade_notification import (
     normalize_live_execution_mode,
 )
 from trader.statistics.stat import TraderStat
-from trader.strategy.node import build_strategy_kwargs
 from trader.strategy.strategy import parse_strategies
 from trader.strategy.trader_result import TraderResult
 from trader.task.base_task import BaseTask

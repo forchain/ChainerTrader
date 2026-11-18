@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-from trader.strategy.lifecycle import SignalSnapshot, TradeContext, TradeStatus
+from trader.core.strategy.domain.lifecycle import SignalSnapshot, TradeContext, TradeStatus
 
 
 class SignalRouteActionType(str, Enum):

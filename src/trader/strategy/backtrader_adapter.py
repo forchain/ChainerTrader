@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import backtrader as bt
 
-from trader.strategy.lifecycle import (
+from trader.core.strategy.domain.lifecycle import (
     ORDER_ROLE_ENTRY,
     ORDER_ROLE_EXIT,
     ORDER_ROLE_KEY,

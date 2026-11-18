@@ -1,16 +1,16 @@
 import asyncio
 
 from trader.core.shared.domain import Operate, OperateType
-from trader.execution import ExecutionResult, ExecutionSide, ExecutionStatus, GatewayMode, OrderIntentType, ProtectionIntentType
-from trader.execution.gateways import BinanceLiveExecutionGateway
-from trader.execution.state import ExecutionStateReservation
-from trader.strategy.execution_kernel import (
+from trader.core.strategy.domain.execution_kernel import (
     ExecutionOrchestrator,
     LegacyStrategyExecutionAdapter,
     RiskEngine,
     TradeLifecycleEngine,
     TradeLifecycleStatus,
 )
+from trader.execution import ExecutionResult, ExecutionSide, ExecutionStatus, GatewayMode, OrderIntentType, ProtectionIntentType
+from trader.execution.gateways import BinanceLiveExecutionGateway
+from trader.execution.state import ExecutionStateReservation
 
 
 def test_trade_lifecycle_engine_transitions_from_execution_results():

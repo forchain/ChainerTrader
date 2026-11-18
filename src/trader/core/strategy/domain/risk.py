@@ -4,8 +4,8 @@ import math
 from dataclasses import dataclass
 from typing import Any
 
-from trader.libraries.chainer_trader import ChainerTraderLib
-from trader.strategy.lifecycle import TradeContext
+from trader.core.strategy.domain import chainer_math
+from trader.core.strategy.domain.lifecycle import TradeContext
 
 BREAKEVEN_EPS = 1e-10
 
@@ -55,7 +55,7 @@ class StrategyRiskEngine:
     def take_profit_price(self, ctx: TradeContext) -> float | None:
         if ctx.entry_price is None or ctx.initial_stop_price is None or ctx.risk_reward_ratio <= 0.0:
             return None
-        tp_price = ChainerTraderLib.risk_reward_price(
+        tp_price = chainer_math.risk_reward_price(
             ctx.direction,
             float(ctx.entry_price),
             float(ctx.initial_stop_price),
@@ -76,7 +76,7 @@ class StrategyRiskEngine:
         if risk <= 0.0:
             return None
 
-        new_stop = ChainerTraderLib.breakeven_price(
+        new_stop = chainer_math.breakeven_price(
             ctx.direction,
             entry_price,
             initial_stop,

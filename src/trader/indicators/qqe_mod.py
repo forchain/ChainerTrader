@@ -12,6 +12,8 @@ import math
 
 import backtrader as bt
 
+from trader.core.strategy.domain.indicators import QQEBandKernel, QQEModKernel
+
 logger = logging.getLogger(__name__)
 
 
@@ -42,93 +44,20 @@ class QQEBand(bt.Indicator):
         # Parse debug timestamps
         self._debug_timestamps = list(self.p.debug_times) if self.p.debug_times else []
 
-        # State variables for recursive calculations
-        self._long_band_prev = None
-        self._short_band_prev = None
-        self._trend_prev = 0
-        self._smoothed_rsi_prev = None
-
-        # Wilder's smoothing length
-        wilders_length = self.p.rsi_length * 2 - 1
+        self._kernel = QQEBandKernel(rsi_length=self.p.rsi_length, qqe_factor=self.p.qqe_factor)
 
         # RSI and smoothed RSI
         self.rsi = bt.ind.RSI(self.data.close, period=self.p.rsi_length)
         self.smoothed_rsi_line = bt.ind.EMA(self.rsi, period=self.p.smoothing_factor)
 
-        # ATR of RSI (will be calculated in next() due to recursive dependency)
-        self._wilders_length = wilders_length
-
     def next(self):
-        smoothed_rsi = self.smoothed_rsi_line[0]
-        smoothed_rsi_prev = self._smoothed_rsi_prev if self._smoothed_rsi_prev is not None else smoothed_rsi
+        values = self._kernel.update(self.smoothed_rsi_line[0])
 
-        # Calculate ATR of RSI: |smoothedRsi[1] - smoothedRsi|
-        atr_rsi = abs(smoothed_rsi_prev - smoothed_rsi)
-
-        # Smoothed ATR RSI using simple EMA approximation
-        # For proper EMA, we need to track it recursively
-        if not hasattr(self, "_smoothed_atr_rsi"):
-            self._smoothed_atr_rsi = atr_rsi
-        else:
-            alpha = 2.0 / (self._wilders_length + 1)
-            self._smoothed_atr_rsi = alpha * atr_rsi + (1 - alpha) * self._smoothed_atr_rsi
-
-        atr_delta = self._smoothed_atr_rsi * self.p.qqe_factor
-
-        # Calculate new bands
-        new_long_band = smoothed_rsi - atr_delta
-        new_short_band = smoothed_rsi + atr_delta
-
-        # Get previous values
-        long_band_prev = self._long_band_prev if self._long_band_prev is not None else new_long_band
-        short_band_prev = self._short_band_prev if self._short_band_prev is not None else new_short_band
-        trend_prev = self._trend_prev
-
-        # Recursive long band calculation:
-        # longBand := smoothedRsi[1] > longBand[1] and smoothedRsi > longBand[1] ? max(longBand[1], newLongBand) : newLongBand
-        if smoothed_rsi_prev > long_band_prev and smoothed_rsi > long_band_prev:
-            long_band = max(long_band_prev, new_long_band)
-        else:
-            long_band = new_long_band
-
-        # Recursive short band calculation:
-        # shortBand := smoothedRsi[1] < shortBand[1] and smoothedRsi < shortBand[1] ? min(shortBand[1], newShortBand) : newShortBand
-        if smoothed_rsi_prev < short_band_prev and smoothed_rsi < short_band_prev:
-            short_band = min(short_band_prev, new_short_band)
-        else:
-            short_band = new_short_band
-
-        # Trend direction based on crosses
-        # if ta.cross(smoothedRsi, shortBand[1]) -> trendDirection := 1
-        # else if ta.cross(longBand[1], smoothedRsi) -> trendDirection := -1
-        # else -> trendDirection := trendDirection[1]
-        cross_up = (smoothed_rsi_prev <= short_band_prev and smoothed_rsi > short_band_prev) or \
-                   (smoothed_rsi_prev >= short_band_prev and smoothed_rsi < short_band_prev)
-        cross_down = (long_band_prev <= smoothed_rsi_prev and long_band_prev > smoothed_rsi) or \
-                     (long_band_prev >= smoothed_rsi_prev and long_band_prev < smoothed_rsi)
-
-        if cross_up:
-            trend = 1
-        elif cross_down:
-            trend = -1
-        else:
-            trend = trend_prev
-
-        # QQE trend line
-        qqe_trend_line = long_band if trend == 1 else short_band
-
-        # Store output values
-        self.l.qqe_trend_line[0] = qqe_trend_line
-        self.l.smoothed_rsi[0] = smoothed_rsi
-        self.l.long_band[0] = long_band
-        self.l.short_band[0] = short_band
-        self.l.trend_direction[0] = trend
-
-        # Update state for next iteration
-        self._long_band_prev = long_band
-        self._short_band_prev = short_band
-        self._trend_prev = trend
-        self._smoothed_rsi_prev = smoothed_rsi
+        self.l.qqe_trend_line[0] = values.qqe_trend_line
+        self.l.smoothed_rsi[0] = values.smoothed_rsi
+        self.l.long_band[0] = values.long_band
+        self.l.short_band[0] = values.short_band
+        self.l.trend_direction[0] = values.trend_direction
 
 
 class QQEMod(bt.Indicator):
@@ -214,6 +143,11 @@ class QQEMod(bt.Indicator):
         # Bollinger Bands on (Primary QQE Trend Line - 50)
         # We need to calculate this after QQEBand outputs are available
         # So we'll do it in next() method
+        self._kernel = QQEModKernel(
+            threshold_secondary=self.p.threshold_secondary,
+            bollinger_length=self.p.bollinger_length,
+            bollinger_multiplier=self.p.bollinger_multiplier,
+        )
 
     def next(self):
         # Get QQE values
@@ -222,48 +156,19 @@ class QQEMod(bt.Indicator):
         secondary_qqe_trend_line = self.s_qqe.l.qqe_trend_line[0]
         secondary_rsi = self.s_qqe.l.smoothed_rsi[0]
 
-        # Initialize Bollinger Bands state if not exists
-        if not hasattr(self, "_bb_values"):
-            self._bb_values = []
+        values = self._kernel.update(
+            primary_qqe_trend_line=primary_qqe_trend_line,
+            primary_rsi=primary_rsi,
+            secondary_qqe_trend_line=secondary_qqe_trend_line,
+            secondary_rsi=secondary_rsi,
+        )
 
-        # Add current value to Bollinger calculation
-        bb_value = primary_qqe_trend_line - 50
-        self._bb_values.append(bb_value)
-
-        # Keep only bollinger_length values
-        if len(self._bb_values) > self.p.bollinger_length:
-            self._bb_values = self._bb_values[-self.p.bollinger_length:]
-
-        # Calculate Bollinger Bands
-        if len(self._bb_values) >= self.p.bollinger_length:
-            bb_basis = sum(self._bb_values) / len(self._bb_values)
-            variance = sum((x - bb_basis) ** 2 for x in self._bb_values) / len(self._bb_values)
-            bb_std = variance ** 0.5
-            bb_deviation = self.p.bollinger_multiplier * bb_std
-            bb_upper = bb_basis + bb_deviation
-            bb_lower = bb_basis - bb_deviation
-        else:
-            bb_upper = 0
-            bb_lower = 0
-
-        # Calculate output values (all offset by -50)
-        sec_trend_line = secondary_qqe_trend_line - 50
-        sec_rsi = secondary_rsi - 50
-        pri_rsi = primary_rsi - 50
-
-        # Signal conditions (matching Pine Script exactly):
-        # qqeUpCondition = secondaryRSI - 50 > thresholdSecondary and primaryRSI - 50 > bollingerUpper
-        # qqeDownCondition = secondaryRSI - 50 < -thresholdSecondary and primaryRSI - 50 < bollingerLower
-        up_condition = sec_rsi > self.p.threshold_secondary and pri_rsi > bb_upper
-        down_condition = sec_rsi < -self.p.threshold_secondary and pri_rsi < bb_lower
-
-        # Store output values
-        self.l.secondary_qqe_trend_line[0] = sec_trend_line
-        self.l.secondary_rsi_histogram[0] = sec_rsi
-        self.l.qqe_up_signal[0] = sec_rsi if up_condition else math.nan
-        self.l.qqe_down_signal[0] = sec_rsi if down_condition else math.nan
-        self.l.bollinger_upper[0] = bb_upper
-        self.l.bollinger_lower[0] = bb_lower
+        self.l.secondary_qqe_trend_line[0] = values.secondary_qqe_trend_line
+        self.l.secondary_rsi_histogram[0] = values.secondary_rsi_histogram
+        self.l.qqe_up_signal[0] = values.qqe_up_signal
+        self.l.qqe_down_signal[0] = values.qqe_down_signal
+        self.l.bollinger_upper[0] = values.bollinger_upper
+        self.l.bollinger_lower[0] = values.bollinger_lower
 
         # Debug logging
         if self._debug_timestamps:
@@ -289,6 +194,9 @@ class QQEMod(bt.Indicator):
                     f"trend={self.s_qqe.l.trend_direction[0]:.0f} "
                     f"trendLine={secondary_qqe_trend_line:.4f}"
                 )
-                logger.info(f"Bollinger: upper={bb_upper:.4f} lower={bb_lower:.4f}")
-                logger.info(f"Output: secTrendLine-50={sec_trend_line:.4f} secRSI-50={sec_rsi:.4f}")
-                logger.info(f"Signals: upCond={up_condition} downCond={down_condition}")
+                logger.info(f"Bollinger: upper={values.bollinger_upper:.4f} lower={values.bollinger_lower:.4f}")
+                logger.info(f"Output: secTrendLine-50={values.secondary_qqe_trend_line:.4f} secRSI-50={values.secondary_rsi_histogram:.4f}")
+                logger.info(
+                    f"Signals: upCond={not math.isnan(values.qqe_up_signal)} "
+                    f"downCond={not math.isnan(values.qqe_down_signal)}"
+                )

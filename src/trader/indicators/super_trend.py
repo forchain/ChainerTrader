@@ -8,9 +8,10 @@ Based on Pine Script v6:
 """
 
 import logging
-import math
 
 import backtrader as bt
+
+from trader.core.strategy.domain.indicators import SuperTrendKernel
 
 logger = logging.getLogger(__name__)
 
@@ -65,10 +66,7 @@ class SuperTrend(bt.Indicator):
     )
 
     def __init__(self):
-        # State variables for recursive calculation
-        self._up_prev = None
-        self._dn_prev = None
-        self._trend_prev = 1  # Default trend is up (1)
+        self._kernel = SuperTrendKernel(self.p.multiplier)
 
         # Parse debug_times parameter
         self._debug_timestamps = (
@@ -91,50 +89,13 @@ class SuperTrend(bt.Indicator):
         close = self.data.close[0]
         close_prev = self.data.close[-1] if len(self.data) > 1 else close
 
-        # Calculate raw up/dn bands
-        up_raw = src - self.p.multiplier * atr
-        dn_raw = src + self.p.multiplier * atr
+        values = self._kernel.update(src=src, atr=atr, close=close, close_prev=close_prev)
 
-        # Get previous values (or use raw values for first bar)
-        up_prev = self._up_prev if self._up_prev is not None else up_raw
-        dn_prev = self._dn_prev if self._dn_prev is not None else dn_raw
-        trend_prev = self._trend_prev
-
-        # Recursive up calculation: up := close[1] > up1 ? max(up, up1) : up
-        if close_prev > up_prev:
-            up = max(up_raw, up_prev)
-        else:
-            up = up_raw
-
-        # Recursive dn calculation: dn := close[1] < dn1 ? min(dn, dn1) : dn
-        if close_prev < dn_prev:
-            dn = min(dn_raw, dn_prev)
-        else:
-            dn = dn_raw
-
-        # Trend calculation:
-        # trend := trend == -1 and close > dn1 ? 1 : trend == 1 and close < up1 ? -1 : trend
-        if trend_prev == -1 and close > dn_prev:
-            trend = 1
-        elif trend_prev == 1 and close < up_prev:
-            trend = -1
-        else:
-            trend = trend_prev
-
-        # Buy/Sell signals (show at the band price, or NaN if no signal)
-        is_buy = trend == 1 and trend_prev == -1
-        is_sell = trend == -1 and trend_prev == 1
-        buy_signal = up if is_buy else math.nan
-        sell_signal = dn if is_sell else math.nan
-
-        # Store output values
-        # Only show up band when trend == 1, dn band when trend == -1
-        # This matches TradingView behavior: trend == 1 ? up : na
-        self.l.up[0] = up if trend == 1 else math.nan
-        self.l.dn[0] = dn if trend == -1 else math.nan
-        self.l.trend[0] = trend
-        self.l.buy_signal[0] = buy_signal
-        self.l.sell_signal[0] = sell_signal
+        self.l.up[0] = values.up
+        self.l.dn[0] = values.dn
+        self.l.trend[0] = values.trend
+        self.l.buy_signal[0] = values.buy_signal
+        self.l.sell_signal[0] = values.sell_signal
 
         # Debug logging
         if self._debug_timestamps:
@@ -145,12 +106,7 @@ class SuperTrend(bt.Indicator):
                 logger.info(f"===== SuperTrend Debug [time={current_timestamp}] =====")
                 logger.info(f"Input: close={close:.2f} close_prev={close_prev:.2f}")
                 logger.info(f"ATR({self.p.periods}): atr={atr:.4f} src={src:.2f}")
-                logger.info(f"Raw: up_raw={up_raw:.2f} dn_raw={dn_raw:.2f}")
-                logger.info(f"Prev: up_prev={up_prev:.2f} dn_prev={dn_prev:.2f} trend_prev={trend_prev}")
-                logger.info(f"Calc: up={up:.2f} dn={dn:.2f} trend={trend}")
-                logger.info(f"Signal: buy={1 if is_buy else 0} sell={1 if is_sell else 0}")
-
-        # Update state for next iteration
-        self._up_prev = up
-        self._dn_prev = dn
-        self._trend_prev = trend
+                logger.info(f"Raw: up_raw={values.up_raw:.2f} dn_raw={values.dn_raw:.2f}")
+                logger.info(f"Prev: up_prev={values.up_prev:.2f} dn_prev={values.dn_prev:.2f} trend_prev={values.trend_prev}")
+                logger.info(f"Calc: up={values.up:.2f} dn={values.dn:.2f} trend={values.trend}")
+                logger.info(f"Signal: buy={1 if values.is_buy else 0} sell={1 if values.is_sell else 0}")
