@@ -3,8 +3,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from trader.core.execution import ExecutionEventType, ExecutionReason, ExecutionSide, ExecutionStatus
 from trader.core.shared.domain import Operate, OperateType
-from trader.execution import ExecutionEventType, ExecutionReason, ExecutionSide, ExecutionStatus
 from trader.execution.gateways import BacktraderExecutionGateway, BinanceLiveExecutionGateway
 from trader.strategy.execution_kernel import LegacyStrategyExecutionAdapter
 

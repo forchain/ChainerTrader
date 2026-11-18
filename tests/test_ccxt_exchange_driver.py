@@ -1,9 +1,9 @@
+from trader.core.execution import ExecutionSide, ExecutionStatus, ProtectionIntentType
 from trader.core.shared.domain import Interval, OperateType, Symbol, SymbolInterval
 from trader.exchange.ccxt_driver import CcxtExchangeDriver
 from trader.exchange.driver import ExchangeDriverType
 from trader.exchange.exchange_config import ExchangeConfig, MarginMode
 from trader.exchange.exchange_type import ExchangeType
-from trader.execution.models import ExecutionSide, ExecutionStatus, ProtectionIntentType
 
 
 class FakeCcxtClient:

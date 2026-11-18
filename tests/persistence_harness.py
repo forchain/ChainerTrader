@@ -14,11 +14,19 @@ from tortoise import Tortoise
 
 from trader.adapters.outbound.persistence.config import build_tortoise_config
 from trader.adapters.outbound.persistence.kline import DEFAULT_EXCHANGE, split_symbol_interval
+from trader.core.execution import ExecutionStateRecord, ExecutionStateReservation, ExecutionStatus
 from trader.core.identity.domain import Session, User
 from trader.core.shared.domain import Kline
 from trader.utils.task_state import TaskState, parse_task_state
 
 KlineKey = tuple[str, str, str, int]
+
+TERMINAL_EXECUTION_STATUSES = {
+    ExecutionStatus.CANCELED,
+    ExecutionStatus.REJECTED,
+    ExecutionStatus.SKIPPED,
+    ExecutionStatus.FAILED,
+}
 
 
 @asynccontextmanager
@@ -251,3 +259,36 @@ class InMemoryTaskRepository:
             for key in sorted(self._rows)
             if self._rows[key].get("user_id") == user_id
         ]
+
+
+class InMemoryExecutionStateStore:
+    """Fake execution state store mirroring ``ExecutionStateCol`` observable behavior."""
+
+    def __init__(self):
+        self._rows: dict[str, ExecutionStateRecord] = {}
+
+    async def reserve(self, record: ExecutionStateRecord) -> ExecutionStateReservation:
+        existing = self._rows.get(record.idempotency_key)
+        if existing is not None:
+            return ExecutionStateReservation(existing, created=False)
+        return ExecutionStateReservation(await self.save(record), created=True)
+
+    async def save(self, record: ExecutionStateRecord) -> ExecutionStateRecord:
+        self._rows[record.idempotency_key] = record
+        return record
+
+    async def get_by_idempotency_key(self, idempotency_key: str) -> ExecutionStateRecord | None:
+        return self._rows.get(idempotency_key)
+
+    async def list_open_by_symbol(self, symbol: str) -> list[ExecutionStateRecord]:
+        return self._open_records(record for record in self._rows.values() if record.symbol == symbol)
+
+    async def list_open_by_task(self, task_id: int) -> list[ExecutionStateRecord]:
+        return self._open_records(record for record in self._rows.values() if record.task_id == task_id)
+
+    @staticmethod
+    def _open_records(records) -> list[ExecutionStateRecord]:
+        return sorted(
+            (record for record in records if record.status not in TERMINAL_EXECUTION_STATUSES),
+            key=lambda record: record.created_at,
+        )

@@ -1,7 +1,6 @@
 from types import SimpleNamespace
 
-from trader.core.shared.domain import OperateType
-from trader.execution import (
+from trader.core.execution import (
     ExecutionEventType,
     ExecutionReason,
     ExecutionSide,
@@ -10,6 +9,7 @@ from trader.execution import (
     OrderIntent,
     RiskIntent,
 )
+from trader.core.shared.domain import OperateType
 from trader.execution.gateways import BacktraderExecutionGateway, BinanceLiveExecutionGateway, _order_ids
 
 

@@ -1,10 +1,12 @@
 import asyncio
+from contextlib import asynccontextmanager
 
-from tests.persistence_harness import initialized_database
+import pytest
+
+from tests.persistence_harness import InMemoryExecutionStateStore, initialized_database
 from trader.adapters.outbound.persistence.execution_state import ExecutionStateCol
 from trader.adapters.outbound.persistence.models import ExecutionStateModel
-from trader.execution import ExecutionSide, ExecutionStatus, GatewayMode, OrderIntent, ProtectionIntentType, RiskIntent
-from trader.execution.state import ExecutionStateRecord
+from trader.core.execution import ExecutionSide, ExecutionStateRecord, ExecutionStatus, GatewayMode, OrderIntent, ProtectionIntentType, RiskIntent
 
 
 class _Log:
@@ -198,6 +200,123 @@ def test_execution_state_store_updates_without_update_or_create_instance_save_pa
         assert store.log.errors == []
 
     asyncio.run(_with_db(run))
+
+
+STORES = ("tortoise", "in_memory")
+
+
+@asynccontextmanager
+async def _execution_state_store(adapter: str):
+    if adapter == "tortoise":
+        async with initialized_database():
+            yield ExecutionStateCol(_Log())
+    else:
+        yield InMemoryExecutionStateStore()
+
+
+@pytest.mark.parametrize("adapter", STORES)
+def test_execution_state_store_port_contract(adapter: str):
+    asyncio.run(_execution_state_store_contract(adapter))
+
+
+async def _execution_state_store_contract(adapter: str) -> None:
+    async with _execution_state_store(adapter) as store:
+        entry = OrderIntent.entry(
+            intent_id="intent-1",
+            operation_id="op-1",
+            symbol="BTCUSDT",
+            side=ExecutionSide.LONG,
+            quantity=0.25,
+            trade_id="trade-1",
+        )
+        submitted = ExecutionStateRecord.from_order_intent(
+            entry,
+            task_id=11,
+            gateway=GatewayMode.BINANCE_LIVE,
+            staged_execution_mode="auto_trade",
+            status=ExecutionStatus.SUBMITTED,
+            timestamp=100,
+        )
+
+        first = await store.reserve(submitted)
+        duplicate = await store.reserve(
+            submitted.with_updates(status=ExecutionStatus.ACCEPTED, exchange_order_id="should-not-overwrite", updated_at=101)
+        )
+
+        assert first.created is True
+        assert duplicate.created is False
+        assert duplicate.record.status == ExecutionStatus.SUBMITTED
+        assert duplicate.record.exchange_order_id is None
+
+        accepted = await store.save(
+            duplicate.record.with_updates(status=ExecutionStatus.ACCEPTED, exchange_order_id="live-order-1", updated_at=102)
+        )
+        assert accepted.status == ExecutionStatus.ACCEPTED
+        assert (await store.get_by_idempotency_key(submitted.idempotency_key)).exchange_order_id == "live-order-1"
+
+        protection = RiskIntent.place_protection(
+            intent_id="risk-1",
+            operation_id="op-1",
+            symbol="BTCUSDT",
+            side=ExecutionSide.LONG,
+            trade_id="trade-1",
+            quantity=0.25,
+            stop_price=95000.0,
+        )
+        await store.save(
+            ExecutionStateRecord.from_risk_intent(
+                protection,
+                task_id=11,
+                gateway=GatewayMode.BINANCE_LIVE,
+                staged_execution_mode="auto_trade",
+                status=ExecutionStatus.ACCEPTED,
+                timestamp=103,
+            )
+        )
+        other_task = ExecutionStateRecord.from_order_intent(
+            entry,
+            task_id=22,
+            gateway=GatewayMode.BINANCE_LIVE,
+            staged_execution_mode="auto_trade",
+            status=ExecutionStatus.SUBMITTED,
+            timestamp=104,
+        )
+        await store.save(other_task)
+        closed = ExecutionStateRecord.from_order_intent(
+            OrderIntent.entry(
+                intent_id="intent-2",
+                operation_id="op-2",
+                symbol="BTCUSDT",
+                side=ExecutionSide.LONG,
+                quantity=0.25,
+                trade_id="trade-2",
+            ),
+            task_id=11,
+            gateway=GatewayMode.BINANCE_LIVE,
+            staged_execution_mode="auto_trade",
+            status=ExecutionStatus.FAILED,
+            timestamp=105,
+        )
+        await store.save(closed)
+
+        open_by_symbol = await store.list_open_by_symbol("BTCUSDT")
+        assert [record.idempotency_key for record in open_by_symbol] == [
+            submitted.idempotency_key,
+            f"task:11:{protection.idempotency_key}",
+            other_task.idempotency_key,
+        ]
+
+        open_by_task = await store.list_open_by_task(11)
+        assert [record.idempotency_key for record in open_by_task] == [
+            submitted.idempotency_key,
+            f"task:11:{protection.idempotency_key}",
+        ]
+        assert await store.list_open_by_task(9999) == []
+
+        await store.save(accepted.with_updates(status=ExecutionStatus.FAILED, updated_at=106))
+        assert [record.idempotency_key for record in await store.list_open_by_task(11)] == [
+            f"task:11:{protection.idempotency_key}",
+        ]
 
 
 def test_execution_state_store_logs_context_when_save_fails():

@@ -4,12 +4,12 @@ import time
 from enum import Enum
 from typing import Callable
 
-from trader.core.shared.domain import OperateType
-from trader.execution import (
+from trader.core.execution import (
     ExecutionGateway,
     ExecutionReason,
     ExecutionResult,
     ExecutionSide,
+    ExecutionStateRecord,
     ExecutionStateStore,
     ExecutionStatus,
     GatewayMode,
@@ -17,7 +17,7 @@ from trader.execution import (
     OrderIntentType,
     RiskIntent,
 )
-from trader.execution.state import ExecutionStateRecord
+from trader.core.shared.domain import OperateType
 
 
 class TradeLifecycleStatus(str, Enum):

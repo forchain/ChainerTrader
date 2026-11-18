@@ -48,17 +48,17 @@ try:
 except ModuleNotFoundError:
     MarginTradingManager = None  # type: ignore[assignment]
     BINANCE_MARGIN_SDK_AVAILABLE = False
-from trader.core.shared.domain import Kline, OperateType, Symbol, SymbolInterval
-from trader.exchange.driver import ExchangeDriverType
-from trader.exchange.exchange_config import ExchangeConfig, MarginMode
-from trader.exchange.exchange_type import ExchangeType
-from trader.execution.models import (
+from trader.core.execution import (
     ExecutionSide,
     ExecutionStatus,
     PositionView,
     ProtectionIntentType,
     ProtectionOrderView,
 )
+from trader.core.shared.domain import Kline, OperateType, Symbol, SymbolInterval
+from trader.exchange.driver import ExchangeDriverType
+from trader.exchange.exchange_config import ExchangeConfig, MarginMode
+from trader.exchange.exchange_type import ExchangeType
 
 EXCHANGE_NAME = "BINANCE"
 
@@ -108,7 +108,7 @@ class BinanceExchange:
         return self.driver_type == ExchangeDriverType.CCXT
 
     def supported_gateway_capabilities(self):
-        from trader.execution.models import GatewayCapability
+        from trader.core.execution import GatewayCapability
 
         supported = {
             GatewayCapability.MARKET_ENTRY,

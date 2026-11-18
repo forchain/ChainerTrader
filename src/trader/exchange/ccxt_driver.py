@@ -14,11 +14,11 @@ except Exception:  # pragma: no cover - optional until dependency is installed
     ccxt = None
 
 from trader.common.logger import default
+from trader.core.execution import ExecutionSide, ExecutionStatus, PositionView, ProtectionIntentType, ProtectionOrderView
 from trader.core.shared.domain import Kline, OperateType, Symbol, SymbolInterval, get_time_duration
 from trader.exchange.balance import Balance
 from trader.exchange.exchange_config import ExchangeConfig, MarginMode
 from trader.exchange.exchange_type import ExchangeType
-from trader.execution.models import ExecutionSide, ExecutionStatus, PositionView, ProtectionIntentType, ProtectionOrderView
 
 
 class CcxtExchangeDriver:

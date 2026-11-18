@@ -2,9 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from trader.core.shared.domain import OperateType, Symbol
-from trader.execution.gateway import ExecutionGateway
-from trader.execution.models import (
+from trader.core.execution import (
     ExecutionEvent,
     ExecutionEventType,
     ExecutionReason,
@@ -19,6 +17,8 @@ from trader.execution.models import (
     ReconcileResult,
     RiskIntent,
 )
+from trader.core.execution.interfaces import ExecutionGateway
+from trader.core.shared.domain import OperateType, Symbol
 
 try:
     import backtrader as bt
