@@ -4,7 +4,7 @@ import backtrader as bt
 import pandas as pd
 import pytest
 
-from trader.strategy.base_strategy import BaseStrategy
+from trader.adapters.outbound.backtrader.base_strategy import BaseStrategy
 
 
 def _build_df(rows):

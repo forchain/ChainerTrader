@@ -10,12 +10,12 @@ import backtrader as bt
 import requests
 from prettytable import PrettyTable
 
+from trader.adapters.outbound.backtrader.data import BinanceData
 from trader.adapters.outbound.binance.exchange import BinanceExchange
 from trader.adapters.outbound.persistence.manager import DatabaseManager
 from trader.common.config import Config, new_and_env
 from trader.common.logger import Logger
 from trader.core.shared.domain import Interval, Kline, SymbolInterval, get_time_duration
-from trader.exchange.binance.data import BinanceData
 from trader.exchange.exchange_config import parse_exchange_config
 from trader.strategy.strategy import parse_strategy
 from trader.task.task_config import TaskConfig, create_task_id

@@ -91,7 +91,7 @@ Dependencies point inward (`adapters` → `core`), and `tests/test_import_direct
 - `src/trader/task/`
   Task parsing, task scheduling, background optimization orchestration, and report generation.
 - `src/trader/strategy/`
-  Trading and backtesting strategies plus the Chainer strategy kernel. Strategy subclasses provide signal conditions and signal context, while shared framework modules handle signal routing, trade lifecycle state, risk decisions, and Backtrader execution adaptation.
+  Strategy factory and backtest result models. Backtrader strategy subclasses and feeds live in `src/trader/adapters/outbound/backtrader/`; the framework-free signal, lifecycle, and risk kernel lives in `src/trader/core/strategy/domain/`.
 - `src/trader/execution/`
   Portable execution contracts, gateway implementations, execution state, and reconciliation primitives shared by backtest and live modes.
 - `src/trader/exchange/`

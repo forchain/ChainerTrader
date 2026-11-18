@@ -6,9 +6,9 @@ from pathlib import Path
 
 import backtrader as bt
 
+from trader.adapters.outbound.backtrader.csvdata import BinanceCSVData
+from trader.adapters.outbound.backtrader.macd_triple_divergence import MacdTripleDivergenceStrategy
 from trader.analyzers.backtest_report import BacktestReportAnalyzer
-from trader.exchange.binance.csvdata import BinanceCSVData
-from trader.strategy.macd_triple_divergence import MacdTripleDivergenceStrategy
 from trader.utils.operation_state import MaxDrawdownAnalyzer
 
 

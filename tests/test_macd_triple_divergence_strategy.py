@@ -5,8 +5,8 @@ from types import MethodType, SimpleNamespace
 
 import backtrader as bt
 
-from trader.exchange.binance.csvdata import BinanceCSVData
-from trader.strategy.macd_triple_divergence import MacdTripleDivergenceStrategy, Segment, SegmentSign
+from trader.adapters.outbound.backtrader.csvdata import BinanceCSVData
+from trader.adapters.outbound.backtrader.macd_triple_divergence import MacdTripleDivergenceStrategy, Segment, SegmentSign
 
 
 class _SignalProbeStrategy(MacdTripleDivergenceStrategy):
