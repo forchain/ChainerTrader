@@ -11,8 +11,8 @@ from trader.common.message import Message
 
 class RpcApp(App):
 
-    def __init__(self, cfg: Config):
-        super().__init__(cfg)
+    def __init__(self, cfg: Config, *, container=None):
+        super().__init__(cfg, container=container)
         self.main_task = None
         self.quit = None
         self.main_task_error = None

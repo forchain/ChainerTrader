@@ -1,19 +1,35 @@
 import importlib
+import inspect
 import json
-import os
-import re
-from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
 
+from trader.adapters.inbound.http.exceptions import translate_domain_exception
 from trader.adapters.outbound.binance.exchange import BinanceExchange
 from trader.auth.context import current_user
 from trader.auth.credentials import FernetSecretCipher, decrypt_secret, service_key_available
 from trader.common import path as trader_path
 from trader.core.exchange.domain import ExchangeConfig, parse_exchange_config
-from trader.core.exchange.exceptions import ExchangeConnectivityError, UserExchangeCredentialError
 from trader.core.exchange.use_cases import PreflightUserExchange
+from trader.core.task.use_cases.submission import (
+    default_taskset_file_name as _default_taskset_file_name,
+)
+from trader.core.task.use_cases.submission import (
+    enforce_current_user_ownership as _enforce_current_user_ownership,
+)
+from trader.core.task.use_cases.submission import (
+    normalize_save_file_name as _core_normalize_save_file_name,
+)
+from trader.core.task.use_cases.submission import (
+    normalize_task_config_path as _normalize_task_config_path,
+)
+from trader.core.task.use_cases.submission import (
+    task_submission_source as _task_submission_source,
+)
+from trader.core.task.use_cases.submission import (
+    validate_config_file_source as _core_validate_config_file_source,
+)
 from trader.rpc.task_state_payload import public_task_state_dict
 from trader.task.task_config import parse_task_config
 from trader.task.task_type import TaskType
@@ -21,11 +37,28 @@ from trader.task.task_type import TaskType
 router = APIRouter()
 
 
+async def _resolve_user(request: Request):
+    composition = getattr(request.app.state, "composition", None)
+    resolver = getattr(composition, "current_user_resolver", None)
+    if callable(resolver):
+        res = resolver(request)
+        return await res if inspect.isawaitable(res) else res
+    return await current_user(request)
+
+
+def _validate_config_file_source(cfg: str) -> None:
+    _core_validate_config_file_source(cfg, trader_path.get_file_path)
+
+
+def _normalize_save_file_name(raw: str) -> str:
+    return _core_normalize_save_file_name(raw)
+
+
 @router.post("")
 async def add_tasks(request: Request):
     raw_bytes = await request.body()
     cfg = raw_bytes.decode("utf-8")
-    user = await current_user(request)
+    user = await _resolve_user(request)
     if user is None:
         raise HTTPException(status_code=401, detail="authentication required")
     rpc_app = request.app.state.app
@@ -48,6 +81,10 @@ async def add_tasks(request: Request):
         detail = f"invalid task config: {exc}"
         _log_task_submission_failure(rpc_app, user.id, source, detail)
         raise HTTPException(status_code=400, detail=detail) from exc
+    except Exception as exc:
+        http_exc = translate_domain_exception(exc)
+        _log_task_submission_failure(rpc_app, user.id, source, str(http_exc.detail))
+        raise http_exc from exc
     if result.get("result") != "success":
         detail = result.get("error") or "task manager rejected the task config"
         _log_task_submission_failure(rpc_app, user.id, source, detail)
@@ -58,7 +95,7 @@ async def add_tasks(request: Request):
 
 @router.get("")
 async def get_tasks(request: Request):
-    user = await current_user(request)
+    user = await _resolve_user(request)
     if user is None:
         raise HTTPException(status_code=401, detail="authentication required")
     user_id = user.id
@@ -71,7 +108,7 @@ async def get_tasks(request: Request):
 
 @router.get("/config-template")
 async def config_template(path: str, request: Request):
-    user = await current_user(request)
+    user = await _resolve_user(request)
     if user is None:
         raise HTTPException(status_code=401, detail="authentication required")
     try:
@@ -88,7 +125,7 @@ async def config_template(path: str, request: Request):
 
 @router.post("/config-template/save")
 async def save_config_template(request: Request):
-    user = await current_user(request)
+    user = await _resolve_user(request)
     if user is None:
         raise HTTPException(status_code=401, detail="authentication required")
     try:
@@ -100,7 +137,10 @@ async def save_config_template(request: Request):
     if not isinstance(tasks, list) or len(tasks) == 0:
         raise HTTPException(status_code=400, detail="tasks must be a non-empty JSON array")
 
-    file_name = _normalize_save_file_name(payload.get("file_name") or "")
+    try:
+        file_name = _normalize_save_file_name(payload.get("file_name") or "")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not file_name:
         file_name = _default_taskset_file_name(tasks)
     if not file_name.endswith(".json"):
@@ -120,7 +160,7 @@ async def save_config_template(request: Request):
 
 @router.get("/strategy-param-presets")
 async def strategy_param_presets(strategy: str, request: Request):
-    user = await current_user(request)
+    user = await _resolve_user(request)
     if user is None:
         raise HTTPException(status_code=401, detail="authentication required")
     strategy_name = str(strategy or "").strip()
@@ -147,8 +187,8 @@ async def _preflight_user_live_tasks(request: Request, user, taskcs) -> None:
             user.id,
             connectivity_check=lambda credential: _user_exchange_ping_ok(cfg, service_key, credential),
         )
-    except (ExchangeConnectivityError, UserExchangeCredentialError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise translate_domain_exception(exc) from exc
 
 
 async def _stop_running_tasks_for_user(request: Request, user) -> None:
@@ -181,90 +221,6 @@ async def _stop_running_tasks_for_user(request: Request, user) -> None:
 async def _preflight_single_running_task_per_user(request: Request, user) -> None:
     # Backward-compatible alias for older imports/callers.
     await _stop_running_tasks_for_user(request, user)
-
-
-def _task_submission_source(cfg: str) -> str:
-    text = (cfg or "").strip()
-    if text.startswith("[") or text.startswith("{"):
-        return "inline-json"
-    if not text:
-        return "empty"
-    normalized = " ".join(text.split())
-    if len(normalized) > 240:
-        return f"{normalized[:240]}..."
-    return normalized
-
-
-def _validate_config_file_source(cfg: str) -> None:
-    text = (cfg or "").strip()
-    if not text or text.startswith("[") or text.startswith("{"):
-        return
-    if not text.endswith(".json"):
-        return
-    normalized = _normalize_task_config_path(text)
-    if os.path.isfile(trader_path.get_file_path(normalized)):
-        return
-    raise ValueError(f"task config file not found: {normalized}")
-
-
-def _normalize_task_config_path(raw_path: str) -> str:
-    text = (raw_path or "").strip().replace("\\", "/")
-    if not text:
-        raise ValueError("task config path is required")
-    if text.startswith("/") or text.startswith("./") or "/../" in f"/{text}/" or text.startswith("../"):
-        raise ValueError(f"invalid task config path: {raw_path}")
-    if not text.startswith("configs/tasks/"):
-        raise ValueError(f"task config path must be under configs/tasks: {raw_path}")
-    if not text.endswith(".json"):
-        raise ValueError(f"task config path must end with .json: {raw_path}")
-    return text
-
-
-def _slug(text: str) -> str:
-    lowered = str(text or "").strip().lower()
-    lowered = lowered.replace("/", "-").replace(" ", "-")
-    lowered = re.sub(r"[^a-z0-9_-]+", "-", lowered)
-    lowered = re.sub(r"-{2,}", "-", lowered).strip("-_")
-    return lowered
-
-
-def _normalize_save_file_name(raw: str) -> str:
-    text = str(raw or "").strip().replace("\\", "/")
-    if not text:
-        return ""
-    if "/" in text:
-        raise HTTPException(status_code=400, detail="file_name must not contain path separators")
-    if text in {".", ".."}:
-        raise HTTPException(status_code=400, detail="invalid file_name")
-    stem = text[:-5] if text.lower().endswith(".json") else text
-    stem = _slug(stem)
-    if not stem:
-        raise HTTPException(status_code=400, detail="invalid file_name")
-    return f"{stem}.json"
-
-
-def _default_taskset_file_name(tasks: list[dict]) -> str:
-    items = [item for item in tasks if isinstance(item, dict)]
-    count = max(1, len(items))
-
-    def _uniq(field_getter):
-        values = []
-        for item in items:
-            value = _slug(field_getter(item))
-            if value:
-                values.append(value)
-        uniq_values = sorted(set(values))
-        if not uniq_values:
-            return "mixed"
-        if len(uniq_values) == 1:
-            return uniq_values[0]
-        return f"mixed{len(uniq_values)}"
-
-    task_type = _uniq(lambda item: str(item.get("task_type") or ""))
-    interval = _uniq(lambda item: str(item.get("interval") or ""))
-    strategy = _uniq(lambda item: str(item.get("strategy") or item.get("strategies") or ""))
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    return f"{task_type}_{interval}_{strategy}_n{count}_{timestamp}.json"
 
 
 def _strategy_param_defaults(strategy_name: str) -> dict:
@@ -330,11 +286,6 @@ def _rpc_logger(rpc_app):
     if callable(log):
         return log()
     return None
-
-
-def _enforce_current_user_ownership(taskcs, current_user_id: int) -> None:
-    for taskc in taskcs or []:
-        taskc.user_id = current_user_id
 
 
 def _log_task_submission_failure(rpc_app, user_id: int, source: str, detail: str) -> None:
