@@ -64,3 +64,59 @@ def test_check_repo_layout_rejects_task_json_outside_configs(tmp_path: Path, mon
 )
 def test_check_repo_layout_allows_task_json_inside_configs(path: Path):
     assert check_paths([path]) == []
+
+
+def _create_path(tmp_path: Path, monkeypatch, relative: str) -> Path:
+    path = tmp_path / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    return Path(relative)
+
+
+@pytest.mark.parametrize(
+    "relative",
+    [
+        "src/trader/core/__init__.py",
+        "src/trader/core/shared/__init__.py",
+        "src/trader/core/task/domain.py",
+        "src/trader/core/task/use_cases/run_task.py",
+        "src/trader/adapters/__init__.py",
+        "src/trader/adapters/inbound/__init__.py",
+        "src/trader/adapters/inbound/http/routes.py",
+        "src/trader/adapters/inbound/cli/console.py",
+        "src/trader/adapters/outbound/__init__.py",
+        "src/trader/adapters/outbound/persistence/repositories.py",
+        "src/trader/adapters/outbound/binance/exchange.py",
+        "src/trader/adapters/outbound/backtrader/engine.py",
+        "src/trader/adapters/outbound/marketstream/hub.py",
+        "src/trader/adapters/outbound/email/sender.py",
+        "src/trader/adapters/outbound/files/store.py",
+    ],
+)
+def test_check_repo_layout_allows_hexagonal_package_paths(tmp_path: Path, monkeypatch, relative: str):
+    path = _create_path(tmp_path, monkeypatch, relative)
+
+    assert check_paths([path]) == []
+
+
+@pytest.mark.parametrize(
+    "relative",
+    [
+        "src/trader/core/rogue.py",
+        "src/trader/core/unknown/thing.py",
+        "src/trader/adapters/rogue.py",
+        "src/trader/adapters/middleware/http.py",
+        "src/trader/adapters/inbound/rogue.py",
+        "src/trader/adapters/inbound/unknown/thing.py",
+        "src/trader/adapters/outbound/rogue.py",
+        "src/trader/adapters/outbound/unknown/thing.py",
+    ],
+)
+def test_check_repo_layout_rejects_python_outside_hexagonal_packages(tmp_path: Path, monkeypatch, relative: str):
+    path = _create_path(tmp_path, monkeypatch, relative)
+
+    violations = check_paths([path])
+
+    assert violations
+    assert relative in violations[0]

@@ -59,8 +59,33 @@ ChainerTrader exposes one runtime with several user-visible capabilities:
                    +----------------------+
 ```
 
+### Hexagonal Layering
+
+The codebase follows a hexagonal (ports and adapters) layout, recorded in [ADR-0003](docs/adr/0003-hexagonal-layering.md):
+
+```text
+adapters/inbound  ──┐
+                    ├──> core (domain + application) ──> composition root wires everything
+adapters/outbound ──┘
+```
+
+- `src/trader/core/`
+  Stable domain and application layer: business rules, use cases, and outbound port definitions, organized by bounded context (`shared`, `task`, `execution`, `marketdata`, `exchange`, `identity`, `notification`, `strategy`, `optimization`). Core code must not import adapters or external frameworks.
+- `src/trader/adapters/inbound/`
+  HTTP and CLI entry adapters that parse external input, call use cases, and translate domain errors.
+- `src/trader/adapters/outbound/`
+  Implementations of core ports for persistence, Binance access, backtrader, market streams, email, and files.
+- Composition root
+  The package entry point is the only place that instantiates concrete adapters and injects them into use cases.
+
+Dependencies point inward (`adapters` → `core`), and `tests/test_import_direction.py` enforces the boundary.
+
 ### Module Overview
 
+- `src/trader/core/`
+  Domain and application layer for the trading business, organized by bounded context.
+- `src/trader/adapters/`
+  Inbound HTTP/CLI adapters and outbound persistence, exchange, backtrader, market-stream, email, and file adapters.
 - `src/trader/app/`
   User entrypoint and application startup.
 - `src/trader/task/`
