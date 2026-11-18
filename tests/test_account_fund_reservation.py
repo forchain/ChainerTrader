@@ -6,6 +6,7 @@ from tortoise import Tortoise
 
 from trader.common.config import Config
 from trader.common.logger import Logger
+from trader.core.shared.domain import Interval, SymbolInterval
 from trader.database.account_fund_reservation import AccountFundReservationCol, FundReservationError
 from trader.database.config import build_tortoise_config
 from trader.execution.models import ExecutionStatus, GatewayMode
@@ -15,7 +16,6 @@ from trader.task.task_config import TaskConfig, parse_task_config
 from trader.task.task_manager import TaskManager
 from trader.task.task_type import TaskType
 from trader.task.trader_task import TraderTask
-from trader.utils.symbol_interval import Interval, SymbolInterval
 
 
 class _Log:

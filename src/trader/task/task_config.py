@@ -5,7 +5,7 @@ from datetime import datetime
 from trader.common import path
 from trader.common.common import parse_datetime  # noqa: F401
 from trader.common.config import TRADER_MIN_LIVE_TRADE_NOTIONAL
-from trader.common.time_range import resolve_time_range
+from trader.core.shared.domain import Interval, SymbolInterval, resolve_time_range
 from trader.live.auto_execution import (
     normalize_live_execution_mode,
     normalize_margin_borrow_block_policy,
@@ -15,7 +15,6 @@ from trader.task.persisted_live_config_migration import (
     PERSISTED_LEGACY_LIVE_EXECUTION_MODE,
 )
 from trader.task.task_type import TaskType, parse_task_type
-from trader.utils.symbol_interval import Interval, SymbolInterval
 from trader.utils.symbols_interval import SymbolsInterval
 
 

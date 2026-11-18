@@ -5,7 +5,7 @@ from datetime import datetime
 import backtrader as bt
 from backtrader import date2num
 
-from trader.utils.kline import Kline
+from trader.core.shared.domain import Kline
 
 
 class BinanceData(bt.feed.DataBase):

@@ -7,6 +7,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from trader.common.config import Config
+from trader.core.shared.domain import Interval, Kline, Operate, OperateType, SymbolInterval
 from trader.live.dashboard import DashboardEvent
 from trader.live.monitor import (
     LiveEventBus,
@@ -14,7 +16,6 @@ from trader.live.monitor import (
     build_live_strategy_summary,
     serialize_dashboard_event,
 )
-from trader.common.config import Config
 from trader.rpc.api.live import (
     current_task_workspace,
     dispatch_debug_manual_signal,
@@ -26,17 +27,14 @@ from trader.rpc.api.live import (
     live_strategy_snapshot,
     rerun_task,
 )
-from trader.rpc.api.task import get_task_operations
 from trader.rpc.api.live import (
     router as live_router,
 )
+from trader.rpc.api.task import get_task_operations
 from trader.rpc.app import app as rpc_app
 from trader.strategy.trader_result import TraderResult
 from trader.task.task_config import TaskConfig
 from trader.task.task_type import TaskType
-from trader.utils.kline import Kline
-from trader.utils.operate import Operate, OperateType
-from trader.utils.symbol_interval import Interval, SymbolInterval
 from trader.utils.task_state import TaskStateType
 
 BASE = 1_714_281_600

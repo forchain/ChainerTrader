@@ -6,9 +6,8 @@ from typing import Iterable
 import backtrader as bt
 from backtrader import num2date
 
+from trader.core.shared.domain import Kline, Operate, OperateType
 from trader.live.feed import LiveKlineDataFeed
-from trader.utils.kline import Kline
-from trader.utils.operate import Operate, OperateType
 from trader.utils.operation_state import enrich_operation_from_trade_context
 
 

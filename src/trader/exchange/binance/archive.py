@@ -7,7 +7,7 @@ from xml.etree import ElementTree
 
 import requests
 
-from trader.utils.symbol_interval import SymbolInterval
+from trader.core.shared.domain import SymbolInterval
 
 BINANCE_PUBLIC_DATA_S3_URL = "https://s3-ap-northeast-1.amazonaws.com/data.binance.vision/"
 

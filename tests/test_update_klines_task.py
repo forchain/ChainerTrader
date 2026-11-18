@@ -47,8 +47,8 @@ def _ensure_binance_exchange_stub():
 
 _ensure_binance_exchange_stub()
 
+from trader.core.shared.domain import Interval, SymbolInterval, add_time_duration  # noqa: E402
 from trader.task.update_klines_task import _compute_limit_for_range, download_range, download_range_backward  # noqa: E402
-from trader.utils.symbol_interval import Interval, SymbolInterval, add_time_duration  # noqa: E402
 
 
 class DummyLog:

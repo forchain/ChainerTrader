@@ -6,13 +6,13 @@ from tortoise import Tortoise
 from trader.app.app import App
 from trader.common.config import Config
 from trader.common.logger import Logger
+from trader.core.shared.domain import Interval, SymbolInterval
 from trader.database.config import build_tortoise_config
 from trader.database.task import TaskCol
 from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig, parse_task_config
 from trader.task.task_manager import TaskManager
 from trader.task.task_type import TaskType
-from trader.utils.symbol_interval import Interval, SymbolInterval
 from trader.utils.task_state import TaskState
 
 

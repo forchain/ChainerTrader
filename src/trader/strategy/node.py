@@ -10,9 +10,9 @@ from trader.analyzers.backtest_report import BacktestReportAnalyzer
 from trader.common.config import Config
 from trader.common.log_tag import LogTag
 from trader.common.logger import Logger
+from trader.core.shared.domain import SymbolInterval
 from trader.strategy.trader_result import TraderResult
 from trader.utils.operation_state import MaxDrawdownAnalyzer, OptStatAnalyzer
-from trader.utils.symbol_interval import SymbolInterval
 
 
 def build_strategy_kwargs(

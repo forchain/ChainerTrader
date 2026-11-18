@@ -1,10 +1,11 @@
 import os
+import time
 from decimal import Decimal
 from types import SimpleNamespace
-import time
 
 import pytest
 
+from trader.core.shared.domain import Operate, OperateType, Symbol
 from trader.exchange.binance.exchange import BinanceExchange
 from trader.exchange.driver import ExchangeDriverType
 from trader.exchange.exchange_config import ExchangeConfig
@@ -17,18 +18,16 @@ from trader.tools.binance_live_smoke import (
     _env_driver_type,
     _final_acceptance_gate,
     _is_actionable_reason,
+    _is_force_majeure_reason,
     _latest_price,
     _list_open_orders_for_acceptance,
-    _is_force_majeure_reason,
+    _run_objective_with_resilience,
     _safe_replacement_stop_price,
+    _stop_loss_order_id_from_outcome,
     _verify_entry_with_protection,
     _verify_replace_protection,
-    _stop_loss_order_id_from_outcome,
-    _run_objective_with_resilience,
     run_binance_live_smoke_from_env,
 )
-from trader.utils.operate import Operate, OperateType
-from trader.utils.symbol_interval import Symbol
 
 
 @pytest.mark.skipif(

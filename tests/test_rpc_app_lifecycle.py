@@ -5,11 +5,11 @@ from contextlib import asynccontextmanager
 import pytest
 
 from trader.common.config import Config
+from trader.core.shared.domain import Interval, SymbolInterval
 from trader.rpc import app as rpc_module
 from trader.rpc.rpc_app import RpcApp
 from trader.task.task_config import TaskConfig
 from trader.task.task_type import TaskType
-from trader.utils.symbol_interval import Interval, SymbolInterval
 
 
 @pytest.fixture

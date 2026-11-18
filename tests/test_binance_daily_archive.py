@@ -4,12 +4,12 @@ from unittest.mock import patch
 
 import requests
 
+from trader.core.shared.domain import Interval, SymbolInterval
 from trader.exchange.binance.archive import (
     find_earliest_daily_archive_open_time,
     parse_earliest_daily_archive_open_time,
 )
 from trader.exchange.binance.exchange import BinanceExchange
-from trader.utils.symbol_interval import Interval, SymbolInterval
 
 
 def test_parse_earliest_daily_archive_open_time_ignores_checksums_and_uses_utc_day_start():

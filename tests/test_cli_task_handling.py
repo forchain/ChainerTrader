@@ -9,12 +9,12 @@ from trader.app.app import App
 from trader.common.config import TRADER_DB, TRADER_EXCHANGE, TRADER_TASKS, Config
 from trader.common.logger import Logger
 from trader.common.message import new_add_tasks_msg, new_exit_msg
+from trader.core.shared.domain import Interval, SymbolInterval
 from trader.task.base_task import BaseTask
 from trader.task.persisted_live_config_migration import migrate_persisted_task_config_json
 from trader.task.task_config import TaskConfig
 from trader.task.task_manager import TaskManager
 from trader.task.task_type import TaskType
-from trader.utils.symbol_interval import Interval, SymbolInterval
 from trader.utils.task_state import TaskState, TaskStateType
 
 

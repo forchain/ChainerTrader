@@ -8,21 +8,20 @@ import pytest
 from trader.common.config import Config
 from trader.common.logger import Logger
 from trader.common.message import Message, MessageType
+from trader.core.shared.domain import Interval, Operate, OperateType, SymbolInterval
 from trader.notify.notify_manager import NotifyManager
 from trader.notify.trade_notification import (
     ManualNotifySmokeKline,
     ManualTradeAccountState,
     ManualTradeNotificationEvent,
-    normalize_live_execution_mode,
     build_manual_notify_smoke_event,
+    normalize_live_execution_mode,
     render_manual_trade_email,
 )
 from trader.strategy.trader_result import TraderResult
 from trader.task.task_config import TaskConfig, parse_task_config
 from trader.task.task_type import TaskType
 from trader.task.trader_task import TraderTask
-from trader.utils.operate import Operate, OperateType
-from trader.utils.symbol_interval import Interval, SymbolInterval
 
 
 def _result_with_operation(op: Operate) -> TraderResult:

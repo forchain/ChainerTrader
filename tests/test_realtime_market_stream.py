@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from trader.core.shared.domain import Kline
 from trader.live.market_data import normalize_binance_kline_message
 from trader.live.stream import (
     GLOBAL_MARKET_STREAM_HUB,
@@ -14,7 +15,6 @@ from trader.live.stream import (
     MarketStreamKey,
     MarketStreamState,
 )
-from trader.utils.kline import Kline
 
 BASE = 1_714_281_600
 

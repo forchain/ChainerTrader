@@ -7,8 +7,8 @@ from enum import Enum
 import backtrader as bt
 from backtrader import date2num
 
+from trader.core.shared.domain import Kline
 from trader.live.market_data import KlineUpdate
-from trader.utils.kline import Kline
 
 
 class LiveFeedPhase(str, Enum):

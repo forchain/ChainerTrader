@@ -1,3 +1,4 @@
+from trader.core.shared.domain import Interval, Kline
 from trader.live.market_data import (
     BackfillRequestKind,
     KlineUpdateBuffer,
@@ -5,8 +6,6 @@ from trader.live.market_data import (
     normalize_binance_kline_message,
     plan_initial_backfill,
 )
-from trader.utils.kline import Kline
-from trader.utils.symbol_interval import Interval
 
 BASE = 1_714_281_600
 

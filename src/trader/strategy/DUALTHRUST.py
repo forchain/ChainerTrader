@@ -2,8 +2,8 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 
 import backtrader as bt
 
+from trader.core.shared.domain import OperateType
 from trader.strategy.base_strategy import BaseStrategy
-from trader.utils.operate import OperateType
 
 
 class DUALTHRUSTStrategy(BaseStrategy):

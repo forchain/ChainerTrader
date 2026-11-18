@@ -3,10 +3,10 @@ from types import SimpleNamespace
 
 import pytest
 
+from trader.core.shared.domain import Operate, OperateType
 from trader.execution import ExecutionEventType, ExecutionReason, ExecutionSide, ExecutionStatus
 from trader.execution.gateways import BacktraderExecutionGateway, BinanceLiveExecutionGateway
 from trader.strategy.execution_kernel import LegacyStrategyExecutionAdapter
-from trader.utils.operate import Operate, OperateType
 
 
 class FakeBacktraderStrategy:

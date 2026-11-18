@@ -1,7 +1,7 @@
 import backtrader as bt
 from backtrader import num2date
 
-from trader.utils.operate import Operate, OperateType
+from trader.core.shared.domain import Operate, OperateType
 
 
 def _ctx_value(ctx, name: str):

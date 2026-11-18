@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from trader.utils.operate import Operate, OperateType, parse_opts
+from trader.core.shared.domain import Operate, OperateType, parse_opts
 from trader.utils.operation_state import MaxDrawdownAnalyzer, enrich_operation_from_trade_context
 
 

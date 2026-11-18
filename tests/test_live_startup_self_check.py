@@ -1,10 +1,10 @@
 from types import SimpleNamespace
 
+from trader.core.shared.domain import Interval, SymbolInterval
 from trader.exchange.exchange_config import MarginMode
 from trader.task.live_startup_self_check import evaluate_live_startup_self_check, infer_required_margin_mode
 from trader.task.task_config import TaskConfig
 from trader.task.task_type import TaskType
-from trader.utils.symbol_interval import Interval, SymbolInterval
 
 
 def _task(mode: str) -> TaskConfig:

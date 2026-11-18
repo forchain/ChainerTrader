@@ -18,13 +18,13 @@ import matplotlib.pyplot as plt
 from dotenv import load_dotenv
 from matplotlib.ticker import ScalarFormatter
 
+from trader.core.shared.domain import Kline
+
 # Move DB imports to inside function to avoid dependency issues in some envs
 # from pymongo import MongoClient
 # from trader.database.kline import KlineCol
-
 from trader.exchange.binance.data import BinanceData
 from trader.indicators.qqe_mod import QQEMod
-from trader.utils.kline import Kline
 
 load_dotenv()
 
@@ -120,6 +120,7 @@ def get_klines():
     # Try MongoDB first
     try:
         from pymongo import MongoClient
+
         from trader.database.kline import KlineCol
 
         db_uri = os.environ.get("TRADER_DB", "mongodb://localhost:27017/")

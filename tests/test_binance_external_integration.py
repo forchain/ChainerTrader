@@ -8,13 +8,13 @@ from binance_sdk_spot import Spot
 from dotenv import load_dotenv
 
 from trader.common.config import Config, new_and_env
+from trader.core.shared.domain import Interval, SymbolInterval
 from trader.exchange.binance.exchange import BinanceExchange
 from trader.exchange.exchange_config import parse_exchange_config
 from trader.live.runtime import RealtimeLiveStrategyRuntime
 from trader.live.stream import run_binance_kline_websocket_smoke
 from trader.task.task_config import TaskConfig
 from trader.task.task_type import TaskType
-from trader.utils.symbol_interval import Interval, SymbolInterval
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("TRADER_BINANCE_INTEGRATION"),

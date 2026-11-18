@@ -5,9 +5,9 @@ import pytest
 from trader.app.app import App
 from trader.common.config import Config
 from trader.common.message import new_add_tasks_msg, new_exit_msg
+from trader.core.shared.domain import Interval, SymbolInterval
 from trader.task.task_config import TaskConfig
 from trader.task.task_type import TaskType
-from trader.utils.symbol_interval import Interval, SymbolInterval
 
 
 class _FakeDbManager:

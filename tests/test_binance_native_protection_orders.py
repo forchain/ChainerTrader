@@ -2,12 +2,11 @@ from types import SimpleNamespace
 
 import pytest
 
+from trader.core.shared.domain import OperateType, Symbol
 from trader.exchange.binance.exchange import BinanceExchange
-from trader.exchange.driver import ExchangeDriverType
 from trader.exchange.binance.margin import MarginTradingManager
+from trader.exchange.driver import ExchangeDriverType
 from trader.exchange.exchange_config import ExchangeConfig, MarginMode
-from trader.utils.operate import OperateType
-from trader.utils.symbol_interval import Symbol
 
 
 class _Log:
