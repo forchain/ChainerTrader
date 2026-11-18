@@ -5,8 +5,7 @@ from logging import Logger
 from tortoise.exceptions import IntegrityError
 
 from trader.adapters.outbound.persistence.models import ExecutionStateModel
-from trader.execution.models import ExecutionStatus
-from trader.execution.state import ExecutionStateRecord, ExecutionStateReservation
+from trader.core.execution import ExecutionStateRecord, ExecutionStateReservation, ExecutionStatus
 
 TERMINAL_STATUSES = {
     ExecutionStatus.CANCELED.value,

@@ -5,8 +5,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from trader.auth.context import SESSION_COOKIE, SessionAuthMiddleware
-from trader.auth.sessions import create_session_token, hash_session_token
 from trader.common.config import Config
+from trader.core.identity.sessions import create_session_token, hash_session_token
 from trader.rpc.api.admin import router
 
 

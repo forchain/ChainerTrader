@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import Protocol
 
-from trader.execution.models import ExecutionResult, GatewayCapabilities, OrderIntent, ReconcileRequest, ReconcileResult, RiskIntent
+from trader.core.execution.domain import ExecutionResult, GatewayCapabilities, OrderIntent, ReconcileRequest, ReconcileResult, RiskIntent
+from trader.core.execution.state import ExecutionStateRecord, ExecutionStateReservation
 
 
 class ExecutionGateway(ABC):
@@ -33,3 +35,20 @@ class ExecutionGateway(ABC):
     @abstractmethod
     def reconcile(self, request: ReconcileRequest) -> ReconcileResult:
         raise NotImplementedError
+
+
+class ExecutionStateStore(Protocol):
+    async def reserve(self, record: ExecutionStateRecord) -> ExecutionStateReservation:
+        ...
+
+    async def save(self, record: ExecutionStateRecord) -> ExecutionStateRecord:
+        ...
+
+    async def get_by_idempotency_key(self, idempotency_key: str) -> ExecutionStateRecord | None:
+        ...
+
+    async def list_open_by_symbol(self, symbol: str) -> list[ExecutionStateRecord]:
+        ...
+
+    async def list_open_by_task(self, task_id: int) -> list[ExecutionStateRecord]:
+        ...

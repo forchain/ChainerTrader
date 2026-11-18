@@ -10,9 +10,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Protocol, runtime_checkable
 
+from trader.core.execution.domain import PositionView, ProtectionOrderView
 from trader.core.shared.domain import Kline, OperateType, Symbol, SymbolInterval
 from trader.exchange.balance import Balance
-from trader.execution.models import PositionView, ProtectionOrderView
 
 
 @runtime_checkable

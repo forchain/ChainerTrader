@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import Any, Protocol
+from typing import Any
 
-from trader.execution.models import ExecutionStatus, GatewayMode, OrderIntent, RiskIntent
+from trader.core.execution.domain import ExecutionStatus, GatewayMode, OrderIntent, RiskIntent
 
 
 def _normalize_gateway(value: GatewayMode | str) -> GatewayMode:
@@ -139,20 +139,3 @@ class ExecutionStateRecord:
 class ExecutionStateReservation:
     record: ExecutionStateRecord
     created: bool
-
-
-class ExecutionStateStore(Protocol):
-    async def reserve(self, record: ExecutionStateRecord) -> ExecutionStateReservation:
-        ...
-
-    async def save(self, record: ExecutionStateRecord) -> ExecutionStateRecord:
-        ...
-
-    async def get_by_idempotency_key(self, idempotency_key: str) -> ExecutionStateRecord | None:
-        ...
-
-    async def list_open_by_symbol(self, symbol: str) -> list[ExecutionStateRecord]:
-        ...
-
-    async def list_open_by_task(self, task_id: int) -> list[ExecutionStateRecord]:
-        ...
