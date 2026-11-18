@@ -6,10 +6,10 @@ from enum import Enum
 
 import backtrader as bt
 
+from trader.core.shared.domain import OperateType
 from trader.indicators.pivot_high import PivotHigh
 from trader.indicators.pivot_low import PivotLow
 from trader.strategy.base_strategy import BaseStrategy
-from trader.utils.operate import OperateType
 
 
 class Pivot:

@@ -12,6 +12,7 @@ from prettytable import PrettyTable
 
 from trader.common.config import Config, new_and_env
 from trader.common.logger import Logger
+from trader.core.shared.domain import Interval, Kline, SymbolInterval, get_time_duration
 from trader.database.manager import DatabaseManager
 from trader.exchange.binance.data import BinanceData
 from trader.exchange.binance.exchange import BinanceExchange
@@ -20,8 +21,6 @@ from trader.strategy.strategy import parse_strategy
 from trader.task.task_config import TaskConfig, create_task_id
 from trader.task.task_type import TaskType
 from trader.task.update_klines_task import UpdateKlinesTask
-from trader.utils.kline import Kline
-from trader.utils.symbol_interval import Interval, SymbolInterval, get_time_duration
 
 BINANCE_SPOT_API_BASE = "https://api.binance.com"
 DEFAULT_SYMBOL_WHITELIST = (

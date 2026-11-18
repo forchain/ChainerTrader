@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from trader.common.config import Config
 from trader.common.logger import Logger
 from trader.common.message import new_stat_msg
+from trader.core.shared.domain import OperateType
 from trader.database.execution_state import execution_state_record_context
 from trader.database.manager import DatabaseManager
 from trader.exchange.binance.exchange import BinanceExchange
@@ -34,7 +35,6 @@ from trader.strategy.strategy import parse_strategies
 from trader.strategy.trader_result import TraderResult
 from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig
-from trader.utils.operate import OperateType
 
 DOWLOAD_SPACE_TIME = 5
 REALTIME_STREAM_QUEUE_TIMEOUT_SECONDS = 1.0

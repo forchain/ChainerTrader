@@ -11,13 +11,13 @@ from fastapi.testclient import TestClient
 from trader.auth.context import SessionAuthMiddleware
 from trader.auth.credentials import encrypt_secret
 from trader.common.config import Config
+from trader.core.shared.domain import Interval, SymbolInterval
 from trader.exchange.exchange_config import ExchangeConfig
 from trader.rpc.api.tasks import router
 from trader.strategy.trader_result import TraderResult
 from trader.task.task_config import TaskConfig
 from trader.task.task_manager import TaskManager
 from trader.task.task_type import TaskType
-from trader.utils.symbol_interval import Interval, SymbolInterval
 from trader.utils.task_state import TaskState
 
 

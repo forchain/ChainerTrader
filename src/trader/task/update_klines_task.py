@@ -4,11 +4,11 @@ from datetime import datetime
 from trader.common.common import sleep
 from trader.common.config import Config
 from trader.common.logger import Logger
+from trader.core.shared.domain import SymbolInterval, add_time_duration, get_time_duration
 from trader.database.manager import DatabaseManager
 from trader.exchange.binance.exchange import KLINE_LIMIT_MAX, BinanceExchange, get_oldest_time
 from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig
-from trader.utils.symbol_interval import SymbolInterval, add_time_duration, get_time_duration
 
 DOWNLOAD_SPACE_TIME = 5
 DOWNLOAD_RETRY_MAX = 5

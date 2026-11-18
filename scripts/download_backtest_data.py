@@ -142,11 +142,11 @@ def try_db_download(symbol, interval, start_time, end_time, output_file):
     try:
         from trader.common.config import Config
         from trader.common.logger import Logger
+        from trader.core.shared.domain import Interval, Symbol, SymbolInterval, add_time_duration
         from trader.database.manager import DatabaseManager
         from trader.exchange.binance.exchange import BinanceExchange
         from trader.exchange.exchange_config import parse_exchange_config
         from trader.task.update_klines_task import download_range
-        from trader.utils.symbol_interval import Interval, Symbol, SymbolInterval, add_time_duration
 
         db_name = os.environ.get("TRADER_DB_NAME", "trader")
 

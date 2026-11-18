@@ -1,24 +1,22 @@
+from binance_sdk_margin_trading.margin_trading import (
+    MARGIN_TRADING_REST_API_PROD_URL,
+    ConfigurationRestAPI,
+    MarginTrading,
+)
+from binance_sdk_margin_trading.rest_api.models import MarginAccountNewOcoSideEnum, MarginAccountNewOrderSideEnum
 from pydantic import BaseModel
 
 from trader.common.logger import default
 from trader.common.singleton import SingletonMeta
-from binance_sdk_margin_trading.margin_trading import (
-    MarginTrading,
-    ConfigurationRestAPI,
-    MARGIN_TRADING_REST_API_PROD_URL,
-)
-from binance_sdk_margin_trading.rest_api.models import MarginAccountNewOrderSideEnum, MarginAccountNewOcoSideEnum
-
+from trader.core.shared.domain import OperateType, Symbol
 from trader.exchange.exchange_config import ExchangeConfig
 from trader.execution.models import (
-    PositionView,
-    ProtectionOrderView,
     ExecutionSide,
-    ProtectionIntentType,
     ExecutionStatus,
+    PositionView,
+    ProtectionIntentType,
+    ProtectionOrderView,
 )
-from trader.utils.operate import OperateType
-from trader.utils.symbol_interval import Symbol
 
 
 def protection_side_name(op: OperateType) -> str:

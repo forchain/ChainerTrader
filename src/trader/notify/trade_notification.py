@@ -6,13 +6,13 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 
-from trader.notify.notify_type import parse_notice_config
+from trader.core.shared.domain import Operate, OperateType
 from trader.live.auto_execution import (
     AUTO_TRADE_MODE,
     MANUAL_NOTIFY_MODE,
     normalize_live_execution_mode,
 )
-from trader.utils.operate import Operate, OperateType
+from trader.notify.notify_type import parse_notice_config
 
 
 @dataclass

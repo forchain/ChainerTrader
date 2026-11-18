@@ -8,9 +8,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Awaitable, Callable, Protocol
 
+from trader.core.shared.domain import Interval, Kline, SymbolInterval, get_time_duration
 from trader.live.market_data import KlineUpdate, normalize_binance_kline_message
-from trader.utils.kline import Kline
-from trader.utils.symbol_interval import Interval, SymbolInterval, get_time_duration
 
 UpdateCallback = Callable[[KlineUpdate], Awaitable[None]]
 DisconnectCallback = Callable[[], Awaitable[None]]

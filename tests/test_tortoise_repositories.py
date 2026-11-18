@@ -5,11 +5,11 @@ from types import SimpleNamespace
 
 from tortoise import Tortoise
 
+from trader.core.shared.domain import Kline
 from trader.database.availability import AvailabilityCol, model_to_availability_state
 from trader.database.config import build_tortoise_config
 from trader.database.kline import KlineCol
 from trader.database.task import TaskCol
-from trader.utils.kline import Kline
 from trader.utils.task_state import TaskState, TaskStateType
 
 

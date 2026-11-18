@@ -4,8 +4,8 @@ import backtrader as bt
 import pandas as pd
 import pytest
 
+from trader.core.shared.domain import OperateType
 from trader.strategy.base_strategy import BaseStrategy
-from trader.utils.operate import OperateType
 
 
 def _build_df(rows):

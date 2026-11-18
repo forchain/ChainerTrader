@@ -4,8 +4,8 @@ from dataclasses import dataclass
 from math import isfinite
 from typing import Any
 
+from trader.core.shared.domain import OperateType
 from trader.execution.models import ExecutionSide, OrderIntent, RiskIntent
-from trader.utils.operate import OperateType
 
 
 class OrderSemanticsError(ValueError):

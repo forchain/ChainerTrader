@@ -7,11 +7,11 @@ import pytest
 from trader.auth.credentials import encrypt_secret
 from trader.common.config import Config
 from trader.common.logger import Logger
+from trader.core.shared.domain import Interval, SymbolInterval
 from trader.exchange.exchange_config import ExchangeConfig, MarginMode
 from trader.task.task_config import TaskConfig
 from trader.task.task_manager import TaskManager
 from trader.task.task_type import TaskType
-from trader.utils.symbol_interval import Interval, SymbolInterval
 from trader.utils.task_state import TaskState
 
 

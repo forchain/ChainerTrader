@@ -41,9 +41,8 @@ def _ensure_binance_exchange_stub():
 _ensure_pymongo_stub()
 _ensure_binance_exchange_stub()
 
+from trader.core.shared.domain import Interval, Kline, SymbolInterval  # noqa: E402
 from trader.task.dataset_resolver import DatasetResolver  # noqa: E402
-from trader.utils.kline import Kline  # noqa: E402
-from trader.utils.symbol_interval import Interval, SymbolInterval  # noqa: E402
 
 
 class DummyLog:

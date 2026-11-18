@@ -1,7 +1,7 @@
 import os
 
 from trader.common import path
-from trader.utils.symbol_interval import Interval, SymbolInterval
+from trader.core.shared.domain import Interval, SymbolInterval
 
 
 class SymbolsInterval:

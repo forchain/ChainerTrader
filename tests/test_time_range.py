@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 
-from trader.common.time_range import (
+from trader.core.shared.domain import (
     offset_time_backward,
     parse_relative_duration,
     resolve_time_range,

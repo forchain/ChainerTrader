@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from decimal import Decimal, ROUND_DOWN
+from decimal import ROUND_DOWN, Decimal
 from typing import Any, Optional
 
 try:
@@ -11,10 +11,10 @@ try:
         AccountCommissionResponse,
         NewOrderSideEnum,
         NewOrderTypeEnum,
-        OrderOcoSideEnum,
+        OrderCancelReplaceCancelReplaceModeEnum,
         OrderCancelReplaceSideEnum,
         OrderCancelReplaceTypeEnum,
-        OrderCancelReplaceCancelReplaceModeEnum,
+        OrderOcoSideEnum,
     )
     BINANCE_NATIVE_SDK_AVAILABLE = True
 except ModuleNotFoundError:
@@ -30,35 +30,35 @@ except ModuleNotFoundError:
     OrderCancelReplaceTypeEnum = None  # type: ignore[assignment]
     OrderCancelReplaceCancelReplaceModeEnum = None  # type: ignore[assignment]
     BINANCE_NATIVE_SDK_AVAILABLE = False
-import requests
-import time
-import hmac
 import hashlib
+import hmac
+import time
 from urllib.parse import urlencode, urlparse
+
+import requests
 
 from trader.common.logger import default
 from trader.exchange.balance import Balance
 from trader.exchange.binance.archive import find_earliest_daily_archive_open_time
 from trader.exchange.ccxt_driver import CcxtExchangeDriver
+
 try:
     from trader.exchange.binance.margin import MarginTradingManager
     BINANCE_MARGIN_SDK_AVAILABLE = True
 except ModuleNotFoundError:
     MarginTradingManager = None  # type: ignore[assignment]
     BINANCE_MARGIN_SDK_AVAILABLE = False
+from trader.core.shared.domain import Kline, OperateType, Symbol, SymbolInterval
 from trader.exchange.driver import ExchangeDriverType
 from trader.exchange.exchange_config import ExchangeConfig, MarginMode
 from trader.exchange.exchange_type import ExchangeType
 from trader.execution.models import (
-    PositionView,
-    ProtectionOrderView,
     ExecutionSide,
-    ProtectionIntentType,
     ExecutionStatus,
+    PositionView,
+    ProtectionIntentType,
+    ProtectionOrderView,
 )
-from trader.utils.kline import Kline
-from trader.utils.operate import OperateType
-from trader.utils.symbol_interval import SymbolInterval, Symbol
 
 EXCHANGE_NAME = "BINANCE"
 
