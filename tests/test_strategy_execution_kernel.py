@@ -1,5 +1,6 @@
 import asyncio
 
+from trader.adapters.outbound.binance.execution_gateway import BinanceLiveExecutionGateway
 from trader.core.execution import (
     ExecutionResult,
     ExecutionSide,
@@ -10,7 +11,6 @@ from trader.core.execution import (
     ProtectionIntentType,
 )
 from trader.core.shared.domain import Operate, OperateType
-from trader.execution.gateways import BinanceLiveExecutionGateway
 from trader.strategy.execution_kernel import (
     ExecutionOrchestrator,
     LegacyStrategyExecutionAdapter,

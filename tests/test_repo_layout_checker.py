@@ -90,6 +90,7 @@ def _create_path(tmp_path: Path, monkeypatch, relative: str) -> Path:
         "src/trader/adapters/outbound/binance/exchange.py",
         "src/trader/adapters/outbound/backtrader/engine.py",
         "src/trader/adapters/outbound/marketstream/hub.py",
+        "src/trader/adapters/outbound/notification/execution_gateway.py",
         "src/trader/adapters/outbound/email/sender.py",
         "src/trader/adapters/outbound/files/store.py",
     ],
