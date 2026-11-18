@@ -5,71 +5,43 @@ import signal
 from asyncio import Event
 from datetime import datetime
 
-from trader.adapters.outbound.binance.exchange import BinanceExchange
-from trader.adapters.outbound.persistence.manager import DatabaseManager, DatabaseSchemaError
-from trader.auth.bootstrap import bootstrap_admin_exchange_credential
-from trader.auth.passwords import Argon2PasswordHasher
 from trader.common import path
 from trader.common.common import NAME
 from trader.common.config import Config, default
 from trader.common.log_tag import LogTag
-from trader.common.logger import Logger
 from trader.common.message import Message, new_add_tasks_msg, new_exit_msg
-from trader.core.exchange.domain import ExchangeType, MarginMode, parse_exchange_config
-from trader.core.identity.exceptions import PasswordPolicyError
-from trader.core.identity.use_cases import BootstrapAdministrator
 from trader.core.task.interfaces import TaskEventPublisher
 from trader.core.task.use_cases import PlanStartupTasks, RecoverRunningTasks
-from trader.live.monitor import LiveEventBus
-from trader.notify.notify_manager import NotifyManager
-from trader.statistics.statistics import Statistics
-from trader.task.live_startup_self_check import evaluate_live_startup_self_check, infer_required_margin_mode
+from trader.task.live_startup_self_check import evaluate_live_startup_self_check
 from trader.task.persisted_live_config_migration import (
     assert_persisted_task_config_json_is_migrated,
     migrate_persisted_live_task_configs,
 )
 from trader.task.task_config import TaskConfig, parse_task_config
-from trader.task.task_manager import TaskManager
 
 RECOVERY_TASK_CONCURRENCY = 10
 
 
 class App:
-    def __init__(self, cfg: Config = default(), event_publisher: TaskEventPublisher | None = None):
-        self.cfg = cfg
-        self.logger = Logger(cfg)
-        self.live_event_bus = event_publisher or LiveEventBus()
+    def __init__(self, cfg: Config = default(), event_publisher: TaskEventPublisher | None = None, *, container=None):
+        if container is None:
+            from trader.main import compose_application
+
+            container = compose_application(cfg, event_publisher=event_publisher, task_parser=parse_task_config)
+
+        self._container = container
+        self.cfg = container.cfg
+        self.logger = container.logger
+        self.live_event_bus = container.live_event_bus
 
         self.logger.info(f"Init App {self.name()}")
 
-        self.db_manager = None
-        self.exchange = None
-        self.tasks_cfg: list[TaskConfig] = []
-
-        if self.cfg.db:
-            self.db_manager = DatabaseManager(cfg, self.logger)
-
-        if self.cfg.tasks:
-            self.tasks_cfg = parse_task_config(self.cfg.tasks)
-
-        if self.cfg.exchange:
-            ex_cfg = parse_exchange_config(self.cfg.exchange)
-            if ex_cfg and ex_cfg.ty == ExchangeType.BINANCE:
-                required_margin_mode = infer_required_margin_mode(self.tasks_cfg)
-                if required_margin_mode == MarginMode.CROSS_MARGIN and ex_cfg.margin_mode == MarginMode.SPOT:
-                    ex_cfg = ex_cfg.with_margin_mode(MarginMode.CROSS_MARGIN)
-                self.exchange = BinanceExchange(ex_cfg, self.log())
-
-        self.notify_mgr = NotifyManager(cfg, self.logger)
-
-        self.stat = Statistics(self.cfg, self.log(), self.db_manager)
-        self.task_manager = TaskManager(
-            self.cfg,
-            self.logger,
-            self.db_manager,
-            self.exchange,
-            event_publisher=self.live_event_bus,
-        )
+        self.db_manager = container.db_manager
+        self.exchange = container.exchange
+        self.tasks_cfg: list[TaskConfig] = container.tasks_cfg
+        self.notify_mgr = container.notify_mgr
+        self.stat = container.stat
+        self.task_manager = container.task_manager
 
         self.startTime = datetime.now()
         self.queue = None
@@ -145,21 +117,7 @@ class App:
             await self._bootstrap_identity()
 
     async def _bootstrap_identity(self) -> None:
-        if not self.db_manager or not getattr(self.db_manager, "user", None):
-            return
-        try:
-            admin = await BootstrapAdministrator(self.db_manager.user, Argon2PasswordHasher()).execute(
-                self.cfg.auth_username, self.cfg.auth_password
-            )
-        except PasswordPolicyError as exc:
-            raise DatabaseSchemaError(f"invalid bootstrap administrator credentials: {exc}") from exc
-        if admin is not None:
-            await bootstrap_admin_exchange_credential(
-                cfg=self.cfg,
-                admin=admin,
-                credential_repo=self.db_manager.exchange_credential,
-                log=self.log(),
-            )
+        await self._container.bootstrap_admin_fn()
 
     async def bootstrap_database_for_startup(self):
         if not self.db_manager:
