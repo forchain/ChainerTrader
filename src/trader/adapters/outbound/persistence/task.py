@@ -5,7 +5,7 @@ from logging import Logger
 
 from tortoise import connections
 
-from trader.database.models import TaskStateModel
+from trader.adapters.outbound.persistence.models import TaskStateModel
 from trader.utils.task_state import DATETIME_FORMART, PRIMARY_KEY, TaskState, parse_task_state
 
 

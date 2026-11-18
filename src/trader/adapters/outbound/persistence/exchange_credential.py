@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from logging import Logger
 
-from trader.database.models import ExchangeCredentialModel
+from trader.adapters.outbound.persistence.models import ExchangeCredentialModel
 
 
 class ExchangeCredentialCol:

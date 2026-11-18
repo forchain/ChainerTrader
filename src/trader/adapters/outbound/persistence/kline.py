@@ -3,8 +3,8 @@ from __future__ import annotations
 from logging import Logger
 from typing import Any
 
+from trader.adapters.outbound.persistence.models import KlineModel
 from trader.core.shared.domain import Kline
-from trader.database.models import KlineModel
 
 DEFAULT_EXCHANGE = "BINANCE"
 

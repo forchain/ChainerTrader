@@ -108,8 +108,10 @@ def test_registration_enabled_does_not_shift_legacy_positional_config_args():
 def test_app_start_cleans_up_threads_with_sqlite_db(tmp_path, monkeypatch):
     import asyncio
     import threading
+
     from tortoise import Tortoise
-    from trader.database.config import build_tortoise_config
+
+    from trader.adapters.outbound.persistence.config import build_tortoise_config
     from trader.common.message import new_exit_msg
 
     db_path = tmp_path / "test_app_exit.db"

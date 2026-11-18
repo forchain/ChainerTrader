@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from logging import Logger
 
-from trader.database.models import SessionModel, UserModel
+from trader.adapters.outbound.persistence.models import SessionModel, UserModel
 
 
 class UserCol:

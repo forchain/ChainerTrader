@@ -1,12 +1,10 @@
 import asyncio
 from datetime import UTC, datetime, timedelta
 
-from tortoise import Tortoise
-
-from trader.database.config import build_tortoise_config
-from trader.database.exchange_credential import ExchangeCredentialCol
-from trader.database.strategy_config import StrategyConfigCol
-from trader.database.user import UserCol
+from tests.persistence_harness import initialized_database
+from trader.adapters.outbound.persistence.exchange_credential import ExchangeCredentialCol
+from trader.adapters.outbound.persistence.strategy_config import StrategyConfigCol
+from trader.adapters.outbound.persistence.user import UserCol
 
 
 class _Log:
@@ -24,12 +22,8 @@ class _Log:
 
 
 async def _with_db(fn):
-    await Tortoise.init(config=build_tortoise_config("sqlite://:memory:"))
-    await Tortoise.generate_schemas()
-    try:
+    async with initialized_database():
         await fn()
-    finally:
-        await Tortoise.close_connections()
 
 
 def test_user_repository_creates_and_updates_user():
