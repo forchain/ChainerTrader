@@ -97,7 +97,7 @@ Directory responsibilities:
 - `src/trader/`: reusable application logic, product modules, CLI modules, internal tools
 - `src/trader/core/`: stable domain and application layer, organized by bounded-context packages (`shared`, `task`, `execution`, `marketdata`, `exchange`, `identity`, `notification`, `strategy`, `optimization`)
 - `src/trader/adapters/inbound/`: HTTP and CLI entry adapters (`http`, `cli`)
-- `src/trader/adapters/outbound/`: outbound adapter implementations (`persistence`, `binance`, `backtrader`, `marketstream`, `email`, `files`)
+- `src/trader/adapters/outbound/`: outbound adapter implementations (`persistence`, `binance`, `backtrader`, `marketstream`, `notification`, `email`, `files`)
 - `configs/`: non-executable configuration assets such as task JSON and notice JSON
 - `scripts/`: operational shell scripts and thin compatibility wrappers only
 - `tests/`: automated verification, fixtures, and test-only helpers

@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from trader.adapters.outbound.notification.execution_gateway import NotificationOnlyExecutionGateway
 from trader.core.shared.domain import Interval, Kline, Operate, OperateType, SymbolInterval
 from trader.live.auto_execution import (
     AUTO_EXECUTION_EVENT_TYPE,
@@ -151,6 +152,28 @@ def test_operation_identity_prefers_signal_event_id_and_falls_back_to_side_time_
 def test_paper_auto_mode_is_rejected_before_routing():
     with pytest.raises(ValueError, match="unsupported live_execution_mode: paper_auto"):
         _tcfg("paper_auto")
+
+
+def test_manual_notify_mode_uses_notification_gateway_and_never_places_orders():
+    exchange = RecordingExchange(quote_balance=1000.0)
+    router = AutoExecutionRouter(
+        _tcfg(LiveExecutionMode.MANUAL_NOTIFY, free=500.0),
+        exchange=exchange,
+        cfg=SimpleNamespace(cash=10000.0),
+    )
+
+    outcome = router.route(_op(OperateType.BUY, 100.0))
+
+    assert isinstance(router.gateway, NotificationOnlyExecutionGateway)
+    assert outcome.status == AutoExecutionStatus.SKIPPED
+    assert outcome.reason == "manual_notify_no_order"
+    assert outcome.exchange_order is None
+    assert [event["gateway"] for event in outcome.execution_events] == ["notification_only"]
+    assert outcome.execution_state_records == []
+    assert exchange.new_order_calls == []
+    assert exchange.margin_order_calls == []
+    assert exchange.oco_order_calls == []
+    assert exchange.balance_reads == []
 
 
 def test_auto_trade_caps_real_long_order_by_fixed_notional():
