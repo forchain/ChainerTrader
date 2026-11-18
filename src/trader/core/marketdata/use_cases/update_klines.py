@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from asyncio import Event
 from datetime import datetime
+from types import SimpleNamespace
+from typing import Callable
 
 from trader.common.common import sleep
 from trader.core.marketdata.domain import require_ordered_range
@@ -248,3 +250,134 @@ def _market_data_client_name(market_data_client: MarketDataClient | None) -> str
     if market_data_client is not None and hasattr(market_data_client, "name"):
         return market_data_client.name()
     return "UNKNOWN"
+
+
+DEFAULT_OLDEST_TIME_TS = int(datetime.strptime("2000-01-01 00:00:00", "%Y-%m-%d %H:%M:%S").timestamp())
+
+
+def determine_update_time_range(
+    symbol_interval: SymbolInterval,
+    *,
+    start_time: int = 0,
+    end_time: int = 0,
+    limit: int = 0,
+    now_fn: Callable[[], int] | None = None,
+    oldest_time_ts: int = DEFAULT_OLDEST_TIME_TS,
+) -> tuple[int, int]:
+    resolved_start = int(start_time or 0)
+    if resolved_start <= 0:
+        resolved_start = int(oldest_time_ts)
+
+    resolved_end = int(end_time or 0)
+    if resolved_end <= 0:
+        resolved_end = int(now_fn()) if now_fn is not None else int(datetime.now().timestamp())
+
+    if int(limit or 0) > 0:
+        resolved_start = add_time_duration(resolved_end, symbol_interval.interval, -int(limit))
+
+    return resolved_start, resolved_end
+
+
+async def sync_klines(
+    name: str,
+    log,
+    kline_repository: KlineRepository,
+    market_data_client: MarketDataClient,
+    symbol_interval: SymbolInterval,
+    *,
+    start_time: int,
+    end_time: int,
+    force_update: bool = False,
+    quit_event: Event | None = None,
+    availability_store: AvailabilityStore | None = None,
+    range_downloader=download_range,
+) -> None:
+    quit_flag = quit_event or Event()
+    collection_name = symbol_interval.name()
+    repo_bundle = SimpleNamespace(kline=kline_repository, availability=availability_store)
+
+    log.info(
+        f"{name} time range: start={datetime.fromtimestamp(start_time)}, "
+        f"end={datetime.fromtimestamp(end_time)}, force_update={force_update}"
+    )
+
+    if force_update:
+        deleted = await kline_repository.delete_klines_in_range(collection_name, start_time, end_time)
+        log.info(f"{name} force_update: deleted {deleted} records")
+        await range_downloader(
+            name,
+            log,
+            repo_bundle,
+            collection_name,
+            market_data_client,
+            symbol_interval,
+            start_time,
+            end_time,
+            quit_flag,
+        )
+        return
+
+    db_first = await kline_repository.get_first_kline(collection_name)
+    db_last = await kline_repository.get_latest_kline(collection_name)
+    if db_first is None or db_last is None:
+        log.info(f"{name} no existing records, download full range")
+        await range_downloader(
+            name,
+            log,
+            repo_bundle,
+            collection_name,
+            market_data_client,
+            symbol_interval,
+            start_time,
+            end_time,
+            quit_flag,
+        )
+        return
+
+    db_first_time = db_first.open_time
+    db_last_time = db_last.open_time
+    interval = symbol_interval.interval
+    log.info(f"{name} db range: first={datetime.fromtimestamp(db_first_time)}, last={datetime.fromtimestamp(db_last_time)}")
+
+    if end_time < db_first_time:
+        log.info(f"{name} case: end < db_first, download [start, end]")
+        await range_downloader(
+            name, log, repo_bundle, collection_name, market_data_client, symbol_interval, start_time, end_time, quit_flag
+        )
+        return
+
+    if start_time < db_first_time <= end_time <= db_last_time:
+        range_end = add_time_duration(db_first_time, interval, -1)
+        log.info(f"{name} case: start < db_first <= end <= db_last, download [start, db_first)")
+        await range_downloader(
+            name, log, repo_bundle, collection_name, market_data_client, symbol_interval, start_time, range_end, quit_flag
+        )
+        return
+
+    if db_first_time <= start_time and end_time <= db_last_time:
+        log.info(f"{name} case: db_first <= start <= end <= db_last, skip download")
+        return
+
+    if start_time >= db_first_time and db_last_time < end_time:
+        range_start = add_time_duration(db_last_time, interval, 1)
+        log.info(f"{name} case: start >= db_first and db_last < end, download (db_last, end]")
+        await range_downloader(
+            name, log, repo_bundle, collection_name, market_data_client, symbol_interval, range_start, end_time, quit_flag
+        )
+        return
+
+    if start_time < db_first_time and db_last_time < end_time:
+        log.info(f"{name} case: start < db_first and db_last < end, download two segments")
+        range_end = add_time_duration(db_first_time, interval, -1)
+        await range_downloader(
+            name, log, repo_bundle, collection_name, market_data_client, symbol_interval, start_time, range_end, quit_flag
+        )
+        if quit_flag.is_set():
+            return
+        range_start = add_time_duration(db_last_time, interval, 1)
+        await range_downloader(
+            name, log, repo_bundle, collection_name, market_data_client, symbol_interval, range_start, end_time, quit_flag
+        )
+        return
+
+    log.warning(f"{name} unexpected case: start={start_time}, end={end_time}, db_first={db_first_time}, db_last={db_last_time}")
