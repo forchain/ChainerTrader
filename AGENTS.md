@@ -95,6 +95,9 @@ Repository layout is part of the maintainability contract.
 
 Directory responsibilities:
 - `src/trader/`: reusable application logic, product modules, CLI modules, internal tools
+- `src/trader/core/`: stable domain and application layer, organized by bounded-context packages (`shared`, `task`, `execution`, `marketdata`, `exchange`, `identity`, `notification`, `strategy`, `optimization`)
+- `src/trader/adapters/inbound/`: HTTP and CLI entry adapters (`http`, `cli`)
+- `src/trader/adapters/outbound/`: outbound adapter implementations (`persistence`, `binance`, `backtrader`, `marketstream`, `email`, `files`)
 - `configs/`: non-executable configuration assets such as task JSON and notice JSON
 - `scripts/`: operational shell scripts and thin compatibility wrappers only
 - `tests/`: automated verification, fixtures, and test-only helpers
@@ -104,9 +107,17 @@ Placement rules:
 - New task JSON files MUST go under `configs/tasks/...`
 - New notice JSON files MUST go under `configs/notices/...`
 - Reusable Python logic MUST live under `src/trader/...`
+- Business rules and use cases MUST go under `src/trader/core/<bounded-context>/...`
+- Outbound integrations MUST go under `src/trader/adapters/outbound/<kind>/...`; inbound interfaces under `src/trader/adapters/inbound/{http,cli}/...`
 - Python files under `scripts/` MUST stay thin wrappers around code in `src/trader/...` or repo operations
 - Tests SHOULD target `src/trader/...` behavior directly instead of `scripts/...`
 - Generated artifacts MUST NOT be committed under `tests/output/`
+
+Dependency rules:
+- Dependencies point inward: `adapters/` may import `core/`; `core/` MUST NOT import `trader.adapters` or FastAPI, Tortoise, backtrader, ccxt, or Binance SDKs
+- Outbound ports are defined in `core/` and implemented in `adapters/outbound/`
+- Only the composition root at the package entry point may instantiate concrete adapters
+- `tests/test_import_direction.py` and `scripts/check_repo_layout.py` enforce these rules
 
 Structural refactor policy:
 - Any multi-directory migration, bulk path update, or repository-layout change MUST be executed in a git worktree
