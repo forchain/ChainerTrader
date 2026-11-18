@@ -1,24 +1,12 @@
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
 from logging import Logger
 
 from tortoise.exceptions import OperationalError
 
 from trader.adapters.outbound.persistence.models import AvailabilityModel
-
-
-@dataclass(frozen=True)
-class AvailabilityState:
-    exchange: str
-    symbol: str
-    interval: str
-    earliest_known_open_time: int | None
-    cached_start_open_time: int | None
-    cached_end_open_time: int | None
-    updated_at: int
-    source: str
+from trader.core.marketdata.domain import AvailabilityState
 
 
 def model_to_availability_state(row: AvailabilityModel) -> AvailabilityState:
