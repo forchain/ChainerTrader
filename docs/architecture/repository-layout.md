@@ -19,6 +19,7 @@ Layering follows ADR-0003. Dependencies point inward: `adapters/` may import `co
 
 ```text
 src/trader/
+├── main.py                    # single composition root (wires adapters, use cases, API/CLI modes)
 ├── core/                      # stable domain + application layer
 │   ├── shared/                # Symbol, SymbolInterval, Kline, Operate, time ranges
 │   ├── task/                  # task bounded context
@@ -31,12 +32,12 @@ src/trader/
 │   └── optimization/          # candidate universes, task templates, selection results
 └── adapters/
     ├── inbound/
-    │   ├── http/              # routes, session middleware, SSE, error translation
-    │   └── cli/               # console-mode execution and report rendering
+    │   ├── http/              # FastAPI factory create_app(composition), exception table, middleware
+    │   └── cli/               # console-mode execution and PrettyTable report rendering
     └── outbound/
         ├── persistence/       # Tortoise models, migrations, repositories
         ├── binance/           # exchange and market-data clients
-        ├── backtrader/        # engine, live feeds, strategy subclasses, gateway
+        ├── backtrader/        # engine, live feeds, strategy subclasses, gateway, task runners
         ├── marketstream/      # websocket connector and hub
         ├── notification/      # notification-only execution gateway
         ├── email/             # notice sender
@@ -48,9 +49,9 @@ Rules:
 - New business rules and use cases belong under `src/trader/core/<bounded-context>/`
 - New outbound integrations belong under `src/trader/adapters/outbound/<kind>/`
 - New inbound interfaces belong under `src/trader/adapters/inbound/{http,cli}/`
-- Only the composition root may instantiate concrete adapters
+- `src/trader/main.py` is the single composition root that instantiates concrete adapters and injects them into use cases and inbound adapters
 - `scripts/check_repo_layout.py` rejects Python files outside the bounded-context and adapter packages above
-- `tests/test_import_direction.py` rejects any `core/` import of `trader.adapters` or a framework
+- `tests/test_import_direction.py` (`scripts/check_import_direction.py`) rejects any `core/` import of `trader.adapters` or a framework and blocks un-allowlisted `trader.adapters` imports outside `adapters/` and `main.py`
 
 ## File Placement Rules
 
@@ -76,8 +77,8 @@ Rules:
   `configs/tasks/optimizations/<name>.json`
 - Add a reusable status summarizer:
   `src/trader/tools/<name>.py`
-- Add a product CLI entry:
-  `src/trader/cli/<name>.py`
+- Add a product CLI entry or renderer:
+  `src/trader/adapters/inbound/cli/<name>.py`
 - Add a shell helper for developers:
   `scripts/ops/<name>.sh`
 

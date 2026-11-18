@@ -34,6 +34,7 @@ def test_main_routes_api_vs_console_mode(monkeypatch):
     import trader.main as main_mod
 
     called = []
+    monkeypatch.delenv("TRADER_API", raising=False)
     monkeypatch.setattr(main_mod, "load_dotenv", lambda: None)
     monkeypatch.setattr(main_mod, "run_api_mode", lambda cfg: called.append(("api", cfg.api)))
     monkeypatch.setattr(main_mod, "run_console_mode", lambda cfg: called.append(("console", cfg.api)))
@@ -48,6 +49,7 @@ def test_main_version_exits_early_without_starting_modes(monkeypatch, capsys):
     import trader.main as main_mod
 
     called = []
+    monkeypatch.delenv("TRADER_API", raising=False)
     monkeypatch.setattr(main_mod, "load_dotenv", lambda: None)
     monkeypatch.setattr(main_mod, "run_api_mode", lambda cfg: called.append("api"))
     monkeypatch.setattr(main_mod, "run_console_mode", lambda cfg: called.append("console"))

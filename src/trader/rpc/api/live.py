@@ -25,7 +25,7 @@ from trader.live.monitor import (
     parameter_summary,
     serialize_dashboard_event,
 )
-from trader.rpc.api.tasks import _enforce_current_user_ownership, _preflight_single_running_task_per_user, _preflight_user_live_tasks
+from trader.rpc.api.tasks import _enforce_current_user_ownership, _preflight_user_live_tasks
 from trader.strategy.trader_result import TraderResult
 from trader.task.persisted_live_config_migration import sanitize_public_task_config_json
 from trader.task.task_config import apply_persisted_task_runtime_metadata, parse_task_config
