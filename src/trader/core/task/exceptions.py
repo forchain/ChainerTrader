@@ -22,3 +22,7 @@ class TaskOwnership(TaskError):
 
 class TaskConfigError(ValueError):
     """Raised when a task configuration is missing or invalid."""
+
+
+class FundReservationError(RuntimeError):
+    """Raised when live task fund reservation preflight or tracking fails."""
