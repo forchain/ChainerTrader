@@ -1,9 +1,9 @@
-from tortoise import migrations
-from tortoise.migrations import operations as ops
 import functools
 from json import dumps, loads
-from tortoise import fields
+
+from tortoise import fields, migrations
 from tortoise.indexes import Index
+from tortoise.migrations import operations as ops
 
 
 class Migration(migrations.Migration):
