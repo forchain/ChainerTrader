@@ -116,8 +116,9 @@ Placement rules:
 Dependency rules:
 - Dependencies point inward: `adapters/` may import `core/`; `core/` MUST NOT import `trader.adapters` or FastAPI, Tortoise, backtrader, ccxt, or Binance SDKs
 - Outbound ports are defined in `core/` and implemented in `adapters/outbound/`
-- Only the composition root at the package entry point may instantiate concrete adapters
-- `tests/test_import_direction.py` and `scripts/check_repo_layout.py` enforce these rules
+- `src/trader/main.py` is the single composition root at the package entry point that instantiates concrete adapters and injects them into use cases and inbound adapters (`adapters/inbound/http` and `adapters/inbound/cli`)
+- Inbound adapters under `adapters/inbound/` MUST NOT import `adapters/outbound/` directly
+- `tests/test_import_direction.py` (`scripts/check_import_direction.py`) and `scripts/check_repo_layout.py` enforce these rules
 
 Structural refactor policy:
 - Any multi-directory migration, bulk path update, or repository-layout change MUST be executed in a git worktree

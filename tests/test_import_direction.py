@@ -2,9 +2,14 @@ from pathlib import Path
 
 import pytest
 
-from scripts.check_import_direction import check_import_direction
+from scripts.check_import_direction import (
+    check_composition_boundary,
+    check_import_direction,
+)
 
-CORE_ROOT = Path(__file__).resolve().parents[1] / "src" / "trader" / "core"
+ROOT = Path(__file__).resolve().parents[1]
+TRADER_ROOT = ROOT / "src" / "trader"
+CORE_ROOT = TRADER_ROOT / "core"
 
 
 def _write_core_module(tmp_path: Path, source: str) -> Path:
@@ -17,6 +22,10 @@ def _write_core_module(tmp_path: Path, source: str) -> Path:
 
 def test_current_core_tree_passes_import_direction_guardrail():
     assert check_import_direction(CORE_ROOT) == []
+
+
+def test_current_trader_tree_passes_composition_boundary_guardrail():
+    assert check_composition_boundary(TRADER_ROOT) == []
 
 
 def test_guardrail_fails_when_forbidden_import_is_added_to_core_tree(tmp_path: Path):
@@ -66,3 +75,28 @@ def test_guardrail_allows_core_internal_imports(tmp_path: Path, source: str):
     core_root = _write_core_module(tmp_path, source)
 
     assert check_import_direction(core_root) == []
+
+
+def test_composition_boundary_rejects_adapter_imports_outside_main_and_allows_main(tmp_path: Path):
+    trader_root = tmp_path / "trader"
+    (trader_root / "main.py").parent.mkdir(parents=True, exist_ok=True)
+    (trader_root / "main.py").write_text(
+        "from trader.adapters.outbound.binance.exchange import BinanceExchange\n",
+        encoding="utf-8",
+    )
+    (trader_root / "app").mkdir(parents=True, exist_ok=True)
+    (trader_root / "app" / "app.py").write_text(
+        "from trader.adapters.outbound.binance.exchange import BinanceExchange\n",
+        encoding="utf-8",
+    )
+    (trader_root / "adapters" / "inbound" / "http").mkdir(parents=True, exist_ok=True)
+    (trader_root / "adapters" / "inbound" / "http" / "bad.py").write_text(
+        "from trader.adapters.outbound.persistence.manager import DatabaseManager\n",
+        encoding="utf-8",
+    )
+
+    violations = check_composition_boundary(trader_root, legacy_allowlist=frozenset())
+    assert violations
+    assert any("app/app.py" in item for item in violations)
+    assert any("adapters/inbound/http/bad.py" in item for item in violations)
+    assert not any(item.startswith(str(trader_root / "main.py")) for item in violations)
