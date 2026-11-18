@@ -4,18 +4,20 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 
 from tests.persistence_harness import (
+    InMemoryIdentityRepository,
     InMemoryKlineRepository,
     InMemoryTaskRepository,
     initialized_database,
 )
 from trader.adapters.outbound.persistence.kline import KlineCol
 from trader.adapters.outbound.persistence.task import TaskCol
+from trader.adapters.outbound.persistence.user import UserCol
 from trader.core.shared.domain import Kline
 from trader.utils.task_state import TaskState, TaskStateType
 
@@ -52,6 +54,15 @@ async def _task_repository(adapter: str, db_path: Path):
             yield TaskCol(_Log())
     else:
         yield InMemoryTaskRepository()
+
+
+@asynccontextmanager
+async def _identity_repository(adapter: str, db_path: Path):
+    if adapter == "tortoise":
+        async with initialized_database(f"sqlite://{db_path}"):
+            yield UserCol(_Log())
+    else:
+        yield InMemoryIdentityRepository()
 
 
 def _kline(open_time: int, close: float = 100.0) -> Kline:
@@ -147,3 +158,55 @@ async def _task_contract(adapter: str, db_path: Path) -> None:
         assert await store.del_task(7) is True
         assert await store.del_task(7) is False
         assert await store.get_task(7) is None
+
+
+@pytest.mark.parametrize("adapter", ADAPTERS)
+def test_identity_repository_contract(adapter: str, tmp_path: Path):
+    asyncio.run(_identity_contract(adapter, tmp_path / "identity.db"))
+
+
+async def _identity_contract(adapter: str, db_path: Path) -> None:
+    async with _identity_repository(adapter, db_path) as users:
+        assert await users.count_admins() == 0
+        assert await users.get_by_username("admin") is None
+        assert await users.get_first_admin() is None
+        assert await users.list_users() == []
+
+        trader = await users.create_user("trader", "hash-1", role="user")
+        admin = await users.create_user("admin", "hash-2", role="admin")
+
+        assert trader.id is not None
+        assert trader.role == "user"
+        assert trader.status == "active"
+        assert trader.must_change_password is False
+        assert await users.count_admins() == 1
+        assert (await users.get_first_admin()).id == admin.id
+        assert [user.username for user in await users.list_users()] == ["trader", "admin"]
+        assert (await users.get_by_username("trader")).id == trader.id
+        assert (await users.get_by_id(trader.id)).password_hash == "hash-1"
+
+        when = datetime.now(UTC)
+        assert await users.mark_login(trader.id, when) is True
+        assert (await users.get_by_id(trader.id)).last_login_at is not None
+        assert await users.update_password(trader.id, "hash-3", must_change_password=True) is True
+        updated = await users.get_by_id(trader.id)
+        assert updated.password_hash == "hash-3"
+        assert updated.must_change_password is True
+        assert await users.update_password(999, "hash-x", must_change_password=True) is False
+        assert await users.mark_login(999, when) is False
+
+        expires_at = datetime.now(UTC) + timedelta(hours=1)
+        session = await users.create_session(trader.id, "session-1", expires_at)
+        assert session.id is not None
+        assert (await users.get_session("session-1")).user_id == trader.id
+        assert await users.get_session("unknown") is None
+        assert await users.delete_session("session-1") is True
+        assert await users.delete_session("session-1") is False
+
+        await users.create_session(trader.id, "first-session-1", expires_at)
+        await users.create_session(trader.id, "first-session-2", expires_at)
+        await users.create_session(admin.id, "second-session", expires_at)
+        assert await users.delete_sessions_for_user(trader.id) == 2
+        assert await users.get_session("first-session-1") is None
+        assert await users.get_session("first-session-2") is None
+        assert await users.get_session("second-session") is not None

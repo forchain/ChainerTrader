@@ -1,3 +1,5 @@
+"""Session token helpers. Tokens are random and stored only as SHA-256 hashes."""
+
 from __future__ import annotations
 
 import hashlib
