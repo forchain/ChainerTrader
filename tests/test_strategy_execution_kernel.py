@@ -1,5 +1,6 @@
 import asyncio
 
+from trader.adapters.outbound.binance.execution_gateway import BinanceLiveExecutionGateway
 from trader.core.execution import (
     ExecutionResult,
     ExecutionSide,
@@ -17,7 +18,6 @@ from trader.core.strategy.domain.execution_kernel import (
     TradeLifecycleEngine,
     TradeLifecycleStatus,
 )
-from trader.execution.gateways import BinanceLiveExecutionGateway
 
 
 def test_trade_lifecycle_engine_transitions_from_execution_results():

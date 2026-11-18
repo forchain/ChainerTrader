@@ -3,10 +3,18 @@ from datetime import datetime
 
 from trader.adapters.outbound.binance.exchange import KLINE_LIMIT_MAX, BinanceExchange, get_oldest_time
 from trader.adapters.outbound.persistence.manager import DatabaseManager
-from trader.common.common import sleep
 from trader.common.config import Config
 from trader.common.logger import Logger
-from trader.core.shared.domain import SymbolInterval, add_time_duration, get_time_duration
+from trader.core.marketdata.use_cases.update_klines import (
+    compute_limit_for_range,
+)
+from trader.core.marketdata.use_cases.update_klines import (
+    download_range as _download_range,
+)
+from trader.core.marketdata.use_cases.update_klines import (
+    download_range_backward as _download_range_backward,
+)
+from trader.core.shared.domain import SymbolInterval, add_time_duration
 from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig
 
@@ -14,15 +22,59 @@ DOWNLOAD_SPACE_TIME = 5
 DOWNLOAD_RETRY_MAX = 5
 KLINE_REQUEST_LIMIT_MAX = KLINE_LIMIT_MAX
 
+_compute_limit_for_range = compute_limit_for_range
 
-def _compute_limit_for_range(symbol_interval: SymbolInterval, start_time: int, end_time: int) -> int:
-    if start_time > end_time:
-        return 0
-    step = int(get_time_duration(symbol_interval.interval))
-    if step <= 0:
-        return KLINE_REQUEST_LIMIT_MAX
-    needed = int((end_time - start_time) // step) + 1
-    return max(1, min(KLINE_REQUEST_LIMIT_MAX, needed))
+
+async def download_range(
+    name: str,
+    log: Logger,
+    db_manager: DatabaseManager,
+    col_name: str,
+    exchange: BinanceExchange,
+    symbol_interval: SymbolInterval,
+    start_time: int,
+    end_time: int,
+    quit: Event,
+) -> bool:
+    return await _download_range(
+        name,
+        log,
+        db_manager,
+        col_name,
+        exchange,
+        symbol_interval,
+        start_time,
+        end_time,
+        quit,
+        retry_delay_seconds=DOWNLOAD_SPACE_TIME,
+        retry_max=DOWNLOAD_RETRY_MAX,
+    )
+
+
+async def download_range_backward(
+    name: str,
+    log: Logger,
+    db_manager: DatabaseManager,
+    col_name: str,
+    exchange: BinanceExchange,
+    symbol_interval: SymbolInterval,
+    start_time: int,
+    end_time: int,
+    quit: Event,
+) -> bool:
+    return await _download_range_backward(
+        name,
+        log,
+        db_manager,
+        col_name,
+        exchange,
+        symbol_interval,
+        start_time,
+        end_time,
+        quit,
+        retry_delay_seconds=DOWNLOAD_SPACE_TIME,
+        retry_max=DOWNLOAD_RETRY_MAX,
+    )
 
 
 class UpdateKlinesTask(BaseTask):
@@ -215,209 +267,3 @@ class UpdateKlinesTask(BaseTask):
             return
 
         self.log.warning(f"{self.name()} unexpected case: start={start_time}, end={end_time}, db_first={db_first_time}, db_last={db_last_time}")
-
-
-async def download_range(
-    name: str,
-    log: Logger,
-    db_manager: DatabaseManager,
-    col_name: str,
-    exchange: BinanceExchange,
-    symbol_interval: SymbolInterval,
-    start_time: int,
-    end_time: int,
-    quit: Event,
-) -> bool:
-    if start_time > end_time:
-        log.warning(f"{name} invalid range: start={start_time} > end={end_time}")
-        return False
-
-    log.info(
-        f"{name} download_range: start={datetime.fromtimestamp(start_time)}, end={datetime.fromtimestamp(end_time)}"
-    )
-
-    current_start = start_time
-    retry_count = 0
-    total_records = 0
-
-    while current_start <= end_time:
-        if quit.is_set():
-            log.info(f"exit {name}. total={total_records}")
-            return False
-
-        batch_limit = _compute_limit_for_range(symbol_interval, current_start, end_time)
-        batch_end = min(end_time, add_time_duration(current_start, symbol_interval.interval, batch_limit - 1))
-        kls = exchange.get_klines(symbol_interval, current_start, batch_end, limit=batch_limit)
-
-        if kls is None or len(kls) <= 0:
-            log.error(f"{name} get klines is empty")
-            if retry_count < DOWNLOAD_RETRY_MAX:
-                await sleep(log, DOWNLOAD_SPACE_TIME, f"retry {retry_count + 1}/{DOWNLOAD_RETRY_MAX}, {name}")
-                retry_count += 1
-                continue
-            else:
-                log.warning(f"exit {name}, max retries reached. total={total_records}")
-                return False
-
-        retry_count = 0
-
-        ret = await db_manager.kline.add_klines(col_name, kls, source="exchange")
-        total_records += ret
-
-        if ret != len(kls):
-            log.warning(f"{name} add klines to DB: {col_name} ({symbol_interval.name()}) {ret} != {len(kls)}")
-        else:
-            log.info(f"{name} add klines to DB: {col_name} ({symbol_interval.name()}) {ret}/{total_records}")
-
-        last_kline = kls[-1]
-        next_start = add_time_duration(last_kline.open_time, symbol_interval.interval, 1)
-
-        if next_start <= current_start:
-            log.warning(f"{name} no progress, breaking loop")
-            break
-
-        current_start = next_start
-        await sleep(log, 0.1)
-
-    if total_records > 0:
-        await _update_cached_open_time_range(
-            db_manager,
-            exchange,
-            symbol_interval,
-            start_time,
-            end_time,
-            source="download_range",
-        )
-    log.info(f"{name} download_range completed. total={total_records}")
-    return True
-
-
-async def download_range_backward(
-    name: str,
-    log: Logger,
-    db_manager: DatabaseManager,
-    col_name: str,
-    exchange: BinanceExchange,
-    symbol_interval: SymbolInterval,
-    start_time: int,
-    end_time: int,
-    quit: Event,
-) -> bool:
-    if start_time > end_time:
-        log.warning(f"{name} invalid backward range: start={start_time} > end={end_time}")
-        return True
-
-    log.info(
-        f"{name} download_range_backward: start={datetime.fromtimestamp(start_time)}, end={datetime.fromtimestamp(end_time)}"
-    )
-
-    current_end = end_time
-    retry_count = 0
-    total_records = 0
-    earliest_seen_open_time = None
-    confirmed_boundary = False
-
-    while current_end >= start_time:
-        if quit.is_set():
-            log.info(f"exit {name}. total={total_records}")
-            return False
-
-        batch_limit = _compute_limit_for_range(symbol_interval, start_time, current_end)
-        if batch_limit <= 0:
-            log.info(f"{name} no remaining candles to download")
-            break
-        if hasattr(exchange, "get_klines_by_end"):
-            kls = exchange.get_klines_by_end(symbol_interval, current_end, limit=batch_limit)
-        else:
-            kls = exchange.get_klines(symbol_interval, start_time, current_end, limit=batch_limit)
-
-        if kls is None:
-            log.error(f"{name} get klines failed")
-            if retry_count < DOWNLOAD_RETRY_MAX:
-                await sleep(log, DOWNLOAD_SPACE_TIME, f"retry {retry_count + 1}/{DOWNLOAD_RETRY_MAX}, {name}")
-                retry_count += 1
-                continue
-            log.warning(f"exit {name}, max retries reached. total={total_records}")
-            return False
-
-        if len(kls) <= 0:
-            if earliest_seen_open_time is None:
-                # We have proven that there are no klines at or before current_end. Record a conservative boundary
-                # so downstream dataset coverage checks won't treat pre-listing time as "missing".
-                earliest_seen_open_time = add_time_duration(current_end, symbol_interval.interval, 1)
-                confirmed_boundary = True
-            else:
-                confirmed_boundary = True
-            break
-
-        retry_count = 0
-        ret = await db_manager.kline.add_klines(col_name, kls, source="exchange")
-        total_records += ret
-
-        batch_first_open_time = kls[0].open_time
-        if earliest_seen_open_time is None or batch_first_open_time < earliest_seen_open_time:
-            earliest_seen_open_time = batch_first_open_time
-
-        if ret != len(kls):
-            log.warning(f"{name} add klines to DB: {col_name} ({symbol_interval.name()}) {ret} != {len(kls)}")
-        else:
-            log.info(f"{name} add klines to DB: {col_name} ({symbol_interval.name()}) {ret}/{total_records}")
-
-        prev_end = add_time_duration(batch_first_open_time, symbol_interval.interval, -1)
-        if prev_end >= current_end:
-            log.warning(f"{name} no backward progress, breaking loop")
-            break
-
-        current_end = prev_end
-        if current_end < start_time:
-            break
-        await sleep(log, 0.1)
-
-    availability = getattr(db_manager, "availability", None)
-    if confirmed_boundary and earliest_seen_open_time is not None and availability is not None:
-        exchange_name = exchange.name() if hasattr(exchange, "name") else "UNKNOWN"
-        log.info(
-            f"{name} detected earliest available kline: exchange={exchange_name} "
-            f"symbol_interval={symbol_interval.name()} earliest={datetime.fromtimestamp(earliest_seen_open_time)}"
-        )
-        await availability.update_earliest_known_open_time(
-            exchange_name,
-            symbol_interval.symbol(),
-            symbol_interval.interval.value,
-            earliest_seen_open_time,
-            source="backward_fill",
-        )
-
-    if total_records > 0:
-        await _update_cached_open_time_range(
-            db_manager,
-            exchange,
-            symbol_interval,
-            start_time,
-            end_time,
-            source="download_range_backward",
-        )
-    log.info(f"{name} download_range_backward completed. total={total_records}")
-    return True
-
-
-async def _update_cached_open_time_range(
-    db_manager: DatabaseManager,
-    exchange: BinanceExchange,
-    symbol_interval: SymbolInterval,
-    start_time: int,
-    end_time: int,
-    source: str,
-) -> None:
-    availability = getattr(db_manager, "availability", None)
-    if availability is None or not hasattr(availability, "update_cached_open_time_range"):
-        return
-    exchange_name = exchange.name() if hasattr(exchange, "name") else "UNKNOWN"
-    await availability.update_cached_open_time_range(
-        exchange_name,
-        symbol_interval.symbol(),
-        symbol_interval.interval.value,
-        start_time,
-        end_time,
-        source=source,
-    )
