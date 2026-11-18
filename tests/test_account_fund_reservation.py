@@ -2,13 +2,12 @@ import asyncio
 from types import SimpleNamespace
 
 import pytest
-from tortoise import Tortoise
 
+from tests.persistence_harness import initialized_database
+from trader.adapters.outbound.persistence.account_fund_reservation import AccountFundReservationCol, FundReservationError
 from trader.common.config import Config
 from trader.common.logger import Logger
 from trader.core.shared.domain import Interval, SymbolInterval
-from trader.database.account_fund_reservation import AccountFundReservationCol, FundReservationError
-from trader.database.config import build_tortoise_config
 from trader.execution.models import ExecutionStatus, GatewayMode
 from trader.execution.state import ExecutionStateRecord
 from trader.task.base_task import BaseTask
@@ -76,12 +75,8 @@ class _CaptureLogger:
 
 
 async def _with_db(fn):
-    await Tortoise.init(config=build_tortoise_config("sqlite://:memory:"))
-    await Tortoise.generate_schemas()
-    try:
+    async with initialized_database():
         await fn()
-    finally:
-        await Tortoise.close_connections()
 
 
 def test_account_fund_reservation_rejects_over_capacity_and_releases():

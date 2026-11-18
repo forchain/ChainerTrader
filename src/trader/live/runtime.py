@@ -6,10 +6,10 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from trader.adapters.outbound.binance.exchange import BinanceExchange
+from trader.adapters.outbound.persistence.manager import DatabaseManager
 from trader.common.config import Config
 from trader.common.logger import Logger, default
 from trader.core.shared.domain import Operate, OperateType
-from trader.database.manager import DatabaseManager
 from trader.live.dashboard import (
     DashboardEvent,
     build_macd_divergence_event,

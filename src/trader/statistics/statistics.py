@@ -2,9 +2,9 @@ from logging import Logger
 
 from prettytable import PrettyTable
 
+from trader.adapters.outbound.persistence.manager import DatabaseManager
 from trader.common.config import Config
 from trader.common.message import Message
-from trader.database.manager import DatabaseManager
 from trader.statistics.stat import BackTraderStat, TraderStat
 
 

@@ -6,8 +6,8 @@ from pathlib import Path
 from trader.common import path
 
 DEFAULT_DB_URL = "sqlite://data/trader.db"
-MODELS_MODULE = "trader.database.models"
-MIGRATIONS_MODULE = "trader.database.migrations"
+MODELS_MODULE = "trader.adapters.outbound.persistence.models"
+MIGRATIONS_MODULE = "trader.adapters.outbound.persistence.migrations"
 
 
 def normalize_db_url(db_url: str | None) -> str:

@@ -4,7 +4,7 @@ from logging import Logger
 
 from tortoise.exceptions import IntegrityError
 
-from trader.database.models import ExecutionStateModel
+from trader.adapters.outbound.persistence.models import ExecutionStateModel
 from trader.execution.models import ExecutionStatus
 from trader.execution.state import ExecutionStateRecord, ExecutionStateReservation
 

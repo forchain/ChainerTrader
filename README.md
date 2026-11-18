@@ -96,8 +96,8 @@ Dependencies point inward (`adapters` → `core`), and `tests/test_import_direct
   Portable execution contracts, gateway implementations, execution state, and reconciliation primitives shared by backtest and live modes.
 - `src/trader/exchange/`
   Exchange access and market-data handling.
-- `src/trader/database/`
-  Database-facing storage and query logic.
+- `src/trader/adapters/outbound/persistence/`
+  Tortoise models, migrations, connection lifecycle, and repository adapters.
 - `src/trader/rpc/`
   Web API and admin pages.
 - `src/trader/scanner/`
@@ -115,7 +115,7 @@ Detailed database design reference:
 
 ### Tables Overview
 
-ChainerTrader uses three main table families through repository interfaces under `src/trader/database/`.
+ChainerTrader uses three main table families through repository interfaces under `src/trader/adapters/outbound/persistence/`.
 
 #### 1. `klines`
 

@@ -1,23 +1,17 @@
 import asyncio
 
-from tortoise import Tortoise
-
+from tests.persistence_harness import initialized_database
+from trader.adapters.outbound.persistence.exchange_credential import ExchangeCredentialCol
+from trader.adapters.outbound.persistence.manager import DatabaseManager
+from trader.adapters.outbound.persistence.user import UserCol
 from trader.auth.credentials import decrypt_secret
 from trader.common.config import Config
 from trader.common.logger import Logger
-from trader.database.config import build_tortoise_config
-from trader.database.exchange_credential import ExchangeCredentialCol
-from trader.database.manager import DatabaseManager
-from trader.database.user import UserCol
 
 
 async def _with_db(fn):
-    await Tortoise.init(config=build_tortoise_config("sqlite://:memory:"))
-    await Tortoise.generate_schemas()
-    try:
+    async with initialized_database():
         await fn()
-    finally:
-        await Tortoise.close_connections()
 
 
 def _manager(cfg: Config) -> DatabaseManager:

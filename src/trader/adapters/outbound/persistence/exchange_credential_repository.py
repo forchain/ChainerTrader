@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from trader.adapters.outbound.persistence.models import ExchangeCredentialModel
 from trader.core.exchange.interfaces import ExchangeCredential
-from trader.database.models import ExchangeCredentialModel
 
 
 def _to_domain(row: ExchangeCredentialModel) -> ExchangeCredential:

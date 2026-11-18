@@ -22,7 +22,7 @@ from trader.core.shared.domain import Kline
 
 # Move DB imports to inside function to avoid dependency issues in some envs
 # from pymongo import MongoClient
-# from trader.database.kline import KlineCol
+# from trader.adapters.outbound.persistence.kline import KlineCol
 from trader.exchange.binance.data import BinanceData
 from trader.indicators.qqe_mod import QQEMod
 
@@ -121,7 +121,7 @@ def get_klines():
     try:
         from pymongo import MongoClient
 
-        from trader.database.kline import KlineCol
+        from trader.adapters.outbound.persistence.kline import KlineCol
 
         db_uri = os.environ.get("TRADER_DB", "mongodb://localhost:27017/")
         db_name = os.environ.get("TRADER_DB_NAME", "trader")

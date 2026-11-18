@@ -6,7 +6,7 @@ from logging import Logger
 
 from tortoise.transactions import in_transaction
 
-from trader.database.models import AccountFundReservationModel
+from trader.adapters.outbound.persistence.models import AccountFundReservationModel
 
 ACTIVE = "active"
 RELEASED = "released"

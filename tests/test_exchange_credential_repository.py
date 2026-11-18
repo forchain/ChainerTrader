@@ -2,11 +2,11 @@ import asyncio
 
 from tortoise import Tortoise
 
+from trader.adapters.outbound.persistence.config import build_tortoise_config
 from trader.adapters.outbound.persistence.exchange_credential_repository import (
     TortoiseExchangeCredentialRepository,
 )
 from trader.core.exchange.interfaces import ExchangeCredentialRepository
-from trader.database.config import build_tortoise_config
 
 
 async def _with_db(fn):
