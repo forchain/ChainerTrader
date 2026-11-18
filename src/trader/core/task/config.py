@@ -4,13 +4,13 @@ import os
 from datetime import datetime
 
 from trader.common.config import TRADER_MIN_LIVE_TRADE_NOTIONAL
-from trader.core.shared.domain import Interval, SymbolInterval
-from trader.core.task.domain import TaskType
-from trader.core.task.exceptions import TaskConfigError
-from trader.live.auto_execution import (
+from trader.core.execution.modes import (
     normalize_live_execution_mode,
     normalize_margin_borrow_block_policy,
 )
+from trader.core.shared.domain import Interval, SymbolInterval
+from trader.core.task.domain import TaskType
+from trader.core.task.exceptions import TaskConfigError
 from trader.task.persisted_live_config_migration import (
     PERSISTED_LEGACY_LIVE_EXECUTION_MODE,
 )

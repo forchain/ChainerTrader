@@ -588,3 +588,39 @@ class TestTaskConfigForceUpdate:
         tasks = parse_task_config(config)
         assert len(tasks) == 1
         assert tasks[0].force_update is False
+
+
+def test_force_update_deletes_the_range_and_downloads_it_again():
+    """A forced update re-downloads the whole requested range."""
+    from trader.common.config import Config
+    from trader.common.logger import Logger
+    from trader.task.task_config import TaskConfig
+    from trader.task.task_type import TaskType
+    from trader.task.update_klines_task import UpdateKlinesTask
+
+    cfg = Config(tasks="[]")
+    tcfg = TaskConfig(
+        1,
+        TaskType.UPDATE_KLINES,
+        SymbolInterval("BTC-USDT", Interval.INTERVAL_1h),
+        force_update=True,
+    )
+    deleted = []
+
+    async def delete_klines_in_range(name, start, end):
+        deleted.append((name, start, end))
+        return 3
+
+    db = SimpleNamespace(kline=SimpleNamespace(delete_klines_in_range=delete_klines_in_range))
+    task = UpdateKlinesTask(tcfg, cfg, Logger(cfg), db, None)
+    downloaded = []
+
+    async def fake_download_range(name, log, repo, col_name, exchange, symbol_interval, start, end, quit):
+        downloaded.append((col_name, start, end))
+        return True
+
+    with patch("trader.task.update_klines_task.download_range", fake_download_range):
+        asyncio.run(task._handle_force_update("BTCUSDT-1h", 1000, 2000))
+
+    assert deleted == [("BTCUSDT-1h", 1000, 2000)]
+    assert downloaded == [("BTCUSDT-1h", 1000, 2000)]

@@ -372,7 +372,7 @@ def test_run_backtest_sample_builds_runtime_objects_from_sample_spec(monkeypatch
                 data_len=100,
             )
 
-    monkeypatch.setattr("trader.task.backtrader_task.BinanceCSVData", FakeCSVData)
+    monkeypatch.setattr("trader.adapters.outbound.backtrader.dataset_feed.BinanceCSVData", FakeCSVData)
     monkeypatch.setattr(
         "trader.task.backtrader_task.parse_strategies",
         lambda strategies: strategy_calls.append(list(strategies)) or ["fake-strategy"],

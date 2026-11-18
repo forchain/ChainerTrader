@@ -20,41 +20,30 @@ from trader.core.execution import (
     OrderSemanticsError,
     select_order_semantics,
 )
+from trader.core.execution.modes import (
+    AUTO_TRADE_MODE,  # noqa: F401  # re-exported for legacy importers
+    MANUAL_NOTIFY_MODE,  # noqa: F401  # re-exported for legacy importers
+    REAL_AUTO_MODES,  # noqa: F401  # re-exported for legacy importers
+    SUPPORTED_LIVE_EXECUTION_MODES,  # noqa: F401  # re-exported for legacy importers
+    SUPPORTED_MARGIN_BORROW_BLOCK_POLICIES,  # noqa: F401  # re-exported for legacy importers
+    LiveExecutionMode,
+    MarginBorrowBlockPolicy,
+    is_manual_notify_mode,  # noqa: F401  # re-exported for legacy importers
+    is_real_auto_mode,  # noqa: F401  # re-exported for legacy importers
+    normalize_live_execution_mode,
+    normalize_margin_borrow_block_policy,
+)
 from trader.core.shared.domain import OperateType
 from trader.live.dashboard import DashboardEvent
 from trader.task.live_startup_self_check import task_requires_short_capability
 
-MANUAL_NOTIFY_MODE = "manual_notify"
-AUTO_TRADE_MODE = "auto_trade"
 AUTO_EXECUTION_EVENT_TYPE = "auto_execution_outcome"
-
-
-class LiveExecutionMode(str, Enum):
-    MANUAL_NOTIFY = MANUAL_NOTIFY_MODE
-    AUTO_TRADE = "auto_trade"
-
-
-class MarginBorrowBlockPolicy(str, Enum):
-    SKIP_CONTINUE = "skip_continue"
-    REPAY_SINGLE = "repay_single"
-    REPAY_ALL = "repay_all"
-    STOP_TASK = "stop_task"
 
 
 class AutoExecutionStatus(str, Enum):
     SUBMITTED = "submitted"
     SKIPPED = "skipped"
     FAILED = "failed"
-
-
-REAL_AUTO_MODES = {LiveExecutionMode.AUTO_TRADE.value}
-SUPPORTED_LIVE_EXECUTION_MODES = {LiveExecutionMode.MANUAL_NOTIFY.value, LiveExecutionMode.AUTO_TRADE.value}
-SUPPORTED_MARGIN_BORROW_BLOCK_POLICIES = {
-    MarginBorrowBlockPolicy.SKIP_CONTINUE.value,
-    MarginBorrowBlockPolicy.REPAY_SINGLE.value,
-    MarginBorrowBlockPolicy.REPAY_ALL.value,
-    MarginBorrowBlockPolicy.STOP_TASK.value,
-}
 
 
 @dataclass
@@ -105,43 +94,6 @@ class AutoExecutionOutcome:
     def with_native_protection(self, enabled: bool) -> "AutoExecutionOutcome":
         self.native_protection = bool(enabled)
         return self
-
-
-def normalize_live_execution_mode(value: str | LiveExecutionMode | None) -> str:
-    raw = value.value if isinstance(value, LiveExecutionMode) else value
-    mode = str(raw or LiveExecutionMode.AUTO_TRADE.value).strip().lower()
-    if mode not in SUPPORTED_LIVE_EXECUTION_MODES:
-        raise ValueError(f"unsupported live_execution_mode: {raw}")
-    return mode
-
-
-def normalize_margin_borrow_block_policy(value: str | MarginBorrowBlockPolicy | None) -> str:
-    raw = value.value if isinstance(value, MarginBorrowBlockPolicy) else value
-    mode = str(raw or MarginBorrowBlockPolicy.SKIP_CONTINUE.value).strip().lower()
-    aliases = {
-        "skip": MarginBorrowBlockPolicy.SKIP_CONTINUE.value,
-        "skip_short_continue": MarginBorrowBlockPolicy.SKIP_CONTINUE.value,
-        "skip_continue": MarginBorrowBlockPolicy.SKIP_CONTINUE.value,
-        "auto_repay_then_retry_once": MarginBorrowBlockPolicy.REPAY_SINGLE.value,
-        "repay_symbol_assets_retry": MarginBorrowBlockPolicy.REPAY_SINGLE.value,
-        "repay_single": MarginBorrowBlockPolicy.REPAY_SINGLE.value,
-        "repay_all_liabilities_retry": MarginBorrowBlockPolicy.REPAY_ALL.value,
-        "repay_all": MarginBorrowBlockPolicy.REPAY_ALL.value,
-        "hard_fail_stop_task": MarginBorrowBlockPolicy.STOP_TASK.value,
-        "stop_task": MarginBorrowBlockPolicy.STOP_TASK.value,
-    }
-    mode = aliases.get(mode, mode)
-    if mode not in SUPPORTED_MARGIN_BORROW_BLOCK_POLICIES:
-        raise ValueError(f"unsupported live_margin_borrow_block_policy: {raw}")
-    return mode
-
-
-def is_manual_notify_mode(value: str | None) -> bool:
-    return normalize_live_execution_mode(value) == LiveExecutionMode.MANUAL_NOTIFY.value
-
-
-def is_real_auto_mode(value: str | None) -> bool:
-    return normalize_live_execution_mode(value) in REAL_AUTO_MODES
 
 
 def operation_identity(op) -> str:
@@ -197,6 +149,114 @@ class AutoExecutionRouter:
         if self.mode == LiveExecutionMode.MANUAL_NOTIFY.value:
             return self._record(self._outcome(op, AutoExecutionStatus.SKIPPED, reason="manual_notify_no_order"))
         return self._route_real(op)
+
+    def reconcile(self, records) -> list[dict[str, Any]]:
+        """Rehydrate exposure and protection ids from persisted 执行状态记录."""
+        self.real_long_position = 0.0
+        self.real_short_position = 0.0
+        self._protection_order_ids_by_trade.clear()
+        payload: list[dict[str, Any]] = []
+        terminal_statuses = {
+            ExecutionStatus.CANCELED.value,
+            ExecutionStatus.REJECTED.value,
+            ExecutionStatus.SKIPPED.value,
+            ExecutionStatus.FAILED.value,
+        }
+        long_quantity = 0.0
+        short_quantity = 0.0
+        closed_trade_ids: set[str] = set()
+        for record in records or []:
+            payload.append(self.execution_state_payload(record))
+            status = getattr(record, "status", None)
+            status_value = str(getattr(status, "value", status) or "").lower()
+            if status_value in terminal_statuses:
+                continue
+            role = str(getattr(record, "order_role", "") or "").lower()
+            raw_payload = getattr(record, "raw_payload", None)
+            raw_payload = raw_payload if isinstance(raw_payload, dict) else {}
+            trade_id = getattr(record, "trade_id", None)
+            side = str(raw_payload.get("side") or raw_payload.get("direction") or "").upper()
+            is_short = side == ExecutionSide.SHORT.value.upper()
+            quantity = float(getattr(record, "quantity", 0.0) or 0.0)
+            if role == "entry":
+                if is_short:
+                    short_quantity += quantity
+                elif quantity > 0:
+                    long_quantity += quantity
+            elif role == "close":
+                if is_short:
+                    short_quantity = max(short_quantity - quantity, 0.0)
+                else:
+                    long_quantity = max(long_quantity - quantity, 0.0)
+                if trade_id is not None:
+                    closed_trade_ids.add(str(trade_id))
+            protection_id = getattr(record, "protection_id", None) or getattr(record, "exchange_order_id", None)
+            if role in {"stop_loss", "take_profit"} and trade_id is not None and protection_id:
+                self._protection_order_ids_by_trade[str(trade_id)] = str(protection_id)
+        for trade_id in closed_trade_ids:
+            self._protection_order_ids_by_trade.pop(trade_id, None)
+        self.real_long_position = max(long_quantity, 0.0)
+        self.real_short_position = max(short_quantity, 0.0)
+        return payload
+
+    @staticmethod
+    def execution_state_payload(record) -> dict[str, Any]:
+        gateway = getattr(record, "gateway", None)
+        status = getattr(record, "status", None)
+        return {
+            "idempotency_key": getattr(record, "idempotency_key", None),
+            "intent_id": getattr(record, "intent_id", None),
+            "operation_id": getattr(record, "operation_id", None),
+            "gateway": getattr(gateway, "value", gateway),
+            "staged_execution_mode": getattr(record, "staged_execution_mode", None),
+            "symbol": getattr(record, "symbol", None),
+            "trade_id": getattr(record, "trade_id", None),
+            "order_role": getattr(record, "order_role", None),
+            "status": getattr(status, "value", status),
+            "exchange_order_id": getattr(record, "exchange_order_id", None),
+            "protection_id": getattr(record, "protection_id", None),
+            "quantity": getattr(record, "quantity", None),
+            "price": getattr(record, "price", None),
+            "stop_price": getattr(record, "stop_price", None),
+            "take_profit_price": getattr(record, "take_profit_price", None),
+            "updated_at": getattr(record, "updated_at", None),
+        }
+
+    async def persist_outcome(self, outcome, *, state_store=None, reservation_store=None) -> None:
+        """Persist 执行状态记录 and deduct reserved budget for a submitted outcome."""
+        if state_store is not None:
+            records = list(getattr(outcome, "execution_state_records", []) or [])
+            for index, record in enumerate(records, start=1):
+                try:
+                    saved = state_store.save(record)
+                    if hasattr(saved, "__await__"):
+                        await saved
+                except Exception as exc:
+                    log = getattr(self, "log", None)
+                    if log is not None and hasattr(log, "error"):
+                        log.error(
+                            "Realtime execution state persist failed: "
+                            f"runtime_task_id={self.tcfg.id} record={index}/{len(records)} "
+                            f"operation_id={getattr(outcome, 'operation_id', None)} "
+                            f"operation_type={getattr(outcome, 'operation_type', None)} "
+                            f"status={getattr(outcome, 'status', None)} "
+                            f"reason={getattr(outcome, 'reason', None)} error={exc!r}"
+                        )
+                    raise
+        if reservation_store is None or not self._outcome_submitted(outcome):
+            return
+        notional = float(getattr(outcome, "effective_notional", 0.0) or 0.0)
+        if notional <= 0:
+            return
+        asset = getattr(self.tcfg, "fund_reservation_asset", None) or self.tcfg.symbol_interval.sy.quote
+        result = reservation_store.mark_spent(self.tcfg.id, asset, notional)
+        if hasattr(result, "__await__"):
+            await result
+
+    @staticmethod
+    def _outcome_submitted(outcome) -> bool:
+        status = getattr(outcome, "status", None)
+        return getattr(status, "value", status) == AutoExecutionStatus.SUBMITTED.value
 
     def _outcome(
         self,
@@ -1170,6 +1230,12 @@ class AutoExecutionRouter:
             else:
                 status = AutoExecutionStatus.FAILED
                 reason = f"{base_reason} protection_failed_after_retry"
+                # The retry opened a position without protection: close it again to avoid an unprotected exposure.
+                fail_safe_result = self._fail_safe_close(gateway, selection.order, protection_result)
+                if fail_safe_result is not None:
+                    events.extend(event.to_dict() for event in fail_safe_result.events)
+                    records.append(self._state_record_for_order(self._close_intent_for_fail_safe(selection.order), fail_safe_result, op))
+                    reason = f"{reason}; fail_safe_close_submitted"
         return self._record(
             self._outcome(
                 op,

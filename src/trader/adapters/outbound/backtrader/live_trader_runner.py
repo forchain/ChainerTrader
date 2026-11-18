@@ -8,7 +8,6 @@ from datetime import datetime, timedelta
 from typing import Any, Callable
 
 from trader.adapters.outbound.backtrader.live_runtime import BacktraderLiveRunner
-from trader.adapters.outbound.persistence.execution_state import execution_state_record_context
 from trader.common.message import new_stat_msg
 from trader.core.exchange.interfaces import ExchangeClient
 from trader.core.execution import ExecutionGateway, ExecutionStateStore
@@ -435,64 +434,17 @@ class _LiveTraderSession:
             records = await _maybe_await(store.list_open_by_task(self.tcfg.id))
         else:
             records = await _maybe_await(store.list_open_by_symbol(self.tcfg.symbol_interval.symbol()))
-        payload = [self._execution_state_record_payload(record) for record in records]
+        payload = self._auto_execution_router.reconcile(records)
         self.ts.execution_reconcile = payload
         return payload
 
     async def persist_auto_execution_state(self, outcome) -> None:
-        store = self.runner.execution_state_store
-        if store is not None:
-            records = list(getattr(outcome, "execution_state_records", []) or [])
-            for index, record in enumerate(records, start=1):
-                try:
-                    await _maybe_await(store.save(record))
-                except Exception as exc:
-                    self.log.error(
-                        "Realtime execution state persist failed: "
-                        f"runtime_task_id={self.tcfg.id} record={index}/{len(records)} "
-                        f"operation_id={getattr(outcome, 'operation_id', None)} "
-                        f"operation_type={getattr(outcome, 'operation_type', None)} "
-                        f"status={getattr(outcome, 'status', None)} "
-                        f"reason={getattr(outcome, 'reason', None)} "
-                        f"{execution_state_record_context(record)} error={exc!r}"
-                    )
-                    raise
-        reservation_store = self.runner.fund_reservation_store
-        if reservation_store is None:
-            return
-        if (
-            str(getattr(outcome, "status", "")) not in {"submitted", "AutoExecutionStatus.SUBMITTED"}
-            and getattr(getattr(outcome, "status", None), "value", None) != "submitted"
-        ):
-            return
-        notional = float(getattr(outcome, "effective_notional", 0.0) or 0.0)
-        if notional <= 0:
-            return
-        asset = getattr(self.tcfg, "fund_reservation_asset", None) or self.tcfg.symbol_interval.sy.quote
-        await _maybe_await(reservation_store.mark_spent(self.tcfg.id, asset, notional))
+        await self._auto_execution_router.persist_outcome(
+            outcome,
+            state_store=self.runner.execution_state_store,
+            reservation_store=self.runner.fund_reservation_store,
+        )
 
-    @staticmethod
-    def _execution_state_record_payload(record) -> dict:
-        gateway = getattr(record, "gateway", None)
-        status = getattr(record, "status", None)
-        return {
-            "idempotency_key": getattr(record, "idempotency_key", None),
-            "intent_id": getattr(record, "intent_id", None),
-            "operation_id": getattr(record, "operation_id", None),
-            "gateway": getattr(gateway, "value", gateway),
-            "staged_execution_mode": getattr(record, "staged_execution_mode", None),
-            "symbol": getattr(record, "symbol", None),
-            "trade_id": getattr(record, "trade_id", None),
-            "order_role": getattr(record, "order_role", None),
-            "status": getattr(status, "value", status),
-            "exchange_order_id": getattr(record, "exchange_order_id", None),
-            "protection_id": getattr(record, "protection_id", None),
-            "quantity": getattr(record, "quantity", None),
-            "price": getattr(record, "price", None),
-            "stop_price": getattr(record, "stop_price", None),
-            "take_profit_price": getattr(record, "take_profit_price", None),
-            "updated_at": getattr(record, "updated_at", None),
-        }
 
     @staticmethod
     def trader_result_for_live_operation(op) -> TraderResult:

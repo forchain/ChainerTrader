@@ -1,18 +1,14 @@
 from __future__ import annotations
 
+from trader.core.task.config_codec import TaskConfigCodec
 from trader.task.persisted_live_config_migration import (
     PERSISTED_LEGACY_LIVE_EXECUTION_MODE,
     PERSISTED_LIVE_DATA_MODE,
-    sanitize_public_task_config_json,
 )
 
 
 def public_task_state_dict(ts) -> dict:
-    item = ts.to_dict()
-    config_json = item.get("config_json")
-    if config_json:
-        item["config_json"] = sanitize_public_task_config_json(config_json)
-    return item
+    return TaskConfigCodec.to_public_view(ts, include_display_fields=False)
 
 
 def strip_recovery_only_task_config_fields(cfg: dict) -> dict:

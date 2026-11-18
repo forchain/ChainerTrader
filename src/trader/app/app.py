@@ -10,6 +10,7 @@ from trader.common.common import NAME
 from trader.common.config import Config, default
 from trader.common.log_tag import LogTag
 from trader.common.message import Message, new_add_tasks_msg, new_exit_msg
+from trader.core.task.config_codec import TaskConfigCodec
 from trader.core.task.interfaces import TaskEventPublisher
 from trader.core.task.use_cases import PlanStartupTasks, RecoverRunningTasks
 from trader.task.live_startup_self_check import evaluate_live_startup_self_check
@@ -359,7 +360,7 @@ class App:
     def send_add_tasks_msg(self, tasks_cfg: str, user_id: int | None = None):
         taskcs: list[TaskConfig] = []
         if tasks_cfg:
-            taskcs = parse_task_config(tasks_cfg)
+            taskcs = TaskConfigCodec.from_input(tasks_cfg)
         if user_id is not None:
             for taskc in taskcs:
                 taskc.user_id = user_id

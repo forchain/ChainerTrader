@@ -21,6 +21,7 @@ from trader.core.exchange.use_cases import RouteExchangeForTask, base_exchange_c
 from trader.core.optimization.use_cases.parameter_optimization import RunParameterOptimizationUseCase
 from trader.core.shared.domain import Symbol, SymbolInterval
 from trader.core.task.config import TaskConfig
+from trader.core.task.config_codec import TaskConfigCodec
 from trader.core.task.domain import TaskState, TaskStateType, TaskType, task_state_name
 from trader.core.task.interfaces import TaskEventPublisher
 from trader.core.task.use_cases import (
@@ -49,7 +50,6 @@ from trader.task.dataset_resolver import DatasetResolver
 from trader.task.debug_task import DebugTask
 from trader.task.import_csv_task import ImportCSVTask
 from trader.task.live_startup_self_check import infer_required_margin_mode, task_requires_short_capability
-from trader.task.task_config import parse_task_config
 from trader.task.trader_task import TraderTask
 from trader.task.update_klines_task import UpdateKlinesTask
 
@@ -106,7 +106,7 @@ class TaskManager:
     def start(self, taskcs: list[TaskConfig] | None = None):
         self.log.info("TaskManager start")
         if taskcs is None and self.cfg.tasks:
-            taskcs = parse_task_config(self.cfg.tasks)
+            taskcs = TaskConfigCodec.from_input(self.cfg.tasks)
         if taskcs is not None:
             required_margin_mode = infer_required_margin_mode(taskcs)
             if getattr(self.exchange, "margin_mode", None) is not None and required_margin_mode.value != self.exchange.margin_mode.value:
@@ -244,7 +244,14 @@ class TaskManager:
         return task_state_name(cfg)
 
     def _task_config_json(self, cfg: TaskConfig) -> str:
-        return BaseTask(cfg, self.cfg, self.log, self.db_manager).ts.config_json
+        initial_cash = cfg.free if getattr(cfg, "free", -1) >= 0 else getattr(self.cfg, "cash", 0)
+        state = TaskConfigCodec.to_task_state(
+            cfg,
+            name=TaskConfigCodec.state_name(cfg),
+            commission=getattr(self.cfg, "commission", 0),
+            initial_cash=initial_cash,
+        )
+        return state.config_json
 
     def _call_add_task_after_startup_cleanup(self, cfg, queue: Queue):
         add_task = self.add_task
@@ -683,18 +690,11 @@ class TaskManager:
         ).execute(user_id=user_id)
 
     def _task_config_from_state(self, state: TaskState) -> TaskConfig | None:
-        config_json = str(getattr(state, "config_json", "") or "").strip()
-        if not config_json:
-            return None
         try:
-            taskcs = parse_task_config(config_json)
+            return TaskConfigCodec.from_persisted_state(state)
         except Exception as exc:
             self.log.error(f"task state config parse failed: task_id={getattr(state, 'id', None)} error={exc}")
             return None
-        for cfg in taskcs:
-            if int(getattr(cfg, "id", 0) or 0) == int(getattr(state, "id", 0) or 0):
-                return cfg
-        return taskcs[0] if taskcs else None
 
     def del_task(self, id: int, user_id: int | None = None):
         task = self.get_task(id)

@@ -1,4 +1,3 @@
-import json
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
@@ -7,9 +6,9 @@ from trader.core.exchange.domain import Balance
 from trader.core.exchange.interfaces import ExchangeClient
 from trader.core.exchange.use_cases import BuildAccountView, SymbolOpenOrders
 from trader.core.shared.domain import Symbol
+from trader.core.task.config_codec import TaskConfigCodec
 from trader.core.task.domain import TaskStateType
 from trader.core.task.use_cases import ListTasks, TaskScope, paginate
-from trader.rpc.task_state_payload import public_task_state_dict
 
 if TYPE_CHECKING:
     from trader.app.app import App
@@ -55,18 +54,7 @@ async def get_taskinfo(app: "App", user=None, page: int = 1, per_page: int | Non
     for ts in states.items:
         if ts.state == TaskStateType.DONE:
             completed += 1
-        item = public_task_state_dict(ts)
-        try:
-            payload = json.loads(item.get("config_json") or "[]")
-            cfg = payload[0] if isinstance(payload, list) and payload and isinstance(payload[0], dict) else {}
-        except Exception:
-            cfg = {}
-        run_id = str(cfg.get("run_id") or "").strip() or str(cfg.get("task_batch_id") or "").strip() or None
-        item["run_id"] = run_id
-        item["symbol"] = str(cfg.get("symbol") or "").strip()
-        item["interval"] = str(cfg.get("interval") or "").strip()
-        item["strategy"] = str(cfg.get("strategy") or cfg.get("strategies") or "").strip()
-        tasks.append(item)
+        tasks.append(TaskConfigCodec.to_public_view(ts))
 
     # Assign ordinal labels for grouped runs.
     run_groups: dict[str, list[dict[str, Any]]] = {}

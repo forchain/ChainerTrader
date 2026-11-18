@@ -29,7 +29,7 @@ def _ensure_pymongo_stub():
 _ensure_pymongo_stub()
 
 from trader.core.shared.domain import Interval, Kline, SymbolInterval  # noqa: E402
-from trader.task.dataset_resolver import DatasetResolver  # noqa: E402
+from trader.task.dataset_resolver import DatasetRef, DatasetResolver  # noqa: E402
 
 
 class DummyLog:
@@ -1035,3 +1035,187 @@ def test_prepare_fails_fast_when_missing_ranges_exceed_download_budget(tmp_path:
         assert result.failure.dataset_key == f"BTCUSDT-1h|{start_time}|{end_time}"
 
     asyncio.run(_test())
+
+
+class RecordingKlineStore:
+    def __init__(self, klines):
+        self.klines = list(klines)
+        self.get_klines_calls = 0
+        self.get_kline_calls = 0
+
+    async def get_klines(self, name, start_time=0, end_time=0):
+        self.get_klines_calls += 1
+        return [kl for kl in self.klines if start_time <= kl.open_time <= end_time]
+
+    async def get_kline(self, name, open_time):
+        self.get_kline_calls += 1
+        for kl in self.klines:
+            if kl.open_time == open_time:
+                return kl
+        return None
+
+
+def _hourly_klines(start: int, count: int, skip: set[int] | None = None):
+    skip = skip or set()
+    return [make_kline(start + index * 3600) for index in range(count) if index not in skip]
+
+
+@pytest.mark.anyio
+async def test_inspect_coverage_uses_one_range_query_and_reports_gaps():
+    start = 1_700_000_000 - (1_700_000_000 % 3600)
+    store = RecordingKlineStore(_hourly_klines(start, 6, skip={3}))
+    resolver = DatasetResolver(
+        db_manager=SimpleNamespace(kline=store),
+        exchange=SimpleNamespace(),
+        log=DummyLog(),
+    )
+
+    report = await resolver.inspect_coverage(SymbolInterval("BTC-USDT", Interval("1h")), start, start + 5 * 3600)
+
+    assert store.get_klines_calls == 1
+    assert store.get_kline_calls == 0
+    assert report.expected_count == 6
+    assert report.present_count == 5
+    assert report.missing_count == 1
+    assert report.missing_ranges == [(start + 3 * 3600, start + 3 * 3600)]
+    assert report.complete is False
+
+
+@pytest.mark.anyio
+async def test_sync_range_is_the_canonical_range_sync_seam():
+    start = 1_700_000_000 - (1_700_000_000 % 3600)
+    store = RecordingKlineStore(_hourly_klines(start, 6))
+    resolver = DatasetResolver(
+        db_manager=SimpleNamespace(kline=store),
+        exchange=SimpleNamespace(),
+        log=DummyLog(),
+    )
+
+    result = await resolver.sync_range(SymbolInterval("BTC-USDT", Interval("1h")), start, start + 5 * 3600)
+
+    assert result.ok is True
+    assert result.dataset_ref is not None
+
+
+@pytest.mark.anyio
+async def test_load_backtest_feed_builds_db_and_csv_feeds(tmp_path):
+    start = 1_700_000_000 - (1_700_000_000 % 3600)
+    store = RecordingKlineStore(_hourly_klines(start, 3))
+    resolver = DatasetResolver(
+        db_manager=SimpleNamespace(kline=store),
+        exchange=SimpleNamespace(),
+        log=DummyLog(),
+    )
+    dataset_ref = DatasetRef(
+        dataset_key="btc",
+        symbol="BTC-USDT",
+        interval="1h",
+        start_time=start,
+        end_time=start + 2 * 3600,
+    )
+
+    db_feed = await resolver.load_backtest_feed(dataset_ref)
+    csv_path = tmp_path / "btc.csv"
+    csv_path.write_text("")
+    csv_feed = await resolver.load_backtest_feed(
+        DatasetRef(
+            dataset_key="csv",
+            symbol="BTC-USDT",
+            interval="1h",
+            start_time=start,
+            end_time=start + 2 * 3600,
+            source_type="csv",
+            path=str(csv_path),
+        )
+    )
+
+    assert len(db_feed.data) == 3
+    assert str(csv_feed.p.dataname).endswith("btc.csv")
+
+
+@pytest.fixture
+def anyio_backend():
+    return "asyncio"
+
+
+@pytest.mark.anyio
+async def test_force_sync_redownloads_range_despite_cached_metadata(tmp_path: Path):
+    start = 1_700_000_000 - (1_700_000_000 % 3600)
+    end = start + 5 * 3600
+    kline_store = RecordingKlineStore([make_kline(start)])
+    availability_store = SimpleNamespace(
+        get_earliest_known_open_time=AsyncMock(return_value=None),
+        get_cached_open_time_range=AsyncMock(return_value=(start - 86400, end + 86400)),
+        update_cached_open_time_range=AsyncMock(),
+    )
+    calls = []
+
+    async def downloader(*args, **kwargs):
+        # downloader(name, log, db_manager, col_name, exchange, symbol_interval, range_start, range_end, quit)
+        calls.append((args[6], args[7]))
+        return True
+
+    resolver = DatasetResolver(
+        db_manager=SimpleNamespace(kline=kline_store, availability=availability_store),
+        exchange=SimpleNamespace(name=lambda: "BINANCE"),
+        log=DummyLog(),
+        cache_dir=tmp_path,
+        range_downloader=downloader,
+    )
+
+    result = await resolver.sync_range(SymbolInterval("BTC-USDT", Interval("1h")), start, end, force_sync=True)
+
+    assert result.ok is True
+    assert calls
+    assert calls[0][0] <= start
+    assert calls[0][1] >= end
+
+
+@pytest.mark.anyio
+async def test_inspect_coverage_reports_expected_count_for_empty_range():
+    store = RecordingKlineStore([])
+    resolver = DatasetResolver(
+        db_manager=SimpleNamespace(kline=store),
+        exchange=SimpleNamespace(),
+        log=DummyLog(),
+    )
+    start = 1_700_000_000 - (1_700_000_000 % 3600)
+
+    report = await resolver.inspect_coverage(SymbolInterval("BTC-USDT", Interval("1h")), start, start + 5 * 3600)
+
+    assert report.complete is False
+    assert report.expected_count == 6
+    assert report.present_count == 0
+    assert report.missing_count == 6
+
+
+@pytest.mark.anyio
+async def test_load_backtest_feed_treats_zero_data_start_time_as_explicit():
+    start = 1_700_000_000 - (1_700_000_000 % 3600)
+
+    class StartRecordingStore(RecordingKlineStore):
+        def __init__(self, klines):
+            super().__init__(klines)
+            self.starts = []
+
+        async def get_klines(self, name, start_time=0, end_time=0):
+            self.starts.append(start_time)
+            return await super().get_klines(name, start_time, end_time)
+
+    store = StartRecordingStore([make_kline(start)])
+    resolver = DatasetResolver(
+        db_manager=SimpleNamespace(kline=store),
+        exchange=SimpleNamespace(),
+        log=DummyLog(),
+    )
+    dataset_ref = DatasetRef(
+        dataset_key="btc",
+        symbol="BTC-USDT",
+        interval="1h",
+        start_time=start,
+        end_time=start + 2 * 3600,
+    )
+
+    await resolver.load_backtest_feed(dataset_ref, data_start_time=0)
+
+    assert store.starts == [0]

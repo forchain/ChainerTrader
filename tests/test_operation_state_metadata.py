@@ -2,11 +2,10 @@ from types import SimpleNamespace
 
 from trader.adapters.outbound.backtrader.analyzers.operation_state import MaxDrawdownAnalyzer
 from trader.core.shared.domain import Operate, OperateType, parse_opts
-from trader.utils.operation_state import enrich_operation_from_trade_context
+from trader.core.strategy.domain.lifecycle import OperateFactory
 
 
-def test_enrich_operation_from_trade_context_copies_framework_risk_references():
-    op = Operate(OperateType.LONG, 1714281600, 101.5)
+def test_operate_factory_copies_framework_risk_references():
     ctx = SimpleNamespace(
         trade_id=12,
         direction="LONG",
@@ -24,7 +23,7 @@ def test_enrich_operation_from_trade_context_copies_framework_risk_references():
         exit_risk_reward_ratio=None,
     )
 
-    enrich_operation_from_trade_context(op, ctx)
+    op = OperateFactory.entry(OperateType.LONG, 1714281600, 101.5, ctx)
 
     assert op.stop_loss == 98.0
     assert op.take_profit == 110.0
@@ -122,3 +121,27 @@ def test_max_drawdown_analyzer_tracks_active_position_drawdown_separately():
     assert analysis["active_max_drawdown"] == 10.0
     assert analysis["active_start"] is times[2]
     assert analysis["active_end"] is times[3]
+
+
+def test_operate_factory_falls_back_to_initial_stop_and_leaves_empty_metadata_unset():
+    ctx = SimpleNamespace(
+        trade_id=1,
+        direction="LONG",
+        initial_stop_price=95.0,
+        stop_price=None,
+        tp_price=None,
+        risk_reward_ratio=1.0,
+        signal_metadata=None,
+        breakeven_step=0,
+        exit_reason_code=None,
+        exit_reason_label=None,
+        exit_reason_detail=None,
+        replacement_trade_id=None,
+        stop_multiple_r=None,
+        exit_risk_reward_ratio=None,
+    )
+
+    op = OperateFactory.entry(OperateType.LONG, 1, 100.0, ctx)
+
+    assert op.stop_loss == 95.0
+    assert not hasattr(op, "signal_metadata")

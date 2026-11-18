@@ -49,7 +49,10 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
         raise ValueError(f"task config file does not exist: {cfg}")
     else:
         parsed_list = json.loads(cfg)
+    return parse_task_config_payload(parsed_list, last_task_id)
 
+
+def parse_task_config_payload(parsed_list, last_task_id: int = 0) -> list[TaskConfig]:
     ret = []
     optimization_run_id = None
     run_id = None
@@ -211,8 +214,8 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
                             free,
                             force_update,
                             strategy_params=normalized_params,
-                            param_id=make_param_id(normalized_params) if parameter_search_enabled else None,
-                            optimization_run_id=optimization_run_id if parameter_search_enabled else None,
+                            param_id=make_param_id(normalized_params) if parameter_search_enabled else tcd.get("param_id"),
+                            optimization_run_id=optimization_run_id if parameter_search_enabled else tcd.get("optimization_run_id"),
                             live_execution_mode=live_execution_mode,
                             manual_start_position=manual_start_position,
                             live_trade_max_notional=live_trade_max_notional,
@@ -244,6 +247,8 @@ def parse_task_config(cfg: str, last_task_id: int = 0) -> list[TaskConfig]:
                         free,
                         force_update,
                         strategy_params={},
+                        param_id=tcd.get("param_id"),
+                        optimization_run_id=tcd.get("optimization_run_id"),
                         live_execution_mode=live_execution_mode,
                         manual_start_position=manual_start_position,
                         live_trade_max_notional=live_trade_max_notional,

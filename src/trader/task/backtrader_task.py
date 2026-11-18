@@ -12,8 +12,6 @@ from trader.adapters.outbound.backtrader.backtest_runner import (
 from trader.adapters.outbound.backtrader.backtest_runner import (
     backtest_data_start_time as _backtest_data_start_time,
 )
-from trader.adapters.outbound.backtrader.csvdata import BinanceCSVData
-from trader.adapters.outbound.backtrader.data import BinanceData
 from trader.adapters.outbound.backtrader.node import Node
 from trader.adapters.outbound.binance.exchange import BinanceExchange
 from trader.adapters.outbound.persistence.manager import DatabaseManager
@@ -26,7 +24,7 @@ from trader.statistics.stat import BackTraderStat
 from trader.strategy.strategy import parse_strategies
 from trader.strategy.trader_result import TraderResult, parse_trader_result
 from trader.task.base_task import BaseTask
-from trader.task.dataset_resolver import DatasetResolver
+from trader.task.dataset_resolver import DatasetRef, DatasetResolver
 from trader.task.task_config import TaskConfig
 
 
@@ -117,25 +115,12 @@ def build_backtest_sample_spec(cfg: Config, tcfg: TaskConfig) -> BacktestSampleS
 def _build_csv_data_for_spec(spec: BacktestSampleSpec):
     if spec.data_path is None:
         raise ValueError(f"missing CSV path for backtest sample task_id={spec.task_id}")
-    if not spec.use_data_range:
-        return BinanceCSVData(dataname=spec.data_path)
     data_start_time = spec.data_start_time if spec.data_start_time is not None else spec.start_time
-    if data_start_time <= 0 and spec.end_time <= 0:
-        return BinanceCSVData(dataname=spec.data_path)
-    if data_start_time <= 0:
-        return BinanceCSVData(
-            dataname=spec.data_path,
-            todate=datetime.fromtimestamp(spec.end_time),
-        )
-    if spec.end_time <= 0:
-        return BinanceCSVData(
-            dataname=spec.data_path,
-            fromdate=datetime.fromtimestamp(data_start_time),
-        )
-    return BinanceCSVData(
-        dataname=spec.data_path,
-        fromdate=datetime.fromtimestamp(data_start_time),
-        todate=datetime.fromtimestamp(spec.end_time),
+    return DatasetResolver.build_csv_feed(
+        spec.data_path,
+        data_start_time=data_start_time,
+        end_time=spec.end_time,
+        use_range=spec.use_data_range,
     )
 
 
@@ -143,12 +128,15 @@ async def _build_db_data_for_spec(spec: BacktestSampleSpec, cfg: Config, logger:
     db_manager = DatabaseManager(cfg, logger)
     await db_manager.start()
     try:
-        symbol_interval = SymbolInterval(spec.symbol, Interval(spec.interval))
         data_start_time = spec.data_start_time if spec.data_start_time is not None else spec.start_time
-        klines = await db_manager.kline.get_klines(symbol_interval.name(), data_start_time, spec.end_time) or []
-        if not klines:
-            raise ValueError(f"no kline data available for dataset={spec.dataset_key}")
-        return BinanceData(klines)
+        dataset_ref = DatasetRef(
+            dataset_key=spec.dataset_key or spec.symbol,
+            symbol=spec.symbol,
+            interval=spec.interval,
+            start_time=data_start_time,
+            end_time=spec.end_time,
+        )
+        return await DatasetResolver(db_manager, None, logger).load_backtest_feed(dataset_ref)
     finally:
         await db_manager.stop()
 

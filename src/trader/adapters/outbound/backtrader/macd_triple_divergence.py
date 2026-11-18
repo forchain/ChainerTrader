@@ -1339,7 +1339,7 @@ class MacdTripleDivergenceStrategy(BaseStrategy):
             role = getattr(order, "info", {}).get("chainer_role")
             if role == "entry":
                 tradeid = getattr(order, "tradeid", None)
-                ctx = self._trades_by_id.get(int(tradeid)) if tradeid is not None else None
+                ctx = self.trade_context(int(tradeid)) if tradeid is not None else None
                 signal_id = (ctx.signal_metadata or {}).get("signal_event_id") if ctx is not None else None
                 self._update_signal_outcome(
                     signal_id,

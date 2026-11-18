@@ -18,6 +18,7 @@ from trader.auth.passwords import Argon2PasswordHasher
 from trader.common import path
 from trader.common.common import NAME
 from trader.common.config import Config
+from trader.core.exchange.account_lifecycle import LiveAccountError, LiveAccountLifecycle, parse_symbol
 from trader.core.exchange.domain import ExchangeConfig, MarginMode, parse_exchange_config
 from trader.core.exchange.exceptions import UserExchangeCredentialError
 from trader.core.exchange.use_cases import SymbolOpenOrders, base_exchange_config, build_user_exchange_context
@@ -440,7 +441,7 @@ def _validate_exchange_credential_connectivity(cfg: Config, exchange: str, api_k
 def _user_accounts_info(cfg: Config, rpc_app: RpcApp, user, credentials: list) -> AcctsInfo:
     try:
         exchange = _account_exchange_for_user(cfg, rpc_app, user, credentials)
-    except UserExchangeCredentialError as exc:
+    except (UserExchangeCredentialError, LiveAccountError) as exc:
         return AcctsInfo(total=0, balances=[], account_error=str(exc))
     except Exception as exc:
         logger = getattr(rpc_app, "logger", None)
@@ -492,31 +493,11 @@ def _account_cancel_preview(cfg: Config, rpc_app: RpcApp, user, credentials: lis
 
 
 def _default_binance_credential(credentials: list):
-    for credential in credentials or []:
-        if str(getattr(credential, "exchange", "") or "").upper() == "BINANCE":
-            return credential
-    return None
+    return LiveAccountLifecycle.default_credential(credentials)
 
 
 def _symbol_from_cancel_request(raw_symbol: str, quote_asset: str = "USDT") -> Symbol | None:
-    normalized = str(raw_symbol or "").strip().upper().replace("/", "-").replace("_", "-")
-    if not normalized:
-        return None
-    if "-" in normalized:
-        symbol = Symbol(normalized)
-        return symbol if not symbol.is_empty() else None
-
-    compact = normalized.replace("-", "")
-    quote_candidates = [quote_asset, "USDT", "USDC", "FDUSD", "BUSD", "BTC", "ETH", "BNB"]
-    seen: set[str] = set()
-    for quote in quote_candidates:
-        quote = str(quote or "").strip().upper()
-        if not quote or quote in seen:
-            continue
-        seen.add(quote)
-        if compact.endswith(quote) and len(compact) > len(quote):
-            return Symbol(f"{compact[:-len(quote)]}-{quote}")
-    return None
+    return parse_symbol(raw_symbol, quote_asset=quote_asset)
 
 
 def _cancel_requested_open_order_symbol(exchange, symbol: Symbol, logger=None) -> int:

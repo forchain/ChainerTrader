@@ -2,17 +2,8 @@ import backtrader as bt
 from backtrader import num2date
 
 from trader.core.shared.domain import Operate, OperateType
-from trader.utils.operation_state import enrich_operation_from_trade_context
-
-
-def _trade_context_for_order(strategy, order):
-    tradeid = getattr(order, "tradeid", None)
-    if tradeid is None or strategy is None:
-        return None
-    try:
-        return getattr(strategy, "_trades_by_id", {}).get(int(tradeid))
-    except (TypeError, ValueError):
-        return None
+from trader.core.strategy.domain.lifecycle import OperateFactory
+from trader.utils.operation_state import trade_context_for_order
 
 
 class OptStatAnalyzer(bt.Analyzer):
@@ -55,13 +46,16 @@ class OptStatAnalyzer(bt.Analyzer):
                     otype = OperateType.SELL
                 self.position_size -= order_size
 
-            op = Operate(
-                otype,
-                num2date(self.data.datetime[0]).timestamp(),
-                self.data.close[0],
+            ctx = trade_context_for_order(getattr(self, "strategy", None), order)
+            factory = OperateFactory.entry if otype in (OperateType.LONG, OperateType.SHORT, OperateType.BUY) else OperateFactory.exit
+            self.opts.append(
+                factory(
+                    otype,
+                    int(num2date(self.data.datetime[0]).timestamp()),
+                    self.data.close[0],
+                    ctx,
+                )
             )
-            enrich_operation_from_trade_context(op, _trade_context_for_order(getattr(self, "strategy", None), order))
-            self.opts.append(op)
         elif order.status == order.Submitted:
             if hasattr(self, 'strategy') and self.strategy:
                 self.position_size = self.strategy.position.size

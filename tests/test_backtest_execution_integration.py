@@ -72,6 +72,7 @@ def test_build_strategy_kwargs_allows_parameter_overrides():
 def test_backtrader_task_start_uses_dataset_resolver_for_db_backtests(monkeypatch):
     async def _test():
         prepare_calls = []
+        get_klines = AsyncMock(return_value=[_kline(1_700_000_000), _kline(1_700_000_000 + 3600)])
 
         class FakeResolver:
             def __init__(self, *args, **kwargs):
@@ -100,6 +101,13 @@ def test_backtrader_task_start_uses_dataset_resolver_for_db_backtests(monkeypatc
                     ),
                 )
 
+            async def sync_range(self, *args, **kwargs):
+                return await self.prepare(*args, **kwargs)
+
+            async def load_backtest_feed(self, dataset_ref, **kwargs):
+                klines = await get_klines("BTCUSDT-1h", dataset_ref.start_time, dataset_ref.end_time)
+                return BinanceData(klines)
+
         monkeypatch.setattr("trader.task.backtrader_task.DatasetResolver", FakeResolver)
         monkeypatch.setattr("trader.task.backtrader_task.parse_strategies", lambda strategies: ["fake-strategy"])
 
@@ -112,7 +120,6 @@ def test_backtrader_task_start_uses_dataset_resolver_for_db_backtests(monkeypatc
             strategies=["macd_triple_divergence"],
             auto_download=True,
         )
-        get_klines = AsyncMock(return_value=[_kline(1_700_000_000), _kline(1_700_000_000 + 3600)])
         db_manager = SimpleNamespace(kline=SimpleNamespace(get_klines=get_klines))
         task = BackTraderTask(tcfg, Config(), DummyLog(), db_manager=db_manager, exchange=SimpleNamespace())
 

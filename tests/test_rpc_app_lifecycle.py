@@ -210,7 +210,7 @@ async def test_rpc_app_async_start_schedules_recovery_without_waiting_for_scan(m
         "recover_task",
         lambda taskc, queue: _recover_task(taskc, queue, recovered_started, release_recover),
     )
-    monkeypatch.setattr("trader.app.app.parse_task_config", lambda _cfg: [recovered])
+    monkeypatch.setattr("trader.app.app.TaskConfigCodec.from_persisted_state", lambda _state: recovered)
     app.db_manager = FakeDbManager()
 
     result = await app.start_async()
@@ -277,15 +277,13 @@ async def test_rpc_app_recovery_limits_concurrent_task_starts(monkeypatch):
     monkeypatch.setattr(app.task_manager, "start", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(app.task_manager, "recover_task", fake_recover_task)
     monkeypatch.setattr(
-        "trader.app.app.parse_task_config",
-        lambda cfg: [
-            TaskConfig(
-                id=1,
-                ttype=TaskType.DEBUG,
-                symbol_interval=SymbolInterval("BTC-USDT", Interval("1h")),
-                strategies=[],
-            )
-        ],
+        "trader.app.app.TaskConfigCodec.from_persisted_state",
+        lambda state: TaskConfig(
+            id=state.id,
+            ttype=TaskType.DEBUG,
+            symbol_interval=SymbolInterval("BTC-USDT", Interval("1h")),
+            strategies=[],
+        ),
     )
     monkeypatch.setattr("trader.app.app.RECOVERY_TASK_CONCURRENCY", 2)
     app.db_manager = FakeDbManager()
@@ -419,10 +417,6 @@ async def test_rpc_app_recovery_fails_loudly_for_legacy_persisted_live_config(mo
         ),
     )
     monkeypatch.setattr(app.task_manager, "start", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(
-        "trader.app.app.parse_task_config",
-        lambda _cfg: (_ for _ in ()).throw(AssertionError("legacy rows must be rejected before parse_task_config")),
-    )
     app.db_manager = FakeDbManager()
 
     result = await app.start_async()

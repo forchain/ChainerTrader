@@ -91,6 +91,7 @@ class DatasetResolver:
         allow_download: bool = True,
         max_download_ranges: int | None = None,
         allow_incomplete_coverage: bool = False,
+        force_sync: bool = False,
     ):
         started_at = time.perf_counter()
         cache_start, cache_end = self._cache_range(symbol_interval, start_time, end_time)
@@ -119,7 +120,7 @@ class DatasetResolver:
             )
             cache_start = first_available_open_time
         dataset_key = self._build_dataset_key(symbol_interval, cache_start, cache_end)
-        if dataset_key in self._prepared:
+        if dataset_key in self._prepared and not force_sync:
             result = self._prepared[dataset_key]
             self._log_prepare_result(symbol_interval, start_time, end_time, result, time.perf_counter() - started_at)
             return result
@@ -138,7 +139,10 @@ class DatasetResolver:
 
         dataset_ref = self._build_dataset_ref(symbol_interval, cache_start, cache_end)
         klines = list(await self.kline_repository.get_klines(symbol_interval.name(), cache_start, cache_end) or [])
-        if supports_cached_range:
+        if force_sync:
+            # A forced sync re-downloads the whole requested range, ignoring cached coverage.
+            missing_ranges = [(cache_start, cache_end)]
+        elif supports_cached_range:
             missing_ranges = self._detect_uncached_ranges(
                 symbol_interval,
                 cache_start,
