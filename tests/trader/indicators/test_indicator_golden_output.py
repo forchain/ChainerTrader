@@ -8,15 +8,15 @@ import backtrader as bt
 import numpy as np
 import pandas as pd
 
-from trader.indicators.chainerrsi import ChainerRSIHisto
-from trader.indicators.kdj import KDJIndicator
-from trader.indicators.pivot_high import PivotHigh
-from trader.indicators.pivot_low import PivotLow
-from trader.indicators.qqe import QQECalc
-from trader.indicators.qqe_mod import QQEMod
-from trader.indicators.rsrs import RSRSIndicator
-from trader.indicators.super_trend import SuperTrend
-from trader.indicators.trend_a import TrendA
+from trader.adapters.outbound.backtrader.indicators.chainerrsi import ChainerRSIHisto
+from trader.adapters.outbound.backtrader.indicators.kdj import KDJIndicator
+from trader.adapters.outbound.backtrader.indicators.pivot_high import PivotHigh
+from trader.adapters.outbound.backtrader.indicators.pivot_low import PivotLow
+from trader.adapters.outbound.backtrader.indicators.qqe import QQECalc
+from trader.adapters.outbound.backtrader.indicators.qqe_mod import QQEMod
+from trader.adapters.outbound.backtrader.indicators.rsrs import RSRSIndicator
+from trader.adapters.outbound.backtrader.indicators.super_trend import SuperTrend
+from trader.adapters.outbound.backtrader.indicators.trend_a import TrendA
 from trader.utils.ma import MAType
 
 GOLDEN_SHA256 = "889a3f00d1bbcd0ecf829019afee439cdf1f839470cbd883b568ad2546f8d4ca"

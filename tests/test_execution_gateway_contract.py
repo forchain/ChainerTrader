@@ -1,5 +1,8 @@
+from types import SimpleNamespace
+
 import pytest
 
+from trader.adapters.outbound.backtrader.execution_gateway import BacktraderExecutionGateway
 from trader.adapters.outbound.binance.execution_gateway import BinanceLiveExecutionGateway
 from trader.adapters.outbound.notification.execution_gateway import NotificationOnlyExecutionGateway
 from trader.core.execution import (
@@ -206,10 +209,34 @@ def _binance_live_gateway(exchange):
     return BinanceLiveExecutionGateway(exchange, staged_execution_mode="auto_trade")
 
 
-# The backtrader implementation joins this suite in ticket #100.
+class ContractBacktraderStrategy:
+    """Strategy fake that records backtrader order calls for the shared gateway contract."""
+
+    def __init__(self):
+        self.calls = []
+
+    def buy(self, **kwargs):
+        order = SimpleNamespace(ref=f"bt-{len(self.calls) + 1}", kwargs=kwargs)
+        self.calls.append(("buy", kwargs))
+        return order
+
+    def sell(self, **kwargs):
+        order = SimpleNamespace(ref=f"bt-{len(self.calls) + 1}", kwargs=kwargs)
+        self.calls.append(("sell", kwargs))
+        return order
+
+    def cancel(self, order):
+        self.calls.append(("cancel", order))
+
+
+def _backtrader_gateway(exchange):
+    return BacktraderExecutionGateway(ContractBacktraderStrategy(), staged_execution_mode="backtrader")
+
+
 GATEWAY_IMPLEMENTATIONS = [
     pytest.param(_notification_only_gateway, GatewayMode.NOTIFICATION_ONLY, False, id="notification_only"),
     pytest.param(_binance_live_gateway, GatewayMode.BINANCE_LIVE, True, id="binance_live"),
+    pytest.param(_backtrader_gateway, GatewayMode.BACKTRADER, True, id="backtrader"),
 ]
 
 

@@ -3,6 +3,7 @@ import contextvars
 from asyncio import Queue
 from datetime import datetime, timedelta
 
+from trader.adapters.outbound.backtrader.live_runtime import BacktraderLiveRunner
 from trader.adapters.outbound.binance.exchange import BinanceExchange
 from trader.adapters.outbound.persistence.execution_state import execution_state_record_context
 from trader.adapters.outbound.persistence.manager import DatabaseManager
@@ -12,7 +13,6 @@ from trader.common.message import new_stat_msg
 from trader.core.shared.domain import OperateType
 from trader.core.strategy.domain.node import build_strategy_kwargs
 from trader.live.auto_execution import AutoExecutionRouter, execution_outcome_event
-from trader.live.backtrader_runtime import BacktraderLiveRunner
 from trader.live.dashboard import (
     build_risk_overlay_events,
     build_signal_marker_event,

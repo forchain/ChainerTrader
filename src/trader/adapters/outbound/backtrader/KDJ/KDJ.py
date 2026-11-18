@@ -1,8 +1,8 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 from trader.adapters.outbound.backtrader.base_strategy import BaseStrategy
+from trader.adapters.outbound.backtrader.indicators.kdj import KDJIndicator
 from trader.core.shared.domain import OperateType
-from trader.indicators.kdj import KDJIndicator
 
 
 class KDJStrategy(BaseStrategy):

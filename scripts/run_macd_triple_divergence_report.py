@@ -6,10 +6,10 @@ from pathlib import Path
 
 import backtrader as bt
 
+from trader.adapters.outbound.backtrader.analyzers.backtest_report import BacktestReportAnalyzer
+from trader.adapters.outbound.backtrader.analyzers.operation_state import MaxDrawdownAnalyzer
 from trader.adapters.outbound.backtrader.csvdata import BinanceCSVData
 from trader.adapters.outbound.backtrader.macd_triple_divergence import MacdTripleDivergenceStrategy
-from trader.analyzers.backtest_report import BacktestReportAnalyzer
-from trader.utils.operation_state import MaxDrawdownAnalyzer
 
 
 class SilentStrategy(MacdTripleDivergenceStrategy):

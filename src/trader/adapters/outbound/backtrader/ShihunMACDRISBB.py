@@ -3,8 +3,8 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import backtrader as bt
 
 from trader.adapters.outbound.backtrader.base_strategy import BaseStrategy
+from trader.adapters.outbound.backtrader.indicators.chainerrsi import ChainerRSIHisto
 from trader.core.shared.domain import OperateType
-from trader.indicators.chainerrsi import ChainerRSIHisto
 from trader.utils.trend import TrendType
 
 

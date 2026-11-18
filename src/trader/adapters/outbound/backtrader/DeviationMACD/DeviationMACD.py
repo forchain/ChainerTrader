@@ -7,9 +7,9 @@ from enum import Enum
 import backtrader as bt
 
 from trader.adapters.outbound.backtrader.base_strategy import BaseStrategy
+from trader.adapters.outbound.backtrader.indicators.pivot_high import PivotHigh
+from trader.adapters.outbound.backtrader.indicators.pivot_low import PivotLow
 from trader.core.shared.domain import OperateType
-from trader.indicators.pivot_high import PivotHigh
-from trader.indicators.pivot_low import PivotLow
 
 
 class Pivot:
