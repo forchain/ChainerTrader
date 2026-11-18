@@ -8,10 +8,10 @@ from decimal import ROUND_DOWN, Decimal
 from typing import Any
 from uuid import uuid4
 
+from trader.adapters.outbound.binance.exchange import BinanceExchange
 from trader.common.config import Config
 from trader.common.logger import Logger
 from trader.core.shared.domain import Interval, Operate, OperateType, Symbol, SymbolInterval
-from trader.exchange.binance.exchange import BinanceExchange
 from trader.exchange.driver import ExchangeDriverType
 from trader.exchange.exchange_config import ExchangeConfig, MarginMode
 from trader.live.auto_execution import AutoExecutionRouter, AutoExecutionStatus
@@ -76,7 +76,10 @@ def run_binance_live_smoke_from_env() -> LiveSmokeReport:
     run_spot = os.getenv("CHAINERTRADER_LIVE_SMOKE_ENABLE_SPOT", "1") == "1"
     run_margin = os.getenv("CHAINERTRADER_LIVE_SMOKE_ENABLE_MARGIN", "0") == "1"
     if not run_spot or not run_margin:
-        raise RuntimeError("single-run dual-flow verification requires CHAINERTRADER_LIVE_SMOKE_ENABLE_SPOT=1 and CHAINERTRADER_LIVE_SMOKE_ENABLE_MARGIN=1")
+        raise RuntimeError(
+            "single-run dual-flow verification requires "
+            "CHAINERTRADER_LIVE_SMOKE_ENABLE_SPOT=1 and CHAINERTRADER_LIVE_SMOKE_ENABLE_MARGIN=1"
+        )
     trader_db = os.getenv("TRADER_DB", "").strip()
     if not trader_db:
         raise RuntimeError("TRADER_DB is required for execution_state closure verification")
@@ -1379,7 +1382,7 @@ def _collect_margin_borrow_blocker_probe(*, report: LiveSmokeReport) -> dict[str
     }
     symbol = os.getenv("CHAINERTRADER_LIVE_SMOKE_SYMBOL", "BTC-USDT")
     try:
-        from trader.exchange.binance.exchange import BinanceExchange
+        from trader.adapters.outbound.binance.exchange import BinanceExchange
         from trader.exchange.driver import ExchangeDriverType
         from trader.exchange.exchange_config import ExchangeConfig, MarginMode
 
@@ -1420,9 +1423,11 @@ def _collect_margin_borrow_blocker_probe(*, report: LiveSmokeReport) -> dict[str
 def _snapshot_cross_margin_account(exchange: Any) -> dict[str, Any]:
     acct = None
     try:
-        if getattr(exchange, "_use_ccxt", lambda: False)():
-            acct = exchange.ccxt_driver.get_account()
+        if exchange.driver_name() == "ccxt":
+            acct = exchange.get_account()
         else:
+            from trader.adapters.outbound.binance.margin import MarginTradingManager
+
             manager = MarginTradingManager(exchange.cfg, exchange.log)
             acct = manager.query_cross_margin_account_details()
     except Exception as exc:

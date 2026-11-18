@@ -7,9 +7,9 @@ from binance_common.constants import SPOT_REST_API_PROD_URL
 from binance_sdk_spot import Spot
 from dotenv import load_dotenv
 
+from trader.adapters.outbound.binance.exchange import BinanceExchange
 from trader.common.config import Config, new_and_env
 from trader.core.shared.domain import Interval, SymbolInterval
-from trader.exchange.binance.exchange import BinanceExchange
 from trader.exchange.exchange_config import parse_exchange_config
 from trader.live.runtime import RealtimeLiveStrategyRuntime
 from trader.live.stream import run_binance_kline_websocket_smoke

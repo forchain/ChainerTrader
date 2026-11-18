@@ -1,18 +1,18 @@
+import importlib
 import json
 import os
 import re
-import importlib
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
 
+from trader.adapters.outbound.binance.exchange import BinanceExchange
 from trader.auth.context import current_user
 from trader.auth.credentials import decrypt_secret, service_key_available
 from trader.common import path as trader_path
-from trader.rpc.task_state_payload import public_task_state_dict
-from trader.exchange.binance.exchange import BinanceExchange
 from trader.exchange.exchange_config import ExchangeConfig, parse_exchange_config
+from trader.rpc.task_state_payload import public_task_state_dict
 from trader.task.task_config import parse_task_config
 from trader.task.task_type import TaskType
 

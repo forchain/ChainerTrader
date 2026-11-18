@@ -13,6 +13,7 @@ try:
 except Exception:  # pragma: no cover - optional until dependency is installed
     ccxt = None
 
+from trader.adapters.outbound.binance.archive import find_earliest_daily_archive_open_time
 from trader.common.logger import default
 from trader.core.execution import ExecutionSide, ExecutionStatus, PositionView, ProtectionIntentType, ProtectionOrderView
 from trader.core.shared.domain import Kline, OperateType, Symbol, SymbolInterval, get_time_duration
@@ -114,6 +115,9 @@ class CcxtExchangeDriver:
         if symbol is None:
             return getattr(self.client, "markets", None)
         return self.client.market(self._ccxt_symbol(symbol))
+
+    def get_earliest_daily_archive_open_time(self, symbol_interval: SymbolInterval) -> int | None:
+        return find_earliest_daily_archive_open_time(symbol_interval)
 
     def get_klines(
         self,
@@ -240,6 +244,12 @@ class CcxtExchangeDriver:
         if taker is not None:
             return float(taker)
         return None
+
+    def new_margin_order(self, symbol: Symbol, op: OperateType, quantity: float = 0):
+        return self.new_order(symbol, op, quantity)
+
+    def is_cross_margin_ready(self) -> bool:
+        return self.cfg.margin_mode != MarginMode.SPOT
 
     def new_order(self, symbol: Symbol, op: OperateType, quantity: float = 0):
         extra: dict[str, Any] = {}

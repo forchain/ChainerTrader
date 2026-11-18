@@ -4,12 +4,12 @@ from unittest.mock import patch
 
 import requests
 
-from trader.core.shared.domain import Interval, SymbolInterval
-from trader.exchange.binance.archive import (
+from trader.adapters.outbound.binance.archive import (
     find_earliest_daily_archive_open_time,
     parse_earliest_daily_archive_open_time,
 )
-from trader.exchange.binance.exchange import BinanceExchange
+from trader.adapters.outbound.binance.exchange import BinanceExchange
+from trader.core.shared.domain import Interval, SymbolInterval
 
 
 def test_parse_earliest_daily_archive_open_time_ignores_checksums_and_uses_utc_day_start():
@@ -53,5 +53,5 @@ def test_binance_exchange_delegates_daily_archive_lookup():
     symbol_interval = SymbolInterval("BTC-USDT", Interval.INTERVAL_1d)
     exchange = object.__new__(BinanceExchange)
 
-    with patch("trader.exchange.binance.exchange.find_earliest_daily_archive_open_time", return_value=1_500_000_000):
+    with patch("trader.adapters.outbound.binance.exchange.find_earliest_daily_archive_open_time", return_value=1_500_000_000):
         assert exchange.get_earliest_daily_archive_open_time(symbol_interval) == 1_500_000_000

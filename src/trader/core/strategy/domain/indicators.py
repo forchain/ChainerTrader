@@ -193,8 +193,9 @@ class QQEModKernel:
             self._bb_values = self._bb_values[-self.bollinger_length :]
 
         if len(self._bb_values) >= self.bollinger_length:
-            bb_basis = sum(self._bb_values) / len(self._bb_values)
-            variance = sum((x - bb_basis) ** 2 for x in self._bb_values) / len(self._bb_values)
+            # fsum: CPython 3.12+ compensates builtin sum(), which shifted the golden snapshot by ~1e-13 on 3.11
+            bb_basis = math.fsum(self._bb_values) / len(self._bb_values)
+            variance = math.fsum((x - bb_basis) ** 2 for x in self._bb_values) / len(self._bb_values)
             bb_std = variance**0.5
             bb_deviation = self.bollinger_multiplier * bb_std
             bb_upper = bb_basis + bb_deviation

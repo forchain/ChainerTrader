@@ -7,6 +7,7 @@ from concurrent.futures import TimeoutError as FutureTimeoutError
 from datetime import datetime
 from pathlib import Path
 
+from trader.adapters.outbound.binance.exchange import BinanceExchange
 from trader.adapters.outbound.persistence.account_fund_reservation import FundReservationError
 from trader.adapters.outbound.persistence.manager import DatabaseManager
 from trader.auth.credentials import service_key_available
@@ -17,7 +18,6 @@ from trader.common.logger import Logger
 from trader.common.message import new_add_tasks_msg, new_exit_msg, new_stat_msg
 from trader.core.execution import ExecutionStatus
 from trader.core.shared.domain import Symbol, SymbolInterval
-from trader.exchange.binance.exchange import BinanceExchange
 from trader.exchange.exchange_config import MarginMode
 from trader.exchange.user_credentials import (
     attach_user_exchange_context,

@@ -4,8 +4,8 @@ import inspect
 
 from fastapi import HTTPException, Request
 
+from trader.adapters.outbound.binance.exchange import BinanceExchange
 from trader.auth.context import current_user
-from trader.exchange.binance import exchange as binance_exchange
 from trader.exchange.exchange_config import MarginMode
 from trader.exchange.user_credentials import (
     UserExchangeCredentialError,
@@ -53,4 +53,4 @@ async def request_user_exchange(request: Request, *, margin_mode: MarginMode | N
             f"user_id={user.id} credential_id={context.credential_id} api_key={context.masked_api_key} "
             f"margin_mode={context.cfg.margin_mode.value}"
         )
-    return attach_user_exchange_context(binance_exchange.BinanceExchange(context.cfg, logger), context)
+    return attach_user_exchange_context(BinanceExchange(context.cfg, logger), context)

@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
+from trader.core.exchange.interfaces import ExchangeClient
 from trader.core.shared.domain import Symbol
 from trader.exchange.balance import Balance
 from trader.rpc.task_state_payload import public_task_state_dict
@@ -171,40 +172,35 @@ def _borrow_asset_from_exchange(exchange: Any, balances: list[Balance], symbol: 
     return "USDT"
 
 
-def _get_max_borrowable_amount(exchange: Any, asset: str) -> float:
-    reader = getattr(exchange, "get_max_borrowable", None)
-    if not callable(reader):
-        return 0.0
-    payload = reader(asset)
+def _get_max_borrowable_amount(exchange: ExchangeClient, asset: str) -> float:
+    payload = exchange.get_max_borrowable(asset)
     if isinstance(payload, dict):
         return float(payload.get("amount", 0.0) or 0.0)
     return float(getattr(payload, "amount", 0.0) or 0.0)
 
 
-def _open_orders_from_exchange(exchange: Any, balances: list[Balance], symbol: Any = None, quote_asset: str | None = None) -> list[dict[str, Any]]:
-    reader = getattr(exchange, "get_open_orders", None)
-    if not callable(reader):
-        return []
+def _open_orders_from_exchange(
+    exchange: ExchangeClient,
+    balances: list[Balance],
+    symbol: Any = None,
+    quote_asset: str | None = None,
+) -> list[dict[str, Any]]:
     quote = _quote_asset_for_locked_symbol_search(symbol, quote_asset)
-    all_reader = getattr(exchange, "get_all_open_orders", None)
-    if quote and quote in _locked_balance_assets(balances) and callable(all_reader):
+    if quote and quote in _locked_balance_assets(balances):
         try:
-            rows = all_reader() or []
+            rows = exchange.get_all_open_orders() or []
         except Exception:
             rows = []
         if rows:
             return _open_order_rows(rows)
     rows: list[Any] = []
     for order_symbol in open_order_symbols_from_locked_balances(balances, symbol=symbol, quote_asset=quote):
-        rows.extend(reader(order_symbol) or [])
+        rows.extend(exchange.get_open_orders(order_symbol) or [])
     return _open_order_rows(rows)
 
 
-def open_orders_for_symbol_from_exchange(exchange: Any, symbol: Symbol) -> list[dict[str, Any]]:
-    reader = getattr(exchange, "get_open_orders", None)
-    if not callable(reader):
-        return []
-    return _open_order_rows(reader(symbol) or [])
+def open_orders_for_symbol_from_exchange(exchange: ExchangeClient, symbol: Symbol) -> list[dict[str, Any]]:
+    return _open_order_rows(exchange.get_open_orders(symbol) or [])
 
 
 def open_order_symbols_from_locked_balances(
