@@ -5,9 +5,9 @@ from types import SimpleNamespace
 
 import pytest
 
+from trader.adapters.outbound.binance.exchange import BinanceExchange
 from trader.core.execution import GatewayCapability
 from trader.core.shared.domain import Operate, OperateType, Symbol
-from trader.exchange.binance.exchange import BinanceExchange
 from trader.exchange.driver import ExchangeDriverType
 from trader.exchange.exchange_config import ExchangeConfig
 from trader.tools.binance_live_smoke import (

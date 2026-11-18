@@ -5,6 +5,7 @@ import signal
 from asyncio import Event
 from datetime import datetime
 
+from trader.adapters.outbound.binance.exchange import BinanceExchange
 from trader.adapters.outbound.persistence.manager import DatabaseManager, DatabaseSchemaError
 from trader.auth.bootstrap import bootstrap_admin_exchange_credential
 from trader.auth.passwords import Argon2PasswordHasher
@@ -16,7 +17,6 @@ from trader.common.logger import Logger
 from trader.common.message import Message, new_add_tasks_msg, new_exit_msg
 from trader.core.identity.exceptions import PasswordPolicyError
 from trader.core.identity.use_cases import BootstrapAdministrator
-from trader.exchange.binance.exchange import BinanceExchange
 from trader.exchange.exchange_config import MarginMode, parse_exchange_config
 from trader.exchange.exchange_type import ExchangeType
 from trader.notify.notify_manager import NotifyManager

@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi_auto_router import AutoRouter
 
+from trader.adapters.outbound.binance.exchange import BinanceExchange
 from trader.app.app import version
 from trader.auth.context import SESSION_COOKIE, AuthUser, SessionAuthMiddleware, auth_enabled, current_user, require_admin, require_user
 from trader.auth.credentials import FernetSecretCipher, service_key_available
@@ -27,7 +28,6 @@ from trader.core.identity.use_cases import (
     ResetUserPassword,
 )
 from trader.core.shared.domain import Symbol
-from trader.exchange.binance.exchange import BinanceExchange
 from trader.exchange.exchange_config import ExchangeConfig, MarginMode, parse_exchange_config
 from trader.exchange.user_credentials import (
     UserExchangeCredentialError,

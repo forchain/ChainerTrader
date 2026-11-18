@@ -1,10 +1,10 @@
 from asyncio import Queue
 
+from trader.adapters.outbound.binance.exchange import BinanceExchange
 from trader.adapters.outbound.persistence.manager import DatabaseManager
 from trader.common.config import Config
 from trader.common.logger import Logger
 from trader.core.shared.domain import add_time_duration
-from trader.exchange.binance.exchange import BinanceExchange
 from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig
 
