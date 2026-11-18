@@ -1,5 +1,7 @@
 import backtrader as bt
 
+from trader.core.strategy.domain.indicators import is_pivot_high
+
 
 class PivotHigh(bt.Indicator):
     lines = ("pivothigh",)
@@ -20,18 +22,10 @@ class PivotHigh(bt.Indicator):
             return
 
         mid_idx = self.middle_idx()
-        mid_val = self.data[mid_idx]
+        values = [self.data[i] for i in range(-self.p.left - self.p.right, 1)]
 
-        is_pivot = True
-        for i in range(-self.p.left - self.p.right, 1):
-            if i == mid_idx:
-                continue
-            if self.data[i] >= mid_val:
-                is_pivot = False
-                break
-
-        if is_pivot:
-            self.lines.pivothigh[mid_idx] = mid_val
+        if is_pivot_high(values, right=self.p.right):
+            self.lines.pivothigh[mid_idx] = values[-1 + mid_idx]
 
     def middle_value(self):
         return self.lines.pivothigh[self.middle_idx()]

@@ -11,32 +11,9 @@ from trader.common.config import Config
 from trader.common.log_tag import LogTag
 from trader.common.logger import Logger
 from trader.core.shared.domain import SymbolInterval
+from trader.core.strategy.domain.node import build_strategy_kwargs
 from trader.strategy.trader_result import TraderResult
 from trader.utils.operation_state import MaxDrawdownAnalyzer, OptStatAnalyzer
-
-
-def build_strategy_kwargs(
-    cfg: Config,
-    log: Logger,
-    position: float,
-    trader: bool,
-    strategy_params: dict | None = None,
-) -> dict:
-    kwargs = {
-        "mode": cfg.mode,
-        "period": cfg.period,
-        "log": log,
-        "position": position,
-        "trader": trader,
-    }
-    if strategy_params:
-        normalized = dict(strategy_params)
-        if "position_percent" in normalized and "chainer_position_percent" not in normalized:
-            normalized["chainer_position_percent"] = normalized.pop("position_percent")
-        if "position_price_buffer" in normalized and "chainer_position_price_buffer" not in normalized:
-            normalized["chainer_position_price_buffer"] = normalized.pop("position_price_buffer")
-        kwargs.update(normalized)
-    return kwargs
 
 
 class Node:

@@ -6,8 +6,8 @@ import pytest
 from trader.adapters.outbound.binance.execution_gateway import BinanceLiveExecutionGateway
 from trader.core.execution import ExecutionEventType, ExecutionReason, ExecutionSide, ExecutionStatus
 from trader.core.shared.domain import Operate, OperateType
+from trader.core.strategy.domain.execution_kernel import LegacyStrategyExecutionAdapter
 from trader.execution.gateways import BacktraderExecutionGateway
-from trader.strategy.execution_kernel import LegacyStrategyExecutionAdapter
 
 
 class FakeBacktraderStrategy:
