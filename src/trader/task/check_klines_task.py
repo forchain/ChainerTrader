@@ -4,7 +4,7 @@ from trader.adapters.outbound.binance.exchange import BinanceExchange
 from trader.adapters.outbound.persistence.manager import DatabaseManager
 from trader.common.config import Config
 from trader.common.logger import Logger
-from trader.core.marketdata.use_cases.check_klines import check_kline_continuity
+from trader.core.task.use_cases.data_tasks import CheckKlinesTaskRunner
 from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig
 
@@ -26,13 +26,9 @@ class CheckKlinesTask(BaseTask):
             return
 
         await super().start(queue)
-
-        self.log.info(f"Start {self.name()}")
-        count, total = await check_kline_continuity(
-            self.db_manager.kline,
-            self.tcfg.symbol_interval,
-            self.quit,
-            self.log,
-            self.name(),
+        runner = CheckKlinesTaskRunner(
+            kline_repository=self.db_manager.kline,
+            task_repository=getattr(self.db_manager, "task", None),
+            log=self.log,
         )
-        self.log.info(f"{self.name()} process result:{count}/{total}")
+        await runner.run(self.tcfg, queue=queue, quit_event=self.quit, task_state=self.ts)

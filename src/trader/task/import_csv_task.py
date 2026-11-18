@@ -1,12 +1,10 @@
-import os
 from asyncio import Queue
-from pathlib import Path
 
 from trader.adapters.outbound.binance.exchange import BinanceExchange
 from trader.adapters.outbound.files.dataset import CsvDatasetFileStore
 from trader.adapters.outbound.persistence.manager import DatabaseManager
 from trader.common import path
-from trader.core.marketdata.use_cases.import_csv import import_csv_klines, parse_csv_kline_rows, validate_kline_interval
+from trader.core.task.use_cases.data_tasks import ImportCsvTaskRunner
 from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig
 
@@ -31,23 +29,11 @@ class ImportCSVTask(BaseTask):
             return
 
         await super().start(queue)
-
-        data_file = self.tcfg.csv
-        if not os.path.isabs(self.tcfg.csv):
-            data_file = os.path.join(path.GetDataDir(), self.tcfg.csv)
-
-        kls = parse_csv_kline_rows(CsvDatasetFileStore().read_rows(Path(data_file)))
-
-        if len(kls) <= 0:
-            self.log.error(f"No kline in {data_file}")
-            return
-        self.log.info(f"Read klines ({len(kls)}) from {data_file}")
-        if not validate_kline_interval(kls, self.tcfg.symbol_interval):
-            self.log.error(f"{self.name()} kline interval is not {self.tcfg.symbol_interval.interval.name}")
-            return
-
-        ret = await import_csv_klines(self.db_manager.kline, self.tcfg.symbol_interval.name(), kls)
-        if ret != len(kls):
-            self.log.warning(f"{self.name()} add klines to DB: {ret} != {len(kls)}")
-        else:
-            self.log.info(f"{self.name()} add klines to DB: {ret}")
+        runner = ImportCsvTaskRunner(
+            kline_repository=self.db_manager.kline,
+            file_store=CsvDatasetFileStore(),
+            task_repository=getattr(self.db_manager, "task", None),
+            data_dir=path.GetDataDir(),
+            log=self.log,
+        )
+        await runner.run(self.tcfg, queue=queue, task_state=self.ts)
