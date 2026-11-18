@@ -163,14 +163,14 @@ def execution_outcome_event(strategy_id: int, outcome: AutoExecutionOutcome) -> 
 
 
 class AutoExecutionRouter:
-    def __init__(self, tcfg, exchange=None, cfg=None, log=None):
+    def __init__(self, tcfg, exchange=None, cfg=None, log=None, gateway=None):
         self.tcfg = tcfg
         self.exchange = exchange
         self.cfg = cfg
         self.log = log
         self._reserved_budget_remaining = self._initial_reserved_budget()
         self.mode = self._resolved_runtime_mode()
-        self.gateway = self._build_gateway()
+        self.gateway = gateway if gateway is not None else self._build_gateway()
         self.margin_borrow_block_policy = normalize_margin_borrow_block_policy(
             getattr(tcfg, "live_margin_borrow_block_policy", None)
         )
