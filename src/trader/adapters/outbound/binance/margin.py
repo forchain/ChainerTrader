@@ -65,7 +65,11 @@ class MarginTradingManager(metaclass=SingletonMeta):
             self.log.info(f"get_summary_of_margin_account() rate limits: {self.rate_limits}")
 
             data = response.data()
-            self.summary_account = SummaryOfMarginAccount(normal_bar=data.normal_bar,margin_call_bar=data.margin_call_bar,force_liquidation_bar=data.force_liquidation_bar)
+            self.summary_account = SummaryOfMarginAccount(
+                normal_bar=data.normal_bar,
+                margin_call_bar=data.margin_call_bar,
+                force_liquidation_bar=data.force_liquidation_bar,
+            )
             self.log.info(f"get_summary_of_margin_account() response: {data}")
         except Exception as e:
             self.log.error(f"get_summary_of_margin_account() error: {e}")
@@ -143,7 +147,7 @@ class MarginTradingManager(metaclass=SingletonMeta):
             side_effect_type = "AUTO_BORROW_REPAY" if auto_borrow else "NO_SIDE_EFFECT"
             
             if auto_borrow:
-                self.log.info(f"Using AUTO_BORROW_REPAY: will automatically borrow if balance is insufficient")
+                self.log.info("Using AUTO_BORROW_REPAY: will automatically borrow if balance is insufficient")
             else:
                 required_asset = symbol.quote if side_name == "BUY" else symbol.base
                 balance = self.get_margin_account_balance(required_asset)

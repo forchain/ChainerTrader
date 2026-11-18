@@ -573,6 +573,9 @@ def test_accounts_info_adds_borrow_capacity_and_locked_order_reasons():
             self.borrow_reads.append((asset, symbol))
             return {"amount": "22.5", "borrowLimit": "100000"}
 
+        def get_all_open_orders(self):
+            return []
+
         def get_open_orders(self, symbol):
             self.open_order_reads.append(symbol.name())
             return [

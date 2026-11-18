@@ -1,7 +1,7 @@
-from trader.exchange import build_exchange_driver
 from trader.exchange.driver import ExchangeDriverType
 from trader.exchange.exchange_config import ExchangeConfig
 from trader.exchange.exchange_type import ExchangeType
+from trader.exchange.factory import build_exchange_driver
 
 
 def test_exchange_factory_builds_ccxt_driver():

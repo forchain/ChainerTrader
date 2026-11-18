@@ -53,7 +53,7 @@ def _client_with_user_exchange(monkeypatch, *, account_payload=None, commission_
         def account_commission(self, symbol=None):
             return commission_payload or {"source": "user", "symbol": symbol, "api_key": self.cfg.api_key}
 
-    monkeypatch.setattr("trader.exchange.binance.exchange.BinanceExchange", _UserExchange)
+    monkeypatch.setattr("trader.rpc.user_exchange.BinanceExchange", _UserExchange)
 
     app = FastAPI()
     app.add_middleware(SessionAuthMiddleware)

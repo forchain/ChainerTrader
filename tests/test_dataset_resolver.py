@@ -27,7 +27,7 @@ def _ensure_pymongo_stub():
 
 
 def _ensure_binance_exchange_stub():
-    module_name = "trader.exchange.binance.exchange"
+    module_name = "trader.adapters.outbound.binance.exchange"
     if module_name in sys.modules:
         return
 

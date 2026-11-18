@@ -5,6 +5,7 @@ import signal
 from asyncio import Event
 from datetime import datetime
 
+from trader.adapters.outbound.binance.exchange import BinanceExchange
 from trader.common import path
 from trader.common.common import NAME
 from trader.common.config import Config, default
@@ -12,7 +13,6 @@ from trader.common.log_tag import LogTag
 from trader.common.logger import Logger
 from trader.common.message import Message, new_add_tasks_msg, new_exit_msg
 from trader.database.manager import DatabaseManager
-from trader.exchange.binance.exchange import BinanceExchange
 from trader.exchange.exchange_config import MarginMode, parse_exchange_config
 from trader.exchange.exchange_type import ExchangeType
 from trader.notify.notify_manager import NotifyManager

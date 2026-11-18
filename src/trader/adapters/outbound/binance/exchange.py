@@ -30,20 +30,15 @@ except ModuleNotFoundError:
     OrderCancelReplaceTypeEnum = None  # type: ignore[assignment]
     OrderCancelReplaceCancelReplaceModeEnum = None  # type: ignore[assignment]
     BINANCE_NATIVE_SDK_AVAILABLE = False
-import hashlib
-import hmac
-import time
-from urllib.parse import urlencode, urlparse
+from urllib.parse import urlparse
 
-import requests
-
+from trader.adapters.outbound.binance.archive import find_earliest_daily_archive_open_time
+from trader.adapters.outbound.binance.ccxt_driver import CcxtExchangeDriver
 from trader.common.logger import default
 from trader.exchange.balance import Balance
-from trader.exchange.binance.archive import find_earliest_daily_archive_open_time
-from trader.exchange.ccxt_driver import CcxtExchangeDriver
 
 try:
-    from trader.exchange.binance.margin import MarginTradingManager
+    from trader.adapters.outbound.binance.margin import MarginTradingManager
     BINANCE_MARGIN_SDK_AVAILABLE = True
 except ModuleNotFoundError:
     MarginTradingManager = None  # type: ignore[assignment]
@@ -74,7 +69,7 @@ MARGIN_API_BASE_URL = "https://api.binance.com/sapi/v1"
 
 
 class BinanceExchange:
-    def __init__(self, cfg: ExchangeConfig, log=default()):
+    def __init__(self, cfg: ExchangeConfig, log=default(), *, client=None):
         self.log = log
         self.cfg = cfg
         self.driver_type = getattr(cfg, "driver", ExchangeDriverType.CCXT)
@@ -82,8 +77,8 @@ class BinanceExchange:
         self.margin_mode = cfg.margin_mode if hasattr(cfg, 'margin_mode') else MarginMode.SPOT
         self.log.info(f"Init Exchange {self.name()} with margin_mode={self.margin_mode.value}")
 
-        self.spot_client = None
-        if not self._use_ccxt():
+        self.spot_client = client
+        if not self._use_ccxt() and self.spot_client is None:
             if not BINANCE_NATIVE_SDK_AVAILABLE:
                 raise ModuleNotFoundError(
                     "Binance native SDK dependencies are missing. Install 'binance-common' and 'binance-sdk-spot', "
@@ -106,6 +101,9 @@ class BinanceExchange:
 
     def _use_ccxt(self) -> bool:
         return self.driver_type == ExchangeDriverType.CCXT
+
+    def driver_name(self) -> str:
+        return "ccxt" if self._use_ccxt() else "binance_native"
 
     def supported_gateway_capabilities(self):
         from trader.execution.models import GatewayCapability
@@ -230,7 +228,8 @@ class BinanceExchange:
 
         if kls and len(kls) > 0:
             self.log.info(
-                f"get klines: {si.symbol()} {si.interval.value} {len(kls)}/{len(ret)} start={kls[0].open_datetime()} end={kls[len(kls)-1].close_datetime()}"
+                f"get klines: {si.symbol()} {si.interval.value} {len(kls)}/{len(ret)} "
+                f"start={kls[0].open_datetime()} end={kls[len(kls)-1].close_datetime()}"
             )
         else:
             self.log.info(f"get klines: {si.symbol()} {si.interval.value} 0/{len(ret)}")
@@ -266,7 +265,8 @@ class BinanceExchange:
         kls = parse_klines(ret)
         if kls and len(kls) > 0:
             self.log.info(
-                f"get klines by end: {si.symbol()} {si.interval.value} {len(kls)}/{len(ret)} start={kls[0].open_datetime()} end={kls[len(kls)-1].close_datetime()}"
+                f"get klines by end: {si.symbol()} {si.interval.value} {len(kls)}/{len(ret)} "
+                f"start={kls[0].open_datetime()} end={kls[len(kls)-1].close_datetime()}"
             )
         else:
             self.log.info(f"get klines by end: {si.symbol()} {si.interval.value} 0/{len(ret)}")

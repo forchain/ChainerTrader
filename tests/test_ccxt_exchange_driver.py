@@ -1,5 +1,5 @@
+from trader.adapters.outbound.binance.ccxt_driver import CcxtExchangeDriver
 from trader.core.shared.domain import Interval, OperateType, Symbol, SymbolInterval
-from trader.exchange.ccxt_driver import CcxtExchangeDriver
 from trader.exchange.driver import ExchangeDriverType
 from trader.exchange.exchange_config import ExchangeConfig, MarginMode
 from trader.exchange.exchange_type import ExchangeType
@@ -171,7 +171,7 @@ def test_ccxt_driver_falls_back_to_binance_public_data_api_for_restricted_market
         calls.append((url, params, timeout))
         return FakeResponse()
 
-    monkeypatch.setattr("trader.exchange.ccxt_driver.requests.get", fake_get)
+    monkeypatch.setattr("trader.adapters.outbound.binance.ccxt_driver.requests.get", fake_get)
     driver = CcxtExchangeDriver(
         ExchangeConfig(ty=ExchangeType.BINANCE, driver=ExchangeDriverType.CCXT, margin_mode=MarginMode.SPOT),
         client=RestrictedMarketDataClient(),
@@ -226,7 +226,7 @@ def test_ccxt_driver_fallback_uses_bounded_start_time_for_end_time_window(monkey
         calls.append((url, params, timeout))
         return FakeResponse()
 
-    monkeypatch.setattr("trader.exchange.ccxt_driver.requests.get", fake_get)
+    monkeypatch.setattr("trader.adapters.outbound.binance.ccxt_driver.requests.get", fake_get)
     driver = CcxtExchangeDriver(
         ExchangeConfig(ty=ExchangeType.BINANCE, driver=ExchangeDriverType.CCXT, margin_mode=MarginMode.SPOT),
         client=RestrictedMarketDataClient(),
@@ -434,7 +434,7 @@ def test_ccxt_build_client_disables_private_currency_fetch_during_market_loading
     class FakeCcxtModule:
         binance = FakeExchange
 
-    monkeypatch.setattr("trader.exchange.ccxt_driver.ccxt", FakeCcxtModule)
+    monkeypatch.setattr("trader.adapters.outbound.binance.ccxt_driver.ccxt", FakeCcxtModule)
 
     CcxtExchangeDriver(ExchangeConfig(ty=ExchangeType.BINANCE, api_key="key", api_secret="secret"))
 
@@ -459,7 +459,7 @@ def test_ccxt_build_client_applies_rest_http_proxy(monkeypatch):
     class FakeCcxtModule:
         binance = FakeExchange
 
-    monkeypatch.setattr("trader.exchange.ccxt_driver.ccxt", FakeCcxtModule)
+    monkeypatch.setattr("trader.adapters.outbound.binance.ccxt_driver.ccxt", FakeCcxtModule)
 
     CcxtExchangeDriver(ExchangeConfig(ty=ExchangeType.BINANCE, http_proxy="http://127.0.0.1:7890"))
 
