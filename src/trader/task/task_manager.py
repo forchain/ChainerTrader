@@ -62,12 +62,21 @@ class TaskManager:
         db_manager: DatabaseManager,
         exchange: BinanceExchange,
         event_publisher: TaskEventPublisher | None = None,
+        *,
+        report_store=None,
+        optimization_runner_factory=None,
+        runtime_status_factory=None,
+        cipher_factory=None,
     ):
         self.log = log
         self.cfg = cfg
         self.db_manager = db_manager
         self.exchange = exchange
         self.event_publisher = event_publisher
+        self._report_store = report_store
+        self._optimization_runner_factory = optimization_runner_factory
+        self._runtime_status_factory = runtime_status_factory
+        self._cipher_factory = cipher_factory
         self._exchange_by_mode: dict[str, BinanceExchange] = {}
         if getattr(exchange, "margin_mode", None) is not None:
             self._exchange_by_mode[exchange.margin_mode.value] = exchange
@@ -390,7 +399,11 @@ class TaskManager:
         route = RouteExchangeForTask(
             getattr(self.db_manager, "exchange_credential", None),
             base_cfg=base_exchange_config(self.exchange, self.cfg),
-            cipher=FernetSecretCipher(service_key) if service_key_available(service_key) else None,
+            cipher=(
+                self._cipher_factory(service_key)
+                if self._cipher_factory is not None
+                else (FernetSecretCipher(service_key) if service_key_available(service_key) else None)
+            ),
             exchange_factory=lambda cfg: BinanceExchange(cfg, self.log),
         )
         return await route.execute(user_id, margin_mode=mode)
@@ -420,6 +433,21 @@ class TaskManager:
         return routed
 
     def _optimization_backtest_runner(self) -> ProcessPoolBacktestRunner:
+        if self._optimization_runner_factory is not None:
+            return self._optimization_runner_factory(
+                tm_cfg=self.cfg,
+                tm_db=self.db_manager,
+                tm_exchange=self.exchange,
+                tm_log=self.log,
+                prepare_dataset_job_fn=self._prepare_dataset_job,
+                sample_max_workers=self._sample_max_workers(),
+                dataset_prepare_max_workers=self._dataset_prepare_max_workers(),
+                dataset_prepare_timeout_seconds=self._optimization_dataset_prepare_timeout_seconds(),
+                dataset_download_request_budget=self._optimization_dataset_download_request_budget(),
+                sample_timeout_seconds=self._optimization_sample_timeout_seconds(),
+                process_pool_factory=ProcessPoolExecutor,
+                dataset_resolver_cls=DatasetResolver,
+            )
         return ProcessPoolBacktestRunner(
             cfg=self.cfg,
             db_manager=self.db_manager,
@@ -436,10 +464,8 @@ class TaskManager:
         )
 
     def _optimization_use_case(self, backtest_runner=None) -> RunParameterOptimizationUseCase:
-        return RunParameterOptimizationUseCase(
-            backtest_runner=backtest_runner or self._optimization_backtest_runner(),
-            report_store=FileRankingReportStore(Path.cwd()),
-            runtime_factory=lambda run_id, run_cfgs, max_workers: FileOptimizationRuntimeStatus(
+        runtime_factory = self._runtime_status_factory or (
+            lambda run_id, run_cfgs, max_workers: FileOptimizationRuntimeStatus(
                 Path.cwd() / "tmp" / "optimization_runs" / run_id,
                 run_id,
                 total_samples=len(run_cfgs),
@@ -451,7 +477,12 @@ class TaskManager:
                     }
                 ),
                 configured_workers=max_workers,
-            ),
+            )
+        )
+        return RunParameterOptimizationUseCase(
+            backtest_runner=backtest_runner or self._optimization_backtest_runner(),
+            report_store=self._report_store or FileRankingReportStore(Path.cwd()),
+            runtime_factory=runtime_factory,
             max_workers=self._sample_max_workers(),
             abort_thresholds={
                 "max_failure_rate": float(getattr(self.cfg, "optimization_max_failure_rate", 0.9)),
