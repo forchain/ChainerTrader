@@ -417,11 +417,9 @@ def run_api_mode(cfg: Config) -> None:
 
 
 def run_console_mode(cfg: Config) -> None:
-    from trader.app.app import App
+    from trader.adapters.inbound.cli import run_console
 
-    app = App(cfg, container=compose_application(cfg))
-    if app.start():
-        app.stop()
+    run_console(compose_application(cfg))
 
 
 def main(argv: list[str] | None = None) -> None:

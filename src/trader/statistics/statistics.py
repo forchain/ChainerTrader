@@ -1,8 +1,7 @@
 from logging import Logger
+from typing import Any
 
-from prettytable import PrettyTable
-
-from trader.adapters.outbound.persistence.manager import DatabaseManager
+from trader.adapters.inbound.cli.rendering import render_statistics_table
 from trader.common.config import Config
 from trader.common.message import Message
 from trader.core.task.domain import bounded_results, collect_operates, rank_results
@@ -10,7 +9,7 @@ from trader.statistics.stat import BackTraderStat, TraderStat
 
 
 class Statistics:
-    def __init__(self, cfg: Config, log: Logger, db_manager: DatabaseManager):
+    def __init__(self, cfg: Config, log: Logger, db_manager: Any):
         self.log = log
         self.cfg = cfg
         self.db_manager = db_manager
@@ -42,47 +41,7 @@ class Statistics:
         if len(self.bts_list) > 0:
             self.log.info("Report BackTrader stats")
             self.bts_list = rank_results(self.bts_list)
-
-            table = PrettyTable()
-            table.field_names = [
-                "Index",
-                "策略",
-                "币种",
-                "总收益率",
-                "持有增长率",
-                "持仓最大回撤",
-                "持仓回撤时长",
-                "波动率",
-                "胜率",
-                "平均盈亏比",
-                "平均盈利",
-                "平均亏损",
-                "操作买卖数",
-                "K线数",
-            ]
-            index = 0
-            for bts in self.bts_list:
-                table.add_row(
-                    [
-                        index,
-                        bts.strategy,
-                        bts.symbol_interval,
-                        format(bts.ts.tret.total_return_rate, ".2f") + "%",
-                        (f"{bts.ts.tret.hold_rate:.2f}%"),
-                        (f"{bts.ts.tret.max_drawdown:.2f}%"),
-                        (f"{bts.ts.tret.max_drawdown_duration}"),
-                        (f"{bts.ts.tret.volatility:.2f}%"),
-                        (f"{bts.ts.tret.win_rate:.2f}%"),
-                        (f"{bts.ts.tret.plr:.2f}"),
-                        (f"{bts.ts.tret.avg_profit:.2f}"),
-                        (f"{bts.ts.tret.avg_loss:.2f}"),
-                        (f"{bts.ts.tret.buys}/{bts.ts.tret.sells}"),
-                        bts.ts.tret.data_len,
-                    ]
-                )
-                index += 1
-
-            self.log.info(f"\n{table}")
+            self.log.info(f"\n{render_statistics_table(self.bts_list)}")
 
     def get_operates(self, limit: int = 10):
         return collect_operates(self.bts_list, limit)
