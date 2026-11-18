@@ -1,6 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
-from trader.auth.sessions import create_session_token, hash_session_token, is_expired
+from trader.core.identity.sessions import create_session_token, hash_session_token, is_expired
 
 
 def test_create_session_token_returns_random_values():

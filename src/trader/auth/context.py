@@ -3,9 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from fastapi import HTTPException, Request, status
-from starlette.responses import RedirectResponse, JSONResponse
+from starlette.responses import JSONResponse, RedirectResponse
 
-from trader.auth.sessions import hash_session_token, is_expired
+from trader.core.identity.use_cases import ValidateSession
 
 SESSION_COOKIE = "chainer_session"
 PUBLIC_PATHS = (
@@ -53,11 +53,8 @@ async def current_user(request: Request) -> AuthUser | None:
     if not token:
         return None
     user_repo = request.app.state.app.db_manager.user
-    session = await user_repo.get_session(hash_session_token(token))
-    if session is None or is_expired(session.expires_at):
-        return None
-    user = await user_repo.get_by_id(session.user_id)
-    if user is None or user.status != "active":
+    user = await ValidateSession(user_repo, user_repo).execute(token)
+    if user is None:
         return None
     auth_user = AuthUser(
         id=user.id,

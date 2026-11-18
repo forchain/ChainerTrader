@@ -4,9 +4,12 @@ from tests.persistence_harness import initialized_database
 from trader.adapters.outbound.persistence.exchange_credential import ExchangeCredentialCol
 from trader.adapters.outbound.persistence.manager import DatabaseManager
 from trader.adapters.outbound.persistence.user import UserCol
+from trader.auth.bootstrap import bootstrap_admin_exchange_credential
 from trader.auth.credentials import decrypt_secret
+from trader.auth.passwords import Argon2PasswordHasher
 from trader.common.config import Config
 from trader.common.logger import Logger
+from trader.core.identity.use_cases import BootstrapAdministrator
 
 
 async def _with_db(fn):
@@ -21,6 +24,16 @@ def _manager(cfg: Config) -> DatabaseManager:
     return manager
 
 
+async def _bootstrap(cfg: Config, manager: DatabaseManager) -> None:
+    admin = await BootstrapAdministrator(manager.user, Argon2PasswordHasher()).execute(cfg.auth_username, cfg.auth_password)
+    await bootstrap_admin_exchange_credential(
+        cfg=cfg,
+        admin=admin,
+        credential_repo=manager.exchange_credential,
+        log=manager.log,
+    )
+
+
 def test_bootstrap_admin_seeds_default_exchange_credential_from_config():
     async def run():
         cfg = Config(
@@ -31,7 +44,7 @@ def test_bootstrap_admin_seeds_default_exchange_credential_from_config():
         )
         manager = _manager(cfg)
 
-        await manager._bootstrap_admin()
+        await _bootstrap(cfg, manager)
 
         admin = await manager.user.get_by_username("accept-admin")
         credential = await manager.exchange_credential.get_default(admin.id, "BINANCE")
@@ -61,7 +74,7 @@ def test_bootstrap_admin_does_not_overwrite_existing_default_exchange_credential
             masked_api_key="exis***-key",
         )
 
-        await manager._bootstrap_admin()
+        await _bootstrap(cfg, manager)
 
         credential = await manager.exchange_credential.get_default(admin.id, "BINANCE")
         assert credential.encrypted_api_key == "encrypted-existing-key"

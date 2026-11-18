@@ -1,6 +1,6 @@
 import pytest
 
-from trader.execution import (
+from trader.core.execution import (
     ExecutionEvent,
     ExecutionGateway,
     ExecutionReason,

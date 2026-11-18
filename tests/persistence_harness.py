@@ -7,15 +7,26 @@ through the Tortoise-backed repositories and these fakes, proving their equivale
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from dataclasses import replace
+from datetime import UTC, datetime
 
 from tortoise import Tortoise
 
 from trader.adapters.outbound.persistence.config import build_tortoise_config
 from trader.adapters.outbound.persistence.kline import DEFAULT_EXCHANGE, split_symbol_interval
+from trader.core.execution import ExecutionStateRecord, ExecutionStateReservation, ExecutionStatus
+from trader.core.identity.domain import Session, User
 from trader.core.shared.domain import Kline
 from trader.utils.task_state import TaskState, parse_task_state
 
 KlineKey = tuple[str, str, str, int]
+
+TERMINAL_EXECUTION_STATUSES = {
+    ExecutionStatus.CANCELED,
+    ExecutionStatus.REJECTED,
+    ExecutionStatus.SKIPPED,
+    ExecutionStatus.FAILED,
+}
 
 
 @asynccontextmanager
@@ -125,6 +136,94 @@ class InMemoryKlineRepository:
         return [self._rows[key] for key in self._matching_keys(name)]
 
 
+class InMemoryIdentityRepository:
+    """Fake user/session repository mirroring ``UserCol`` observable behavior."""
+
+    def __init__(self):
+        self._users: dict[int, User] = {}
+        self._sessions: dict[str, Session] = {}
+        self._next_user_id = 1
+        self._next_session_id = 1
+
+    async def create_user(
+        self,
+        username: str,
+        password_hash: str,
+        *,
+        role: str = "user",
+        status: str = "active",
+        must_change_password: bool = False,
+    ) -> User:
+        now = datetime.now(UTC)
+        user = User(
+            id=self._next_user_id,
+            username=username,
+            password_hash=password_hash,
+            role=role,
+            status=status,
+            must_change_password=must_change_password,
+            created_at=now,
+            updated_at=now,
+        )
+        self._next_user_id += 1
+        self._users[user.id] = user
+        return user
+
+    async def get_by_username(self, username: str) -> User | None:
+        return next((user for user in self._users.values() if user.username == username), None)
+
+    async def get_by_id(self, user_id: int) -> User | None:
+        return self._users.get(user_id)
+
+    async def count_admins(self) -> int:
+        return sum(1 for user in self._users.values() if user.role == "admin")
+
+    async def get_first_admin(self) -> User | None:
+        admins = [user for user in self._users.values() if user.role == "admin" and user.status == "active"]
+        return min(admins, key=lambda user: user.id) if admins else None
+
+    async def list_users(self) -> list[User]:
+        return [self._users[user_id] for user_id in sorted(self._users)]
+
+    async def update_password(self, user_id: int, password_hash: str, *, must_change_password: bool) -> bool:
+        user = self._users.get(user_id)
+        if user is None:
+            return False
+        self._users[user_id] = replace(user, password_hash=password_hash, must_change_password=must_change_password, updated_at=datetime.now(UTC))
+        return True
+
+    async def mark_login(self, user_id: int, when: datetime) -> bool:
+        user = self._users.get(user_id)
+        if user is None:
+            return False
+        self._users[user_id] = replace(user, last_login_at=when)
+        return True
+
+    async def create_session(self, user_id: int, session_hash: str, expires_at: datetime) -> Session:
+        session = Session(
+            id=self._next_session_id,
+            user_id=user_id,
+            session_hash=session_hash,
+            expires_at=expires_at,
+            created_at=datetime.now(UTC),
+        )
+        self._next_session_id += 1
+        self._sessions[session_hash] = session
+        return session
+
+    async def get_session(self, session_hash: str) -> Session | None:
+        return self._sessions.get(session_hash)
+
+    async def delete_session(self, session_hash: str) -> bool:
+        return self._sessions.pop(session_hash, None) is not None
+
+    async def delete_sessions_for_user(self, user_id: int) -> int:
+        hashes = [key for key, session in self._sessions.items() if session.user_id == user_id]
+        for key in hashes:
+            del self._sessions[key]
+        return len(hashes)
+
+
 class InMemoryTaskRepository:
     """Fake task repository mirroring ``TaskCol`` observable behavior."""
 
@@ -160,3 +259,36 @@ class InMemoryTaskRepository:
             for key in sorted(self._rows)
             if self._rows[key].get("user_id") == user_id
         ]
+
+
+class InMemoryExecutionStateStore:
+    """Fake execution state store mirroring ``ExecutionStateCol`` observable behavior."""
+
+    def __init__(self):
+        self._rows: dict[str, ExecutionStateRecord] = {}
+
+    async def reserve(self, record: ExecutionStateRecord) -> ExecutionStateReservation:
+        existing = self._rows.get(record.idempotency_key)
+        if existing is not None:
+            return ExecutionStateReservation(existing, created=False)
+        return ExecutionStateReservation(await self.save(record), created=True)
+
+    async def save(self, record: ExecutionStateRecord) -> ExecutionStateRecord:
+        self._rows[record.idempotency_key] = record
+        return record
+
+    async def get_by_idempotency_key(self, idempotency_key: str) -> ExecutionStateRecord | None:
+        return self._rows.get(idempotency_key)
+
+    async def list_open_by_symbol(self, symbol: str) -> list[ExecutionStateRecord]:
+        return self._open_records(record for record in self._rows.values() if record.symbol == symbol)
+
+    async def list_open_by_task(self, task_id: int) -> list[ExecutionStateRecord]:
+        return self._open_records(record for record in self._rows.values() if record.task_id == task_id)
+
+    @staticmethod
+    def _open_records(records) -> list[ExecutionStateRecord]:
+        return sorted(
+            (record for record in records if record.status not in TERMINAL_EXECUTION_STATUSES),
+            key=lambda record: record.created_at,
+        )

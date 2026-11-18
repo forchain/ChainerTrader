@@ -2,11 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from trader.execution.models import GatewayMode
-
-
-class GatewayResolutionError(ValueError):
-    pass
+from trader.core.execution.domain import GatewayMode
+from trader.core.execution.exceptions import GatewayResolutionError
 
 
 @dataclass(frozen=True)

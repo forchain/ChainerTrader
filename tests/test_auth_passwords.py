@@ -1,13 +1,8 @@
 import pytest
 
-from trader.auth.passwords import (
-    PasswordPolicyError,
-    generate_temporary_password,
-    hash_password,
-    validate_password,
-    validate_username,
-    verify_password,
-)
+from trader.auth.passwords import hash_password, verify_password
+from trader.core.identity.exceptions import PasswordPolicyError
+from trader.core.identity.passwords import generate_temporary_password, validate_password, validate_username
 
 
 def test_validate_username_accepts_simple_account_names():
