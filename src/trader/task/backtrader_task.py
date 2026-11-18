@@ -6,6 +6,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from trader.adapters.outbound.backtrader.backtest_runner import (
+    BacktestTaskRunner,
+)
+from trader.adapters.outbound.backtrader.backtest_runner import (
+    backtest_data_start_time as _backtest_data_start_time,
+)
 from trader.adapters.outbound.backtrader.csvdata import BinanceCSVData
 from trader.adapters.outbound.backtrader.data import BinanceData
 from trader.adapters.outbound.backtrader.node import Node
@@ -15,7 +21,7 @@ from trader.common import path
 from trader.common.config import Config
 from trader.common.logger import Logger
 from trader.common.message import new_stat_msg
-from trader.core.shared.domain import Interval, SymbolInterval, get_time_duration
+from trader.core.shared.domain import Interval, SymbolInterval
 from trader.statistics.stat import BackTraderStat
 from trader.strategy.strategy import parse_strategies
 from trader.strategy.trader_result import TraderResult, parse_trader_result
@@ -48,10 +54,7 @@ class BacktestSampleSpec:
 
 def backtest_data_start_time(cfg: Config, tcfg: TaskConfig) -> int:
     """Reserve the configured warmup candles before a bounded backtest."""
-    if tcfg.start_time <= 0:
-        return tcfg.start_time
-    warmup_candles = max(0, int(getattr(cfg, "warmup_candles", 0) or 0))
-    return max(0, tcfg.start_time - warmup_candles * get_time_duration(tcfg.symbol_interval.interval))
+    return _backtest_data_start_time(cfg, tcfg)
 
 
 @dataclass(frozen=True)
@@ -278,65 +281,24 @@ class BackTraderTask(BaseTask):
 
         await super().start(queue)
 
-        data = None
-        data_start_time = backtest_data_start_time(self.cfg, self.tcfg)
-        if self.tcfg.csv:
-            data_file = path.get_file_path(self.tcfg.csv)
-            if self.tcfg.start_time <= 0 and self.tcfg.end_time <= 0:
-                data = BinanceCSVData(
-                    dataname=data_file,
-                )
-            elif self.tcfg.start_time <= 0:
-                data = BinanceCSVData(
-                    dataname=data_file,
-                    todate=datetime.fromtimestamp(self.tcfg.end_time),
-                )
-            elif self.tcfg.end_time <= 0:
-                data = BinanceCSVData(
-                    dataname=data_file,
-                    fromdate=datetime.fromtimestamp(data_start_time),
-                )
-            else:
-                data = BinanceCSVData(
-                    dataname=data_file,
-                    fromdate=datetime.fromtimestamp(data_start_time),
-                    todate=datetime.fromtimestamp(self.tcfg.end_time),
-                )
-        if data is None and self.tcfg.dataset_ref is not None and getattr(self.tcfg.dataset_ref, "path", None):
-            data = BinanceCSVData(dataname=self.tcfg.dataset_ref.path)
-        if self.db_manager and data is None:
-            resolver = DatasetResolver(self.db_manager, self.exchange, self.log)
-            allow_download = self.tcfg.auto_download or self.tcfg.optimization_run_id is not None
-            prepare_result = await resolver.prepare(
-                self.tcfg.symbol_interval,
-                data_start_time,
-                self.tcfg.end_time,
-                allow_download=allow_download,
-            )
-            if not prepare_result.ok:
-                self.log.error(f"Dataset preparation failed for {self.name()}: {prepare_result.failure.message}")
-                return None
-            self.tcfg.dataset_ref = prepare_result.dataset_ref
-            klines = (
-                await self.db_manager.kline.get_klines(
-                    self.tcfg.symbol_interval.name(),
-                    self.tcfg.dataset_ref.start_time,
-                    self.tcfg.dataset_ref.end_time,
-                )
-                or []
-            )
-            if not klines:
-                self.log.error(f"No kline data for {self.name()} dataset={self.tcfg.dataset_ref.dataset_key}")
-                return None
-            data = BinanceData(klines)
-
-        if data is None:
-            self.log.error(f"No strategy data for {self.name()}")
+        kline_repo = self.db_manager.kline if self.db_manager is not None else None
+        availability_store = getattr(self.db_manager, "availability", None) if self.db_manager is not None else None
+        resolver = DatasetResolver(self.db_manager, self.exchange, self.log) if self.db_manager is not None else None
+        runner = BacktestTaskRunner(
+            cfg=self.cfg,
+            log=self.log,
+            task_repository=getattr(self.db_manager, "task", None) if self.db_manager is not None else None,
+            kline_repository=kline_repo,
+            availability_store=availability_store,
+            market_data_client=self.exchange,
+            dataset_resolver=resolver,
+            strategy_parser=parse_strategies,
+            node_factory=Node,
+        )
+        prepared = await runner.prepare_inputs(self.tcfg)
+        if prepared is None:
             return None
-        strategy = parse_strategies(self.tcfg.strategies)
-        if strategy is None:
-            self.log.error(f"Not support strategy:{self.tcfg.strategy_name()}")
-            return None
+        strategy, data = prepared
         return [strategy, data]
 
 
