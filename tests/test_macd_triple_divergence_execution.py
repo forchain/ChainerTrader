@@ -3,7 +3,7 @@ import datetime as dt
 import backtrader as bt
 import pandas as pd
 
-from trader.strategy.macd_triple_divergence import MacdTripleDivergenceStrategy
+from trader.adapters.outbound.backtrader.macd_triple_divergence import MacdTripleDivergenceStrategy
 
 
 def _build_df(rows):

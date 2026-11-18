@@ -5,9 +5,9 @@ from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
+from trader.adapters.outbound.backtrader.data import BinanceData
 from trader.common.config import Config
 from trader.core.shared.domain import Interval, Kline, SymbolInterval
-from trader.exchange.binance.data import BinanceData
 from trader.strategy.trader_result import TraderResult
 from trader.task.backtrader_task import BacktestSampleSpec, build_backtest_sample_spec, run_backtest_sample
 from trader.task.optimization_runtime import OptimizationRuntimeStatus

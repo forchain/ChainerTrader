@@ -70,6 +70,8 @@ class ExplodingExchange:
 
 class RecordingNotice:
     tp = SimpleNamespace(name="MAIL_TEST")
+    notice_type = "MAIL_TEST"
+    recipient = None
 
     def __init__(self):
         self.sent = []

@@ -3,10 +3,10 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
+from trader.adapters.outbound.backtrader.data import BinanceData
 from trader.common.config import Config
 from trader.core.shared.domain import Interval, Kline, SymbolInterval
 from trader.core.strategy.domain.node import build_strategy_kwargs
-from trader.exchange.binance.data import BinanceData
 from trader.task.backtrader_task import BackTraderTask
 from trader.task.task_config import TaskConfig
 from trader.task.task_manager import TaskManager

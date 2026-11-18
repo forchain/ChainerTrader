@@ -2,8 +2,8 @@ from trader.common.config import Config
 from trader.common.log_tag import LogTag
 from trader.common.logger import Logger
 from trader.common.message import Message
+from trader.core.notification.use_cases import SendManualTradeNotification, SendOperateNotification
 from trader.notify.notify_type import parse_notice_config
-from trader.notify.trade_notification import manual_trade_email_subject, operate_email_subject, render_manual_trade_email, render_operate_email
 
 
 class NotifyManager:
@@ -47,26 +47,13 @@ class NotifyManager:
         op = opts[-1]
         if not hasattr(op, "to_dict"):
             return
-        for n in self.notice:
-            content = render_operate_email(op)
-            title = operate_email_subject(op)
-            n.send(content, title)
-            self.log.info(f"Notify {n.tp.name} : {op.to_dict()}")
+        for result in SendOperateNotification(self.notice).execute(op):
+            self.log.info(f"Notify {result.notice_type} : {op.to_dict()}")
 
     def send_manual_trade_notification(self, event) -> list[dict]:
         if self.notice is None or len(self.notice) <= 0:
             return []
-        content = render_manual_trade_email(event)
-        title = manual_trade_email_subject(event)
-        sent = []
-        for n in self.notice:
-            err = n.send(content, title)
-            info = {
-                "notice_type": n.tp.name,
-                "recipient": getattr(n, "recipient", None),
-                "ok": err is None,
-                "error": str(err) if err is not None else None,
-            }
-            sent.append(info)
-            self.log.info(f"Notify {n.tp.name} : {event.to_dict()}")
-        return sent
+        results = SendManualTradeNotification(self.notice).execute(event)
+        for result in results:
+            self.log.info(f"Notify {result.notice_type} : {event.to_dict()}")
+        return [result.to_dict() for result in results]

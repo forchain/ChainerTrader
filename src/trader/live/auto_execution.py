@@ -5,9 +5,12 @@ from enum import Enum
 from math import isfinite
 from typing import Any
 
+from trader.adapters.outbound.binance.execution_gateway import BinanceLiveExecutionGateway
+from trader.adapters.outbound.notification.execution_gateway import NotificationOnlyExecutionGateway
 from trader.core.execution import (
     ExecutionEvent,
     ExecutionEventType,
+    ExecutionGateway,
     ExecutionReason,
     ExecutionSide,
     ExecutionStateRecord,
@@ -18,7 +21,6 @@ from trader.core.execution import (
     select_order_semantics,
 )
 from trader.core.shared.domain import OperateType
-from trader.execution.gateways import BinanceLiveExecutionGateway
 from trader.live.dashboard import DashboardEvent
 from trader.task.live_startup_self_check import task_requires_short_capability
 
@@ -168,6 +170,7 @@ class AutoExecutionRouter:
         self.log = log
         self._reserved_budget_remaining = self._initial_reserved_budget()
         self.mode = self._resolved_runtime_mode()
+        self.gateway = self._build_gateway()
         self.margin_borrow_block_policy = normalize_margin_borrow_block_policy(
             getattr(tcfg, "live_margin_borrow_block_policy", None)
         )
@@ -278,10 +281,13 @@ class AutoExecutionRouter:
         if outcome.status == AutoExecutionStatus.SKIPPED and str(outcome.reason or "").startswith("margin_borrow_blocked_-3006"):
             logger.warning(f"[auto_execution] margin_borrow_blocked {payload}")
 
-    def _gateway_mode(self) -> GatewayMode:
+    def _build_gateway(self) -> ExecutionGateway:
         if self.mode == LiveExecutionMode.MANUAL_NOTIFY.value:
-            return GatewayMode.NOTIFICATION_ONLY
-        return GatewayMode.BINANCE_LIVE
+            return NotificationOnlyExecutionGateway(staged_execution_mode=self.mode)
+        return BinanceLiveExecutionGateway(self.exchange, staged_execution_mode=self.mode)
+
+    def _gateway_mode(self) -> GatewayMode:
+        return self.gateway.capabilities.gateway
 
     def _normalized_execution_events(
         self,
@@ -829,7 +835,7 @@ class AutoExecutionRouter:
             return self._record(self._outcome(op, AutoExecutionStatus.SKIPPED, reason="unsupported_operation"))
 
         try:
-            gateway = BinanceLiveExecutionGateway(self.exchange, staged_execution_mode=self.mode)
+            gateway = self.gateway
             if order_type in (OperateType.BUY, OperateType.LONG):
                 result = gateway.open_position(selection.order)
             else:
@@ -901,7 +907,7 @@ class AutoExecutionRouter:
             selection = select_order_semantics(op, symbol=self.market, side=side, quantity=quantity, notional=notional)
             if selection.risk is None:
                 return self._record(self._outcome(op, AutoExecutionStatus.SKIPPED, reason="missing_protection_intent"))
-            result = BinanceLiveExecutionGateway(self.exchange, staged_execution_mode=self.mode).replace_protection(selection.risk)
+            result = self.gateway.replace_protection(selection.risk)
         except OrderSemanticsError as exc:
             return self._record(
                 self._outcome(
@@ -965,7 +971,7 @@ class AutoExecutionRouter:
             )
             if selection.order is None:
                 return self._record(self._outcome(op, AutoExecutionStatus.SKIPPED, reason="unsupported_operation"))
-            gateway = BinanceLiveExecutionGateway(self.exchange, staged_execution_mode=self.mode)
+            gateway = self.gateway
             if order_type in (OperateType.BUY, OperateType.SHORT):
                 result = gateway.open_position(selection.order)
             else:
@@ -1046,7 +1052,7 @@ class AutoExecutionRouter:
         op,
         notional: float,
         quantity: float,
-        gateway: BinanceLiveExecutionGateway,
+        gateway: ExecutionGateway,
         selection,
         initial_result,
         requested_notional: float,
@@ -1266,7 +1272,7 @@ class AutoExecutionRouter:
             metadata={**dict(entry_intent.metadata), "fail_safe": "native_protection_unverified"},
         )
 
-    def _fail_safe_close(self, gateway: BinanceLiveExecutionGateway, entry_intent: OrderIntent, protection_result) -> Any:
+    def _fail_safe_close(self, gateway: ExecutionGateway, entry_intent: OrderIntent, protection_result) -> Any:
         if protection_result is None or protection_result.accepted:
             return None
         return gateway.close_position(self._close_intent_for_fail_safe(entry_intent))

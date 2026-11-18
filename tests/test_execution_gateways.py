@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 
+from trader.adapters.outbound.binance.execution_gateway import BinanceLiveExecutionGateway, _order_ids
 from trader.core.execution import (
     ExecutionEventType,
     ExecutionReason,
@@ -10,7 +11,7 @@ from trader.core.execution import (
     RiskIntent,
 )
 from trader.core.shared.domain import OperateType
-from trader.execution.gateways import BacktraderExecutionGateway, BinanceLiveExecutionGateway, _order_ids
+from trader.execution.gateways import BacktraderExecutionGateway
 
 
 def _entry(side=ExecutionSide.LONG):

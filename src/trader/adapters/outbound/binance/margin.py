@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from trader.common.logger import default
 from trader.common.singleton import SingletonMeta
+from trader.core.exchange.domain import ExchangeConfig
 from trader.core.execution import (
     ExecutionSide,
     ExecutionStatus,
@@ -16,7 +17,6 @@ from trader.core.execution import (
     ProtectionOrderView,
 )
 from trader.core.shared.domain import OperateType, Symbol
-from trader.exchange.exchange_config import ExchangeConfig
 
 
 def protection_side_name(op: OperateType) -> str:

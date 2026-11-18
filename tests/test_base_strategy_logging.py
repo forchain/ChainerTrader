@@ -3,7 +3,7 @@ import datetime as dt
 import backtrader as bt
 import pandas as pd
 
-from trader.strategy.base_strategy import BaseStrategy
+from trader.adapters.outbound.backtrader.base_strategy import BaseStrategy
 
 
 class RecordingLog:
