@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from trader.auth.context import SessionAuthMiddleware
 from trader.auth.credentials import encrypt_secret
 from trader.common.config import Config
-from trader.exchange.exchange_config import ExchangeConfig
+from trader.core.exchange.domain import ExchangeConfig
 from trader.rpc.api.exchange.account import router as account_router
 from trader.rpc.api.exchange.account_commission import router as account_commission_router
 

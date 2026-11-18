@@ -6,11 +6,10 @@ import pytest
 from trader.adapters.outbound.binance.ccxt_driver import CcxtExchangeDriver
 from trader.adapters.outbound.binance.exchange import BinanceExchange
 from trader.adapters.outbound.binance.native_driver import BinanceNativeExchangeDriver
+from trader.core.exchange.domain import ExchangeConfig, ExchangeDriverType, MarginMode
 from trader.core.exchange.interfaces import ExchangeClient
 from trader.core.execution import ExecutionSide, ExecutionStatus, ProtectionIntentType
 from trader.core.shared.domain import Interval, OperateType, Symbol, SymbolInterval
-from trader.exchange.driver import ExchangeDriverType
-from trader.exchange.exchange_config import ExchangeConfig, MarginMode
 
 SI = SymbolInterval("BTC-USDT", Interval.INTERVAL_1h)
 

@@ -1,9 +1,7 @@
 from trader.adapters.outbound.binance.ccxt_driver import CcxtExchangeDriver
+from trader.core.exchange.domain import ExchangeConfig, ExchangeDriverType, ExchangeType, MarginMode
 from trader.core.execution import ExecutionSide, ExecutionStatus, ProtectionIntentType
 from trader.core.shared.domain import Interval, OperateType, Symbol, SymbolInterval
-from trader.exchange.driver import ExchangeDriverType
-from trader.exchange.exchange_config import ExchangeConfig, MarginMode
-from trader.exchange.exchange_type import ExchangeType
 
 
 class FakeCcxtClient:

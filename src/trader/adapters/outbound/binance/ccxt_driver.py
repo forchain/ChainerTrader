@@ -15,11 +15,9 @@ except Exception:  # pragma: no cover - optional until dependency is installed
 
 from trader.adapters.outbound.binance.archive import find_earliest_daily_archive_open_time
 from trader.common.logger import default
+from trader.core.exchange.domain import Balance, ExchangeConfig, ExchangeType, MarginMode
 from trader.core.execution import ExecutionSide, ExecutionStatus, PositionView, ProtectionIntentType, ProtectionOrderView
 from trader.core.shared.domain import Kline, OperateType, Symbol, SymbolInterval, get_time_duration
-from trader.exchange.balance import Balance
-from trader.exchange.exchange_config import ExchangeConfig, MarginMode
-from trader.exchange.exchange_type import ExchangeType
 
 
 class CcxtExchangeDriver:

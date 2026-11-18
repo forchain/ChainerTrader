@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Iterable
 
-from trader.exchange.exchange_config import MarginMode
+from trader.core.exchange.domain import MarginMode
 from trader.strategy.strategy import parse_strategies
 
 SHORT_CAPABLE_MODES = {"SHORT_ONLY", "BOTH"}

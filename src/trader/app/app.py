@@ -15,10 +15,9 @@ from trader.common.config import Config, default
 from trader.common.log_tag import LogTag
 from trader.common.logger import Logger
 from trader.common.message import Message, new_add_tasks_msg, new_exit_msg
+from trader.core.exchange.domain import ExchangeType, MarginMode, parse_exchange_config
 from trader.core.identity.exceptions import PasswordPolicyError
 from trader.core.identity.use_cases import BootstrapAdministrator
-from trader.exchange.exchange_config import MarginMode, parse_exchange_config
-from trader.exchange.exchange_type import ExchangeType
 from trader.notify.notify_manager import NotifyManager
 from trader.statistics.statistics import Statistics
 from trader.task.live_startup_self_check import evaluate_live_startup_self_check, infer_required_margin_mode

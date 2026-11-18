@@ -1,8 +1,7 @@
 from datetime import datetime
 
 from trader.adapters.outbound.binance.exchange import BinanceExchange
-from trader.exchange.driver import ExchangeDriverType
-from trader.exchange.exchange_config import ExchangeConfig
+from trader.core.exchange.domain import ExchangeConfig, ExchangeDriverType
 
 
 class DummyLog:

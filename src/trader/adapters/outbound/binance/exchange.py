@@ -35,7 +35,7 @@ from urllib.parse import urlparse
 from trader.adapters.outbound.binance.archive import find_earliest_daily_archive_open_time
 from trader.adapters.outbound.binance.ccxt_driver import CcxtExchangeDriver
 from trader.common.logger import default
-from trader.exchange.balance import Balance
+from trader.core.exchange.domain import Balance
 
 try:
     from trader.adapters.outbound.binance.margin import MarginTradingManager
@@ -43,6 +43,7 @@ try:
 except ModuleNotFoundError:
     MarginTradingManager = None  # type: ignore[assignment]
     BINANCE_MARGIN_SDK_AVAILABLE = False
+from trader.core.exchange.domain import ExchangeConfig, ExchangeDriverType, ExchangeType, MarginMode
 from trader.core.execution import (
     ExecutionSide,
     ExecutionStatus,
@@ -51,9 +52,6 @@ from trader.core.execution import (
     ProtectionOrderView,
 )
 from trader.core.shared.domain import Kline, OperateType, Symbol, SymbolInterval
-from trader.exchange.driver import ExchangeDriverType
-from trader.exchange.exchange_config import ExchangeConfig, MarginMode
-from trader.exchange.exchange_type import ExchangeType
 
 EXCHANGE_NAME = "BINANCE"
 

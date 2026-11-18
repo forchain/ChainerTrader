@@ -10,20 +10,16 @@ from pathlib import Path
 from trader.adapters.outbound.binance.exchange import BinanceExchange
 from trader.adapters.outbound.persistence.account_fund_reservation import FundReservationError
 from trader.adapters.outbound.persistence.manager import DatabaseManager
-from trader.auth.credentials import service_key_available
+from trader.auth.credentials import FernetSecretCipher, service_key_available
 from trader.common.common import sleep
 from trader.common.config import Config
 from trader.common.log_tag import LogTag
 from trader.common.logger import Logger
 from trader.common.message import new_add_tasks_msg, new_exit_msg, new_stat_msg
+from trader.core.exchange.domain import MarginMode
+from trader.core.exchange.use_cases import RouteExchangeForTask, base_exchange_config
 from trader.core.execution import ExecutionStatus
 from trader.core.shared.domain import Symbol, SymbolInterval
-from trader.exchange.exchange_config import MarginMode
-from trader.exchange.user_credentials import (
-    attach_user_exchange_context,
-    base_exchange_config,
-    build_user_exchange_context,
-)
 from trader.live.auto_execution import is_real_auto_mode
 from trader.statistics.stat import BackTraderStat
 from trader.strategy.trader_result import parse_trader_result
@@ -538,22 +534,14 @@ class TaskManager:
             return self.exchange
 
     async def _exchange_for_user_mode(self, user_id: int, mode: MarginMode) -> BinanceExchange:
-        if not self.db_manager or not getattr(self.db_manager, "exchange_credential", None):
-            raise RuntimeError("live trading requires a user exchange credential store")
         service_key = getattr(self.cfg, "secret_key", None)
-        if not service_key_available(service_key):
-            raise RuntimeError("TRADER_SECRET_KEY is required to start user-owned live trading tasks")
-        credential = self.db_manager.exchange_credential.get_default(user_id, "BINANCE")
-        if inspect.isawaitable(credential):
-            credential = await credential
-        context = build_user_exchange_context(
+        route = RouteExchangeForTask(
+            getattr(self.db_manager, "exchange_credential", None),
             base_cfg=base_exchange_config(self.exchange, self.cfg),
-            service_key=service_key,
-            credential=credential,
-            user_id=user_id,
-            margin_mode=mode,
+            cipher=FernetSecretCipher(service_key) if service_key_available(service_key) else None,
+            exchange_factory=lambda cfg: BinanceExchange(cfg, self.log),
         )
-        return attach_user_exchange_context(BinanceExchange(context.cfg, self.log), context)
+        return await route.execute(user_id, margin_mode=mode)
 
     async def _ensure_routed_exchanges(self, taskcs: list[TaskConfig]) -> None:
         for tc in taskcs:

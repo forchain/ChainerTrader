@@ -17,7 +17,7 @@ from trader.adapters.outbound.binance.exchange import BinanceExchange
 from trader.adapters.outbound.persistence.manager import DatabaseManager
 from trader.common.config import TRADER_DB, TRADER_EXCHANGE, TRADER_WARMUP_CANDLES, Config
 from trader.common.logger import Logger
-from trader.exchange.exchange_config import parse_exchange_config
+from trader.core.exchange.domain import parse_exchange_config
 from trader.task.backtrader_task import (
     BacktestSampleResult,
     backtest_data_start_time,

@@ -9,9 +9,11 @@ from fastapi import APIRouter, HTTPException, Request
 
 from trader.adapters.outbound.binance.exchange import BinanceExchange
 from trader.auth.context import current_user
-from trader.auth.credentials import decrypt_secret, service_key_available
+from trader.auth.credentials import FernetSecretCipher, decrypt_secret, service_key_available
 from trader.common import path as trader_path
-from trader.exchange.exchange_config import ExchangeConfig, parse_exchange_config
+from trader.core.exchange.domain import ExchangeConfig, parse_exchange_config
+from trader.core.exchange.exceptions import ExchangeConnectivityError, UserExchangeCredentialError
+from trader.core.exchange.use_cases import PreflightUserExchange
 from trader.rpc.task_state_payload import public_task_state_dict
 from trader.task.task_config import parse_task_config
 from trader.task.task_type import TaskType
@@ -133,19 +135,20 @@ async def _preflight_user_live_tasks(request: Request, user, taskcs) -> None:
     if not any(taskc.ttype == TaskType.TRADER for taskc in taskcs):
         return
     cfg = getattr(request.app.state, "cfg", None)
-    if not service_key_available(getattr(cfg, "secret_key", None)):
-        raise HTTPException(status_code=400, detail="TRADER_SECRET_KEY is required to start user-owned live trading tasks")
+    service_key = getattr(cfg, "secret_key", None)
     rpc_app = getattr(request.app.state, "app", None)
     db_manager = getattr(rpc_app, "db_manager", None)
-    credential_repo = getattr(db_manager, "exchange_credential", None)
-    if credential_repo is None:
-        raise HTTPException(status_code=400, detail="live trading requires a user exchange credential store")
-    credential = await credential_repo.get_default(user.id, "BINANCE")
-    if credential is None:
-        raise HTTPException(status_code=400, detail=f"missing BINANCE API credential for user_id={user.id}")
-    service_key = getattr(cfg, "secret_key", None)
-    if not _user_exchange_ping_ok(cfg, service_key, credential):
-        raise HTTPException(status_code=400, detail=f"invalid BINANCE API credential or connectivity failure for user_id={user.id}")
+    preflight = PreflightUserExchange(
+        getattr(db_manager, "exchange_credential", None),
+        cipher=FernetSecretCipher(service_key) if service_key_available(service_key) else None,
+    )
+    try:
+        await preflight.execute(
+            user.id,
+            connectivity_check=lambda credential: _user_exchange_ping_ok(cfg, service_key, credential),
+        )
+    except (ExchangeConnectivityError, UserExchangeCredentialError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 async def _stop_running_tasks_for_user(request: Request, user) -> None:

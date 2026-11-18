@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from trader.auth.credentials import FernetSecretCipher, service_key_available
+from trader.core.exchange.domain import parse_exchange_config
 from trader.core.identity.domain import User
 from trader.core.identity.use_cases import EncryptUserCredential
-from trader.exchange.exchange_config import parse_exchange_config
 
 
 async def bootstrap_admin_exchange_credential(*, cfg, admin: User, credential_repo, log) -> bool:

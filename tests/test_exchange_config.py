@@ -1,6 +1,4 @@
-from trader.exchange.driver import ExchangeDriverType
-from trader.exchange.exchange_config import ExchangeConfig, parse_exchange_config
-from trader.exchange.exchange_type import ExchangeType
+from trader.core.exchange.domain import ExchangeConfig, ExchangeDriverType, ExchangeType, parse_exchange_config
 
 
 def test_parse_exchange_config_defaults_to_ccxt_driver():

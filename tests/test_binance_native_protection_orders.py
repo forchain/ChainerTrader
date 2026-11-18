@@ -2,9 +2,8 @@ from types import SimpleNamespace
 
 from trader.adapters.outbound.binance.exchange import BinanceExchange
 from trader.adapters.outbound.binance.margin import MarginTradingManager
+from trader.core.exchange.domain import ExchangeConfig, ExchangeDriverType, MarginMode
 from trader.core.shared.domain import OperateType, Symbol
-from trader.exchange.driver import ExchangeDriverType
-from trader.exchange.exchange_config import ExchangeConfig, MarginMode
 
 
 class _Log:
