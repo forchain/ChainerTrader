@@ -6,8 +6,8 @@ from pathlib import Path
 from typing import Any
 
 import requests
-from prettytable import PrettyTable
 
+from trader.adapters.inbound.cli.rendering import render_signal_table
 from trader.adapters.outbound.backtrader.node import run_signal_scan_cerebro
 from trader.adapters.outbound.binance.exchange import BinanceExchange
 from trader.adapters.outbound.persistence.manager import DatabaseManager
@@ -185,23 +185,6 @@ async def scan_market_report(
         windows=windows,
         generated_at_ts=now_ts,
     )
-
-
-def render_signal_table(signals: list[dict[str, Any]]) -> str:
-    table = PrettyTable()
-    table.field_names = ["Signal Time (Local)", "Symbol", "Interval", "Strategy", "Side", "Price"]
-    for signal in signals:
-        table.add_row(
-            [
-                signal["signal_time"],
-                signal["symbol"],
-                signal["interval"],
-                signal["strategy"],
-                signal["side"],
-                signal.get("price"),
-            ]
-        )
-    return table.get_string()
 
 
 def dump_signals_json(path: str | Path, payload: Any) -> Path:
