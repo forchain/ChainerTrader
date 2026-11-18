@@ -4,8 +4,8 @@ import backtrader as bt
 import pandas as pd
 import pytest
 
+from trader.core.strategy.domain.node import build_strategy_kwargs
 from trader.strategy.base_strategy import BaseStrategy
-from trader.strategy.node import build_strategy_kwargs
 from trader.strategy.strategy import parse_strategy
 
 

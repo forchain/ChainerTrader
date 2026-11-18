@@ -10,8 +10,7 @@ from backtrader import num2date
 from trader.common.config import DEFAULT_PERIOD
 from trader.common.log_tag import LogTag
 from trader.core.shared.domain import Operate, OperateType
-from trader.strategy.backtrader_adapter import BacktraderStrategyExecutionAdapter
-from trader.strategy.lifecycle import (
+from trader.core.strategy.domain.lifecycle import (
     ORDER_ROLE_ENTRY,
     ORDER_ROLE_EXIT,
     ORDER_ROLE_KEY,
@@ -24,8 +23,9 @@ from trader.strategy.lifecycle import (
     TradeRegistry,
     TradeStatus,
 )
-from trader.strategy.risk import BREAKEVEN_EPS, StrategyRiskEngine
-from trader.strategy.signal_router import SignalRouteActionType, SignalRouter, SignalRoutingState
+from trader.core.strategy.domain.risk import BREAKEVEN_EPS, StrategyRiskEngine
+from trader.core.strategy.domain.signal_router import SignalRouteActionType, SignalRouter, SignalRoutingState
+from trader.strategy.backtrader_adapter import BacktraderStrategyExecutionAdapter
 from trader.utils.trend import TrendType
 
 _DEFAULT_POSITION_PRICE_BUFFER = 0.002  # 0.2% safety buffer for next-open fills
