@@ -9,9 +9,8 @@ from tortoise.context import TortoiseContext, get_current_context
 
 from trader.common.config import Config
 from trader.common.logger import Logger
+from trader.core.execution import ExecutionSide, ExecutionStateRecord, ExecutionStatus, GatewayMode, OrderIntent
 from trader.core.shared.domain import Interval, Kline, OperateType, SymbolInterval
-from trader.execution.models import ExecutionSide, ExecutionStatus, GatewayMode, OrderIntent
-from trader.execution.state import ExecutionStateRecord
 from trader.live.market_data import BackfillPlan, BackfillRequestKind, normalize_binance_kline_message
 from trader.task.task_config import TaskConfig
 from trader.task.task_type import TaskType

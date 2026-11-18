@@ -15,6 +15,7 @@ from trader.common.config import Config
 from trader.common.log_tag import LogTag
 from trader.common.logger import Logger
 from trader.common.message import new_add_tasks_msg, new_exit_msg, new_stat_msg
+from trader.core.execution import ExecutionStatus
 from trader.core.shared.domain import Symbol, SymbolInterval
 from trader.exchange.binance.exchange import BinanceExchange
 from trader.exchange.exchange_config import MarginMode
@@ -23,7 +24,6 @@ from trader.exchange.user_credentials import (
     base_exchange_config,
     build_user_exchange_context,
 )
-from trader.execution.models import ExecutionStatus
 from trader.live.auto_execution import is_real_auto_mode
 from trader.statistics.stat import BackTraderStat
 from trader.strategy.trader_result import parse_trader_result

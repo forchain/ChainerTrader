@@ -4,12 +4,9 @@ from dataclasses import dataclass
 from math import isfinite
 from typing import Any
 
+from trader.core.execution.domain import ExecutionSide, OrderIntent, RiskIntent
+from trader.core.execution.exceptions import OrderSemanticsError
 from trader.core.shared.domain import OperateType
-from trader.execution.models import ExecutionSide, OrderIntent, RiskIntent
-
-
-class OrderSemanticsError(ValueError):
-    pass
 
 
 @dataclass(frozen=True)
