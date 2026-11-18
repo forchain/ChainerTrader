@@ -11,9 +11,8 @@ from uuid import uuid4
 from trader.adapters.outbound.binance.exchange import BinanceExchange
 from trader.common.config import Config
 from trader.common.logger import Logger
+from trader.core.exchange.domain import ExchangeConfig, ExchangeDriverType, MarginMode
 from trader.core.shared.domain import Interval, Operate, OperateType, Symbol, SymbolInterval
-from trader.exchange.driver import ExchangeDriverType
-from trader.exchange.exchange_config import ExchangeConfig, MarginMode
 from trader.live.auto_execution import AutoExecutionRouter, AutoExecutionStatus
 from trader.task.task_config import TaskConfig
 from trader.task.task_type import TaskType
@@ -1383,8 +1382,7 @@ def _collect_margin_borrow_blocker_probe(*, report: LiveSmokeReport) -> dict[str
     symbol = os.getenv("CHAINERTRADER_LIVE_SMOKE_SYMBOL", "BTC-USDT")
     try:
         from trader.adapters.outbound.binance.exchange import BinanceExchange
-        from trader.exchange.driver import ExchangeDriverType
-        from trader.exchange.exchange_config import ExchangeConfig, MarginMode
+        from trader.core.exchange.domain import ExchangeConfig, ExchangeDriverType, MarginMode
 
         cfg = Config(cash=1.0, window=1)
         log = Logger(cfg).log()

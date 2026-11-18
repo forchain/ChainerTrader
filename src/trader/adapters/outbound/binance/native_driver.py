@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from trader.adapters.outbound.binance.exchange import BinanceExchange
 from trader.common.logger import default
-from trader.exchange.driver import ExchangeDriverType
-from trader.exchange.exchange_config import ExchangeConfig
+from trader.core.exchange.domain import ExchangeConfig, ExchangeDriverType
 
 
 class BinanceNativeExchangeDriver(BinanceExchange):

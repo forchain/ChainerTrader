@@ -18,6 +18,9 @@ from trader.auth.passwords import Argon2PasswordHasher
 from trader.common import path
 from trader.common.common import NAME
 from trader.common.config import Config
+from trader.core.exchange.domain import ExchangeConfig, MarginMode, parse_exchange_config
+from trader.core.exchange.exceptions import UserExchangeCredentialError
+from trader.core.exchange.use_cases import SymbolOpenOrders, base_exchange_config, build_user_exchange_context
 from trader.core.identity.exceptions import AuthenticationError, PasswordPolicyError
 from trader.core.identity.use_cases import (
     ChangePassword,
@@ -28,13 +31,6 @@ from trader.core.identity.use_cases import (
     ResetUserPassword,
 )
 from trader.core.shared.domain import Symbol
-from trader.exchange.exchange_config import ExchangeConfig, MarginMode, parse_exchange_config
-from trader.exchange.user_credentials import (
-    UserExchangeCredentialError,
-    attach_user_exchange_context,
-    base_exchange_config,
-    build_user_exchange_context,
-)
 from trader.live.monitor import GLOBAL_LIVE_EVENT_BUS
 from trader.rpc.models import (
     AcctsInfo,
@@ -461,15 +457,16 @@ def _user_accounts_info(cfg: Config, rpc_app: RpcApp, user, credentials: list) -
 
 def _account_exchange_for_user(cfg: Config, rpc_app: RpcApp, user, credentials: list):
     credential = _default_binance_credential(credentials)
+    service_key = getattr(cfg, "secret_key", None)
     context = build_user_exchange_context(
         base_cfg=base_exchange_config(getattr(rpc_app, "exchange", None), cfg),
-        service_key=getattr(cfg, "secret_key", None),
         credential=credential,
         user_id=user.id,
         margin_mode=MarginMode.CROSS_MARGIN,
+        cipher=FernetSecretCipher(service_key) if service_key_available(service_key) else None,
     )
     logger = getattr(rpc_app, "logger", None)
-    return attach_user_exchange_context(BinanceExchange(context.cfg, logger), context)
+    return BinanceExchange(context.cfg, logger)
 
 
 def _account_cancel_preview(cfg: Config, rpc_app: RpcApp, user, credentials: list, raw_symbol: str):
@@ -527,7 +524,7 @@ def _cancel_requested_open_order_symbol(exchange, symbol: Symbol, logger=None) -
     if not callable(cancel_all):
         return 0
     try:
-        cancel_all(symbol)
+        SymbolOpenOrders(exchange).cancel(symbol)
         return 1
     except Exception as exc:
         if logger is not None and hasattr(logger, "error"):
