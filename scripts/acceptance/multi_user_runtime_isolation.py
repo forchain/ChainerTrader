@@ -15,9 +15,9 @@ from typing import Any
 import requests
 from dotenv import load_dotenv
 
-from trader.auth.credentials import encrypt_secret, mask_api_key
+from trader.auth.credentials import encrypt_secret
 from trader.auth.passwords import hash_password
-
+from trader.core.identity.credentials import mask_api_key
 
 ROOT = Path(__file__).resolve().parents[2]
 RUN_ROOT = ROOT / "tmp" / "acceptance" / "multi_user_runtime_isolation"

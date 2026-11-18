@@ -5,13 +5,17 @@ import signal
 from asyncio import Event
 from datetime import datetime
 
-from trader.adapters.outbound.persistence.manager import DatabaseManager
+from trader.adapters.outbound.persistence.manager import DatabaseManager, DatabaseSchemaError
+from trader.auth.bootstrap import bootstrap_admin_exchange_credential
+from trader.auth.passwords import Argon2PasswordHasher
 from trader.common import path
 from trader.common.common import NAME
 from trader.common.config import Config, default
 from trader.common.log_tag import LogTag
 from trader.common.logger import Logger
 from trader.common.message import Message, new_add_tasks_msg, new_exit_msg
+from trader.core.identity.exceptions import PasswordPolicyError
+from trader.core.identity.use_cases import BootstrapAdministrator
 from trader.exchange.binance.exchange import BinanceExchange
 from trader.exchange.exchange_config import MarginMode, parse_exchange_config
 from trader.exchange.exchange_type import ExchangeType
@@ -124,11 +128,34 @@ class App:
             return asyncio.run(self.bootstrap_database_for_startup())
         return None
 
-    async def bootstrap_database_for_startup(self):
+    async def _ensure_database_started(self):
         if not self.db_manager:
             return None
         if not getattr(self.db_manager, "started", False):
             await self.db_manager.start()
+            await self._bootstrap_identity()
+
+    async def _bootstrap_identity(self) -> None:
+        if not self.db_manager or not getattr(self.db_manager, "user", None):
+            return
+        try:
+            admin = await BootstrapAdministrator(self.db_manager.user, Argon2PasswordHasher()).execute(
+                self.cfg.auth_username, self.cfg.auth_password
+            )
+        except PasswordPolicyError as exc:
+            raise DatabaseSchemaError(f"invalid bootstrap administrator credentials: {exc}") from exc
+        if admin is not None:
+            await bootstrap_admin_exchange_credential(
+                cfg=self.cfg,
+                admin=admin,
+                credential_repo=self.db_manager.exchange_credential,
+                log=self.log(),
+            )
+
+    async def bootstrap_database_for_startup(self):
+        if not self.db_manager:
+            return None
+        await self._ensure_database_started()
         if self.cfg.is_server() or not self.tasks_cfg:
             return None
         startup_admin = await self.db_manager.get_startup_admin()
@@ -340,8 +367,7 @@ class App:
     async def handler(self, msgs: list[Message], quit: Event):
         startup_admin_id = None
         if self.db_manager:
-            if not getattr(self.db_manager, "started", False):
-                await self.db_manager.start()
+            await self._ensure_database_started()
             if (not self.cfg.is_server() and self.tasks_cfg) or any(msg.is_add_tasks() for msg in msgs):
                 startup_admin = await self.db_manager.get_startup_admin()
                 if startup_admin is None:
@@ -434,7 +460,7 @@ class App:
 
         started_here = False
         if not getattr(self.db_manager, "started", False):
-            await self.db_manager.start()
+            await self._ensure_database_started()
             started_here = True
 
         try:
