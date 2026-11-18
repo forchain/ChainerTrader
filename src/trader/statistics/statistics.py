@@ -5,6 +5,7 @@ from prettytable import PrettyTable
 from trader.adapters.outbound.persistence.manager import DatabaseManager
 from trader.common.config import Config
 from trader.common.message import Message
+from trader.core.task.domain import bounded_results, collect_operates, rank_results
 from trader.statistics.stat import BackTraderStat, TraderStat
 
 
@@ -27,12 +28,8 @@ class Statistics:
 
         if self.cfg.stat == 0:
             return
-        elif self.cfg.stat > 0:
-            if len(self.bts_list) > self.cfg.stat:
-                if add and len(self.bts_list) > 1:
-                    self.bts_list.sort(key=lambda bts: bts.ts.tret.total_return_rate, reverse=True)
-                    del_stat = self.bts_list.pop()
-                    self.log.info(f"Remove item form stat list:{del_stat.strategy} {del_stat.symbol_interval} {del_stat.ts.tret.total_return_rate}")
+        elif self.cfg.stat > 0 and add:
+            self.bts_list = bounded_results(self.bts_list, self.cfg.stat)
 
     def _add_result_stat(self, stat: BackTraderStat | TraderStat) -> bool:
         tret = getattr(getattr(stat, "ts", None), "tret", None)
@@ -44,8 +41,7 @@ class Statistics:
     def report(self):
         if len(self.bts_list) > 0:
             self.log.info("Report BackTrader stats")
-            if len(self.bts_list) > 1:
-                self.bts_list.sort(key=lambda bts: bts.ts.tret.total_return_rate, reverse=True)
+            self.bts_list = rank_results(self.bts_list)
 
             table = PrettyTable()
             table.field_names = [
@@ -89,14 +85,4 @@ class Statistics:
             self.log.info(f"\n{table}")
 
     def get_operates(self, limit: int = 10):
-        ret = []
-        if len(self.bts_list) <= 0:
-            return ret
-
-        for ts in self.bts_list:
-            if len(ret) >= limit:
-                break
-            if ts.ts.tret.operate is None:
-                continue
-            ret.append(ts.ts.tret.operate.to_dict())
-        return ret
+        return collect_operates(self.bts_list, limit)

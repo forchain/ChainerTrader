@@ -3,6 +3,8 @@ from math import ceil
 from fastapi import APIRouter, Request
 
 from trader.auth.context import current_user
+from trader.core.task.exceptions import TaskNotFound, TaskOwnership
+from trader.core.task.use_cases import GetTask, TaskScope
 from trader.rpc.task_state_payload import public_task_state_dict
 
 router = APIRouter()
@@ -18,11 +20,17 @@ OPERATION_TYPE_LABELS = {
 }
 
 
+async def _visible_task(request: Request, id: int, user):
+    try:
+        return await GetTask(request.app.state.app.task_manager).execute(id, TaskScope.for_actor(user))
+    except (TaskNotFound, TaskOwnership):
+        return None
+
+
 @router.get("")
 async def get_task(id: int, request: Request):
     user = await current_user(request)
-    user_id = None if user is None or user.is_admin else user.id
-    ts = await request.app.state.app.task_manager.get_task_state(id, user_id=user_id)
+    ts = await _visible_task(request, id, user)
     if ts:
         return public_task_state_dict(ts)
     return {"id": id, "error": "invalid"}
@@ -31,8 +39,7 @@ async def get_task(id: int, request: Request):
 @router.get("/{id}/operations")
 async def get_task_operations(id: int, request: Request, page: int = 1, per_page: int = 20):
     user = await current_user(request)
-    user_id = None if user is None or user.is_admin else user.id
-    ts = await request.app.state.app.task_manager.get_task_state(id, user_id=user_id)
+    ts = await _visible_task(request, id, user)
     if not ts:
         return {"task_id": id, "error": "invalid", "operations": [], "total": 0, "page": 1, "per_page": per_page, "total_pages": 0}
 

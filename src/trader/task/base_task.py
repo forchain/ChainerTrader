@@ -7,9 +7,9 @@ from trader.adapters.outbound.binance.exchange import BinanceExchange
 from trader.adapters.outbound.persistence.manager import DatabaseManager
 from trader.common.config import Config
 from trader.common.logger import Logger
+from trader.core.task.config import TaskConfig
+from trader.core.task.domain import TaskState, TaskStateType
 from trader.task.persisted_live_config_migration import canonicalize_persisted_task_config_dict
-from trader.task.task_config import TaskConfig
-from trader.utils.task_state import TaskState, TaskStateType
 
 
 def _task_config_symbol(symbol_interval) -> str:

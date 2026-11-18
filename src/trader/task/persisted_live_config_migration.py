@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from trader.utils.task_state import TaskState, parse_task_state_type
+from trader.core.task.domain import TaskState, parse_task_state_type
 
 PERSISTED_LEGACY_LIVE_EXECUTION_MODE = "persisted_legacy_live_execution_mode"
 PERSISTED_LIVE_DATA_MODE = "persisted_live_data_mode"

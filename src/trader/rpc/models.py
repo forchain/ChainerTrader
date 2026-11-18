@@ -5,9 +5,10 @@ from pydantic import BaseModel, Field
 
 from trader.core.exchange.interfaces import ExchangeClient
 from trader.core.shared.domain import Symbol
+from trader.core.task.domain import TaskStateType
+from trader.core.task.use_cases import ListTasks, TaskScope, paginate
 from trader.exchange.balance import Balance
 from trader.rpc.task_state_payload import public_task_state_dict
-from trader.utils.task_state import TaskStateType
 
 if TYPE_CHECKING:
     from trader.app.app import App
@@ -46,10 +47,11 @@ class KlinesInfo(BaseModel):
 
 async def get_taskinfo(app: "App", user=None, page: int = 1, per_page: int | None = None) -> TasksInfo:
     user_id = None if user is None else user.id
-    tss = await app.task_manager.get_all_task_state(user_id=user_id)
+    scope = TaskScope.all() if user_id is None else TaskScope.for_user(user_id)
+    states = await ListTasks(app.task_manager).execute(scope)
     completed = 0
     tasks: list[dict[str, Any]] = []
-    for ts in tss:
+    for ts in states.items:
         if ts.state == TaskStateType.DONE:
             completed += 1
         item = public_task_state_dict(ts)
@@ -82,22 +84,14 @@ async def get_taskinfo(app: "App", user=None, page: int = 1, per_page: int | Non
     # Sort tasks by start_time in descending order (newest first)
     tasks.sort(key=lambda x: x.get("start_time", ""), reverse=True)
 
-    total = len(tss)
-    safe_page = max(1, int(page))
-    if per_page is None:
-        return TasksInfo(total=total, completed=completed, tasks=tasks, page=1, per_page=total, total_pages=1)
-    safe_per_page = max(1, int(per_page))
-    total_pages = max(1, (total + safe_per_page - 1) // safe_per_page)
-    safe_page = min(safe_page, total_pages)
-    start = (safe_page - 1) * safe_per_page
-    end = start + safe_per_page
+    result = paginate(tasks, page=page, per_page=per_page)
     return TasksInfo(
-        total=total,
+        total=result.total,
         completed=completed,
-        tasks=tasks[start:end],
-        page=safe_page,
-        per_page=safe_per_page,
-        total_pages=total_pages,
+        tasks=result.items,
+        page=result.page,
+        per_page=result.per_page,
+        total_pages=result.total_pages,
     )
 
 
