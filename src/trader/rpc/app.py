@@ -1,6 +1,5 @@
 import os
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -13,19 +12,20 @@ from fastapi_auto_router import AutoRouter
 
 from trader.app.app import version
 from trader.auth.context import SESSION_COOKIE, AuthUser, SessionAuthMiddleware, auth_enabled, current_user, require_admin, require_user
-from trader.auth.credentials import encrypt_secret, mask_api_key, service_key_available
-from trader.auth.passwords import (
-    PasswordPolicyError,
-    generate_temporary_password,
-    hash_password,
-    validate_password,
-    validate_username,
-    verify_password,
-)
-from trader.auth.sessions import create_session_token, hash_session_token
+from trader.auth.credentials import FernetSecretCipher, service_key_available
+from trader.auth.passwords import Argon2PasswordHasher
 from trader.common import path
 from trader.common.common import NAME
 from trader.common.config import Config
+from trader.core.identity.exceptions import AuthenticationError, PasswordPolicyError
+from trader.core.identity.use_cases import (
+    ChangePassword,
+    EncryptUserCredential,
+    LoginUser,
+    LogoutUser,
+    RegisterUser,
+    ResetUserPassword,
+)
 from trader.core.shared.domain import Symbol
 from trader.exchange.binance.exchange import BinanceExchange
 from trader.exchange.exchange_config import ExchangeConfig, MarginMode, parse_exchange_config
@@ -219,8 +219,13 @@ async def login_submit(request: Request):
     form = await request.form()
     username = str(form.get("username", "")).strip()
     password = str(form.get("password", ""))
-    user = await users.get_by_username(username)
-    if user is None or user.status != "active" or not verify_password(password, user.password_hash):
+    try:
+        result = await LoginUser(users, users, Argon2PasswordHasher()).execute(
+            username,
+            password,
+            session_ttl_hours=int(request.app.state.cfg.session_ttl_hours),
+        )
+    except AuthenticationError:
         return templates.TemplateResponse(
             request,
             "login.html",
@@ -228,19 +233,15 @@ async def login_submit(request: Request):
             status_code=401,
         )
 
-    token = create_session_token()
-    expires_at = datetime.now(UTC) + timedelta(hours=int(request.app.state.cfg.session_ttl_hours))
-    await users.create_session(user.id, hash_session_token(token), expires_at)
-    await users.mark_login(user.id, datetime.now(UTC))
-    target = "/change-password" if user.must_change_password else "/admin"
+    target = "/change-password" if result.user.must_change_password else "/admin"
     response = RedirectResponse(url=target, status_code=status.HTTP_303_SEE_OTHER)
     response.set_cookie(
         SESSION_COOKIE,
-        token,
+        result.session_token,
         httponly=True,
         samesite="lax",
         secure=bool(request.app.state.cfg.session_cookie_secure),
-        expires=expires_at,
+        expires=result.expires_at,
     )
     return response
 
@@ -269,8 +270,7 @@ async def register_submit(request: Request):
     username = str(form.get("username", "")).strip()
     password = str(form.get("password", ""))
     try:
-        validate_username(username)
-        validate_password(username, password)
+        await RegisterUser(users, Argon2PasswordHasher()).execute(username, password)
     except PasswordPolicyError as exc:
         return templates.TemplateResponse(
             request,
@@ -278,14 +278,13 @@ async def register_submit(request: Request):
             {"error": str(exc), "registration_enabled": True},
             status_code=422,
         )
-    if await users.get_by_username(username) is not None:
+    except AuthenticationError:
         return templates.TemplateResponse(
             request,
             "register.html",
             {"error": "用户名已存在", "registration_enabled": True},
             status_code=409,
         )
-    await users.create_user(username, hash_password(password), role="user")
     return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -303,19 +302,16 @@ async def change_password_submit(request: Request):
     form = await request.form()
     password = str(form.get("password", ""))
     try:
-        validate_password(user.username, password)
+        await ChangePassword(users, Argon2PasswordHasher()).execute(user.id, user.username, password)
     except PasswordPolicyError as exc:
         return templates.TemplateResponse(request, "change_password.html", {"error": str(exc), "user": user}, status_code=422)
-    await users.update_password(user.id, hash_password(password), must_change_password=False)
     return RedirectResponse(url="/admin", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post("/logout")
 async def logout(request: Request):
     users = _require_user_repo(request)
-    token = request.cookies.get(SESSION_COOKIE)
-    if token:
-        await users.delete_session(hash_session_token(token))
+    await LogoutUser(users).execute(request.cookies.get(SESSION_COOKIE))
     response = RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
     response.delete_cookie(SESSION_COOKIE)
     return response
@@ -396,12 +392,13 @@ async def account_exchange_credentials_submit(request: Request):
             },
             status_code=400,
         )
+    protected = EncryptUserCredential(FernetSecretCipher(service_key)).execute(api_key, api_secret)
     await rpc_app.db_manager.exchange_credential.upsert_default(
         user.id,
         exchange=exchange,
-        encrypted_api_key=encrypt_secret(service_key, api_key),
-        encrypted_api_secret=encrypt_secret(service_key, api_secret),
-        masked_api_key=mask_api_key(api_key),
+        encrypted_api_key=protected.encrypted_api_key,
+        encrypted_api_secret=protected.encrypted_api_secret,
+        masked_api_key=protected.masked_api_key,
     )
     if logger is not None:
         logger.info(f"Exchange credential saved: user_id={user.id} exchange={exchange}")
@@ -604,12 +601,10 @@ async def admin_users_page(request: Request):
 async def admin_reset_user_password(request: Request, user_id: int):
     await require_admin(request)
     users_repo = _require_user_repo(request)
-    target = await users_repo.get_by_id(user_id)
-    if target is None:
+    try:
+        temporary_password = await ResetUserPassword(users_repo, users_repo, Argon2PasswordHasher()).execute(user_id)
+    except AuthenticationError:
         raise HTTPException(status_code=404, detail="user not found")
-    temporary_password = generate_temporary_password()
-    await users_repo.update_password(user_id, hash_password(temporary_password), must_change_password=True)
-    await users_repo.delete_sessions_for_user(user_id)
     users = await users_repo.list_users()
     return templates.TemplateResponse(
         request,

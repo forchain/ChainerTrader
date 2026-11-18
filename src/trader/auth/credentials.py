@@ -5,9 +5,8 @@ import hashlib
 
 from cryptography.fernet import Fernet, InvalidToken
 
-
-class CredentialEncryptionError(ValueError):
-    pass
+from trader.core.identity.exceptions import CredentialEncryptionError
+from trader.core.identity.interfaces import SecretCipher
 
 
 def service_key_available(service_key: str | None) -> bool:
@@ -32,8 +31,12 @@ def decrypt_secret(service_key: str | None, encrypted_value: str) -> str:
         raise CredentialEncryptionError("exchange credential cannot be decrypted with the configured TRADER_SECRET_KEY") from exc
 
 
-def mask_api_key(api_key: str) -> str:
-    value = str(api_key or "")
-    if len(value) < 8:
-        return "***"
-    return f"{value[:4]}***{value[-4:]}"
+class FernetSecretCipher(SecretCipher):
+    def __init__(self, service_key: str | None):
+        self._service_key = service_key
+
+    def encrypt(self, value: str) -> str:
+        return encrypt_secret(self._service_key, value)
+
+    def decrypt(self, encrypted_value: str) -> str:
+        return decrypt_secret(self._service_key, encrypted_value)

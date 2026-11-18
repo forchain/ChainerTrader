@@ -1,12 +1,8 @@
 import pytest
 
-from trader.auth.credentials import (
-    CredentialEncryptionError,
-    decrypt_secret,
-    encrypt_secret,
-    mask_api_key,
-    service_key_available,
-)
+from trader.auth.credentials import decrypt_secret, encrypt_secret, service_key_available
+from trader.core.identity.credentials import mask_api_key
+from trader.core.identity.exceptions import CredentialEncryptionError
 
 
 def test_service_key_available_requires_non_empty_key():

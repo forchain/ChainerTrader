@@ -3,7 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from trader.auth.credentials import decrypt_secret, mask_api_key, service_key_available
+from trader.auth.credentials import decrypt_secret, service_key_available
+from trader.core.identity.credentials import mask_api_key
 from trader.exchange.exchange_config import ExchangeConfig, MarginMode, parse_exchange_config
 
 
