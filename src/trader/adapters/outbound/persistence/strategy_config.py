@@ -3,7 +3,7 @@ from __future__ import annotations
 from logging import Logger
 from typing import Any
 
-from trader.database.models import StrategyConfigModel
+from trader.adapters.outbound.persistence.models import StrategyConfigModel
 
 
 class StrategyConfigCol:

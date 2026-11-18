@@ -7,11 +7,11 @@ Data preparation (run before test):
       --tasks '[{"task_type":"UPDATE_KLINES","symbol":"BTC-USDT","interval":"1h","start_time":"2025-01-01 00:00:00"}]'
 """
 
+import asyncio
 import csv
 import logging
 import math
 import os
-import asyncio
 from datetime import datetime
 
 import backtrader as bt
@@ -19,10 +19,10 @@ import matplotlib.pyplot as plt
 import pytest
 from dotenv import load_dotenv
 from matplotlib.ticker import ScalarFormatter
-
-from trader.database.kline import KlineCol
-from trader.database.manager import build_tortoise_config
 from tortoise import Tortoise
+
+from trader.adapters.outbound.persistence.config import build_tortoise_config
+from trader.adapters.outbound.persistence.kline import KlineCol
 from trader.exchange.binance.data import BinanceData
 from trader.indicators.super_trend import SuperTrend
 

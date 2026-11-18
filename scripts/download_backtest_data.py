@@ -113,13 +113,13 @@ def print_stats(df, output_file):
     df_display = df.copy()
     df_display['datetime'] = pd.to_datetime(df_display['datetime'], unit='ms')
 
-    print(f"\n✓ Complete!")
+    print("\n✓ Complete!")
     print(f"  Total candles: {len(df)}")
     print(f"  Time range: {df_display['datetime'].min()} to {df_display['datetime'].max()}")
     print(f"  File size: {os.path.getsize(output_file) / 1024 / 1024:.1f} MB")
     print(f"  Location: {output_file}")
 
-    print(f"\n  Data quality:")
+    print("\n  Data quality:")
     print(f"  Missing values: {df[['open', 'high', 'low', 'close']].isna().sum().sum()}")
 
 
@@ -140,13 +140,13 @@ def try_db_download(symbol, interval, start_time, end_time, output_file):
         return False
 
     try:
+        from trader.adapters.outbound.persistence.manager import DatabaseManager
         from trader.common.config import Config
         from trader.common.logger import Logger
-        from trader.database.manager import DatabaseManager
         from trader.exchange.binance.exchange import BinanceExchange
         from trader.exchange.exchange_config import parse_exchange_config
         from trader.task.update_klines_task import download_range
-        from trader.utils.symbol_interval import Interval, Symbol, SymbolInterval, add_time_duration
+        from trader.utils.symbol_interval import Interval, SymbolInterval, add_time_duration
 
         db_name = os.environ.get("TRADER_DB_NAME", "trader")
 
@@ -157,7 +157,6 @@ def try_db_download(symbol, interval, start_time, end_time, output_file):
         db.start()
 
         # Build SymbolInterval: "ETH-USDT" + "1h" → "ETHUSDT-1h"
-        interval_map = {v: f"INTERVAL_{v}" for v in INTERVAL_HOURS}
         interval_enum = Interval[f"INTERVAL_{interval}"]
         si = SymbolInterval(symbol, interval_enum)
         col_name = si.name()
@@ -173,7 +172,7 @@ def try_db_download(symbol, interval, start_time, end_time, output_file):
         need_download = []  # list of (range_start, range_end) to download
 
         if db_first is None or db_last is None:
-            print(f"  [DB] No existing data, will download full range")
+            print("  [DB] No existing data, will download full range")
             need_download.append((start_ts, end_ts))
         else:
             db_first_time = db_first.open_time
@@ -182,7 +181,7 @@ def try_db_download(symbol, interval, start_time, end_time, output_file):
 
             # Case 1: end < db_first → download [start, end]
             if end_ts < db_first_time:
-                print(f"  [DB] Case: requested range is entirely before DB data")
+                print("  [DB] Case: requested range is entirely before DB data")
                 need_download.append((start_ts, end_ts))
 
             # Case 2: start < db_first <= end <= db_last → fill before
@@ -193,7 +192,7 @@ def try_db_download(symbol, interval, start_time, end_time, output_file):
 
             # Case 3: db_first <= start <= end <= db_last → fully covered
             elif db_first_time <= start_ts and end_ts <= db_last_time:
-                print(f"  [DB] Case: fully covered by DB, skipping API download")
+                print("  [DB] Case: fully covered by DB, skipping API download")
 
             # Case 4: start >= db_first and db_last < end → fill after
             elif start_ts >= db_first_time and db_last_time < end_ts:
@@ -205,7 +204,7 @@ def try_db_download(symbol, interval, start_time, end_time, output_file):
             elif start_ts < db_first_time and db_last_time < end_ts:
                 range_end = add_time_duration(db_first_time, interval_enum, -1)
                 range_start = add_time_duration(db_last_time, interval_enum, 1)
-                print(f"  [DB] Case: missing both prefix and suffix, downloading 2 segments")
+                print("  [DB] Case: missing both prefix and suffix, downloading 2 segments")
                 need_download.append((start_ts, range_end))
                 need_download.append((range_start, end_ts))
 
@@ -236,7 +235,7 @@ def try_db_download(symbol, interval, start_time, end_time, output_file):
             asyncio.run(download_all())
 
         # Export from DB to CSV
-        print(f"  [DB] Exporting from database to CSV...")
+        print("  [DB] Exporting from database to CSV...")
         klines = db.kline.get_klines(col_name, start_ts, end_ts)
 
         if not klines:

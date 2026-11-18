@@ -1,10 +1,8 @@
 import asyncio
 
-from tortoise import Tortoise
-
-from trader.database.config import build_tortoise_config
-from trader.database.execution_state import ExecutionStateCol
-from trader.database.models import ExecutionStateModel
+from tests.persistence_harness import initialized_database
+from trader.adapters.outbound.persistence.execution_state import ExecutionStateCol
+from trader.adapters.outbound.persistence.models import ExecutionStateModel
 from trader.execution import ExecutionSide, ExecutionStatus, GatewayMode, OrderIntent, ProtectionIntentType, RiskIntent
 from trader.execution.state import ExecutionStateRecord
 
@@ -27,12 +25,8 @@ class _Log:
 
 
 async def _with_db(fn):
-    await Tortoise.init(config=build_tortoise_config("sqlite://:memory:"))
-    await Tortoise.generate_schemas()
-    try:
+    async with initialized_database():
         await fn()
-    finally:
-        await Tortoise.close_connections()
 
 
 def test_execution_state_store_reserves_idempotency_key_before_order_submit():

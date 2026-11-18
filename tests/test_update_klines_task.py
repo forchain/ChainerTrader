@@ -497,7 +497,7 @@ class TestDeleteKlinesInRange:
         import asyncio
         from unittest.mock import AsyncMock, MagicMock, patch
 
-        from trader.database.kline import KlineCol
+        from trader.adapters.outbound.persistence.kline import KlineCol
 
         log = DummyLog()
         kline_col = KlineCol(log)

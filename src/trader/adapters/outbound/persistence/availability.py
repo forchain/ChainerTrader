@@ -6,7 +6,7 @@ from logging import Logger
 
 from tortoise.exceptions import OperationalError
 
-from trader.database.models import AvailabilityModel
+from trader.adapters.outbound.persistence.models import AvailabilityModel
 
 
 @dataclass(frozen=True)

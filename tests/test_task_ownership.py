@@ -1,13 +1,11 @@
 import asyncio
 from datetime import datetime
 
-from tortoise import Tortoise
-
+from tests.persistence_harness import initialized_database
+from trader.adapters.outbound.persistence.task import TaskCol
 from trader.app.app import App
 from trader.common.config import Config
 from trader.common.logger import Logger
-from trader.database.config import build_tortoise_config
-from trader.database.task import TaskCol
 from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig, parse_task_config
 from trader.task.task_manager import TaskManager
@@ -31,12 +29,8 @@ class _Log:
 
 
 async def _with_db(fn):
-    await Tortoise.init(config=build_tortoise_config("sqlite://:memory:"))
-    await Tortoise.generate_schemas()
-    try:
+    async with initialized_database():
         await fn()
-    finally:
-        await Tortoise.close_connections()
 
 
 def test_parse_task_config_accepts_user_id():

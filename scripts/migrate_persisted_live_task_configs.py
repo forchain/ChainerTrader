@@ -9,9 +9,9 @@ import sys
 
 from dotenv import load_dotenv
 
-from trader.common.config import Config, TRADER_DB
+from trader.adapters.outbound.persistence.manager import DatabaseManager
+from trader.common.config import TRADER_DB, Config
 from trader.common.logger import Logger
-from trader.database.manager import DatabaseManager
 from trader.task.persisted_live_config_migration import migrate_persisted_live_task_configs
 
 

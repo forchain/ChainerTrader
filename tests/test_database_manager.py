@@ -1,9 +1,9 @@
 import pytest
 from tortoise import Tortoise
 
+from trader.adapters.outbound.persistence.manager import DatabaseManager, DatabaseSchemaError, _supports_tortoise_global_fallback
 from trader.common.config import Config
 from trader.common.logger import Logger
-from trader.database.manager import DatabaseManager, DatabaseSchemaError, _supports_tortoise_global_fallback
 
 
 @pytest.fixture
@@ -38,7 +38,7 @@ async def test_database_manager_enables_tortoise_global_fallback(monkeypatch):
     async def fake_schema_ready():
         return None
 
-    monkeypatch.setattr("trader.database.manager.Tortoise.init", fake_init)
+    monkeypatch.setattr("trader.adapters.outbound.persistence.manager.Tortoise.init", fake_init)
     monkeypatch.setattr(manager, "_ensure_schema_ready", fake_schema_ready)
 
     await manager.start()
@@ -51,6 +51,6 @@ def test_detects_tortoise_global_fallback_support(monkeypatch):
     async def fake_init(config=None, _enable_global_fallback=False):
         return None
 
-    monkeypatch.setattr("trader.database.manager.Tortoise.init", fake_init)
+    monkeypatch.setattr("trader.adapters.outbound.persistence.manager.Tortoise.init", fake_init)
 
     assert _supports_tortoise_global_fallback() is True

@@ -5,9 +5,9 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
+from trader.adapters.outbound.persistence.manager import DatabaseManager
 from trader.common.config import Config
 from trader.common.logger import Logger, default
-from trader.database.manager import DatabaseManager
 from trader.exchange.binance.exchange import BinanceExchange
 from trader.live.dashboard import (
     DashboardEvent,

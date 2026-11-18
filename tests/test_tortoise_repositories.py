@@ -3,12 +3,10 @@ import warnings
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
-from tortoise import Tortoise
-
-from trader.database.availability import AvailabilityCol, model_to_availability_state
-from trader.database.config import build_tortoise_config
-from trader.database.kline import KlineCol
-from trader.database.task import TaskCol
+from tests.persistence_harness import initialized_database
+from trader.adapters.outbound.persistence.availability import AvailabilityCol, model_to_availability_state
+from trader.adapters.outbound.persistence.kline import KlineCol
+from trader.adapters.outbound.persistence.task import TaskCol
 from trader.utils.kline import Kline
 from trader.utils.task_state import TaskState, TaskStateType
 
@@ -28,12 +26,8 @@ class _Log:
 
 
 async def _with_db(fn):
-    await Tortoise.init(config=build_tortoise_config("sqlite://:memory:"))
-    await Tortoise.generate_schemas()
-    try:
+    async with initialized_database():
         await fn()
-    finally:
-        await Tortoise.close_connections()
 
 
 def _kline(open_time: int, close: float = 100.0) -> Kline:
@@ -139,7 +133,7 @@ def test_model_to_task_state_tolerates_rows_without_error_message_field():
         },
     )()
 
-    from trader.database.task import model_to_task_state
+    from trader.adapters.outbound.persistence.task import model_to_task_state
 
     state = model_to_task_state(row)
 
@@ -169,7 +163,7 @@ def test_task_repository_upsert_avoids_partial_model_save(monkeypatch):
         async def update_or_create(cls, **_kwargs):
             raise AssertionError("update_or_create would save partial models")
 
-    monkeypatch.setattr("trader.database.task.TaskStateModel", _Model)
+    monkeypatch.setattr("trader.adapters.outbound.persistence.task.TaskStateModel", _Model)
     state = TaskState(10, "partial-safe", datetime(2026, 1, 5))
 
     assert asyncio.run(TaskCol(_Log()).add_tasks([state])) == 1
@@ -202,7 +196,7 @@ def test_task_repository_retries_without_error_message_for_legacy_schema(monkeyp
 
     state = TaskState(11, "legacy-schema", datetime(2026, 1, 6), error_message="startup failed")
     state.state = TaskStateType.FAILED
-    monkeypatch.setattr("trader.database.task.TaskStateModel", _Model)
+    monkeypatch.setattr("trader.adapters.outbound.persistence.task.TaskStateModel", _Model)
 
     assert asyncio.run(TaskCol(_Log()).add_tasks([state])) == 1
     assert calls[1] == (

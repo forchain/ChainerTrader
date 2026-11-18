@@ -3,9 +3,9 @@ from __future__ import annotations
 import subprocess
 import sys
 
-from trader.database.config import TORTOISE_ORM
+from trader.adapters.outbound.persistence.config import TORTOISE_ORM
 
-CONFIG_PATH = "trader.database.config.TORTOISE_ORM"
+CONFIG_PATH = "trader.adapters.outbound.persistence.config.TORTOISE_ORM"
 
 
 def main() -> int:

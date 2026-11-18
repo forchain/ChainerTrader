@@ -140,7 +140,7 @@ def get_klines_from_db():
     """Load klines from MongoDB."""
     from pymongo import MongoClient  # noqa: E402
 
-    from trader.database.kline import KlineCol  # noqa: E402
+    from trader.adapters.outbound.persistence.kline import KlineCol  # noqa: E402
 
     db_uri = os.environ.get("TRADER_DB", "mongodb://localhost:27017/")
     db_name = os.environ.get("TRADER_DB_NAME", "trader")
