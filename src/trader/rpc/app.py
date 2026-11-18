@@ -26,6 +26,7 @@ from trader.auth.sessions import create_session_token, hash_session_token
 from trader.common import path
 from trader.common.common import NAME
 from trader.common.config import Config
+from trader.core.shared.domain import Symbol
 from trader.exchange.binance.exchange import BinanceExchange
 from trader.exchange.exchange_config import ExchangeConfig, MarginMode, parse_exchange_config
 from trader.exchange.user_credentials import (
@@ -44,7 +45,6 @@ from trader.rpc.models import (
     open_orders_for_symbol_from_exchange,
 )
 from trader.rpc.rpc_app import RpcApp
-from trader.utils.symbol_interval import Symbol
 
 
 @asynccontextmanager

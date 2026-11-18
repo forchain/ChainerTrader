@@ -1,7 +1,7 @@
 from datetime import timedelta
 from typing import Any
 
-from trader.utils.operate import Operate, parse_opts
+from trader.core.shared.domain import Operate, parse_opts
 
 
 class TraderResult:

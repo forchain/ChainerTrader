@@ -3,9 +3,9 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
+from trader.core.shared.domain import Symbol
 from trader.exchange.balance import Balance
 from trader.rpc.task_state_payload import public_task_state_dict
-from trader.utils.symbol_interval import Symbol
 from trader.utils.task_state import TaskStateType
 
 if TYPE_CHECKING:

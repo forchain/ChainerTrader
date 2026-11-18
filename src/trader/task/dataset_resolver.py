@@ -8,9 +8,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Awaitable, Callable
 
+from trader.core.shared.domain import Kline, SymbolInterval, get_time_duration
 from trader.task.update_klines_task import download_range, download_range_backward
-from trader.utils.kline import Kline
-from trader.utils.symbol_interval import SymbolInterval, get_time_duration
 
 RangeDownloader = Callable[..., Awaitable[bool]]
 

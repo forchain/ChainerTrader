@@ -1,6 +1,7 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+from trader.core.shared.domain import Kline
 from trader.tools.live_signal_reconciliation import (
     ExecutionAudit,
     ReplayOperation,
@@ -10,7 +11,6 @@ from trader.tools.live_signal_reconciliation import (
     summarize_execution_audit,
     validate_market_data,
 )
-from trader.utils.kline import Kline
 
 TZ = ZoneInfo("Asia/Shanghai")
 

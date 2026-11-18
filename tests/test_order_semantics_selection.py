@@ -1,12 +1,12 @@
 import pytest
 
+from trader.core.shared.domain import Operate, OperateType
 from trader.execution import ExecutionSide, OrderIntentType, ProtectionIntentType
 from trader.execution.order_semantics import (
     OrderSemanticsError,
     select_order_semantics,
     validate_protection_prices,
 )
-from trader.utils.operate import Operate, OperateType
 
 
 def _op(otype, price=100.0):

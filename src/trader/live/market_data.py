@@ -4,8 +4,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
-from trader.utils.kline import Kline
-from trader.utils.symbol_interval import Interval, get_time_duration
+from trader.core.shared.domain import Interval, Kline, get_time_duration
 
 DEFAULT_BACKFILL_LIMIT = 500
 

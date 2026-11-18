@@ -1,26 +1,35 @@
-import json
 import inspect
+import json
 import time
-from datetime import datetime
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from trader.auth.context import current_user
+from trader.common.message import new_add_tasks_msg
+from trader.core.shared.domain import Interval, Operate, OperateType, SymbolInterval
+from trader.live.dashboard import (
+    build_risk_overlay_events,
+    build_signal_marker_event,
+    kline_to_chart_candle,
+    notification_event,
+    strategy_execution_event,
+)
+from trader.live.monitor import (
+    build_initial_snapshot,
+    build_snapshot_overlays,
+    list_live_strategy_summaries,
+    parameter_fingerprint,
+    parameter_summary,
+    serialize_dashboard_event,
+)
 from trader.rpc.api.tasks import _enforce_current_user_ownership, _preflight_single_running_task_per_user, _preflight_user_live_tasks
+from trader.strategy.trader_result import TraderResult
 from trader.task.persisted_live_config_migration import sanitize_public_task_config_json
 from trader.task.task_config import apply_persisted_task_runtime_metadata, parse_task_config
-from trader.live.dashboard import build_risk_overlay_events, build_signal_marker_event, notification_event, strategy_execution_event
-from trader.live.dashboard import kline_to_chart_candle
-from trader.live.monitor import build_initial_snapshot, list_live_strategy_summaries, serialize_dashboard_event
-from trader.common.message import new_add_tasks_msg
-from trader.live.monitor import build_snapshot_overlays, parameter_fingerprint, parameter_summary
 from trader.task.task_type import TaskType
-from trader.strategy.trader_result import TraderResult
-from trader.utils.operate import Operate, OperateType
-from trader.utils.symbol_interval import Interval, SymbolInterval
 from trader.utils.task_state import TaskStateType
 
 router = APIRouter()

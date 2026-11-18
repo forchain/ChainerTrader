@@ -7,7 +7,7 @@ from tests.persistence_harness import initialized_database
 from trader.adapters.outbound.persistence.availability import AvailabilityCol, model_to_availability_state
 from trader.adapters.outbound.persistence.kline import KlineCol
 from trader.adapters.outbound.persistence.task import TaskCol
-from trader.utils.kline import Kline
+from trader.core.shared.domain import Kline
 from trader.utils.task_state import TaskState, TaskStateType
 
 

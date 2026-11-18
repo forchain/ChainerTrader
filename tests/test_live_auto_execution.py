@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from trader.core.shared.domain import Interval, Kline, Operate, OperateType, SymbolInterval
 from trader.live.auto_execution import (
     AUTO_EXECUTION_EVENT_TYPE,
     AutoExecutionRouter,
@@ -13,9 +14,6 @@ from trader.live.auto_execution import (
 from trader.live.monitor import build_initial_snapshot
 from trader.task.task_config import TaskConfig
 from trader.task.task_type import TaskType
-from trader.utils.kline import Kline
-from trader.utils.operate import Operate, OperateType
-from trader.utils.symbol_interval import Interval, SymbolInterval
 
 BASE = 1_714_281_600
 

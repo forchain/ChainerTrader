@@ -11,6 +11,7 @@ from trader.common import path
 from trader.common.config import Config
 from trader.common.logger import Logger
 from trader.common.message import new_stat_msg
+from trader.core.shared.domain import Interval, SymbolInterval, get_time_duration
 from trader.exchange.binance.csvdata import BinanceCSVData
 from trader.exchange.binance.data import BinanceData
 from trader.exchange.binance.exchange import BinanceExchange
@@ -21,7 +22,6 @@ from trader.strategy.trader_result import TraderResult, parse_trader_result
 from trader.task.base_task import BaseTask
 from trader.task.dataset_resolver import DatasetResolver
 from trader.task.task_config import TaskConfig
-from trader.utils.symbol_interval import Interval, SymbolInterval, get_time_duration
 
 
 @dataclass(frozen=True)

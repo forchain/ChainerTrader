@@ -5,6 +5,7 @@ from enum import Enum
 from math import isfinite
 from typing import Any
 
+from trader.core.shared.domain import OperateType
 from trader.execution.gateways import BinanceLiveExecutionGateway
 from trader.execution.models import (
     ExecutionEvent,
@@ -19,7 +20,6 @@ from trader.execution.order_semantics import OrderSemanticsError, select_order_s
 from trader.execution.state import ExecutionStateRecord
 from trader.live.dashboard import DashboardEvent
 from trader.task.live_startup_self_check import task_requires_short_capability
-from trader.utils.operate import OperateType
 
 MANUAL_NOTIFY_MODE = "manual_notify"
 AUTO_TRADE_MODE = "auto_trade"

@@ -4,8 +4,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+from trader.core.shared.domain import Kline
 from trader.live.market_data import KlineUpdate
-from trader.utils.kline import Kline
 
 
 @dataclass(frozen=True)
@@ -29,7 +29,7 @@ def _op_attr(op, name, default=None):
         if name == "otype":
             val = op.get("otype") or op.get("type")
             if isinstance(val, str):
-                from trader.utils.operate import OperateType
+                from trader.core.shared.domain import OperateType
                 try:
                     return OperateType[val]
                 except KeyError:

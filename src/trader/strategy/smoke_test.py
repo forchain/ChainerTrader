@@ -1,6 +1,7 @@
 
+from trader.core.shared.domain import OperateType
 from trader.strategy.base_strategy import BaseStrategy
-from trader.utils.operate import OperateType
+
 
 class SmokeTestStrategy(BaseStrategy):
     params = (
@@ -51,7 +52,7 @@ class SmokeTestStrategy(BaseStrategy):
 
     def buy_signal(self, reason):
         if self.params.live_operation_sink:
-            from trader.utils.operate import Operate
+            from trader.core.shared.domain import Operate
             op = Operate(OperateType.BUY, self.datas[0].datetime.datetime(0).timestamp(), self.datas[0].close[0])
             op.reason = reason
             # Set stop loss and take profit to trigger advanced order logic
@@ -61,14 +62,14 @@ class SmokeTestStrategy(BaseStrategy):
 
     def sell_signal(self, reason):
         if self.params.live_operation_sink:
-            from trader.utils.operate import Operate
+            from trader.core.shared.domain import Operate
             op = Operate(OperateType.SELL, self.datas[0].datetime.datetime(0).timestamp(), self.datas[0].close[0])
             op.reason = reason
             self.params.live_operation_sink(op)
 
     def short_signal(self, reason):
         if self.params.live_operation_sink:
-            from trader.utils.operate import Operate
+            from trader.core.shared.domain import Operate
             op = Operate(OperateType.SHORT, self.datas[0].datetime.datetime(0).timestamp(), self.datas[0].close[0])
             op.reason = reason
             # Set stop loss and take profit for short
@@ -78,7 +79,7 @@ class SmokeTestStrategy(BaseStrategy):
 
     def close_signal(self, reason):
         if self.params.live_operation_sink:
-            from trader.utils.operate import Operate
+            from trader.core.shared.domain import Operate
             op = Operate(OperateType.CLOSE, self.datas[0].datetime.datetime(0).timestamp(), self.datas[0].close[0])
             op.reason = reason
             self.params.live_operation_sink(op)

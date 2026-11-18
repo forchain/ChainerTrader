@@ -8,6 +8,7 @@ from typing import Any, Callable
 from trader.adapters.outbound.persistence.manager import DatabaseManager
 from trader.common.config import Config
 from trader.common.logger import Logger, default
+from trader.core.shared.domain import Operate, OperateType
 from trader.exchange.binance.exchange import BinanceExchange
 from trader.live.dashboard import (
     DashboardEvent,
@@ -21,7 +22,6 @@ from trader.live.dashboard import (
 )
 from trader.live.market_data import BackfillPlan, BackfillRequestKind, KlineUpdate, KlineUpdateBuffer, plan_initial_backfill
 from trader.task.task_config import TaskConfig
-from trader.utils.operate import Operate, OperateType
 
 StrategyRunner = Callable[[list], Any]
 NotificationHandler = Callable[[Any], list[Any]]

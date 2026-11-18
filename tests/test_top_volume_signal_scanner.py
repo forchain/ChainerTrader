@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
+from trader.core.shared.domain import Interval, Kline
 from trader.scanner.top_volume_signal_scanner import (
     DEFAULT_SYMBOL_WHITELIST,
     STABLECOIN_BASE_ASSETS,
@@ -22,13 +23,11 @@ from trader.scanner.top_volume_signal_scanner import (
     run_strategy_triggered_signals,
     scan_market,
     scan_market_report,
-    select_whitelist_usdt_symbols,
     select_top_usdt_symbols,
+    select_whitelist_usdt_symbols,
 )
 from trader.strategy.base_strategy import BaseStrategy
 from trader.task.task_type import TaskType
-from trader.utils.kline import Kline
-from trader.utils.symbol_interval import Interval
 
 
 def test_select_top_usdt_symbols_filters_stablecoins_and_limits_to_top_n():

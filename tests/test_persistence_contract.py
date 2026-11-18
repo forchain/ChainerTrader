@@ -16,7 +16,7 @@ from tests.persistence_harness import (
 )
 from trader.adapters.outbound.persistence.kline import KlineCol
 from trader.adapters.outbound.persistence.task import TaskCol
-from trader.utils.kline import Kline
+from trader.core.shared.domain import Kline
 from trader.utils.task_state import TaskState, TaskStateType
 
 ADAPTERS = ("tortoise", "in_memory")

@@ -8,12 +8,12 @@ import pytest
 from trader.common.config import Config, new_and_env
 from trader.common.logger import Logger
 from trader.common.path import GetConfigsDir
+from trader.core.shared.domain import Interval, SymbolInterval
 from trader.exchange.exchange_config import ExchangeConfig, parse_exchange_config
 from trader.exchange.exchange_type import parse_ex_type
 from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig, get_symbols, parse_task_config
 from trader.task.task_type import TaskType
-from trader.utils.symbol_interval import Interval, SymbolInterval
 
 
 def test_config():

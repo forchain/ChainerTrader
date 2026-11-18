@@ -1,3 +1,4 @@
+from trader.core.shared.domain import Kline, Operate, OperateType
 from trader.live.dashboard import (
     build_macd_divergence_event,
     build_risk_overlay_events,
@@ -8,8 +9,6 @@ from trader.live.dashboard import (
     strategy_execution_event,
 )
 from trader.live.market_data import KlineUpdate
-from trader.utils.kline import Kline
-from trader.utils.operate import Operate, OperateType
 
 BASE = 1_714_281_600
 

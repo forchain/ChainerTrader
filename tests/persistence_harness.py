@@ -12,7 +12,7 @@ from tortoise import Tortoise
 
 from trader.adapters.outbound.persistence.config import build_tortoise_config
 from trader.adapters.outbound.persistence.kline import DEFAULT_EXCHANGE, split_symbol_interval
-from trader.utils.kline import Kline
+from trader.core.shared.domain import Kline
 from trader.utils.task_state import TaskState, parse_task_state
 
 KlineKey = tuple[str, str, str, int]

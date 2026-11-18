@@ -4,11 +4,10 @@ import backtrader as bt
 
 from trader.common.config import Config
 from trader.common.logger import Logger
+from trader.core.shared.domain import Kline, Operate, OperateType
 from trader.live.backtrader_runtime import BacktraderLiveRunner
 from trader.strategy.macd_triple_divergence import MacdTripleDivergenceStrategy
 from trader.strategy.node import build_strategy_kwargs
-from trader.utils.kline import Kline
-from trader.utils.operate import Operate, OperateType
 
 BASE = 1_714_281_600
 

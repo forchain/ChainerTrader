@@ -8,6 +8,7 @@ from trader.adapters.outbound.persistence.manager import DatabaseManager
 from trader.common.config import Config
 from trader.common.logger import Logger
 from trader.common.message import new_stat_msg
+from trader.core.shared.domain import OperateType
 from trader.exchange.binance.exchange import BinanceExchange
 from trader.live.auto_execution import AutoExecutionRouter, execution_outcome_event
 from trader.live.backtrader_runtime import BacktraderLiveRunner
@@ -34,7 +35,6 @@ from trader.strategy.strategy import parse_strategies
 from trader.strategy.trader_result import TraderResult
 from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig
-from trader.utils.operate import OperateType
 
 DOWLOAD_SPACE_TIME = 5
 REALTIME_STREAM_QUEUE_TIMEOUT_SECONDS = 1.0

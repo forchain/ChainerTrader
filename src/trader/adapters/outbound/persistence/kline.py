@@ -4,7 +4,7 @@ from logging import Logger
 from typing import Any
 
 from trader.adapters.outbound.persistence.models import KlineModel
-from trader.utils.kline import Kline
+from trader.core.shared.domain import Kline
 
 DEFAULT_EXCHANGE = "BINANCE"
 

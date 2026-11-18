@@ -4,12 +4,11 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from trader.common.config import Config
+from trader.core.shared.domain import Interval, Kline, SymbolInterval
 from trader.task.dataset_resolver import DatasetResolver
 from trader.task.optimization_report import write_optimization_artifacts
 from trader.task.task_config import parse_task_config
 from trader.task.task_manager import TaskManager
-from trader.utils.kline import Kline
-from trader.utils.symbol_interval import Interval, SymbolInterval
 
 
 class DummyLog:
