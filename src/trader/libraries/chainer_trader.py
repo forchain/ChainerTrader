@@ -27,6 +27,8 @@ from typing import Optional
 
 import backtrader as bt
 
+from trader.core.strategy.domain import chainer_math
+
 
 class ChainerTraderLib:
     """
@@ -53,16 +55,7 @@ class ChainerTraderLib:
         - String "SHORT" -> SHORT
         - Others -> LONG
         """
-        raw = (direction or "").strip()
-        upper = raw.upper()
-        try:
-            num = float(raw)
-        except ValueError:
-            num = None
-        
-        if num is not None:
-            return "LONG" if num > 0 else "SHORT"
-        return "SHORT" if upper == "SHORT" else "LONG"
+        return chainer_math.normalize_direction(direction)
     
     def key_levels_by_bar_index(self, key_bar_index: int) -> tuple[bool, int, float, float]:
         """
@@ -206,32 +199,7 @@ class ChainerTraderLib:
         - LONG: entry + (n - 1) * risk
         - SHORT: entry - (n - 1) * risk
         """
-        dir_norm = ChainerTraderLib.normalize_direction(direction)
-        
-        if any(math.isnan(v) for v in (entry_price, initial_stop, close)):
-            return None
-        
-        if dir_norm == "LONG":
-            risk = entry_price - initial_stop
-        else:
-            risk = initial_stop - entry_price
-        
-        if risk <= 0:
-            return None
-        
-        if dir_norm == "LONG":
-            profit = close - entry_price
-        else:
-            profit = entry_price - close
-        
-        n_float = profit / risk
-        n = math.floor(n_float + 1e-10)
-        if n <= 0:
-            return None
-        
-        if dir_norm == "LONG":
-            return entry_price + (n - 1) * risk
-        return entry_price - (n - 1) * risk
+        return chainer_math.breakeven_price(direction, entry_price, initial_stop, close)
     
     @staticmethod
     def risk_reward_price(
@@ -243,22 +211,7 @@ class ChainerTraderLib:
         """
         Calculate risk/reward target price (matches Pine Script riskRewardPrice).
         """
-        dir_norm = ChainerTraderLib.normalize_direction(direction)
-        
-        if risk_reward_ratio <= 0:
-            return None
-        
-        if dir_norm == "LONG":
-            risk = entry_price - stop_price
-            if risk <= 0:
-                return None
-            return entry_price + risk_reward_ratio * risk
-        
-        # SHORT
-        risk = stop_price - entry_price
-        if risk <= 0:
-            return None
-        return entry_price - risk_reward_ratio * risk
+        return chainer_math.risk_reward_price(direction, entry_price, stop_price, risk_reward_ratio)
     
     @staticmethod
     def stop_hit(
@@ -272,12 +225,5 @@ class ChainerTraderLib:
         
         Uses low/high for real-time checking (not close).
         """
-        if stop_price_val is None or math.isnan(stop_price_val):
-            return False
-        
-        dir_norm = ChainerTraderLib.normalize_direction(direction)
-        
-        if dir_norm == "LONG":
-            return low <= stop_price_val
-        return high >= stop_price_val
+        return chainer_math.stop_hit(direction, stop_price_val, low, high)
 
