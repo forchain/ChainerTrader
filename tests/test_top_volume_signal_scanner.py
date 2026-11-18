@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
+from trader.adapters.outbound.backtrader.base_strategy import BaseStrategy
 from trader.core.shared.domain import Interval, Kline
 from trader.scanner.top_volume_signal_scanner import (
     DEFAULT_SYMBOL_WHITELIST,
@@ -26,7 +27,6 @@ from trader.scanner.top_volume_signal_scanner import (
     select_top_usdt_symbols,
     select_whitelist_usdt_symbols,
 )
-from trader.strategy.base_strategy import BaseStrategy
 from trader.task.task_type import TaskType
 
 

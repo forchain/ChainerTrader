@@ -265,12 +265,12 @@ def _default_taskset_file_name(tasks: list[dict]) -> str:
 
 def _strategy_param_defaults(strategy_name: str) -> dict:
     try:
-        module = importlib.import_module(f"trader.strategy.{strategy_name}")
+        module = importlib.import_module(f"trader.adapters.outbound.backtrader.{strategy_name}")
     except Exception:
         return {}
 
     try:
-        from trader.strategy.base_strategy import BaseStrategy
+        from trader.adapters.outbound.backtrader.base_strategy import BaseStrategy
     except Exception:
         BaseStrategy = None
 

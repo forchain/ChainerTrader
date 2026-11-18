@@ -2,8 +2,8 @@ from types import SimpleNamespace
 
 from backtrader import num2date
 
+from trader.adapters.outbound.backtrader.feed import LiveKlineDataFeed
 from trader.core.shared.domain import Kline
-from trader.live.feed import LiveKlineDataFeed
 from trader.live.market_data import normalize_binance_kline_message
 
 BASE = 1_714_281_600

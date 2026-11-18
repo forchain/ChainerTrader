@@ -240,7 +240,7 @@ def save_trend_a_csv(path, klines, series):
 
 def run_trend_a_manual(main=False):
     """Test TrendA indicator with BTC-USDT 1h data."""
-    from trader.exchange.binance.data import BinanceData  # noqa: E402
+    from trader.adapters.outbound.backtrader.data import BinanceData  # noqa: E402
 
     klines = get_klines_from_db()
 

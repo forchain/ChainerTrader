@@ -21,9 +21,9 @@ from dotenv import load_dotenv
 from matplotlib.ticker import ScalarFormatter
 from tortoise import Tortoise
 
+from trader.adapters.outbound.backtrader.data import BinanceData
 from trader.adapters.outbound.persistence.config import build_tortoise_config
 from trader.adapters.outbound.persistence.kline import KlineCol
-from trader.exchange.binance.data import BinanceData
 from trader.indicators.super_trend import SuperTrend
 
 load_dotenv()
