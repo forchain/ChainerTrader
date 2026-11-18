@@ -26,20 +26,7 @@ def _ensure_pymongo_stub():
     sys.modules["pymongo.synchronous.collection"] = collection_module
 
 
-def _ensure_binance_exchange_stub():
-    module_name = "trader.adapters.outbound.binance.exchange"
-    if module_name in sys.modules:
-        return
-
-    binance_module = ModuleType(module_name)
-    binance_module.BinanceExchange = object
-    binance_module.KLINE_LIMIT_MAX = 1000
-    binance_module.get_oldest_time = lambda: None
-    sys.modules[module_name] = binance_module
-
-
 _ensure_pymongo_stub()
-_ensure_binance_exchange_stub()
 
 from trader.core.shared.domain import Interval, Kline, SymbolInterval  # noqa: E402
 from trader.task.dataset_resolver import DatasetResolver  # noqa: E402

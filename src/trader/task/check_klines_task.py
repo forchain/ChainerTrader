@@ -4,7 +4,7 @@ from trader.adapters.outbound.binance.exchange import BinanceExchange
 from trader.adapters.outbound.persistence.manager import DatabaseManager
 from trader.common.config import Config
 from trader.common.logger import Logger
-from trader.core.shared.domain import add_time_duration
+from trader.core.marketdata.use_cases.check_klines import check_kline_continuity
 from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig
 
@@ -28,35 +28,11 @@ class CheckKlinesTask(BaseTask):
         await super().start(queue)
 
         self.log.info(f"Start {self.name()}")
-
-        first_kl = await self.db_manager.kline.get_first_kline(self.tcfg.symbol_interval.name())
-        if first_kl is None:
-            self.log.error(f"{self.name()} can't find first kline")
-            return
-
-        latest_kl = await self.db_manager.kline.get_latest_kline(self.tcfg.symbol_interval.name())
-        if latest_kl is None:
-            self.log.error(f"{self.name()} can't find latest kline")
-            return
-        if first_kl.key() == latest_kl.key():
-            self.log.error(f"{self.name()} no need check")
-            return
-
-        count = 0
-        total = 0
-        next_time = first_kl.open_time
-        while True:
-            if self.quit.is_set():
-                break
-            total += 1
-            next_time = add_time_duration(next_time, self.tcfg.symbol_interval.interval, 1)
-            if next_time < latest_kl.open_time:
-                kl = await self.db_manager.kline.get_kline(self.tcfg.symbol_interval.name(), next_time)
-                if kl is None:
-                    count += 1
-                    self.log.warning(f"{self.name()} no kline: open_time={next_time}")
-            else:
-                self.log.info(f"{self.name()} is completed")
-                break
-
+        count, total = await check_kline_continuity(
+            self.db_manager.kline,
+            self.tcfg.symbol_interval,
+            self.quit,
+            self.log,
+            self.name(),
+        )
         self.log.info(f"{self.name()} process result:{count}/{total}")

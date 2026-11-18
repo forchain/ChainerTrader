@@ -1,11 +1,12 @@
-import csv
 import os
 from asyncio import Queue
+from pathlib import Path
 
 from trader.adapters.outbound.binance.exchange import BinanceExchange
+from trader.adapters.outbound.files.dataset import CsvDatasetFileStore
 from trader.adapters.outbound.persistence.manager import DatabaseManager
 from trader.common import path
-from trader.core.shared.domain import Kline, add_time_duration
+from trader.core.marketdata.use_cases.import_csv import import_csv_klines, parse_csv_kline_rows, validate_kline_interval
 from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig
 
@@ -31,63 +32,21 @@ class ImportCSVTask(BaseTask):
 
         await super().start(queue)
 
-        if not self.tcfg.csv:
-            self.log.error(f"{self.name()} no data_file")
-            return
-
-        kls = []
         data_file = self.tcfg.csv
         if not os.path.isabs(self.tcfg.csv):
             data_file = os.path.join(path.GetDataDir(), self.tcfg.csv)
 
-        with open(data_file, mode="r", newline="", encoding="utf-8") as file:
-            reader = csv.reader(file)
-            next(reader)
-            for row in reader:
-                if len(row) != 12:
-                    continue
-                (
-                    open_time,
-                    openp,
-                    high,
-                    low,
-                    close,
-                    volume,
-                    close_time,
-                    quote_volume,
-                    count,
-                    taker_buy_volume,
-                    taker_buy_quote_volume,
-                    ignore,
-                ) = row
-                kls.append(
-                    Kline(
-                        int(int(open_time) / 1000),
-                        float(openp),
-                        float(high),
-                        float(low),
-                        float(close),
-                        int(int(close_time) / 1000),
-                        float(volume),
-                        float(quote_volume),
-                        int(count),
-                        float(taker_buy_volume),
-                        float(taker_buy_quote_volume),
-                        float(ignore),
-                    )
-                )
+        kls = parse_csv_kline_rows(CsvDatasetFileStore().read_rows(Path(data_file)))
 
         if len(kls) <= 0:
             self.log.error(f"No kline in {data_file}")
             return
         self.log.info(f"Read klines ({len(kls)}) from {data_file}")
-        if len(kls) >= 2:
-            next_open_time = add_time_duration(kls[0].open_time, self.tcfg.symbol_interval.interval, 1)
-            if next_open_time != kls[1].open_time:
-                self.log.error(f"{self.name()} kline interval is not {self.tcfg.symbol_interval.interval.name}")
-                return
+        if not validate_kline_interval(kls, self.tcfg.symbol_interval):
+            self.log.error(f"{self.name()} kline interval is not {self.tcfg.symbol_interval.interval.name}")
+            return
 
-        ret = await self.db_manager.kline.add_klines(self.tcfg.symbol_interval.name(), kls, source="csv")
+        ret = await import_csv_klines(self.db_manager.kline, self.tcfg.symbol_interval.name(), kls)
         if ret != len(kls):
             self.log.warning(f"{self.name()} add klines to DB: {ret} != {len(kls)}")
         else:
