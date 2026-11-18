@@ -18,6 +18,9 @@ from trader.common.message import Message, new_add_tasks_msg, new_exit_msg
 from trader.core.exchange.domain import ExchangeType, MarginMode, parse_exchange_config
 from trader.core.identity.exceptions import PasswordPolicyError
 from trader.core.identity.use_cases import BootstrapAdministrator
+from trader.core.task.interfaces import TaskEventPublisher
+from trader.core.task.use_cases import PlanStartupTasks, RecoverRunningTasks
+from trader.live.monitor import LiveEventBus
 from trader.notify.notify_manager import NotifyManager
 from trader.statistics.statistics import Statistics
 from trader.task.live_startup_self_check import evaluate_live_startup_self_check, infer_required_margin_mode
@@ -25,16 +28,17 @@ from trader.task.persisted_live_config_migration import (
     assert_persisted_task_config_json_is_migrated,
     migrate_persisted_live_task_configs,
 )
-from trader.task.task_config import TaskConfig, apply_persisted_task_runtime_metadata, parse_task_config
+from trader.task.task_config import TaskConfig, parse_task_config
 from trader.task.task_manager import TaskManager
 
 RECOVERY_TASK_CONCURRENCY = 10
 
 
 class App:
-    def __init__(self, cfg: Config = default()):
+    def __init__(self, cfg: Config = default(), event_publisher: TaskEventPublisher | None = None):
         self.cfg = cfg
         self.logger = Logger(cfg)
+        self.live_event_bus = event_publisher or LiveEventBus()
 
         self.logger.info(f"Init App {self.name()}")
 
@@ -59,7 +63,13 @@ class App:
         self.notify_mgr = NotifyManager(cfg, self.logger)
 
         self.stat = Statistics(self.cfg, self.log(), self.db_manager)
-        self.task_manager = TaskManager(self.cfg, self.logger, self.db_manager, self.exchange)
+        self.task_manager = TaskManager(
+            self.cfg,
+            self.logger,
+            self.db_manager,
+            self.exchange,
+            event_publisher=self.live_event_bus,
+        )
 
         self.startTime = datetime.now()
         self.queue = None
@@ -200,50 +210,14 @@ class App:
         return msgs
 
     async def _load_running_task_configs(self) -> list[TaskConfig]:
-        if not self.db_manager or not getattr(self.db_manager, "task", None):
-            return []
-        task_repo = self.db_manager.task
-        if not hasattr(task_repo, "get_all_tasks"):
-            return []
-
-        states = await task_repo.get_all_tasks()
-        taskcs = []
-        recovery_errors: list[RuntimeError] = []
-        for state in states:
-            if getattr(getattr(state, "state", None), "name", None) != "RUNNING":
-                continue
-            saved_config = {}
-            try:
-                config_json = getattr(state, "config_json", None)
-                if not config_json:
-                    raise RuntimeError(f"persisted running task({getattr(state, 'id', 'unknown')}) is missing config_json")
-                saved_config = self._first_task_config(config_json)
-                assert_persisted_task_config_json_is_migrated(config_json)
-                recovered = parse_task_config(config_json)
-            except Exception as exc:
-                task_kind = "live task" if self._is_persisted_live_task_config(saved_config) else "running task"
-                if str(exc).startswith("persisted running task("):
-                    message = str(exc)
-                else:
-                    message = f"persisted {task_kind}({getattr(state, 'id', 'unknown')}) recovery failed: {exc}"
-                error = RuntimeError(message)
-                recovery_errors.append(error)
-                self.logger.error(message)
-                continue
-            for taskc in recovered:
-                taskc.id = int(getattr(state, "id", taskc.id) or taskc.id)
-                if getattr(state, "user_id", None) is not None:
-                    taskc.user_id = state.user_id
-                if saved_config.get("run_id"):
-                    taskc.run_id = saved_config["run_id"]
-                apply_persisted_task_runtime_metadata(taskc, saved_config)
-            taskcs.extend(recovered)
-
-        if taskcs:
-            self.logger.info(f"Recovered {len(taskcs)} running task config(s) from persisted state")
-        elif recovery_errors:
-            raise recovery_errors[0]
-        return taskcs
+        task_repo = getattr(self.db_manager, "task", None)
+        planner = PlanStartupTasks(
+            task_repo,
+            config_parser=parse_task_config,
+            migration_validator=assert_persisted_task_config_json_is_migrated,
+            log=self.logger,
+        )
+        return await planner.load_running_task_configs()
 
     async def _running_task_configs_for_recovery(self) -> list[TaskConfig]:
         if self._running_task_configs_to_recover is None:
@@ -284,16 +258,10 @@ class App:
             return
 
         taskcs = await self._running_task_configs_for_recovery()
-        if not taskcs:
-            return
-
-        semaphore = asyncio.Semaphore(RECOVERY_TASK_CONCURRENCY)
-
-        async def _recover(taskc: TaskConfig):
-            async with semaphore:
-                await self.task_manager.recover_task(taskc, self.queue)
-
-        await asyncio.gather(*[asyncio.create_task(_recover(taskc)) for taskc in taskcs])
+        await RecoverRunningTasks(max_concurrency=RECOVERY_TASK_CONCURRENCY).execute(
+            taskcs,
+            lambda taskc: self.task_manager.recover_task(taskc, self.queue),
+        )
 
     @staticmethod
     def _first_task_config(config_json: str) -> dict:

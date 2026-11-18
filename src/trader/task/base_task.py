@@ -120,11 +120,11 @@ class BaseTask:
         config_dict = canonicalize_persisted_task_config_dict(config_dict)
         return json.dumps([config_dict], indent=2, ensure_ascii=False)
 
-    def start(self, queue: Queue):
+    async def start(self, queue: Queue):
         self.start_time = datetime.now()
         self.log.info(f"Start {self.name()}")
         self.ts.state = TaskStateType.RUNNING
-        return self._persist_state()
+        await self._persist_state()
 
     def stop(self):
         if not self.ts.is_running():
@@ -146,22 +146,8 @@ class BaseTask:
     def close(self):
         self.quit.set()
 
-    def _persist_state(self):
+    async def _persist_state(self):
         task_store = getattr(self.db_manager, "task", None)
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-
         if task_store is None:
-            if loop is not None:
-                return asyncio.sleep(0)
             return
-
-        async def _save():
-            await task_store.add_tasks([self.ts])
-
-        if loop is None:
-            asyncio.run(_save())
-        else:
-            return loop.create_task(_save())
+        await task_store.add_tasks([self.ts])

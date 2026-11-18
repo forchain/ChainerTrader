@@ -158,6 +158,10 @@ async def _stop_running_tasks_for_user(request: Request, user) -> None:
     task_manager = getattr(rpc_app, "task_manager", None)
     if task_manager is None:
         return
+    stop_for_user = getattr(task_manager, "stop_running_tasks_for_user", None)
+    if callable(stop_for_user) and getattr(getattr(task_manager, "db_manager", None), "task", None) is not None:
+        await stop_for_user(user.id)
+        return
     # Single-user single-run policy: only stop current user's running tasks.
     task_states = await task_manager.get_all_task_state(user_id=user.id)
     running_ids = [

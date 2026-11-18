@@ -501,7 +501,7 @@ async def test_trader_task_realtime_publishes_dashboard_events_and_runtime_statu
 
     monkeypatch.setattr("trader.task.trader_task.BacktraderLiveRunner", OperationRunner)
     monkeypatch.setattr("trader.task.trader_task.GLOBAL_MARKET_STREAM_HUB", hub)
-    monkeypatch.setattr("trader.task.trader_task.GLOBAL_LIVE_EVENT_BUS", SimpleNamespace(publish=capture_event))
+    task.event_publisher = SimpleNamespace(publish=capture_event)
 
     await task.start_realtime(asyncio.Queue(), [NoopStrategy])
 
@@ -639,7 +639,7 @@ async def test_trader_task_realtime_publishes_warmup_operations_for_dashboard_wi
     queue = asyncio.Queue()
     monkeypatch.setattr("trader.task.trader_task.BacktraderLiveRunner", WarmupOperationRunner)
     monkeypatch.setattr("trader.task.trader_task.GLOBAL_MARKET_STREAM_HUB", hub)
-    monkeypatch.setattr("trader.task.trader_task.GLOBAL_LIVE_EVENT_BUS", SimpleNamespace(publish=capture_event))
+    task.event_publisher = SimpleNamespace(publish=capture_event)
 
     await task.start_realtime(queue, [NoopStrategy])
 

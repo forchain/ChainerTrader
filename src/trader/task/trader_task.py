@@ -12,6 +12,7 @@ from trader.common.logger import Logger
 from trader.common.message import new_stat_msg
 from trader.core.shared.domain import OperateType
 from trader.core.strategy.domain.node import build_strategy_kwargs
+from trader.core.task.interfaces import TaskEventPublisher
 from trader.live.auto_execution import AutoExecutionRouter, execution_outcome_event
 from trader.live.dashboard import (
     build_risk_overlay_events,
@@ -22,7 +23,6 @@ from trader.live.dashboard import (
     strategy_execution_event,
 )
 from trader.live.market_data import BackfillRequestKind, plan_initial_backfill
-from trader.live.monitor import GLOBAL_LIVE_EVENT_BUS
 from trader.live.stream import GLOBAL_MARKET_STREAM_HUB, MarketStreamKey
 from trader.notify.trade_notification import (
     MANUAL_NOTIFY_MODE,
@@ -70,8 +70,10 @@ class TraderTask(BaseTask):
         log: Logger,
         db_manager: DatabaseManager,
         exchange: BinanceExchange,
+        event_publisher: TaskEventPublisher | None = None,
     ):
         super().__init__(tcfg, cfg, log, db_manager, exchange)
+        self.event_publisher = event_publisher
         self._manual_cash = self._manual_starting_cash()
         self._manual_position = float(getattr(tcfg, "manual_start_position", 0.0) or 0.0)
         self._auto_execution_router = AutoExecutionRouter(
@@ -123,7 +125,8 @@ class TraderTask(BaseTask):
 
     async def start_realtime(self, queue: Queue, strategy):
         async def publish_event(event):
-            await GLOBAL_LIVE_EVENT_BUS.publish(event)
+            if self.event_publisher is not None:
+                await _maybe_await(self.event_publisher.publish(event))
 
         collection_name = self.tcfg.symbol_interval.name()
         key = MarketStreamKey(self.exchange.name(), self.tcfg.symbol_interval.symbol(), self.tcfg.symbol_interval.interval.value)

@@ -271,6 +271,24 @@ def collect_operates(results: list[Any], limit: int = 10) -> list[dict[str, Any]
     return operates
 
 
+SHORT_CAPABLE_MODES = frozenset({"SHORT_ONLY", "BOTH"})
+
+
+def task_requires_short_capability(task: Any) -> bool:
+    """Return True when a task's strategy parameters can open short positions."""
+    params = dict(getattr(task, "strategy_params", {}) or {})
+    mode = str(params.get("chainer_mode") or "LONG_ONLY").strip().upper()
+    return mode in SHORT_CAPABLE_MODES
+
+
+def task_state_name(cfg: Any) -> str:
+    symbol_interval = getattr(cfg, "symbol_interval", None)
+    symbol_name = symbol_interval.name() if symbol_interval is not None else ""
+    ttype = getattr(cfg, "ttype", None)
+    ttype_name = getattr(ttype, "name", str(ttype or ""))
+    return f"{getattr(cfg, 'id', 0)}.{ttype_name}.{symbol_name}"
+
+
 # Alias kept for callers that speak of the aggregate root rather than its snapshot.
 Task = TaskState
 

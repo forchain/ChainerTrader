@@ -88,7 +88,7 @@ def test_base_task_stop_without_db_manager_does_not_crash():
     )
     task = BaseTask(tcfg, cfg, Logger(cfg))
 
-    task.start(None)
+    asyncio.run(task.start(None))
     task.stop()
 
     assert task.ts.state.name == "DONE"
@@ -111,7 +111,7 @@ def test_base_task_start_persists_running_state_immediately():
     )
     task = BaseTask(tcfg, cfg, Logger(cfg), db_manager)
 
-    task.start(None)
+    asyncio.run(task.start(None))
 
     assert saved_batches
     assert saved_batches[0][0]["task_id"] == tcfg.id

@@ -1,3 +1,20 @@
+from trader.core.task.use_cases.cleanup import (
+    CancelTaskOpenOrders,
+    CleanupRunningTasksBeforeStart,
+    dedupe_symbols,
+    record_exchange_order_ids,
+    same_cleanup_account,
+    symbol_from_value,
+)
+from trader.core.task.use_cases.fund_reservation import (
+    PreflightLiveTaskFunds,
+    ReleaseTaskFunds,
+    RestoreRecoveredTaskBudget,
+    format_reservation_rejection_log,
+    reservation_capacity_snapshot,
+    set_task_runtime_budget,
+)
+from trader.core.task.use_cases.lifecycle import StopTask, StopUserRunningTasks, SubmitTasks
 from trader.core.task.use_cases.query_tasks import (
     GetTask,
     ListTasks,
@@ -5,5 +22,34 @@ from trader.core.task.use_cases.query_tasks import (
     TaskScope,
     paginate,
 )
+from trader.core.task.use_cases.recovery import (
+    PlanStartupTasks,
+    RecoverRunningTasks,
+    StartupExecutionPlan,
+)
 
-__all__ = ["GetTask", "ListTasks", "TaskPage", "TaskScope", "paginate"]
+__all__ = [
+    "CancelTaskOpenOrders",
+    "CleanupRunningTasksBeforeStart",
+    "GetTask",
+    "ListTasks",
+    "PlanStartupTasks",
+    "PreflightLiveTaskFunds",
+    "RecoverRunningTasks",
+    "ReleaseTaskFunds",
+    "RestoreRecoveredTaskBudget",
+    "StartupExecutionPlan",
+    "StopTask",
+    "StopUserRunningTasks",
+    "SubmitTasks",
+    "TaskPage",
+    "TaskScope",
+    "dedupe_symbols",
+    "format_reservation_rejection_log",
+    "paginate",
+    "record_exchange_order_ids",
+    "reservation_capacity_snapshot",
+    "same_cleanup_account",
+    "set_task_runtime_budget",
+    "symbol_from_value",
+]

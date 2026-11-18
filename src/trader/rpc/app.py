@@ -31,7 +31,7 @@ from trader.core.identity.use_cases import (
     ResetUserPassword,
 )
 from trader.core.shared.domain import Symbol
-from trader.live.monitor import GLOBAL_LIVE_EVENT_BUS
+from trader.live.monitor import LiveEventBus
 from trader.rpc.models import (
     AcctsInfo,
     get_accounts_info,
@@ -52,7 +52,7 @@ async def lifespan(app: FastAPI):
 
     rpc_app = RpcApp(cfg)
     app.state.app = rpc_app
-    app.state.live_event_bus = GLOBAL_LIVE_EVENT_BUS
+    app.state.live_event_bus = getattr(rpc_app, "live_event_bus", None) or LiveEventBus()
 
     await rpc_app.bootstrap_database_for_startup()
     await rpc_app.start_async()

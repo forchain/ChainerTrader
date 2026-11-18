@@ -261,6 +261,3 @@ class LiveEventBus:
             subscribers = list(self._subscribers.get(int(event.strategy_id), set()))
         for queue in subscribers:
             await queue.put(event)
-
-
-GLOBAL_LIVE_EVENT_BUS = LiveEventBus()

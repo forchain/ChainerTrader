@@ -16,10 +16,29 @@ from trader.core.task.domain import (
     parse_trader_result,
     rank_results,
     result_return_rate,
+    task_requires_short_capability,
+    task_state_name,
 )
-from trader.core.task.exceptions import TaskConfigError, TaskError, TaskNotFound, TaskOwnership
-from trader.core.task.interfaces import TaskQuery, TaskRepository
-from trader.core.task.use_cases import GetTask, ListTasks, TaskPage, TaskScope, paginate
+from trader.core.task.exceptions import FundReservationError, TaskConfigError, TaskError, TaskNotFound, TaskOwnership
+from trader.core.task.interfaces import FundReservationStore, TaskEventPublisher, TaskQuery, TaskRepository, TaskRunner
+from trader.core.task.use_cases import (
+    CancelTaskOpenOrders,
+    CleanupRunningTasksBeforeStart,
+    GetTask,
+    ListTasks,
+    PlanStartupTasks,
+    PreflightLiveTaskFunds,
+    RecoverRunningTasks,
+    ReleaseTaskFunds,
+    RestoreRecoveredTaskBudget,
+    StartupExecutionPlan,
+    StopTask,
+    StopUserRunningTasks,
+    SubmitTasks,
+    TaskPage,
+    TaskScope,
+    paginate,
+)
 
 
 def __getattr__(name: str):
@@ -31,17 +50,32 @@ def __getattr__(name: str):
 
 
 __all__ = [
+    "CancelTaskOpenOrders",
+    "CleanupRunningTasksBeforeStart",
+    "FundReservationError",
+    "FundReservationStore",
     "GetTask",
     "ListTasks",
+    "PlanStartupTasks",
+    "PreflightLiveTaskFunds",
+    "RecoverRunningTasks",
+    "ReleaseTaskFunds",
+    "RestoreRecoveredTaskBudget",
+    "StartupExecutionPlan",
+    "StopTask",
+    "StopUserRunningTasks",
+    "SubmitTasks",
     "Task",
     "TaskConfig",
     "TaskConfigError",
     "TaskError",
+    "TaskEventPublisher",
     "TaskNotFound",
     "TaskOwnership",
     "TaskPage",
     "TaskQuery",
     "TaskRepository",
+    "TaskRunner",
     "TaskScope",
     "TaskState",
     "TaskStateType",
@@ -58,4 +92,6 @@ __all__ = [
     "parse_trader_result",
     "rank_results",
     "result_return_rate",
+    "task_requires_short_capability",
+    "task_state_name",
 ]

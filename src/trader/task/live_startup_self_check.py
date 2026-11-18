@@ -4,25 +4,16 @@ from dataclasses import dataclass, field
 from typing import Any, Iterable
 
 from trader.core.exchange.domain import MarginMode
+from trader.core.task.domain import task_requires_short_capability
 from trader.strategy.strategy import parse_strategies
-
-SHORT_CAPABLE_MODES = {"SHORT_ONLY", "BOTH"}
-
-
-def _strategy_params(task: Any) -> dict[str, Any]:
-    return dict(getattr(task, "strategy_params", {}) or {})
 
 
 def _chainer_mode(task: Any) -> str:
-    params = _strategy_params(task)
+    params = dict(getattr(task, "strategy_params", {}) or {})
     raw = params.get("chainer_mode")
     if raw is None:
         return "LONG_ONLY"
     return str(raw).strip().upper()
-
-
-def task_requires_short_capability(task: Any) -> bool:
-    return _chainer_mode(task) in SHORT_CAPABLE_MODES
 
 
 def _is_live_trader_task(task: Any) -> bool:

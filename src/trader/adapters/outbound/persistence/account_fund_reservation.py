@@ -7,13 +7,11 @@ from logging import Logger
 from tortoise.transactions import in_transaction
 
 from trader.adapters.outbound.persistence.models import AccountFundReservationModel
+from trader.core.task.exceptions import FundReservationError
+from trader.core.task.interfaces import FundReservationStore
 
 ACTIVE = "active"
 RELEASED = "released"
-
-
-class FundReservationError(RuntimeError):
-    pass
 
 
 @dataclass(frozen=True)
@@ -53,7 +51,7 @@ def _row_to_reservation(row: AccountFundReservationModel) -> FundReservation:
     )
 
 
-class AccountFundReservationCol:
+class AccountFundReservationCol(FundReservationStore):
     def __init__(self, log: Logger):
         self.log = log
 
