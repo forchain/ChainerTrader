@@ -4,8 +4,8 @@ import backtrader as bt
 import pandas as pd
 import pytest
 
+from trader.adapters.outbound.backtrader.analyzers.backtest_report import BacktestReportAnalyzer
 from trader.adapters.outbound.backtrader.base_strategy import BaseStrategy
-from trader.analyzers.backtest_report import BacktestReportAnalyzer
 from trader.core.strategy.domain.lifecycle import KlineRef, TradeLifecycleEngine
 from trader.core.strategy.domain.risk import StrategyRiskEngine
 

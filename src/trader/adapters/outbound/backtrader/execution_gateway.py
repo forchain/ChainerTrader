@@ -56,37 +56,13 @@ class BacktraderExecutionGateway(ExecutionGateway):
         )
 
     def place_protection(self, intent: RiskIntent) -> ExecutionResult:
-        orders = []
-        close_side = "sell" if intent.side == ExecutionSide.LONG else "buy"
-        oco_order = None
-        if intent.stop_price is not None:
-            oco_order = getattr(self.strategy, close_side)(
-                size=intent.quantity,
-                exectype=getattr(getattr(bt, "Order", None), "Stop", "stop"),
-                price=float(intent.stop_price),
-                tradeid=intent.trade_id,
-                **{"chainer_role": "stop"},
-            )
-            orders.append(oco_order)
-        if intent.take_profit_price is not None:
-            orders.append(
-                getattr(self.strategy, close_side)(
-                    size=intent.quantity,
-                    exectype=getattr(getattr(bt, "Order", None), "Limit", "limit"),
-                    price=float(intent.take_profit_price),
-                    tradeid=intent.trade_id,
-                    oco=oco_order,
-                    **{"chainer_role": "take_profit"},
-                )
-            )
-        order_id = ",".join(str(getattr(order, "ref", "")) for order in orders if order is not None)
-        return self._protection_result(intent, order_id=order_id, event_type=ExecutionEventType.PROTECTION_ARMED)
+        return self._submit_protection(intent, event_type=ExecutionEventType.PROTECTION_ARMED)
 
     def replace_protection(self, intent: RiskIntent) -> ExecutionResult:
         order = intent.replacement_of_order_id
         if order is not None:
             self.strategy.cancel(order)
-        return self.place_protection(intent)
+        return self._submit_protection(intent, event_type=ExecutionEventType.PROTECTION_REPLACED)
 
     def close_position(self, intent: OrderIntent) -> ExecutionResult:
         order = self._submit_market(intent, opening=False)
@@ -113,6 +89,33 @@ class BacktraderExecutionGateway(ExecutionGateway):
 
     def reconcile(self, request: ReconcileRequest) -> ReconcileResult:
         return ReconcileResult(request=request)
+
+    def _submit_protection(self, intent: RiskIntent, *, event_type: ExecutionEventType) -> ExecutionResult:
+        orders = []
+        close_side = "sell" if intent.side == ExecutionSide.LONG else "buy"
+        oco_order = None
+        if intent.stop_price is not None:
+            oco_order = getattr(self.strategy, close_side)(
+                size=intent.quantity,
+                exectype=getattr(getattr(bt, "Order", None), "Stop", "stop"),
+                price=float(intent.stop_price),
+                tradeid=intent.trade_id,
+                **{"chainer_role": "stop"},
+            )
+            orders.append(oco_order)
+        if intent.take_profit_price is not None:
+            orders.append(
+                getattr(self.strategy, close_side)(
+                    size=intent.quantity,
+                    exectype=getattr(getattr(bt, "Order", None), "Limit", "limit"),
+                    price=float(intent.take_profit_price),
+                    tradeid=intent.trade_id,
+                    oco=oco_order,
+                    **{"chainer_role": "take_profit"},
+                )
+            )
+        order_id = ",".join(str(getattr(order, "ref", "")) for order in orders if order is not None)
+        return self._protection_result(intent, order_id=order_id, event_type=event_type)
 
     def _submit_market(self, intent: OrderIntent, *, opening: bool):
         if opening:

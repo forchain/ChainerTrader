@@ -33,9 +33,9 @@ from matplotlib.ticker import ScalarFormatter
 from tortoise import Tortoise
 
 from trader.adapters.outbound.backtrader.data import BinanceData
+from trader.adapters.outbound.backtrader.libraries.chainer_trader import ChainerTraderLib
 from trader.adapters.outbound.persistence.config import build_tortoise_config
 from trader.adapters.outbound.persistence.kline import KlineCol
-from trader.libraries.chainer_trader import ChainerTraderLib
 
 load_dotenv()
 

@@ -6,14 +6,15 @@ import backtrader as bt
 from backtrader import num2date
 from prettytable import PrettyTable
 
-from trader.analyzers.backtest_report import BacktestReportAnalyzer
+from trader.adapters.outbound.backtrader.analyzers.backtest_report import BacktestReportAnalyzer
+from trader.adapters.outbound.backtrader.analyzers.operation_state import MaxDrawdownAnalyzer, OptStatAnalyzer
+from trader.adapters.outbound.backtrader.data import BinanceData
 from trader.common.config import Config
 from trader.common.log_tag import LogTag
 from trader.common.logger import Logger
 from trader.core.shared.domain import SymbolInterval
 from trader.core.strategy.domain.node import build_strategy_kwargs
 from trader.strategy.trader_result import TraderResult
-from trader.utils.operation_state import MaxDrawdownAnalyzer, OptStatAnalyzer
 
 
 class Node:
@@ -219,3 +220,28 @@ class Node:
             hold_rate,
             data_len,
         )
+
+
+def run_signal_scan_cerebro(
+    strategy_cls,
+    klines: list,
+    *,
+    cash: float = 100000.0,
+    commission: float = 0.001,
+) -> list[dict]:
+    """Run a silent backtrader pass over klines and return emitted signal events."""
+
+    class SilentStrategy(strategy_cls):
+        def log_info(self, msg):
+            pass
+
+        def log_debug(self, msg):
+            pass
+
+    cerebro = bt.Cerebro(stdstats=False)
+    cerebro.addstrategy(SilentStrategy)
+    cerebro.adddata(BinanceData(klines))
+    cerebro.broker.setcash(cash)
+    cerebro.broker.setcommission(commission=commission)
+    strategies = cerebro.run()
+    return list(getattr(strategies[0], "_signal_events", []))

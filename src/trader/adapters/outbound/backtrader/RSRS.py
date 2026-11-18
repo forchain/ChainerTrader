@@ -1,8 +1,8 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 from trader.adapters.outbound.backtrader.base_strategy import BaseStrategy
+from trader.adapters.outbound.backtrader.indicators.rsrs import RSRSIndicator
 from trader.core.shared.domain import OperateType
-from trader.indicators.rsrs import RSRSIndicator
 
 
 class RSRSStrategy(BaseStrategy):

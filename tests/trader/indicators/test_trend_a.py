@@ -20,7 +20,7 @@ import pytest
 from dotenv import load_dotenv
 from matplotlib.ticker import ScalarFormatter
 
-from trader.indicators.trend_a import TrendA
+from trader.adapters.outbound.backtrader.indicators.trend_a import TrendA
 from trader.utils.ma import MAType
 
 load_dotenv()

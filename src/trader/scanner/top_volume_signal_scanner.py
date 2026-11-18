@@ -6,11 +6,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-import backtrader as bt
 import requests
 from prettytable import PrettyTable
 
-from trader.adapters.outbound.backtrader.data import BinanceData
+from trader.adapters.outbound.backtrader.node import run_signal_scan_cerebro
 from trader.adapters.outbound.binance.exchange import BinanceExchange
 from trader.adapters.outbound.persistence.manager import DatabaseManager
 from trader.common.config import Config, new_and_env
@@ -288,20 +287,7 @@ def run_strategy_triggered_signals(
     if strategy_cls is None:
         raise ValueError(f"Unsupported strategy: {strategy_name}")
 
-    class SilentStrategy(strategy_cls):
-        def log_info(self, msg):
-            pass
-
-        def log_debug(self, msg):
-            pass
-
-    cerebro = bt.Cerebro(stdstats=False)
-    cerebro.addstrategy(SilentStrategy)
-    cerebro.adddata(BinanceData(klines))
-    cerebro.broker.setcash(cash)
-    cerebro.broker.setcommission(commission=commission)
-    strategies = cerebro.run()
-    events = getattr(strategies[0], "_signal_events", [])
+    events = run_signal_scan_cerebro(strategy_cls, klines, cash=cash, commission=commission)
     return extract_entry_signals(
         events,
         symbol=symbol,

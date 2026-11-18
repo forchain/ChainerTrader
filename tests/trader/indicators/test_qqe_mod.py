@@ -22,8 +22,8 @@ from matplotlib.ticker import ScalarFormatter
 # from pymongo import MongoClient
 # from trader.adapters.outbound.persistence.kline import KlineCol
 from trader.adapters.outbound.backtrader.data import BinanceData
+from trader.adapters.outbound.backtrader.indicators.qqe_mod import QQEMod
 from trader.core.shared.domain import Kline
-from trader.indicators.qqe_mod import QQEMod
 
 load_dotenv()
 

@@ -172,7 +172,7 @@ class RealtimeLiveStrategyRuntime:
             return self.strategy_runner(candles)
 
         from trader.adapters.outbound.backtrader.data import BinanceData
-        from trader.strategy.node import Node
+        from trader.adapters.outbound.backtrader.node import Node
         from trader.strategy.strategy import parse_strategies
 
         strategy = parse_strategies(self.tcfg.strategies)

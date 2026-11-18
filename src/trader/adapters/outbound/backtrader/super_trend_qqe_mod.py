@@ -18,9 +18,9 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import math
 
 from trader.adapters.outbound.backtrader.base_strategy import BaseStrategy
-from trader.indicators.qqe_mod import QQEMod
-from trader.indicators.super_trend import SuperTrend
-from trader.indicators.trend_a import TrendA
+from trader.adapters.outbound.backtrader.indicators.qqe_mod import QQEMod
+from trader.adapters.outbound.backtrader.indicators.super_trend import SuperTrend
+from trader.adapters.outbound.backtrader.indicators.trend_a import TrendA
 from trader.utils.ma import MAType
 
 

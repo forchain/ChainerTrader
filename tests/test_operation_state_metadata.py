@@ -1,7 +1,8 @@
 from types import SimpleNamespace
 
+from trader.adapters.outbound.backtrader.analyzers.operation_state import MaxDrawdownAnalyzer
 from trader.core.shared.domain import Operate, OperateType, parse_opts
-from trader.utils.operation_state import MaxDrawdownAnalyzer, enrich_operation_from_trade_context
+from trader.utils.operation_state import enrich_operation_from_trade_context
 
 
 def test_enrich_operation_from_trade_context_copies_framework_risk_references():

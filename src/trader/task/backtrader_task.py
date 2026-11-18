@@ -8,6 +8,7 @@ from typing import Any
 
 from trader.adapters.outbound.backtrader.csvdata import BinanceCSVData
 from trader.adapters.outbound.backtrader.data import BinanceData
+from trader.adapters.outbound.backtrader.node import Node
 from trader.adapters.outbound.binance.exchange import BinanceExchange
 from trader.adapters.outbound.persistence.manager import DatabaseManager
 from trader.common import path
@@ -16,7 +17,6 @@ from trader.common.logger import Logger
 from trader.common.message import new_stat_msg
 from trader.core.shared.domain import Interval, SymbolInterval, get_time_duration
 from trader.statistics.stat import BackTraderStat
-from trader.strategy.node import Node
 from trader.strategy.strategy import parse_strategies
 from trader.strategy.trader_result import TraderResult, parse_trader_result
 from trader.task.base_task import BaseTask
