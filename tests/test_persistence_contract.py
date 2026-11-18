@@ -19,7 +19,8 @@ from trader.adapters.outbound.persistence.kline import KlineCol
 from trader.adapters.outbound.persistence.task import TaskCol
 from trader.adapters.outbound.persistence.user import UserCol
 from trader.core.shared.domain import Kline
-from trader.utils.task_state import TaskState, TaskStateType
+from trader.core.task.domain import TaskState, TaskStateType
+from trader.core.task.interfaces import TaskRepository
 
 ADAPTERS = ("tortoise", "in_memory")
 
@@ -137,6 +138,7 @@ def test_task_repository_contract(adapter: str, tmp_path: Path):
 
 async def _task_contract(adapter: str, db_path: Path) -> None:
     async with _task_repository(adapter, db_path) as store:
+        assert isinstance(store, TaskRepository)
         assert await store.get_task(7) is None
         assert await store.add_tasks([_task(7, "first", user_id=10, state=TaskStateType.RUNNING)]) == 1
         assert await store.add_tasks([_task(7, "second", user_id=10, state=TaskStateType.DONE)]) == 1

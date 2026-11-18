@@ -6,7 +6,8 @@ from logging import Logger
 from tortoise import connections
 
 from trader.adapters.outbound.persistence.models import TaskStateModel
-from trader.utils.task_state import DATETIME_FORMART, PRIMARY_KEY, TaskState, parse_task_state
+from trader.core.task.domain import DATETIME_FORMART, PRIMARY_KEY, TaskState, parse_task_state
+from trader.core.task.interfaces import TaskRepository
 
 
 def _is_missing_error_message_column(exc: Exception) -> bool:
@@ -67,7 +68,7 @@ def model_to_task_state(row: TaskStateModel) -> TaskState:
     return parse_task_state(payload)
 
 
-class TaskCol:
+class TaskCol(TaskRepository):
     def __init__(self, log: Logger):
         self.log = log
 

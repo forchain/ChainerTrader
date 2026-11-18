@@ -17,7 +17,8 @@ from trader.adapters.outbound.persistence.kline import DEFAULT_EXCHANGE, split_s
 from trader.core.execution import ExecutionStateRecord, ExecutionStateReservation, ExecutionStatus
 from trader.core.identity.domain import Session, User
 from trader.core.shared.domain import Kline
-from trader.utils.task_state import TaskState, parse_task_state
+from trader.core.task.domain import TaskState, parse_task_state
+from trader.core.task.interfaces import TaskRepository
 
 KlineKey = tuple[str, str, str, int]
 
@@ -224,7 +225,7 @@ class InMemoryIdentityRepository:
         return len(hashes)
 
 
-class InMemoryTaskRepository:
+class InMemoryTaskRepository(TaskRepository):
     """Fake task repository mirroring ``TaskCol`` observable behavior."""
 
     def __init__(self):

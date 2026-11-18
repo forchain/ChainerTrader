@@ -20,6 +20,8 @@ from trader.core.exchange.domain import MarginMode
 from trader.core.exchange.use_cases import RouteExchangeForTask, base_exchange_config
 from trader.core.execution import ExecutionStatus
 from trader.core.shared.domain import Symbol, SymbolInterval
+from trader.core.task.config import TaskConfig
+from trader.core.task.domain import TaskState, TaskStateType, TaskType
 from trader.live.auto_execution import is_real_auto_mode
 from trader.statistics.stat import BackTraderStat
 from trader.strategy.trader_result import parse_trader_result
@@ -40,11 +42,9 @@ from trader.task.import_csv_task import ImportCSVTask
 from trader.task.live_startup_self_check import infer_required_margin_mode, task_requires_short_capability
 from trader.task.optimization_report import write_optimization_artifacts
 from trader.task.optimization_runtime import OptimizationRuntimeStatus, evaluate_abort_reason
-from trader.task.task_config import TaskConfig, parse_task_config
-from trader.task.task_type import TaskType
+from trader.task.task_config import parse_task_config
 from trader.task.trader_task import TraderTask
 from trader.task.update_klines_task import UpdateKlinesTask
-from trader.utils.task_state import TaskState, TaskStateType
 
 
 class TaskManager:

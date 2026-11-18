@@ -1,4 +1,4 @@
-from trader.utils.task_state import TaskState
+from trader.core.task.domain import TaskState
 
 
 class BackTraderStat:
