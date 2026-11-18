@@ -67,6 +67,10 @@ class AppContainer:
     bootstrap_admin_fn: Callable[[], Any]
     startup_planner: PlanStartupTasks
     recovery_runner: RecoverRunningTasks
+    version: Callable[[], str] = version
+    user_exchange_factory: Any = BinanceExchange
+    secret_cipher_factory: Callable[[str | None], Any] | None = None
+    secret_key_ready_fn: Callable[[], bool] | None = None
     schema_error_cls: type[Exception] = DatabaseSchemaError
     backtest_runner_cls: type[BacktestTaskRunner] = BacktestTaskRunner
     live_trader_runner_cls: type[LiveTraderTaskRunner] = LiveTraderTaskRunner
@@ -204,6 +208,8 @@ def compose_application(
         bootstrap_admin_fn=bootstrap_identity,
         startup_planner=startup_planner,
         recovery_runner=recovery_runner,
+        secret_cipher_factory=lambda key: FernetSecretCipher(key) if service_key_available(key) else None,
+        secret_key_ready_fn=lambda: service_key_available(getattr(cfg, "secret_key", None)),
     )
 
 
@@ -368,10 +374,46 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def run_api_mode(cfg: Config) -> None:
-    from trader.rpc.app import start
+def _parse_bind_addr(bind_addr: str | None) -> tuple[str, int]:
+    addr = bind_addr or "127.0.0.1:8000"
+    if ":" in addr:
+        host, port_text = addr.rsplit(":", 1)
+        return (host or "127.0.0.1"), int(port_text)
+    return addr, 8000
 
-    start(cfg)
+
+def run_api_mode(cfg: Config) -> None:
+    from contextlib import asynccontextmanager
+
+    import uvicorn
+
+    from trader.adapters.inbound.http import create_app
+    from trader.rpc.rpc_app import RpcApp
+
+    container = compose_application(cfg)
+
+    @asynccontextmanager
+    async def api_lifespan(fast_app):
+        rpc_app = RpcApp(cfg, container=container)
+        fast_app.state.app = rpc_app
+        fast_app.state.live_event_bus = getattr(rpc_app, "live_event_bus", None) or container.live_event_bus
+        await rpc_app.bootstrap_database_for_startup()
+        await rpc_app.start_async()
+        await rpc_app.wait_until_handler_ready()
+        rpc_app.raise_main_task_error()
+        yield
+        await rpc_app.stop()
+
+    host, port = _parse_bind_addr(cfg.api)
+    web_app = create_app(container, lifespan=api_lifespan)
+    uvicorn.run(
+        web_app,
+        host=host,
+        port=port,
+        reload=False,
+        app_dir=os.path.join(path.GetTraderDir(), "rpc"),
+        log_level=cfg.get_log_level(),
+    )
 
 
 def run_console_mode(cfg: Config) -> None:

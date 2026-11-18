@@ -33,6 +33,14 @@ from trader.core.task.use_cases.recovery import (
     RecoverRunningTasks,
     StartupExecutionPlan,
 )
+from trader.core.task.use_cases.submission import (
+    default_taskset_file_name,
+    enforce_current_user_ownership,
+    normalize_save_file_name,
+    normalize_task_config_path,
+    task_submission_source,
+    validate_config_file_source,
+)
 
 __all__ = [
     "CancelTaskOpenOrders",
@@ -55,9 +63,15 @@ __all__ = [
     "TaskScope",
     "UpdateKlinesTaskRunner",
     "dedupe_symbols",
+    "default_taskset_file_name",
+    "enforce_current_user_ownership",
     "format_reservation_rejection_log",
+    "normalize_save_file_name",
+    "normalize_task_config_path",
     "paginate",
     "record_exchange_order_ids",
+    "task_submission_source",
+    "validate_config_file_source",
     "reservation_capacity_snapshot",
     "same_cleanup_account",
     "set_task_runtime_budget",
