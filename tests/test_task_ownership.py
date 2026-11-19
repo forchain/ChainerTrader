@@ -7,7 +7,7 @@ from trader.app.app import App
 from trader.common.config import Config
 from trader.common.logger import Logger
 from trader.core.shared.domain import Interval, SymbolInterval
-from trader.task.base_task import BaseTask
+from trader.core.task.runtime_task import ManagedTask
 from trader.task.task_config import TaskConfig, parse_task_config
 from trader.task.task_manager import TaskManager
 from trader.task.task_type import TaskType
@@ -79,8 +79,8 @@ def test_task_manager_filters_running_tasks_by_user():
     manager = TaskManager(cfg, Logger(cfg), None, None)
     first_cfg = TaskConfig(1, TaskType.DEBUG, SymbolInterval("BTC-USDT", Interval("1h")), user_id=10)
     second_cfg = TaskConfig(2, TaskType.DEBUG, SymbolInterval("ETH-USDT", Interval("1h")), user_id=20)
-    first = BaseTask(first_cfg, cfg, Logger(cfg))
-    second = BaseTask(second_cfg, cfg, Logger(cfg))
+    first = ManagedTask(first_cfg, cfg, Logger(cfg))
+    second = ManagedTask(second_cfg, cfg, Logger(cfg))
     manager.tasks = {1: first, 2: second}
 
     async def run():

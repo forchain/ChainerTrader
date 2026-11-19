@@ -30,9 +30,9 @@ from trader.core.optimization.domain import (
 from trader.core.optimization.use_cases.signal_scanner import scan_market as _scan_market
 from trader.core.optimization.use_cases.signal_scanner import scan_market_report as _scan_market_report
 from trader.core.shared.domain import Interval, Kline, SymbolInterval
+from trader.core.task.use_cases.data_tasks import UpdateKlinesTaskRunner
 from trader.task.task_config import TaskConfig, create_task_id
 from trader.task.task_type import TaskType
-from trader.task.update_klines_task import UpdateKlinesTask
 
 BINANCE_SPOT_API_BASE = "https://api.binance.com"
 
@@ -57,20 +57,21 @@ async def ensure_symbol_window(
     end_time: int,
 ) -> None:
     normalized_symbol = normalize_symbol(symbol)
-    task = UpdateKlinesTask(
-        TaskConfig(
-            id=create_task_id(0),
-            ttype=TaskType.UPDATE_KLINES,
-            symbol_interval=SymbolInterval(normalized_symbol, interval),
-            start_time=start_time,
-            end_time=end_time,
-        ),
-        cfg,
-        log,
-        db_manager,
-        exchange,
+    task_config = TaskConfig(
+        id=create_task_id(0),
+        ttype=TaskType.UPDATE_KLINES,
+        symbol_interval=SymbolInterval(normalized_symbol, interval),
+        start_time=start_time,
+        end_time=end_time,
     )
-    await task.start(asyncio.Queue())
+    runner = UpdateKlinesTaskRunner(
+        kline_repository=db_manager.kline,
+        market_data_client=exchange,
+        availability_store=getattr(db_manager, "availability", None),
+        task_repository=getattr(db_manager, "task", None),
+        log=log,
+    )
+    await runner.run(task_config, quit_event=asyncio.Event())
 
 
 async def load_window_klines(

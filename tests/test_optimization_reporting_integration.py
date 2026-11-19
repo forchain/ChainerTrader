@@ -2,10 +2,10 @@ from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
+from trader.adapters.outbound.backtrader.sample_worker import process_backtrader
 from trader.common.config import Config
 from trader.core.shared.domain import Interval, SymbolInterval
 from trader.strategy.trader_result import TraderResult
-from trader.task.backtrader_task import process_backtrader
 from trader.task.task_config import TaskConfig
 from trader.task.task_manager import TaskManager
 from trader.task.task_type import TaskType
@@ -63,7 +63,7 @@ def test_process_backtrader_emits_sample_report_metadata_for_optimization_runs(m
         def start(self):
             return _make_trader_result()
 
-    monkeypatch.setattr("trader.task.backtrader_task.Node", FakeNode)
+    monkeypatch.setattr("trader.adapters.outbound.backtrader.sample_worker.Node", FakeNode)
 
     tcfg = TaskConfig(
         id=1,

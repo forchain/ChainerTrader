@@ -4,10 +4,10 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 from trader.adapters.outbound.backtrader.data import BinanceData
+from trader.adapters.outbound.backtrader.task_handles import BacktestTaskHandle
 from trader.common.config import Config
 from trader.core.shared.domain import Interval, Kline, SymbolInterval
 from trader.core.strategy.domain.node import build_strategy_kwargs
-from trader.task.backtrader_task import BackTraderTask
 from trader.task.task_config import TaskConfig
 from trader.task.task_manager import TaskManager
 from trader.task.task_type import TaskType
@@ -108,8 +108,8 @@ def test_backtrader_task_start_uses_dataset_resolver_for_db_backtests(monkeypatc
                 klines = await get_klines("BTCUSDT-1h", dataset_ref.start_time, dataset_ref.end_time)
                 return BinanceData(klines)
 
-        monkeypatch.setattr("trader.task.backtrader_task.BacktraderDatasetFeedLoader", FakeResolver)
-        monkeypatch.setattr("trader.task.backtrader_task.parse_strategies", lambda strategies: ["fake-strategy"])
+        monkeypatch.setattr("trader.adapters.outbound.backtrader.task_handles.BacktraderDatasetFeedLoader", FakeResolver)
+        monkeypatch.setattr("trader.adapters.outbound.backtrader.task_handles.parse_strategies", lambda strategies: ["fake-strategy"])
 
         tcfg = TaskConfig(
             id=1,
@@ -121,7 +121,7 @@ def test_backtrader_task_start_uses_dataset_resolver_for_db_backtests(monkeypatc
             auto_download=True,
         )
         db_manager = SimpleNamespace(kline=SimpleNamespace(get_klines=get_klines))
-        task = BackTraderTask(tcfg, Config(), DummyLog(), db_manager=db_manager, exchange=SimpleNamespace())
+        task = BacktestTaskHandle(tcfg, Config(), DummyLog(), db_manager=db_manager, exchange=SimpleNamespace())
 
         result = await task.start(None)
 

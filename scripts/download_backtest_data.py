@@ -145,8 +145,8 @@ def try_db_download(symbol, interval, start_time, end_time, output_file):
         from trader.common.config import Config
         from trader.common.logger import Logger
         from trader.core.exchange.domain import parse_exchange_config
+        from trader.core.marketdata.use_cases.update_klines import download_range
         from trader.core.shared.domain import Interval, SymbolInterval, add_time_duration
-        from trader.task.update_klines_task import download_range
 
         db_name = os.environ.get("TRADER_DB_NAME", "trader")
 

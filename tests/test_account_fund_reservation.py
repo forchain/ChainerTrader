@@ -4,16 +4,16 @@ from types import SimpleNamespace
 import pytest
 
 from tests.persistence_harness import initialized_database
+from trader.adapters.outbound.backtrader.task_handles import LiveTraderTaskHandle
 from trader.adapters.outbound.persistence.account_fund_reservation import AccountFundReservationCol, FundReservationError
 from trader.common.config import Config
 from trader.common.logger import Logger
 from trader.core.execution import ExecutionStateRecord, ExecutionStatus, GatewayMode
 from trader.core.shared.domain import Interval, SymbolInterval
-from trader.task.base_task import BaseTask
+from trader.core.task.runtime_task import ManagedTask
 from trader.task.task_config import TaskConfig, parse_task_config
 from trader.task.task_manager import TaskManager
 from trader.task.task_type import TaskType
-from trader.task.trader_task import TraderTask
 
 
 class _Log:
@@ -172,7 +172,7 @@ def test_task_manager_reserves_live_task_budget_before_start_and_releases_on_com
         )
 
         async def fake_add_task(taskc, queue):
-            task = BaseTask(taskc, cfg, logger, db_manager, manager.exchange)
+            task = ManagedTask(taskc, cfg, logger, db_manager, manager.exchange)
             manager.tasks[task.id()] = task
             await task.start(queue)
 
@@ -515,7 +515,7 @@ def test_task_manager_recovers_live_task_without_fresh_balance_preflight():
             free=10000.0,
             live_execution_mode="auto_trade",
         )
-        manager._build_task = lambda task_cfg, exchange: BaseTask(task_cfg, cfg, logger, db_manager, exchange)
+        manager._build_task = lambda task_cfg, exchange: ManagedTask(task_cfg, cfg, logger, db_manager, exchange)
 
         await manager.recover_task(task_config, asyncio.Queue())
 
@@ -574,7 +574,7 @@ def test_task_manager_reconstructs_recovered_runtime_budget_from_execution_recor
             free=100.0,
             live_execution_mode="auto_trade",
         )
-        manager._build_task = lambda task_cfg, exchange: BaseTask(task_cfg, cfg, logger, db_manager, exchange)
+        manager._build_task = lambda task_cfg, exchange: ManagedTask(task_cfg, cfg, logger, db_manager, exchange)
 
         await manager.recover_task(task_config, asyncio.Queue())
 
@@ -668,7 +668,7 @@ def test_trader_task_persists_auto_execution_spent_budget():
         )
         task_config.fund_reservation_amount = 50.0
         task_config.fund_reservation_asset = "USDT"
-        task = TraderTask(task_config, cfg, logger, db_manager, _Exchange(quote_balance=100.0))
+        task = LiveTraderTaskHandle(task_config, cfg, logger, db_manager, _Exchange(quote_balance=100.0))
         outcome = SimpleNamespace(status="submitted", effective_notional=30.0, execution_state_records=[])
 
         await task._persist_auto_execution_state(outcome)
@@ -689,7 +689,7 @@ def test_task_manager_shutdown_preserves_running_live_task_reservation_for_recov
             saved_batches.append([state.to_dict() for state in states])
             return len(states)
 
-        class _LongRunningTask(BaseTask):
+        class _LongRunningTask(ManagedTask):
             async def start(self, queue):
                 await super().start(queue)
                 await self.quit.wait()

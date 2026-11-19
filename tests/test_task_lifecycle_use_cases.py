@@ -203,7 +203,7 @@ def test_ports_and_event_bus_have_no_global_singleton():
 
 def test_no_asyncio_run_in_task_lifecycle_modules():
     root = Path(__file__).resolve().parents[1] / "src" / "trader"
-    for rel in ("task/base_task.py", "task/task_manager.py"):
+    for rel in ("task/task_manager.py",):
         tree = ast.parse((root / rel).read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.Attribute) and node.attr == "run" and isinstance(node.value, ast.Name) and node.value.id == "asyncio":

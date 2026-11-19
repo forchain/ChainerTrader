@@ -3,13 +3,9 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-import pytest
-
-from trader.task.backtrader_task import _write_worker_pid
-
+from trader.adapters.outbound.backtrader.sample_worker import _write_worker_pid
 
 # ---------------------------------------------------------------------------
 # _write_worker_pid helper
@@ -59,7 +55,7 @@ def test_write_worker_pid_is_idempotent_for_same_pid(tmp_path, monkeypatch):
 
 def _make_minimal_spec(run_id: str | None = "run-xyz", task_id: int = 99):
     """Return a minimal BacktestSampleSpec-like object for PID lifecycle tests."""
-    from trader.task.backtrader_task import BacktestSampleSpec
+    from trader.adapters.outbound.backtrader.sample_worker import BacktestSampleSpec
 
     return BacktestSampleSpec(
         task_id=task_id,
@@ -86,10 +82,10 @@ def test_pid_file_removed_after_successful_run(tmp_path, monkeypatch):
     spec = _make_minimal_spec()
 
     # Patch heavy internals so the function returns quickly with an error (ok=False)
-    with patch("trader.task.backtrader_task.Config"), \
-         patch("trader.task.backtrader_task.Logger"), \
-         patch("trader.task.backtrader_task.parse_strategies", return_value=None):
-        from trader.task.backtrader_task import run_backtest_sample
+    with patch("trader.adapters.outbound.backtrader.sample_worker.Config"), \
+         patch("trader.adapters.outbound.backtrader.sample_worker.Logger"), \
+         patch("trader.adapters.outbound.backtrader.sample_worker.parse_strategies", return_value=None):
+        from trader.adapters.outbound.backtrader.sample_worker import run_backtest_sample
         result = run_backtest_sample(spec)
 
     assert not result.ok
@@ -103,10 +99,10 @@ def test_pid_file_removed_after_exception(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     spec = _make_minimal_spec()
 
-    with patch("trader.task.backtrader_task.Config"), \
-         patch("trader.task.backtrader_task.Logger"), \
-         patch("trader.task.backtrader_task.parse_strategies", side_effect=RuntimeError("boom")):
-        from trader.task.backtrader_task import run_backtest_sample
+    with patch("trader.adapters.outbound.backtrader.sample_worker.Config"), \
+         patch("trader.adapters.outbound.backtrader.sample_worker.Logger"), \
+         patch("trader.adapters.outbound.backtrader.sample_worker.parse_strategies", side_effect=RuntimeError("boom")):
+        from trader.adapters.outbound.backtrader.sample_worker import run_backtest_sample
         result = run_backtest_sample(spec)
 
     assert not result.ok

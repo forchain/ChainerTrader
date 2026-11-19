@@ -8,8 +8,16 @@ from pathlib import Path
 
 from trader.adapters.outbound.backtrader.dataset_feed import BacktraderDatasetFeedLoader
 from trader.adapters.outbound.backtrader.optimization_runner import ProcessPoolBacktestRunner
-from trader.adapters.outbound.binance.exchange import BinanceExchange
+from trader.adapters.outbound.backtrader.sample_worker import (
+    backtest_data_start_time,
+    build_backtest_sample_spec,
+    process_backtrader,
+)
+from trader.adapters.outbound.backtrader.task_handles import BacktestTaskHandle, LiveTraderTaskHandle
+from trader.adapters.outbound.binance.exchange import BinanceExchange, get_oldest_time
 from trader.adapters.outbound.execution_gateway_factory import build_execution_gateway
+from trader.adapters.outbound.files import paths as path
+from trader.adapters.outbound.files.dataset import CsvDatasetFileStore
 from trader.adapters.outbound.files.optimization_store import FileOptimizationRuntimeStatus, FileRankingReportStore
 from trader.adapters.outbound.persistence.manager import DatabaseManager
 from trader.auth.credentials import FernetSecretCipher, service_key_available
@@ -27,6 +35,7 @@ from trader.core.task.config import TaskConfig
 from trader.core.task.config_codec import TaskConfigCodec
 from trader.core.task.domain import TaskState, TaskStateType, TaskType, task_state_name
 from trader.core.task.interfaces import TaskEventPublisher
+from trader.core.task.runtime_task import ManagedTask, RunnerTaskHandle
 from trader.core.task.use_cases import (
     CancelTaskOpenOrders,
     CleanupRunningTasksBeforeStart,
@@ -37,23 +46,17 @@ from trader.core.task.use_cases import (
     StopUserRunningTasks,
     symbol_from_value,
 )
+from trader.core.task.use_cases.data_tasks import (
+    CheckKlinesNumTaskRunner,
+    CheckKlinesTaskRunner,
+    DebugTaskRunner,
+    ImportCsvTaskRunner,
+    UpdateKlinesTaskRunner,
+)
 from trader.statistics.stat import BackTraderStat
 from trader.strategy.trader_result import parse_trader_result
-from trader.task.backtrader_task import (
-    BackTraderTask,
-    backtest_data_start_time,
-    build_backtest_sample_spec,
-    process_backtrader,
-)
-from trader.task.base_task import BaseTask
-from trader.task.check_klines_num_task import CheckKlinesNumTask
-from trader.task.check_klines_task import CheckKlinesTask
-from trader.task.debug_task import DebugTask
-from trader.task.import_csv_task import ImportCSVTask
 from trader.task.live_startup_self_check import infer_required_margin_mode, task_requires_short_capability
 from trader.task.task_config import read_task_config_source
-from trader.task.trader_task import TraderTask
-from trader.task.update_klines_task import UpdateKlinesTask
 
 
 class TaskManager:
@@ -85,14 +88,15 @@ class TaskManager:
         if getattr(exchange, "margin_mode", None) is not None:
             self._exchange_by_mode[exchange.margin_mode.value] = exchange
         self.log.info("Init TaskManager")
-        self.tasks: dict[int, BaseTask] = {}
+        self.tasks: dict[int, ManagedTask] = {}
         self.async_tasks = []
         self.latest_si: SymbolInterval | None = None
         self._closing = False
 
-    def _build_task(self, cfg: TaskConfig, exchange: BinanceExchange) -> BaseTask | None:
+    def _build_task(self, cfg: TaskConfig, exchange: BinanceExchange) -> ManagedTask | None:
+        task_repository = getattr(self.db_manager, "task", None)
         if cfg.ttype == TaskType.TRADER:
-            return TraderTask(
+            return LiveTraderTaskHandle(
                 cfg,
                 self.cfg,
                 self.log,
@@ -102,17 +106,79 @@ class TaskManager:
                 execution_gateway_factory=self._execution_gateway_factory or build_execution_gateway,
             )
         if cfg.ttype == TaskType.BACK_TRADER:
-            return BackTraderTask(cfg, self.cfg, self.log, self.db_manager, exchange)
+            return BacktestTaskHandle(cfg, self.cfg, self.log, self.db_manager, exchange)
+
+        def runner_handle(runner, *, include_symbol_in_name: bool = True) -> RunnerTaskHandle:
+            return RunnerTaskHandle(
+                runner=runner,
+                tcfg=cfg,
+                cfg=self.cfg,
+                log=self.log,
+                task_repository=task_repository,
+                exchange=exchange,
+                include_symbol_in_name=include_symbol_in_name,
+            )
+
         if cfg.ttype == TaskType.UPDATE_KLINES:
-            return UpdateKlinesTask(cfg, self.cfg, self.log, self.db_manager, exchange)
+            if not exchange:
+                self.log.error(f"No config exchange for {cfg.to_dict()}")
+                return None
+            if not self.db_manager:
+                self.log.error(f"No config db_uri for {cfg.to_dict()}")
+                return None
+            return runner_handle(
+                UpdateKlinesTaskRunner(
+                    kline_repository=self.db_manager.kline,
+                    market_data_client=exchange,
+                    availability_store=getattr(self.db_manager, "availability", None),
+                    task_repository=task_repository,
+                    log=self.log,
+                    oldest_time_ts=int(get_oldest_time().timestamp()),
+                )
+            )
         if cfg.ttype == TaskType.CHECK_KLINES:
-            return CheckKlinesTask(cfg, self.cfg, self.log, self.db_manager, exchange)
-        if cfg.ttype == TaskType.IMPORT_CSV:
-            return ImportCSVTask(cfg, self.cfg, self.log, self.db_manager, exchange)
+            if not self.db_manager:
+                self.log.error(f"No config db_uri for {cfg.to_dict()}")
+                return None
+            return runner_handle(
+                CheckKlinesTaskRunner(
+                    kline_repository=self.db_manager.kline,
+                    task_repository=task_repository,
+                    log=self.log,
+                )
+            )
         if cfg.ttype == TaskType.CHECK_KLINES_NUM:
-            return CheckKlinesNumTask(cfg, self.cfg, self.log, self.db_manager, exchange)
+            if not self.db_manager:
+                self.log.error(f"No config db_uri for {cfg.to_dict()}")
+                return None
+            return runner_handle(
+                CheckKlinesNumTaskRunner(
+                    kline_repository=self.db_manager.kline,
+                    task_repository=task_repository,
+                    log=self.log,
+                )
+            )
+        if cfg.ttype == TaskType.IMPORT_CSV:
+            if not cfg.csv:
+                self.log.error(f"No config data_file for {cfg.to_dict()}")
+                return None
+            if not self.db_manager:
+                self.log.error(f"No config db_uri for {cfg.to_dict()}")
+                return None
+            return runner_handle(
+                ImportCsvTaskRunner(
+                    kline_repository=self.db_manager.kline,
+                    file_store=CsvDatasetFileStore(),
+                    task_repository=task_repository,
+                    data_dir=path.GetDataDir(),
+                    log=self.log,
+                )
+            )
         if cfg.ttype == TaskType.DEBUG:
-            return DebugTask(cfg, self.cfg, self.log, self.db_manager)
+            return runner_handle(
+                DebugTaskRunner(task_repository=task_repository, log=self.log),
+                include_symbol_in_name=False,
+            )
         return None
 
     def start(self, taskcs: list[TaskConfig] | None = None):
@@ -515,7 +581,7 @@ class TaskManager:
         )
 
     async def add_backtrader_task(self, cfgs, queue: Queue):
-        task_by_id: dict[int, BackTraderTask] = {}
+        task_by_id: dict[int, BacktestTaskHandle] = {}
 
         class _TaskManagerRunnerBridge:
             def __init__(self, manager: TaskManager):
@@ -528,15 +594,15 @@ class TaskManager:
                 return await self.manager._execute_sample_specs(sample_specs)
 
         async def _on_sample_task_registered(cfg):
-            task = BackTraderTask(cfg, self.cfg, self.log, self.db_manager, self.exchange)
+            task = BacktestTaskHandle(cfg, self.cfg, self.log, self.db_manager, self.exchange)
             self.tasks[task.id()] = task
             task_by_id[task.id()] = task
-            persist_result = BaseTask.start(task, queue)
+            persist_result = ManagedTask.start(task, queue)
             if inspect.isawaitable(persist_result):
                 await persist_result
 
         async def _on_regular_task(cfg):
-            task = BackTraderTask(cfg, self.cfg, self.log, self.db_manager, self.exchange)
+            task = BacktestTaskHandle(cfg, self.cfg, self.log, self.db_manager, self.exchange)
             self.tasks[task.id()] = task
             task_by_id[task.id()] = task
             task_params = await task.start(queue)
@@ -646,7 +712,7 @@ class TaskManager:
     def _finalize_optimization_runs(self, cfgs: list[TaskConfig], sample_records: list[dict], failures: list[dict]):
         self._optimization_use_case().finalize_runs(cfgs, sample_records, failures)
 
-    def get_task(self, id: int) -> BaseTask | None:
+    def get_task(self, id: int) -> ManagedTask | None:
         if id in self.tasks:
             return self.tasks[id]
         return None
@@ -654,9 +720,9 @@ class TaskManager:
     def has_task(self, id: int) -> bool:
         return self.get_task(id) is not None
 
-    def remove_task(self, id: int) -> BaseTask | None:
+    def remove_task(self, id: int) -> ManagedTask | None:
         if id in self.tasks:
-            ret: BaseTask = self.tasks.pop(id)
+            ret: ManagedTask = self.tasks.pop(id)
             if ret:
                 self.log.info(f"Remove task:id={id}")
                 return ret

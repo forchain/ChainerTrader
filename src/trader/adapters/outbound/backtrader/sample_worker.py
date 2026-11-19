@@ -1,3 +1,5 @@
+"""Backtest sample worker: spec building and the picklable ``run_backtest_sample`` entrypoint."""
+
 import asyncio
 import json
 import os
@@ -7,26 +9,20 @@ from pathlib import Path
 from typing import Any
 
 from trader.adapters.outbound.backtrader.backtest_runner import (
-    BacktestTaskRunner,
-)
-from trader.adapters.outbound.backtrader.backtest_runner import (
     backtest_data_start_time as _backtest_data_start_time,
 )
 from trader.adapters.outbound.backtrader.catalog import parse_strategies
 from trader.adapters.outbound.backtrader.dataset_feed import BacktraderDatasetFeedLoader, DatasetRef
 from trader.adapters.outbound.backtrader.node import Node
-from trader.adapters.outbound.binance.exchange import BinanceExchange
-from trader.adapters.outbound.files.dataset import CsvDatasetFileStore
+from trader.adapters.outbound.files import paths as path
+from trader.adapters.outbound.logging.logger import Logger
 from trader.adapters.outbound.persistence.manager import DatabaseManager
-from trader.common import path
-from trader.common.config import Config
-from trader.common.logger import Logger
-from trader.common.message import new_stat_msg
+from trader.core.shared.config import Config
 from trader.core.shared.domain import Interval, SymbolInterval
-from trader.statistics.stat import BackTraderStat
-from trader.strategy.trader_result import TraderResult, parse_trader_result
-from trader.task.base_task import BaseTask
-from trader.task.task_config import TaskConfig
+from trader.core.shared.messages import new_stat_msg
+from trader.core.strategy.domain.trader_result import TraderResult, parse_trader_result
+from trader.core.task.config import TaskConfig
+from trader.core.task.stats import BackTraderStat
 
 
 @dataclass(frozen=True)
@@ -247,49 +243,6 @@ def run_backtest_sample(spec: BacktestSampleSpec) -> BacktestSampleResult:
                 pid_file.unlink()
             except OSError:
                 pass
-
-
-class BackTraderTask(BaseTask):
-    def __init__(
-        self,
-        tcfg: TaskConfig,
-        cfg: Config,
-        log: Logger,
-        db_manager: DatabaseManager,
-        exchange: BinanceExchange,
-    ):
-        super().__init__(tcfg, cfg, log, db_manager, exchange)
-
-    async def start(self, queue):
-        if not self.tcfg.csv and not self.db_manager:
-            self.log.error(f"No config data_file or db for {self.tcfg.to_dict()}")
-            return None
-        if not self.tcfg.strategies:
-            self.log.error(f"No config strategy for {self.tcfg.to_dict()}")
-            return None
-
-        await super().start(queue)
-
-        kline_repo = self.db_manager.kline if self.db_manager is not None else None
-        availability_store = getattr(self.db_manager, "availability", None) if self.db_manager is not None else None
-        resolver = BacktraderDatasetFeedLoader(self.db_manager, self.exchange, self.log) if self.db_manager is not None else None
-        runner = BacktestTaskRunner(
-            cfg=self.cfg,
-            log=self.log,
-            task_repository=getattr(self.db_manager, "task", None) if self.db_manager is not None else None,
-            kline_repository=kline_repo,
-            availability_store=availability_store,
-            market_data_client=self.exchange,
-            dataset_resolver=resolver,
-            dataset_file_store=CsvDatasetFileStore(),
-            strategy_parser=parse_strategies,
-            node_factory=Node,
-        )
-        prepared = await runner.prepare_inputs(self.tcfg)
-        if prepared is None:
-            return None
-        strategy, data = prepared
-        return [strategy, data]
 
 
 def process_backtrader(parmas, result):

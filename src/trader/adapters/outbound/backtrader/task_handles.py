@@ -1,4 +1,4 @@
-"""Compatibility wrapper around ``LiveTraderTaskRunner`` for legacy ``TraderTask`` callers."""
+"""Backtrader-backed task handles: live trading and historical backtest."""
 
 from __future__ import annotations
 
@@ -6,35 +6,88 @@ from asyncio import Queue
 from collections.abc import Callable
 from typing import Any
 
+from trader.adapters.outbound.backtrader.backtest_runner import BacktestTaskRunner
 from trader.adapters.outbound.backtrader.catalog import parse_strategies
+from trader.adapters.outbound.backtrader.dataset_feed import BacktraderDatasetFeedLoader
 from trader.adapters.outbound.backtrader.live_runtime import BacktraderLiveRunner
 from trader.adapters.outbound.backtrader.live_trader_runner import LiveTraderTaskRunner
+from trader.adapters.outbound.backtrader.node import Node
 from trader.adapters.outbound.binance.exchange import BinanceExchange
 from trader.adapters.outbound.execution_gateway_factory import build_execution_gateway
+from trader.adapters.outbound.files.dataset import CsvDatasetFileStore
+from trader.adapters.outbound.marketstream import GLOBAL_MARKET_STREAM_HUB
 from trader.adapters.outbound.persistence.manager import DatabaseManager
-from trader.common.config import Config
-from trader.common.logger import Logger
 from trader.core.execution.modes import normalize_live_execution_mode
+from trader.core.marketdata.warmup import plan_initial_backfill
+from trader.core.shared.config import Config
+from trader.core.shared.interfaces import LoggerPort
+from trader.core.strategy.domain.trader_result import TraderResult
+from trader.core.task.config import TaskConfig
 from trader.core.task.interfaces import TaskEventPublisher
-from trader.live.market_data import plan_initial_backfill
-from trader.live.stream import GLOBAL_MARKET_STREAM_HUB
-from trader.strategy.trader_result import TraderResult
-from trader.task.base_task import BaseTask
-from trader.task.task_config import TaskConfig
+from trader.core.task.runtime_task import ManagedTask
 
 
-class TraderTask(BaseTask):
+class BacktestTaskHandle(ManagedTask):
+    """Managed task handle for a single historical backtest task."""
+
     def __init__(
         self,
         tcfg: TaskConfig,
         cfg: Config,
-        log: Logger,
+        log: LoggerPort,
+        db_manager: DatabaseManager,
+        exchange: BinanceExchange,
+    ):
+        super().__init__(tcfg, cfg, log, getattr(db_manager, "task", None), exchange)
+        self.db_manager = db_manager
+
+    async def start(self, queue):
+        if not self.tcfg.csv and not self.db_manager:
+            self.log.error(f"No config data_file or db for {self.tcfg.to_dict()}")
+            return None
+        if not self.tcfg.strategies:
+            self.log.error(f"No config strategy for {self.tcfg.to_dict()}")
+            return None
+
+        await super().start(queue)
+
+        kline_repo = self.db_manager.kline if self.db_manager is not None else None
+        availability_store = getattr(self.db_manager, "availability", None) if self.db_manager is not None else None
+        resolver = BacktraderDatasetFeedLoader(self.db_manager, self.exchange, self.log) if self.db_manager is not None else None
+        runner = BacktestTaskRunner(
+            cfg=self.cfg,
+            log=self.log,
+            task_repository=getattr(self.db_manager, "task", None) if self.db_manager is not None else None,
+            kline_repository=kline_repo,
+            availability_store=availability_store,
+            market_data_client=self.exchange,
+            dataset_resolver=resolver,
+            dataset_file_store=CsvDatasetFileStore(),
+            strategy_parser=parse_strategies,
+            node_factory=Node,
+        )
+        prepared = await runner.prepare_inputs(self.tcfg)
+        if prepared is None:
+            return None
+        strategy, data = prepared
+        return [strategy, data]
+
+
+class LiveTraderTaskHandle(ManagedTask):
+    """Managed task handle for a live trading session backed by ``LiveTraderTaskRunner``."""
+
+    def __init__(
+        self,
+        tcfg: TaskConfig,
+        cfg: Config,
+        log: LoggerPort,
         db_manager: DatabaseManager,
         exchange: BinanceExchange,
         event_publisher: TaskEventPublisher | None = None,
         execution_gateway_factory: Callable[[str, Any], Any] = build_execution_gateway,
     ):
-        super().__init__(tcfg, cfg, log, db_manager, exchange)
+        super().__init__(tcfg, cfg, log, getattr(db_manager, "task", None), exchange)
+        self.db_manager = db_manager
         self.event_publisher = event_publisher
         self._execution_gateway_factory = execution_gateway_factory
         self._runner = self._make_runner()

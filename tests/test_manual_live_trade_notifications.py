@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from trader.adapters.outbound.backtrader.task_handles import LiveTraderTaskHandle
 from trader.common.config import Config
 from trader.common.logger import Logger
 from trader.common.message import Message, MessageType
@@ -21,7 +22,6 @@ from trader.notify.trade_notification import (
 from trader.strategy.trader_result import TraderResult
 from trader.task.task_config import TaskConfig, parse_task_config
 from trader.task.task_type import TaskType
-from trader.task.trader_task import TraderTask
 
 
 def _result_with_operation(op: Operate) -> TraderResult:
@@ -42,7 +42,7 @@ def _result_with_operation(op: Operate) -> TraderResult:
     )
 
 
-def _manual_task(free=1000.0, manual_start_position=0.0) -> TraderTask:
+def _manual_task(free=1000.0, manual_start_position=0.0) -> LiveTraderTaskHandle:
     cfg = Config(cash=10000.0)
     tcfg = TaskConfig(
         id=7,
@@ -53,7 +53,7 @@ def _manual_task(free=1000.0, manual_start_position=0.0) -> TraderTask:
         live_execution_mode="manual_notify",
         manual_start_position=manual_start_position,
     )
-    return TraderTask(tcfg, cfg, Logger(cfg), db_manager=None, exchange=ExplodingExchange())
+    return LiveTraderTaskHandle(tcfg, cfg, Logger(cfg), db_manager=None, exchange=ExplodingExchange())
 
 
 class ExplodingExchange:

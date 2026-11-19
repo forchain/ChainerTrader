@@ -47,8 +47,9 @@ def _ensure_binance_exchange_stub():
 
 _ensure_binance_exchange_stub()
 
+from trader.core.marketdata.use_cases.update_klines import compute_limit_for_range as _compute_limit_for_range  # noqa: E402
+from trader.core.marketdata.use_cases.update_klines import download_range, download_range_backward  # noqa: E402
 from trader.core.shared.domain import Interval, SymbolInterval, add_time_duration  # noqa: E402
-from trader.task.update_klines_task import _compute_limit_for_range, download_range, download_range_backward  # noqa: E402
 
 
 class DummyLog:
@@ -245,18 +246,18 @@ def test_download_range_empty_response_retry():
             get_klines=MagicMock(return_value=[]),
         )
 
-        with patch("trader.task.update_klines_task.DOWNLOAD_SPACE_TIME", 0):
-            result = await download_range(
-                "update-task",
-                log,
-                db_manager,
-                collection_name,
-                exchange,
-                symbol_interval,
-                start_time,
-                end_time,
-                quit_event,
-            )
+        result = await download_range(
+            "update-task",
+            log,
+            db_manager,
+            collection_name,
+            exchange,
+            symbol_interval,
+            start_time,
+            end_time,
+            quit_event,
+            retry_delay_seconds=0,
+        )
 
         assert result is False
         assert exchange.get_klines.call_count == 6  # 1 initial + 5 retries
@@ -495,7 +496,7 @@ class TestDeleteKlinesInRange:
     def test_delete_range_called_on_force_update(self):
         """Verify delete is called when force_update is True."""
         import asyncio
-        from unittest.mock import AsyncMock, MagicMock, patch
+        from unittest.mock import AsyncMock, MagicMock
 
         from trader.adapters.outbound.persistence.kline import KlineCol
 
@@ -594,15 +595,16 @@ def test_force_update_deletes_the_range_and_downloads_it_again():
     """A forced update re-downloads the whole requested range."""
     from trader.common.config import Config
     from trader.common.logger import Logger
+    from trader.core.task.use_cases.data_tasks import UpdateKlinesTaskRunner
     from trader.task.task_config import TaskConfig
     from trader.task.task_type import TaskType
-    from trader.task.update_klines_task import UpdateKlinesTask
 
-    cfg = Config(tasks="[]")
     tcfg = TaskConfig(
         1,
         TaskType.UPDATE_KLINES,
         SymbolInterval("BTC-USDT", Interval.INTERVAL_1h),
+        start_time=1000,
+        end_time=2000,
         force_update=True,
     )
     deleted = []
@@ -612,15 +614,19 @@ def test_force_update_deletes_the_range_and_downloads_it_again():
         return 3
 
     db = SimpleNamespace(kline=SimpleNamespace(delete_klines_in_range=delete_klines_in_range))
-    task = UpdateKlinesTask(tcfg, cfg, Logger(cfg), db, None)
     downloaded = []
 
     async def fake_download_range(name, log, repo, col_name, exchange, symbol_interval, start, end, quit):
         downloaded.append((col_name, start, end))
         return True
 
-    with patch("trader.task.update_klines_task.download_range", fake_download_range):
-        asyncio.run(task._handle_force_update("BTCUSDT-1h", 1000, 2000))
+    runner = UpdateKlinesTaskRunner(
+        kline_repository=db.kline,
+        market_data_client=None,
+        log=Logger(Config(tasks="[]")),
+        range_downloader=fake_download_range,
+    )
+    asyncio.run(runner.run(tcfg))
 
     assert deleted == [("BTCUSDT-1h", 1000, 2000)]
     assert downloaded == [("BTCUSDT-1h", 1000, 2000)]

@@ -10,7 +10,7 @@ from trader.common.logger import Logger
 from trader.common.path import GetConfigsDir
 from trader.core.exchange.domain import ExchangeConfig, parse_ex_type, parse_exchange_config
 from trader.core.shared.domain import Interval, SymbolInterval
-from trader.task.base_task import BaseTask
+from trader.core.task.runtime_task import ManagedTask
 from trader.task.task_config import TaskConfig, get_symbols, parse_task_config
 from trader.task.task_type import TaskType
 
@@ -99,7 +99,7 @@ def test_base_task_config_json_preserves_live_runtime_controls():
     original.fund_reservation_asset = "USDT"
     original.fund_reservation_amount = 12.0
     original.fund_reservation_remaining = 12.0
-    persisted = BaseTask(original, Config(tasks="[]"), Logger(Config(tasks="[]"))).ts.config_json
+    persisted = ManagedTask(original, Config(tasks="[]"), Logger(Config(tasks="[]"))).ts.config_json
     payload = json.loads(persisted)[0]
 
     restored = parse_task_config(persisted, last_task_id=original.id)[0]
@@ -172,7 +172,7 @@ def test_parse_task_config_accepts_only_current_live_execution_modes():
     )
 
     task = parse_task_config(cfg)[0]
-    persisted = BaseTask(task, Config(tasks="[]"), Logger(Config(tasks="[]"))).ts.config_json
+    persisted = ManagedTask(task, Config(tasks="[]"), Logger(Config(tasks="[]"))).ts.config_json
 
     assert task.live_execution_mode == "manual_notify"
     assert "live_data_mode" not in task.to_dict()

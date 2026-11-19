@@ -216,12 +216,12 @@ def test_ensure_symbol_window_builds_update_task_with_requested_range():
     async def _run():
         cfg = SimpleNamespace()
         logger = SimpleNamespace()
-        db_manager = SimpleNamespace()
+        db_manager = SimpleNamespace(kline=SimpleNamespace())
         exchange = SimpleNamespace()
 
-        with patch("trader.adapters.inbound.cli.signal_scanner.UpdateKlinesTask") as task_cls:
-            task = task_cls.return_value
-            task.start = AsyncMock()
+        with patch("trader.adapters.inbound.cli.signal_scanner.UpdateKlinesTaskRunner") as runner_cls:
+            runner = runner_cls.return_value
+            runner.run = AsyncMock()
 
             await ensure_symbol_window(
                 cfg,
@@ -234,7 +234,7 @@ def test_ensure_symbol_window_builds_update_task_with_requested_range():
                 200,
             )
 
-        tcfg = task_cls.call_args.args[0]
+        tcfg = runner.run.call_args.args[0]
         assert tcfg.ttype == TaskType.UPDATE_KLINES
         assert tcfg.symbol_interval.name() == "BTCUSDT-1d"
         assert tcfg.start_time == 100

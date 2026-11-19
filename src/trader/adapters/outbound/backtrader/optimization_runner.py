@@ -13,15 +13,15 @@ from trader.adapters.outbound.backtrader.dataset_feed import (
     DatasetPreparationFailure,
     DatasetPreparationResult,
 )
-from trader.core.optimization.domain import make_param_id
-from trader.task.backtrader_task import (
+from trader.adapters.outbound.backtrader.sample_worker import (
     BacktestSampleResult,
     backtest_data_start_time,
     build_backtest_sample_spec,
     run_backtest_sample,
 )
-from trader.task.task_config import parse_task_config
-from trader.task.task_type import TaskType
+from trader.adapters.outbound.files.task_config_loader import parse_task_config
+from trader.core.optimization.domain import make_param_id
+from trader.core.task.domain import TaskType
 
 
 class ProcessPoolBacktestRunner:

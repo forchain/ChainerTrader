@@ -10,7 +10,7 @@ from trader.common.config import TRADER_DB, TRADER_EXCHANGE, TRADER_TASKS, Confi
 from trader.common.logger import Logger
 from trader.common.message import new_add_tasks_msg, new_exit_msg
 from trader.core.shared.domain import Interval, SymbolInterval
-from trader.task.base_task import BaseTask
+from trader.core.task.runtime_task import ManagedTask
 from trader.task.persisted_live_config_migration import migrate_persisted_task_config_json
 from trader.task.task_config import TaskConfig
 from trader.task.task_manager import TaskManager
@@ -86,7 +86,7 @@ def test_base_task_stop_without_db_manager_does_not_crash():
         symbol_interval=SymbolInterval("ETH-USDT", Interval("1h")),
         strategies=["macd_triple_divergence"],
     )
-    task = BaseTask(tcfg, cfg, Logger(cfg))
+    task = ManagedTask(tcfg, cfg, Logger(cfg))
 
     asyncio.run(task.start(None))
     task.stop()
@@ -109,7 +109,7 @@ def test_base_task_start_persists_running_state_immediately():
         symbol_interval=SymbolInterval("ETH-USDT", Interval("1h")),
         strategies=[],
     )
-    task = BaseTask(tcfg, cfg, Logger(cfg), db_manager)
+    task = ManagedTask(tcfg, cfg, Logger(cfg), db_manager)
 
     asyncio.run(task.start(None))
 
@@ -184,7 +184,7 @@ def test_app_start_restores_running_tasks_from_database(monkeypatch):
 def test_app_start_recovers_live_task_state_persisted_by_current_base_task():
     cfg = Config(tasks="[]", api="0.0.0.0:8000")
     app = App(cfg)
-    persisted_task = BaseTask(
+    persisted_task = ManagedTask(
         TaskConfig(
             id=61,
             ttype=TaskType.TRADER,
@@ -867,7 +867,7 @@ def test_task_manager_awaits_completed_task_state_persistence():
         )
 
         async def fake_add_task(taskc, queue):
-            task = BaseTask(taskc, cfg, Logger(cfg), db_manager)
+            task = ManagedTask(taskc, cfg, Logger(cfg), db_manager)
             task_manager.tasks[task.id()] = task
             await task.start(queue)
 
@@ -933,7 +933,7 @@ def test_task_manager_recover_task_keeps_running_state_persisted():
             saved_batches.append([state.to_dict() for state in states])
             return len(states)
 
-        class _FakeLongRunningTask(BaseTask):
+        class _FakeLongRunningTask(ManagedTask):
             async def start(self, queue):
                 await super().start(queue)
                 await release_task.wait()
@@ -1029,7 +1029,7 @@ def test_task_manager_close_preserves_running_live_tasks_for_restart_recovery():
             strategies=["macd_triple_divergence"],
             live_execution_mode="manual_notify",
         )
-        task = BaseTask(task_config, cfg, logger, db_manager)
+        task = ManagedTask(task_config, cfg, logger, db_manager)
         await task.start(asyncio.Queue())
         task_manager.tasks[task.id()] = task
         saved_batches.clear()
@@ -1053,7 +1053,7 @@ def test_task_manager_dispatch_shutdown_preserves_running_live_tasks_for_restart
             saved_batches.append([state.to_dict() for state in states])
             return len(states)
 
-        class _FakeLiveTraderTask(BaseTask):
+        class _FakeLiveTraderTask(ManagedTask):
             async def start(self, queue):
                 await super().start(queue)
                 await self.quit.wait()

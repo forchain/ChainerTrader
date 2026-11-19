@@ -11,6 +11,29 @@ class BacktestRunner(Protocol):
 
 
 @runtime_checkable
+class OptimizationRunnerFactory(Protocol):
+    """Port for constructing the backtest runner used by parameter optimization."""
+
+    def __call__(
+        self,
+        *,
+        prepare_dataset_job_fn: Any,
+        sample_max_workers: int,
+        dataset_prepare_max_workers: int,
+        dataset_prepare_timeout_seconds: float,
+        dataset_download_request_budget: int,
+        sample_timeout_seconds: float,
+    ) -> BacktestRunner: ...
+
+
+@runtime_checkable
+class OptimizationRuntimeStatusFactory(Protocol):
+    """Port for constructing per-run optimization runtime status."""
+
+    def __call__(self, run_id: str, configs: list[Any], max_workers: int) -> Any: ...
+
+
+@runtime_checkable
 class RankingReportStore(Protocol):
     def load_sample_reports(self, run_id: str) -> list[dict]: ...
 

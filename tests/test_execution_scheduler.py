@@ -6,10 +6,10 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from trader.adapters.outbound.backtrader.data import BinanceData
+from trader.adapters.outbound.backtrader.sample_worker import BacktestSampleSpec, build_backtest_sample_spec, run_backtest_sample
 from trader.common.config import Config
 from trader.core.shared.domain import Interval, Kline, SymbolInterval
 from trader.strategy.trader_result import TraderResult
-from trader.task.backtrader_task import BacktestSampleSpec, build_backtest_sample_spec, run_backtest_sample
 from trader.task.optimization_runtime import OptimizationRuntimeStatus
 from trader.task.task_config import TaskConfig
 from trader.task.task_manager import TaskManager
@@ -374,10 +374,10 @@ def test_run_backtest_sample_builds_runtime_objects_from_sample_spec(monkeypatch
 
     monkeypatch.setattr("trader.adapters.outbound.backtrader.dataset_feed.BinanceCSVData", FakeCSVData)
     monkeypatch.setattr(
-        "trader.task.backtrader_task.parse_strategies",
+        "trader.adapters.outbound.backtrader.sample_worker.parse_strategies",
         lambda strategies: strategy_calls.append(list(strategies)) or ["fake-strategy"],
     )
-    monkeypatch.setattr("trader.task.backtrader_task.Node", FakeNode)
+    monkeypatch.setattr("trader.adapters.outbound.backtrader.sample_worker.Node", FakeNode)
 
     result = run_backtest_sample(_make_sample_spec(dataset_path))
 
@@ -443,9 +443,9 @@ def test_run_backtest_sample_reads_db_source_without_csv_materialization(monkeyp
                 data_len=1,
             )
 
-    monkeypatch.setattr("trader.task.backtrader_task.DatabaseManager", FakeDatabaseManager)
-    monkeypatch.setattr("trader.task.backtrader_task.parse_strategies", lambda strategies: ["fake-strategy"])
-    monkeypatch.setattr("trader.task.backtrader_task.Node", FakeNode)
+    monkeypatch.setattr("trader.adapters.outbound.backtrader.sample_worker.DatabaseManager", FakeDatabaseManager)
+    monkeypatch.setattr("trader.adapters.outbound.backtrader.sample_worker.parse_strategies", lambda strategies: ["fake-strategy"])
+    monkeypatch.setattr("trader.adapters.outbound.backtrader.sample_worker.Node", FakeNode)
 
     result = run_backtest_sample(spec)
 
@@ -560,7 +560,7 @@ def test_add_backtrader_task_runs_regular_db_backtest_without_sample_worker(monk
 
         monkeypatch.setattr(TaskManager, "_prepare_backtest_datasets", fake_prepare)
         monkeypatch.setattr(TaskManager, "_execute_sample_specs", fake_execute)
-        monkeypatch.setattr("trader.task.backtrader_task.BackTraderTask.start", fake_task_start)
+        monkeypatch.setattr("trader.adapters.outbound.backtrader.task_handles.BacktestTaskHandle.start", fake_task_start)
 
         import trader.task.task_manager as task_manager_module
 

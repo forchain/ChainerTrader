@@ -85,6 +85,34 @@ class TaskRunner(Protocol):
 
 
 @runtime_checkable
+class TaskHandle(Protocol):
+    """Port for a managed running task: lifecycle state plus start/stop/close."""
+
+    ts: TaskState
+    tcfg: Any
+    exchange: Any
+    quit: Any
+
+    def id(self) -> int: ...
+    def type(self) -> Any: ...
+    def name(self) -> str: ...
+    async def start(self, queue: Any) -> Any: ...
+    def stop(self) -> None: ...
+    def close(self) -> None: ...
+
+
+@runtime_checkable
+class TaskRunnerFactory(Protocol):
+    """Port for building task handles and running backtest tasks."""
+
+    def build(self, task_cfg: Any, exchange: Any) -> TaskHandle | None: ...
+
+    def build_sample_spec(self, task_cfg: Any) -> Any: ...
+
+    async def run_backtest_task(self, task: TaskHandle, queue: Any) -> list[Any]: ...
+
+
+@runtime_checkable
 class TaskEventPublisher(Protocol):
     """Port for publishing live task dashboard/runtime events."""
 

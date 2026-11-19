@@ -16,6 +16,7 @@ from trader.core.marketdata.use_cases.update_klines import (
     download_range,
     sync_klines,
 )
+from trader.core.shared.async_utils import sleep
 from trader.core.task.config import TaskConfig
 from trader.core.task.domain import TaskState, TaskStateType, task_state_name
 from trader.core.task.interfaces import TaskRepository
@@ -210,4 +211,41 @@ class ImportCsvTaskRunner:
             self.log.warning(f"{name} add klines to DB: {ret} != {len(kls)}")
         else:
             self.log.info(f"{name} add klines to DB: {ret}")
+        return await _mark_done(ts, self.task_repository)
+
+
+class DebugTaskRunner:
+    """TaskRunner adapter for DEBUG countdown tasks."""
+
+    def __init__(
+        self,
+        *,
+        task_repository: TaskRepository | None = None,
+        log: Any = None,
+        sleep_fn: Callable[[Any, float], Any] = sleep,
+    ):
+        self.task_repository = task_repository
+        self.log = log
+        self.sleep_fn = sleep_fn
+
+    async def run(self, cfg: TaskConfig, **kwargs: Any) -> TaskState:
+        quit_event = kwargs.get("quit_event") or asyncio.Event()
+        ts = kwargs.get("task_state") or _build_running_state(cfg)
+        if self.task_repository is not None:
+            await self.task_repository.add_tasks([ts])
+
+        name = f"{cfg.id}.{cfg.ttype.name}"
+        count = cfg.limit
+
+        while count > 0:
+            count -= 1
+
+            if quit_event.is_set():
+                self.log.info(f"Exit {name}. process={count}/{cfg.limit}")
+                return ts
+
+            self.log.info(f"Run {name}. process={count}/{cfg.limit}")
+
+            await self.sleep_fn(self.log, 1)
+
         return await _mark_done(ts, self.task_repository)
