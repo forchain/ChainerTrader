@@ -532,13 +532,13 @@ def run_api_mode(cfg: Config) -> None:
     import uvicorn
 
     from trader.adapters.inbound.http import create_app
-    from trader.rpc.rpc_app import RpcApp
+    from trader.adapters.inbound.http.lifecycle import ApiServerLifecycle
 
     container = compose_application(cfg)
 
     @asynccontextmanager
     async def api_lifespan(fast_app):
-        rpc_app = RpcApp(cfg, container=container)
+        rpc_app = ApiServerLifecycle(container=container)
         fast_app.state.app = rpc_app
         fast_app.state.live_event_bus = getattr(rpc_app, "live_event_bus", None) or container.live_event_bus
         await rpc_app.bootstrap_database_for_startup()

@@ -25,6 +25,7 @@ LEGACY_SHIM_ADAPTER_ALLOWLIST = frozenset(
         "notify/trade_notification.py",
         "rpc/api/tasks.py",
         "rpc/app.py",
+        "rpc/rpc_app.py",
         "task/optimization_audit.py",
         "task/optimization_audit_workflow.py",
         "task/optimization_report.py",

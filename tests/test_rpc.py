@@ -18,12 +18,12 @@ from trader.rpc.models import AcctsInfo, TasksInfo, get_accounts_info
 @pytest.fixture
 def rpc_test_client(monkeypatch):
     """Use context-managed TestClient so FastAPI lifespan runs (RpcApp on app.state)."""
-    monkeypatch.setattr("trader.rpc.rpc_app.os.kill", lambda pid, sig: None)
+    monkeypatch.setattr("trader.adapters.inbound.http.lifecycle.os.kill", lambda pid, sig: None)
 
     async def _sleep(logger, seconds, desc):
         await asyncio.sleep(0)
 
-    monkeypatch.setattr("trader.rpc.rpc_app.sleep", _sleep)
+    monkeypatch.setattr("trader.adapters.inbound.http.lifecycle.sleep", _sleep)
 
     app.state.cfg = Config(api="127.0.0.1:8100", tasks="[]")
     with TestClient(app) as client:

@@ -391,7 +391,7 @@ def test_live_api_http_smoke_lists_strategies_and_loads_snapshot():
 
 
 def test_admin_live_route_returns_monitor_layout():
-    import trader.rpc.rpc_app as rpc_app_module
+    import trader.adapters.inbound.http.lifecycle as rpc_app_module
 
     rpc_app_module.os.kill = lambda pid, sig: None
 
@@ -421,7 +421,7 @@ def test_admin_live_route_returns_monitor_layout():
 
 
 def test_admin_dashboard_renders_task_monitor_navigation_without_klines_entry():
-    import trader.rpc.rpc_app as rpc_app_module
+    import trader.adapters.inbound.http.lifecycle as rpc_app_module
 
     rpc_app_module.os.kill = lambda pid, sig: None
 
@@ -587,7 +587,9 @@ async def test_current_task_workspace_latest_done_backtest_run_returns_batch_cha
         strategy_start_time=BASE,
         strategy_end_time=BASE + 4 * 60,
         config_json=btc_config,
-        tret=TraderResult(0.12, 0.02, timedelta(seconds=60), 0.1, 0.5, 1.2, 2.0, -1.0, 1, 0, [Operate(OperateType.BUY, BASE + 2 * 60, 102.0)], 0.3, 5),
+        tret=TraderResult(
+            0.12, 0.02, timedelta(seconds=60), 0.1, 0.5, 1.2, 2.0, -1.0, 1, 0, [Operate(OperateType.BUY, BASE + 2 * 60, 102.0)], 0.3, 5
+        ),
     )
     backtest_eth = SimpleNamespace(
         id=31,

@@ -48,8 +48,8 @@ async def test_rpc_app_processes_initial_task_message(monkeypatch):
         seen.extend(msgs)
 
     monkeypatch.setattr(app, "handler", fake_handler)
-    monkeypatch.setattr("trader.rpc.rpc_app.sleep", lambda logger, seconds, desc: asyncio.sleep(0))
-    monkeypatch.setattr("trader.rpc.rpc_app.os.kill", lambda pid, sig: None)
+    monkeypatch.setattr("trader.adapters.inbound.http.lifecycle.sleep", lambda logger, seconds, desc: asyncio.sleep(0))
+    monkeypatch.setattr("trader.adapters.inbound.http.lifecycle.os.kill", lambda pid, sig: None)
 
     message = object()
     app.process([message])
@@ -106,8 +106,8 @@ async def test_rpc_app_waits_until_handler_ready(monkeypatch):
         await unblock.wait()
 
     monkeypatch.setattr(app, "handler", fake_handler)
-    monkeypatch.setattr("trader.rpc.rpc_app.sleep", lambda logger, seconds, desc: asyncio.sleep(0))
-    monkeypatch.setattr("trader.rpc.rpc_app.os.kill", lambda pid, sig: None)
+    monkeypatch.setattr("trader.adapters.inbound.http.lifecycle.sleep", lambda logger, seconds, desc: asyncio.sleep(0))
+    monkeypatch.setattr("trader.adapters.inbound.http.lifecycle.os.kill", lambda pid, sig: None)
 
     app.process([])
     await app.wait_until_handler_ready()
@@ -210,7 +210,7 @@ async def test_rpc_app_async_start_schedules_recovery_without_waiting_for_scan(m
         "recover_task",
         lambda taskc, queue: _recover_task(taskc, queue, recovered_started, release_recover),
     )
-    monkeypatch.setattr("trader.app.app.TaskConfigCodec.from_persisted_state", lambda _state: recovered)
+    monkeypatch.setattr("trader.core.task.use_cases.runtime.TaskConfigCodec.from_persisted_state", lambda _state: recovered)
     app.db_manager = FakeDbManager()
 
     result = await app.start_async()
@@ -277,7 +277,7 @@ async def test_rpc_app_recovery_limits_concurrent_task_starts(monkeypatch):
     monkeypatch.setattr(app.task_manager, "start", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(app.task_manager, "recover_task", fake_recover_task)
     monkeypatch.setattr(
-        "trader.app.app.TaskConfigCodec.from_persisted_state",
+        "trader.core.task.use_cases.runtime.TaskConfigCodec.from_persisted_state",
         lambda state: TaskConfig(
             id=state.id,
             ttype=TaskType.DEBUG,
@@ -285,7 +285,7 @@ async def test_rpc_app_recovery_limits_concurrent_task_starts(monkeypatch):
             strategies=[],
         ),
     )
-    monkeypatch.setattr("trader.app.app.RECOVERY_TASK_CONCURRENCY", 2)
+    monkeypatch.setattr("trader.core.task.use_cases.runtime.RECOVERY_TASK_CONCURRENCY", 2)
     app.db_manager = FakeDbManager()
 
     result = await app.start_async()
