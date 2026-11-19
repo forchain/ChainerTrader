@@ -41,7 +41,9 @@ class FileRankingReportStore:
 
     def __init__(self, base_dir: str | Path | None = None, *, static_dir: Path | None = None):
         self.base_dir = Path(base_dir) if base_dir is not None else Path.cwd()
-        self.static_dir = static_dir or (Path(__file__).resolve().parents[3] / "rpc" / "static" / "optimization-workbench")
+        self.static_dir = static_dir or (
+            Path(__file__).resolve().parents[4] / "trader" / "adapters" / "inbound" / "http" / "static" / "optimization-workbench"
+        )
 
     def run_dir(self, run_id: str) -> Path:
         return self.base_dir / "reports" / "optimizations" / run_id

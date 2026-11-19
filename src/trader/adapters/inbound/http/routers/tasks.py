@@ -6,6 +6,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request
 
 from trader.adapters.inbound.http.exceptions import translate_domain_exception
+from trader.adapters.inbound.http.presenters import public_task_state_dict
 from trader.auth.context import current_user
 from trader.common import path as trader_path
 from trader.core.exchange.account_lifecycle import LiveAccountLifecycle
@@ -30,7 +31,6 @@ from trader.core.task.use_cases.submission import (
 from trader.core.task.use_cases.submission import (
     validate_config_file_source as _core_validate_config_file_source,
 )
-from trader.rpc.task_state_payload import public_task_state_dict
 from trader.task.task_config import read_task_config_source
 from trader.task.task_type import TaskType
 
@@ -185,12 +185,21 @@ async def _preflight_user_live_tasks(request: Request, user, taskcs) -> None:
     rpc_app = getattr(request.app.state, "app", None)
     db_manager = getattr(rpc_app, "db_manager", None)
     cipher = _secret_cipher(composition, cfg)
+    validator = getattr(composition, "credential_connectivity_validator", None)
     preflight = PreflightUserExchange(getattr(db_manager, "exchange_credential", None), cipher=cipher)
     try:
-        await preflight.execute(
-            user.id,
-            connectivity_check=lambda credential: _user_exchange_ping_ok(cfg, cipher, _exchange_factory(composition), credential),
-        )
+        if callable(validator):
+
+            def connectivity_check(credential):
+                return _validator_ping_ok(cfg, cipher, validator, credential)
+
+        else:
+            exchange_factory = _exchange_factory(composition)
+
+            def connectivity_check(credential):
+                return _user_exchange_ping_ok(cfg, cipher, exchange_factory, credential)
+
+        await preflight.execute(user.id, connectivity_check=connectivity_check)
     except Exception as exc:
         raise translate_domain_exception(exc) from exc
 
@@ -262,6 +271,20 @@ def _secret_cipher(composition, cfg):
 def _exchange_factory(composition):
     factory = getattr(composition, "user_exchange_factory", None)
     return factory if callable(factory) else None
+
+
+def _validator_ping_ok(cfg, cipher, validator, credential) -> bool:
+    try:
+        context = LiveAccountLifecycle.build_credential_context(
+            base_cfg=base_exchange_config(None, cfg),
+            cipher=cipher,
+            credential=credential,
+            user_id=0,
+            margin_mode=MarginMode.SPOT,
+        )
+    except Exception:
+        return False
+    return validator(context.cfg, "BINANCE", context.cfg.api_key, context.cfg.api_secret) is None
 
 
 def _user_exchange_ping_ok(cfg, cipher, exchange_factory, credential) -> bool:

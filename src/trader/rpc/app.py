@@ -10,6 +10,14 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi_auto_router import AutoRouter
 
+from trader.adapters.inbound.http.queries import (
+    get_accounts_info,
+    get_klines_info,
+    get_logs_info,
+    get_taskinfo,
+    open_orders_for_symbol_from_exchange,
+)
+from trader.adapters.inbound.http.schemas import AcctsInfo
 from trader.adapters.outbound.binance.exchange import BinanceExchange
 from trader.app.app import version
 from trader.auth.context import SESSION_COOKIE, AuthUser, SessionAuthMiddleware, auth_enabled, current_user, require_admin, require_user
@@ -33,14 +41,6 @@ from trader.core.identity.use_cases import (
 )
 from trader.core.shared.domain import Symbol
 from trader.live.monitor import LiveEventBus
-from trader.rpc.models import (
-    AcctsInfo,
-    get_accounts_info,
-    get_klines_info,
-    get_logs_info,
-    get_taskinfo,
-    open_orders_for_symbol_from_exchange,
-)
 from trader.rpc.rpc_app import RpcApp
 
 
@@ -64,7 +64,7 @@ async def lifespan(app: FastAPI):
 
 
 def get_directory(sub: str) -> str:
-    baseDir = os.path.abspath(os.path.dirname(__file__))
+    baseDir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "..", "adapters", "inbound", "http")
     filePath = os.path.join(baseDir, sub)
     return os.path.realpath(filePath)
 

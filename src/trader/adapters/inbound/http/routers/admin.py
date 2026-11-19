@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Request, status
 
-from trader.auth.context import require_admin
+from trader.adapters.inbound.http.auth import require_admin
 
 router = APIRouter()
 

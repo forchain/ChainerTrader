@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi.testclient import TestClient
 
+from trader.adapters.inbound.http.queries import AcctsInfo, TasksInfo, get_accounts_info
 from trader.auth.credentials import encrypt_secret
 from trader.common.common import NAME
 from trader.common.config import Config
@@ -12,7 +13,6 @@ from trader.common.logger import Logger
 from trader.core.exchange.domain import Balance, ExchangeConfig, MarginMode
 from trader.core.shared.domain import Interval, SymbolInterval
 from trader.rpc.app import app
-from trader.rpc.models import AcctsInfo, TasksInfo, get_accounts_info
 
 
 @pytest.fixture

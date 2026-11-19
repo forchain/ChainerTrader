@@ -7,16 +7,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from trader.common.config import Config
-from trader.core.shared.domain import Interval, Kline, Operate, OperateType, SymbolInterval
-from trader.live.dashboard import DashboardEvent
-from trader.live.monitor import (
-    LiveEventBus,
-    build_initial_snapshot,
-    build_live_strategy_summary,
-    serialize_dashboard_event,
-)
-from trader.rpc.api.live import (
+from trader.adapters.inbound.http.routers.live import (
     current_task_workspace,
     dispatch_debug_manual_signal,
     is_local_request,
@@ -27,10 +18,19 @@ from trader.rpc.api.live import (
     live_strategy_snapshot,
     rerun_task,
 )
-from trader.rpc.api.live import (
+from trader.adapters.inbound.http.routers.live import (
     router as live_router,
 )
-from trader.rpc.api.task import get_task_operations
+from trader.adapters.inbound.http.routers.task import get_task_operations
+from trader.common.config import Config
+from trader.core.shared.domain import Interval, Kline, Operate, OperateType, SymbolInterval
+from trader.live.dashboard import DashboardEvent
+from trader.live.monitor import (
+    LiveEventBus,
+    build_initial_snapshot,
+    build_live_strategy_summary,
+    serialize_dashboard_event,
+)
 from trader.rpc.app import app as rpc_app
 from trader.strategy.trader_result import TraderResult
 from trader.task.task_config import TaskConfig
@@ -1040,7 +1040,7 @@ async def test_live_debug_manual_entry_endpoint_delegates_to_dispatch(monkeypatc
         captured["side"] = side
         return {"ok": True, "side": side}
 
-    monkeypatch.setattr("trader.rpc.api.live.dispatch_debug_manual_signal", fake_dispatch)
+    monkeypatch.setattr("trader.adapters.inbound.http.routers.live.dispatch_debug_manual_signal", fake_dispatch)
     payload = await live_debug_manual_entry(11, request=SimpleNamespace())
 
     assert payload == {"ok": True, "side": "entry"}
@@ -1056,7 +1056,7 @@ async def test_live_debug_manual_exit_endpoint_delegates_to_dispatch(monkeypatch
         captured["side"] = side
         return {"ok": True, "side": side}
 
-    monkeypatch.setattr("trader.rpc.api.live.dispatch_debug_manual_signal", fake_dispatch)
+    monkeypatch.setattr("trader.adapters.inbound.http.routers.live.dispatch_debug_manual_signal", fake_dispatch)
     payload = await live_debug_manual_exit(12, request=SimpleNamespace())
 
     assert payload == {"ok": True, "side": "exit"}

@@ -1,5 +1,5 @@
-from types import SimpleNamespace
 from pathlib import Path
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
@@ -84,7 +84,7 @@ def test_admin_tasks_page_renders_visual_task_form_with_strategy_options(monkeyp
 
 
 def test_tasks_page_loads_operation_records_on_demand_in_paginated_modal():
-    template = (ROOT / "src/trader/rpc/templates/tasks.html").read_text(encoding="utf-8")
+    template = (ROOT / "src/trader/adapters/inbound/http/templates/tasks.html").read_text(encoding="utf-8")
 
     assert "renderOperationRecordsButton" in template
     assert "id=\"operationRecordsModal\"" in template
@@ -99,7 +99,7 @@ def test_tasks_page_loads_operation_records_on_demand_in_paginated_modal():
 
 
 def test_tasks_page_persists_config_file_form_state_before_submit_reload():
-    template = (ROOT / "src/trader/rpc/templates/tasks.html").read_text(encoding="utf-8")
+    template = (ROOT / "src/trader/adapters/inbound/http/templates/tasks.html").read_text(encoding="utf-8")
 
     assert "TASK_CONFIG_FORM_STATE_STORAGE_KEY" in template
     assert "writeTaskConfigFormState" in template
@@ -112,7 +112,7 @@ def test_tasks_page_persists_config_file_form_state_before_submit_reload():
 
 
 def test_tasks_page_renders_failed_task_error_state():
-    template = (ROOT / "src/trader/rpc/templates/tasks.html").read_text(encoding="utf-8")
+    template = (ROOT / "src/trader/adapters/inbound/http/templates/tasks.html").read_text(encoding="utf-8")
 
     assert "task.state == 'FAILED'" in template
     assert "启动失败" in template
@@ -121,7 +121,7 @@ def test_tasks_page_renders_failed_task_error_state():
 
 
 def test_tasks_page_waits_for_async_startup_failures_before_reload():
-    template = (ROOT / "src/trader/rpc/templates/tasks.html").read_text(encoding="utf-8")
+    template = (ROOT / "src/trader/adapters/inbound/http/templates/tasks.html").read_text(encoding="utf-8")
 
     assert "async function waitForSubmittedTaskFailures(taskIds)" in template
     assert "const failure = await waitForSubmittedTaskFailures(taskIds);" in template

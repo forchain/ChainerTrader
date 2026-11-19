@@ -41,7 +41,7 @@ from trader.adapters.outbound.identity.argon2_hasher import Argon2PasswordHasher
 from trader.adapters.outbound.identity.fernet_cipher import FernetSecretCipher, service_key_available
 from trader.adapters.outbound.logging.logger import Logger
 from trader.adapters.outbound.persistence.manager import DatabaseManager, DatabaseSchemaError
-from trader.core.exchange.domain import ExchangeType, MarginMode, parse_exchange_config
+from trader.core.exchange.domain import ExchangeConfig, ExchangeType, MarginMode, parse_exchange_config
 from trader.core.identity.exceptions import PasswordPolicyError
 from trader.core.identity.use_cases import BootstrapAdministrator, bootstrap_admin_exchange_credential
 from trader.core.notification.manager import NotifyManager
@@ -93,6 +93,7 @@ class AppContainer:
     user_exchange_factory: Any = BinanceExchange
     secret_cipher_factory: Callable[[str | None], Any] | None = None
     secret_key_ready_fn: Callable[[], bool] | None = None
+    credential_connectivity_validator: Any = None
     schema_error_cls: type[Exception] = DatabaseSchemaError
     backtest_runner_cls: type[BacktestTaskRunner] = BacktestTaskRunner
     live_trader_runner_cls: type[LiveTraderTaskRunner] = LiveTraderTaskRunner
@@ -230,7 +231,10 @@ def compose_application(
     notify_mgr = NotifyManager(cfg, app_logger, notices=parse_notice_config(cfg.notice) if cfg.notice else None)
     stat = Statistics(cfg, app_logger.log(), db_manager, table_renderer=render_statistics_table)
     password_hasher = Argon2PasswordHasher()
-    report_store = FileRankingReportStore(Path.cwd())
+    report_store = FileRankingReportStore(
+        Path.cwd(),
+        static_dir=Path(__file__).resolve().parent / "adapters" / "inbound" / "http" / "static" / "optimization-workbench",
+    )
     config_file_store = FileTaskConfigFileStore()
 
     def build_optimization_runner(
@@ -273,6 +277,19 @@ def compose_application(
 
     def exchange_factory(ex_cfg, log=None):
         return BinanceExchange(ex_cfg, log or app_logger.log())
+
+    def validate_binance_credential_connectivity(base_cfg, exchange_name: str, api_key: str, api_secret: str) -> str | None:
+        if exchange_name != "BINANCE":
+            return None
+        try:
+            payload = (base_cfg or ExchangeConfig()).to_dict()
+            payload["api_key"] = api_key
+            payload["api_secret"] = api_secret
+            if not BinanceExchange(ExchangeConfig(**payload), app_logger.log()).ping():
+                return "API key 连通性检查失败：无法连接交易所，请检查网络或密钥。"
+        except Exception as exc:
+            return f"API key 连通性检查失败：{exc}"
+        return None
     task_runner_factory = _MainTaskRunnerFactory(cfg, app_logger, db_manager, event_bus, build_execution_gateway)
     task_manager = TaskManager(
         cfg,
@@ -335,6 +352,7 @@ def compose_application(
         recovery_runner=recovery_runner,
         secret_cipher_factory=lambda key: FernetSecretCipher(key) if service_key_available(key) else None,
         secret_key_ready_fn=lambda: service_key_available(getattr(cfg, "secret_key", None)),
+        credential_connectivity_validator=validate_binance_credential_connectivity,
         strategy_options=list_strategy_options,
         strategy_param_defaults=strategy_param_defaults,
         strategy_loader=BacktraderStrategyCatalog(),
@@ -555,7 +573,6 @@ def run_api_mode(cfg: Config) -> None:
         host=host,
         port=port,
         reload=False,
-        app_dir=os.path.join(path.GetTraderDir(), "rpc"),
         log_level=cfg.get_log_level(),
     )
 

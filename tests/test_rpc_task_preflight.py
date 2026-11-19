@@ -8,12 +8,12 @@ from unittest.mock import Mock
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from trader.adapters.inbound.http.routers.tasks import router
 from trader.auth.context import SessionAuthMiddleware
 from trader.auth.credentials import encrypt_secret
 from trader.common.config import Config
 from trader.core.exchange.domain import ExchangeConfig
 from trader.core.shared.domain import Interval, SymbolInterval
-from trader.rpc.api.tasks import router
 from trader.strategy.trader_result import TraderResult
 from trader.task.task_config import TaskConfig
 from trader.task.task_manager import TaskManager
@@ -350,7 +350,7 @@ def test_task_creation_from_config_path_attaches_current_user_id():
         return await call_next(request)
 
     monkeypatch = __import__("pytest").MonkeyPatch()
-    monkeypatch.setattr("trader.rpc.api.tasks._user_exchange_ping_ok", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr("trader.adapters.inbound.http.routers.tasks._user_exchange_ping_ok", lambda *_args, **_kwargs: True)
     try:
         client = TestClient(app)
         response = client.post("/api/tasks", content="configs/tasks/live/manual_notify_btc_1m.json")

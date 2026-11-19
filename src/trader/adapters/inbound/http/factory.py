@@ -13,6 +13,14 @@ from fastapi_auto_router import AutoRouter
 
 from trader.adapters.inbound.http.auth import SESSION_COOKIE, AuthUser, SessionAuthMiddleware, auth_enabled, current_user, require_admin, require_user
 from trader.adapters.inbound.http.exceptions import translate_domain_exception
+from trader.adapters.inbound.http.queries import (
+    get_accounts_info,
+    get_klines_info,
+    get_logs_info,
+    get_taskinfo,
+    open_orders_for_symbol_from_exchange,
+)
+from trader.adapters.inbound.http.schemas import AcctsInfo
 from trader.core.exchange.domain import MarginMode
 from trader.core.exchange.exceptions import UserExchangeCredentialError
 from trader.core.exchange.use_cases import SymbolOpenOrders, base_exchange_config, build_user_exchange_context
@@ -26,18 +34,6 @@ from trader.core.identity.use_cases import (
     ResetUserPassword,
 )
 from trader.core.shared.domain import NAME, Symbol
-from trader.rpc.models import (
-    AcctsInfo,
-    get_accounts_info,
-    get_klines_info,
-    get_logs_info,
-    get_taskinfo,
-    open_orders_for_symbol_from_exchange,
-)
-
-
-def _rpc_dir() -> Path:
-    return Path(__file__).resolve().parents[3] / "rpc"
 
 
 def list_strategy_options(composition: Any = None) -> list[str]:
@@ -133,10 +129,10 @@ def create_app(
     if cfg is not None and callable(getattr(cfg, "is_auth_enabled", None)) and cfg.is_auth_enabled():
         fast_app.add_middleware(SessionAuthMiddleware)
 
-    rpc_base = _rpc_dir()
-    resolved_static = static_dir or (rpc_base / "static")
-    resolved_templates = templates_dir or (rpc_base / "templates")
-    resolved_routers = routers_dir or (rpc_base / "api")
+    http_dir = Path(__file__).resolve().parent
+    resolved_static = static_dir or (http_dir / "static")
+    resolved_templates = templates_dir or (http_dir / "templates")
+    resolved_routers = routers_dir or (http_dir / "routers")
 
     fast_app.mount("/static", StaticFiles(directory=str(resolved_static)), name="static")
     templates = Jinja2Templates(directory=str(resolved_templates))

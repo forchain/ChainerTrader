@@ -2,8 +2,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from trader.rpc.api.tasks import get_tasks
-from trader.rpc.models import get_taskinfo
+from trader.adapters.inbound.http.queries import get_taskinfo
+from trader.adapters.inbound.http.routers.tasks import get_tasks
 from trader.utils.task_state import TaskStateType
 
 
@@ -63,7 +63,7 @@ async def test_tasks_api_get_tasks_awaits_task_state_coroutine(monkeypatch):
     async def fake_current_user(*args, **kwargs):
         return SimpleNamespace(id=7)
 
-    monkeypatch.setattr("trader.rpc.api.tasks.current_user", fake_current_user)
+    monkeypatch.setattr("trader.adapters.inbound.http.routers.tasks.current_user", fake_current_user)
 
     request = SimpleNamespace(
         app=SimpleNamespace(
@@ -96,7 +96,7 @@ async def test_tasks_api_get_tasks_sanitizes_recovery_only_config_json(monkeypat
     async def fake_current_user(*args, **kwargs):
         return SimpleNamespace(id=7)
 
-    monkeypatch.setattr("trader.rpc.api.tasks.current_user", fake_current_user)
+    monkeypatch.setattr("trader.adapters.inbound.http.routers.tasks.current_user", fake_current_user)
 
     request = SimpleNamespace(
         app=SimpleNamespace(

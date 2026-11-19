@@ -12,7 +12,7 @@ def repo_root() -> Path:
 
 def build_workbench_url(base_url: str, run_id: str) -> str:
     query = urlencode({"run_id": run_id})
-    return f"{base_url.rstrip('/')}/src/trader/rpc/static/optimization-workbench/index.html?{query}"
+    return f"{base_url.rstrip('/')}/src/trader/adapters/inbound/http/static/optimization-workbench/index.html?{query}"
 
 
 def serve_workbench(run_id: str, host: str = "127.0.0.1", port: int = 8765) -> tuple[ThreadingHTTPServer, str]:

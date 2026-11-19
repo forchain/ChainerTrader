@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Request
 
-from trader.rpc.user_exchange import request_user_exchange
+from trader.adapters.inbound.http.dependencies import request_user_exchange
 
 router = APIRouter()
 
