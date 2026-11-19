@@ -191,6 +191,12 @@ FastAPI app built by `create_app(composition)`; routers live in `src/trader/adap
 - **Development Branch**: `dev` (currently active)
 - **Commit Format**: Conventional commits (e.g., `feat:`, `fix:`, `docs:`)
 
+### Pull Request Rules
+- **A PR's head branch MUST be named `<type>/<kebab-slug>`** - `feat/<slug>`, `fix/<slug>` (also `refactor/`, `chore/`, `docs/`, `test/`, `perf/`), e.g. `fix/hexagonal-test-docs-sync`. Full rules in `docs/agents/pull-request-rules.md`.
+- **Never open a PR from a temporary or environment-specific branch name** (`butterflyray`, `langostino`, `ticket/01-foundation`, `merge/94-...`, `main`, `dev`).
+- **Rename the branch BEFORE creating the PR** - renaming a branch that an open PR points at deletes the old ref and closes that PR, and the API refuses to reopen it.
+- Base branch is `main`; the body follows the `pr` skill template (`Summary` / `Evidence` / `Merge Danger`) and carries one `Closes #<n>` line per issue resolved. Issues close on merge, never by hand.
+
 ### Testing Best Practices
 - Test files in `tests/` directory
 - Use `tests/conftest.py` for shared fixtures
