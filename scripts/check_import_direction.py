@@ -12,6 +12,10 @@ FRAMEWORK_MODULES = frozenset({"fastapi", "tortoise", "backtrader", "ccxt", "pyd
 # added here; new code must accept ports and wire concrete adapters in ``main.py``.
 LEGACY_SHIM_ADAPTER_ALLOWLIST = frozenset(
     {
+        "common/config.py",
+        "common/log_buffer.py",
+        "common/logger.py",
+        "common/path.py",
         "live/market_data.py",
         "live/runtime.py",
         "live/stream.py",

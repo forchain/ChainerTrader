@@ -93,6 +93,7 @@ def _create_path(tmp_path: Path, monkeypatch, relative: str) -> Path:
         "src/trader/adapters/outbound/notification/execution_gateway.py",
         "src/trader/adapters/outbound/email/sender.py",
         "src/trader/adapters/outbound/files/store.py",
+        "src/trader/adapters/outbound/logging/logger.py",
     ],
 )
 def test_check_repo_layout_allows_hexagonal_package_paths(tmp_path: Path, monkeypatch, relative: str):

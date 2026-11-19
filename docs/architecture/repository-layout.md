@@ -7,7 +7,7 @@ This document defines where new files belong in ChainerTrader.
 - `src/trader/`: reusable application logic, product code, CLI modules, internal tools
 - `src/trader/core/`: stable domain and application layer, organized by bounded context
 - `src/trader/adapters/inbound/`: HTTP and CLI entry adapters
-- `src/trader/adapters/outbound/`: persistence, exchange, backtrader, market-stream, notification, email, and file adapters
+- `src/trader/adapters/outbound/`: persistence, exchange, backtrader, market-stream, notification, email, file, and logging adapters
 - `configs/`: non-executable configuration assets such as task JSON and notice JSON
 - `scripts/`: operational shell scripts and thin compatibility wrappers
 - `tests/`: automated verification, fixtures, and test-only helpers

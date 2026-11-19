@@ -12,6 +12,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 
+from trader.adapters.inbound.cli.env_config import new_and_env
 from trader.adapters.outbound.backtrader.backtest_runner import BacktestTaskRunner
 from trader.adapters.outbound.backtrader.catalog import list_strategy_options, strategy_param_defaults
 from trader.adapters.outbound.backtrader.live_trader_runner import LiveTraderTaskRunner
@@ -23,16 +24,16 @@ from trader.adapters.outbound.files.optimization_store import (
     FileRankingReportStore,
     FileTaskConfigFileStore,
 )
+from trader.adapters.outbound.logging.logger import Logger
 from trader.adapters.outbound.persistence.manager import DatabaseManager, DatabaseSchemaError
 from trader.auth.bootstrap import bootstrap_admin_exchange_credential
 from trader.auth.credentials import FernetSecretCipher, service_key_available
 from trader.auth.passwords import Argon2PasswordHasher
 from trader.common import path
-from trader.common.config import Config, default, new_and_env
-from trader.common.logger import Logger
 from trader.core.exchange.domain import ExchangeType, MarginMode, parse_exchange_config
 from trader.core.identity.exceptions import PasswordPolicyError
 from trader.core.identity.use_cases import BootstrapAdministrator
+from trader.core.shared.config import Config, default
 from trader.core.task.interfaces import TaskEventPublisher
 from trader.core.task.use_cases import PlanStartupTasks, RecoverRunningTasks
 from trader.live.monitor import LiveEventBus

@@ -17,7 +17,7 @@ import math
 
 import backtrader as bt
 
-from trader.utils.ma import MAType
+from trader.core.strategy.domain.types import MAType
 
 logger = logging.getLogger(__name__)
 

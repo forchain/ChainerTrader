@@ -9,10 +9,10 @@ from prettytable import PrettyTable
 from trader.adapters.outbound.backtrader.analyzers.backtest_report import BacktestReportAnalyzer
 from trader.adapters.outbound.backtrader.analyzers.operation_state import MaxDrawdownAnalyzer, OptStatAnalyzer
 from trader.adapters.outbound.backtrader.data import BinanceData
-from trader.common.config import Config
-from trader.common.log_tag import LogTag
-from trader.common.logger import Logger
+from trader.adapters.outbound.logging.logger import Logger
+from trader.core.shared.config import Config
 from trader.core.shared.domain import SymbolInterval
+from trader.core.shared.logging import LogTag
 from trader.core.strategy.domain.node import build_strategy_kwargs
 from trader.strategy.trader_result import TraderResult
 

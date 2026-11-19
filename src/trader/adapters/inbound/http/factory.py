@@ -13,7 +13,6 @@ from fastapi_auto_router import AutoRouter
 
 from trader.adapters.inbound.http.exceptions import translate_domain_exception
 from trader.auth.context import SESSION_COOKIE, AuthUser, SessionAuthMiddleware, auth_enabled, current_user, require_admin, require_user
-from trader.common.common import NAME
 from trader.core.exchange.domain import MarginMode
 from trader.core.exchange.exceptions import UserExchangeCredentialError
 from trader.core.exchange.use_cases import SymbolOpenOrders, base_exchange_config, build_user_exchange_context
@@ -26,7 +25,7 @@ from trader.core.identity.use_cases import (
     RegisterUser,
     ResetUserPassword,
 )
-from trader.core.shared.domain import Symbol
+from trader.core.shared.domain import NAME, Symbol
 from trader.rpc.models import (
     AcctsInfo,
     get_accounts_info,

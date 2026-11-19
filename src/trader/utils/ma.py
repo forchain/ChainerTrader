@@ -1,14 +1,3 @@
-from enum import Enum
+"""Compatibility shim: ``MAType`` now lives in ``trader.core.strategy.domain.types``."""
 
-
-class MAType(Enum):
-    """Moving Average Types"""
-
-    ALMA = "ALMA"
-    HMA = "HMA"
-    SMA = "SMA"
-    SWMA = "SWMA"
-    VWMA = "VWMA"
-    WMA = "WMA"
-    ZLEMA = "ZLEMA"
-    EMA = "EMA"
+from trader.core.strategy.domain.types import MAType  # noqa: F401

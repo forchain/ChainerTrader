@@ -21,7 +21,7 @@ from trader.adapters.outbound.backtrader.base_strategy import BaseStrategy
 from trader.adapters.outbound.backtrader.indicators.qqe_mod import QQEMod
 from trader.adapters.outbound.backtrader.indicators.super_trend import SuperTrend
 from trader.adapters.outbound.backtrader.indicators.trend_a import TrendA
-from trader.utils.ma import MAType
+from trader.core.strategy.domain.types import MAType
 
 
 class SuperTrendQQEMODStrategy(BaseStrategy):

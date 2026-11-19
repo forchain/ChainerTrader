@@ -5,6 +5,7 @@ import inspect
 from tortoise import Tortoise
 from tortoise.exceptions import OperationalError
 
+from trader.adapters.outbound.logging.logger import Logger
 from trader.adapters.outbound.persistence.account_fund_reservation import AccountFundReservationCol
 from trader.adapters.outbound.persistence.availability import AvailabilityCol
 from trader.adapters.outbound.persistence.config import build_tortoise_config, normalize_db_url
@@ -14,7 +15,6 @@ from trader.adapters.outbound.persistence.kline import DEFAULT_EXCHANGE, KlineCo
 from trader.adapters.outbound.persistence.strategy_config import StrategyConfigCol
 from trader.adapters.outbound.persistence.task import TaskCol
 from trader.adapters.outbound.persistence.user import UserCol
-from trader.common.logger import Logger
 
 REQUIRED_TABLES = (
     "klines",

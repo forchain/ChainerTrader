@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import os
 from pathlib import Path
 
@@ -96,3 +97,27 @@ def strategy_param_defaults(strategy_name: str) -> dict:
     except Exception:
         return {}
     return defaults
+
+
+def capitalize_first(s: str) -> str:
+    return s[:1].upper() + s[1:]
+
+
+def dynamic_load_create(module_name, class_name, *args, **kwargs):
+    try:
+        module = importlib.import_module(module_name)
+        cls = getattr(module, class_name)
+        return cls(*args, **kwargs)
+    except (ModuleNotFoundError, AttributeError) as e:
+        print(f"Error: {e}")
+        return None
+
+
+def dynamic_load(module_name, class_name):
+    try:
+        module = importlib.import_module(module_name)
+        cls = getattr(module, class_name)
+        return cls
+    except (ModuleNotFoundError, AttributeError) as e:
+        print(f"Error: {e}")
+        return None

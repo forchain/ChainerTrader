@@ -6,8 +6,8 @@ from binance_sdk_margin_trading.margin_trading import (
 from binance_sdk_margin_trading.rest_api.models import MarginAccountNewOcoSideEnum, MarginAccountNewOrderSideEnum
 from pydantic import BaseModel
 
-from trader.common.logger import default
-from trader.common.singleton import SingletonMeta
+from trader.adapters.outbound.binance.singleton import SingletonMeta
+from trader.adapters.outbound.logging.logger import default
 from trader.core.exchange.domain import ExchangeConfig
 from trader.core.execution import (
     ExecutionSide,

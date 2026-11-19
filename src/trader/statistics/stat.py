@@ -1,15 +1,3 @@
-from trader.core.task.domain import TaskState
+"""Compatibility shim: task statistics DTOs now live in ``trader.core.task.stats``."""
 
-
-class BackTraderStat:
-    def __init__(self, strategy, symbol_interval, ts: TaskState):
-        self.strategy = strategy
-        self.symbol_interval = symbol_interval
-        self.ts = ts
-
-
-class TraderStat:
-    def __init__(self, strategy, symbol_interval, ts: TaskState):
-        self.strategy = strategy
-        self.symbol_interval = symbol_interval
-        self.ts = ts
+from trader.core.task.stats import BackTraderStat, TraderStat  # noqa: F401

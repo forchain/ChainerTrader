@@ -8,7 +8,6 @@ from datetime import datetime, timedelta
 from typing import Any, Callable
 
 from trader.adapters.outbound.backtrader.live_runtime import BacktraderLiveRunner
-from trader.common.message import new_stat_msg
 from trader.core.exchange.interfaces import ExchangeClient
 from trader.core.execution import ExecutionGateway, ExecutionStateStore
 from trader.core.marketdata.interfaces import KlineRepository, MarketStreamPort
@@ -20,10 +19,12 @@ from trader.core.notification.domain import (
 from trader.core.notification.interfaces import NotificationSender
 from trader.core.notification.use_cases import SendManualTradeNotification
 from trader.core.shared.domain import OperateType
+from trader.core.shared.messages import new_stat_msg
 from trader.core.strategy.domain.node import build_strategy_kwargs
 from trader.core.task.config import TaskConfig
 from trader.core.task.domain import TaskState, TaskStateType, task_state_name
 from trader.core.task.interfaces import FundReservationStore, TaskEventPublisher, TaskRepository
+from trader.core.task.stats import TraderStat
 from trader.live.auto_execution import (
     MANUAL_NOTIFY_MODE,
     AutoExecutionRouter,
@@ -39,7 +40,6 @@ from trader.live.dashboard import (
     strategy_execution_event,
 )
 from trader.live.market_data import BackfillRequestKind, plan_initial_backfill
-from trader.statistics.stat import TraderStat
 from trader.strategy.strategy import parse_strategies
 from trader.strategy.trader_result import TraderResult
 

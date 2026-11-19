@@ -1,6 +1,3 @@
-from enum import Enum
+"""Compatibility shim: ``InflectionType`` now lives in ``trader.core.strategy.domain.types``."""
 
-
-class InflectionType(Enum):
-    HIGH = 1
-    LOW = 2
+from trader.core.strategy.domain.types import InflectionType  # noqa: F401

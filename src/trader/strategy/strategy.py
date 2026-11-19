@@ -1,8 +1,7 @@
 from pathlib import Path
 
 import trader.adapters.outbound.backtrader as backtrader_strategies
-from trader.common.common import dynamic_load
-from trader.utils.strings import capitalize_first
+from trader.adapters.outbound.backtrader.catalog import capitalize_first, dynamic_load
 
 _STRATEGY_PACKAGE = "trader.adapters.outbound.backtrader"
 _STRATEGY_DIR = Path(backtrader_strategies.__file__).parent

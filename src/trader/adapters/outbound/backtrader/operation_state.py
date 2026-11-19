@@ -1,9 +1,8 @@
 """Operation-state helpers shared by the backtrader adapter layer.
 
 The enrichment itself lives in :class:`trader.core.strategy.domain.lifecycle.OperateFactory`
-so framework events are built through one typed seam; this module keeps the
-legacy import path working and hosts the order-to-trade-context lookup that the
-analyzers and the live runtime share.
+so framework events are built through one typed seam; this module hosts the
+order-to-trade-context lookup that the analyzers and the live runtime share.
 """
 
 from trader.core.shared.domain import Operate

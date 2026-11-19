@@ -6,9 +6,9 @@ from asyncio import Event
 from datetime import datetime
 from typing import Any
 
-from trader.common.common import NAME
-from trader.common.log_tag import LogTag
-from trader.common.message import Message, new_exit_msg
+from trader.core.shared.domain import NAME
+from trader.core.shared.logging import LogTag
+from trader.core.shared.messages import Message, new_exit_msg
 from trader.task.live_startup_self_check import evaluate_live_startup_self_check
 
 

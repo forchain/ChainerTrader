@@ -11,6 +11,17 @@ from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any
 
+NAME = "trader"
+
+MIN_RECORDS_NUM = 100
+
+
+def parse_datetime(value: str) -> datetime:
+    if value.isdigit():
+        return datetime.fromtimestamp(int(value))
+    return datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+
+
 """
 Kline intervals
 m -> minutes; h -> hours; d -> days; w -> weeks; M -> months

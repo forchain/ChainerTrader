@@ -29,7 +29,7 @@ CORE_PACKAGES = frozenset(
 ADAPTERS_ROOT = Path("src/trader/adapters")
 ADAPTER_PACKAGES = {
     "inbound": frozenset({"http", "cli"}),
-    "outbound": frozenset({"persistence", "binance", "backtrader", "marketstream", "notification", "email", "files"}),
+    "outbound": frozenset({"persistence", "binance", "backtrader", "marketstream", "notification", "email", "files", "logging"}),
 }
 
 

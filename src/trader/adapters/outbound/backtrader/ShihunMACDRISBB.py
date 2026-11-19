@@ -5,7 +5,7 @@ import backtrader as bt
 from trader.adapters.outbound.backtrader.base_strategy import BaseStrategy
 from trader.adapters.outbound.backtrader.indicators.chainerrsi import ChainerRSIHisto
 from trader.core.shared.domain import OperateType
-from trader.utils.trend import TrendType
+from trader.core.strategy.domain.types import TrendType
 
 
 # Shihun MACD RSI BollingerBand strategy

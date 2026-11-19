@@ -1,8 +1,7 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 from trader.adapters.outbound.backtrader.base_strategy import BaseStrategy
-from trader.utils.inflectionpoint import InflectionType
-from trader.utils.trend import TrendType
+from trader.core.strategy.domain.types import InflectionType, TrendType
 
 
 # trilogy basic framework strategy

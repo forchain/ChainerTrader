@@ -1,7 +1,3 @@
-from enum import Enum
+"""Compatibility shim: ``LogTag`` now lives in ``trader.core.shared.logging``."""
 
-
-class LogTag(Enum):
-    PRIVATE = 0
-    GENERAl = 1
-    STRATEGY = 2
+from trader.core.shared.logging import LogTag  # noqa: F401

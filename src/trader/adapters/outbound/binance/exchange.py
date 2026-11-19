@@ -34,7 +34,7 @@ from urllib.parse import urlparse
 
 from trader.adapters.outbound.binance.archive import find_earliest_daily_archive_open_time
 from trader.adapters.outbound.binance.ccxt_driver import CcxtExchangeDriver
-from trader.common.logger import default
+from trader.adapters.outbound.logging.logger import default
 from trader.core.exchange.domain import Balance
 
 try:

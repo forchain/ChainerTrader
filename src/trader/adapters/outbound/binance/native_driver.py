@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from trader.adapters.outbound.binance.exchange import BinanceExchange
-from trader.common.logger import default
+from trader.adapters.outbound.logging.logger import default
 from trader.core.exchange.domain import ExchangeConfig, ExchangeDriverType
 
 

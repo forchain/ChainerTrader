@@ -18,9 +18,9 @@ from trader.core.execution import (
     ReconcileResult,
     RiskIntent,
 )
+from trader.core.execution.gateway_helpers import accepted_order_result
 from trader.core.execution.interfaces import ExecutionGateway
 from trader.core.shared.domain import OperateType, Symbol
-from trader.execution.gateway_common import accepted_order_result
 
 
 def _order_ids(payload: Any) -> list[str]:

@@ -7,9 +7,9 @@ import backtrader as bt
 from backtrader import num2date
 
 from trader.adapters.outbound.backtrader.feed import LiveKlineDataFeed
+from trader.adapters.outbound.backtrader.operation_state import trade_context_for_order
 from trader.core.shared.domain import Kline, OperateType
 from trader.core.strategy.domain.lifecycle import OperateFactory
-from trader.utils.operation_state import trade_context_for_order
 
 
 class LiveOperationAnalyzer(bt.Analyzer):
