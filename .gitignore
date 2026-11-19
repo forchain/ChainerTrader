@@ -158,3 +158,4 @@ configs/notices/notice.json
 .codex/config.toml
 
 configs/tasks/saved/
+.codegraph
