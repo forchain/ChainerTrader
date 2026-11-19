@@ -83,19 +83,19 @@ Dependencies point inward (`adapters` → `core`), and `tests/test_import_direct
 ### Module Overview
 
 - `src/trader/main.py`
-  Package entry point and composition root (`trader`); `trader-db` remains wrapped by `src/trader/tools/db.py`.
+  Package entry point and composition root (`trader`); the `trader-db` console script is provided by `src/trader/adapters/inbound/cli/db.py`.
 - `src/trader/core/`
   Domain and application layer for the trading business, organized by bounded context.
 - `src/trader/adapters/`
-  Inbound HTTP/CLI adapters and outbound persistence, exchange, backtrader, market-stream, notification, email, and file adapters.
+  Inbound HTTP/CLI adapters and outbound persistence, exchange, backtrader, market-stream, notification, email, logging, identity, execution, and file adapters.
 - `src/trader/adapters/outbound/persistence/`
   Tortoise models, migrations, connection lifecycle, and repository adapters.
-- `src/trader/rpc/` & `src/trader/app/` & `src/trader/task/`
-  HTTP templates/static assets, API routers, and legacy compatibility wrappers delegating to `core/` and `adapters/`.
-- `src/trader/strategy/`
-  Strategy discovery over `adapters/outbound/backtrader/` subclasses and `TraderResult`; the framework-free signal, lifecycle, and risk kernel lives in `src/trader/core/strategy/domain/`.
-- `src/trader/scanner/` & `src/trader/tools/`
-  Thin market scanning and optimization/selection wrappers delegating to `core/optimization/`.
+- `src/trader/adapters/inbound/http/`
+  FastAPI app factory, API routers, HTTP templates, and static assets.
+- `src/trader/adapters/outbound/backtrader/`
+  Strategy discovery and strategy subclasses; the framework-free signal, lifecycle, and risk kernel lives in `src/trader/core/strategy/domain/`.
+- `src/trader/core/optimization/`
+  Market scanning, parameter optimization, and coin selection use cases.
 - `configs/`
   User-facing task and notice configuration assets.
 
@@ -494,7 +494,7 @@ python scripts/check_runtime_context.py --profile optimization
 ```bash
 python -m trader \
   --tasks configs/tasks/downloads/update_klines.json \
-  --db mongodb://localhost:27017/ \
+  --db sqlite://data/trader.db \
   --exchange=BINANCE
 ```
 
@@ -561,7 +561,7 @@ Run it with database, exchange market-data access, and notice configuration:
 ```bash
 python -m trader \
   --tasks configs/tasks/live/auto_trade_macd_triple_divergence_top10_production.json \
-  --db mongodb://localhost:27017/ \
+  --db sqlite://data/trader.db \
   --exchange=BINANCE \
   --notice configs/notices/notice.json
 ```
@@ -609,7 +609,7 @@ Capped auto-trade example with an 11 USDT per-order cap:
 ```bash
 python -m trader \
   --tasks configs/tasks/live/auto_trade_capped_btc_1m.json \
-  --db mongodb://localhost:27017/ \
+  --db sqlite://data/trader.db \
   --exchange=BINANCE
 ```
 
@@ -655,7 +655,7 @@ Start ChainerTrader in Web mode with the realtime production task:
 python -m trader \
   --api 127.0.0.1:8000 \
   --tasks configs/tasks/live/auto_trade_macd_triple_divergence_top10_production.json \
-  --db mongodb://localhost:27017/ \
+  --db sqlite://data/trader.db \
   --exchange=BINANCE \
   --notice configs/notices/notice.json
 ```
@@ -796,7 +796,7 @@ python -m trader --tasks configs/tasks/examples/backtrader_strategy.json
 ```bash
 python -m trader \
   --tasks configs/tasks/downloads/update_klines.json \
-  --db mongodb://localhost:27017/ \
+  --db sqlite://data/trader.db \
   --exchange=BINANCE
 ```
 

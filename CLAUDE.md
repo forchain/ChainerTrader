@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ChainerTrader is a Python-based algorithmic trading system implementing TradingView algorithms from YouTube channel "Shi Hun". It provides backtesting, live trading, and analysis capabilities for cryptocurrency markets using the backtrader framework.
 
-**Key Technologies**: Python 3.11+, backtrader, FastAPI, MongoDB, Binance API
+**Key Technologies**: Python 3.11+, backtrader, FastAPI, Tortoise ORM (SQLite by default), Binance API
 
 ## Commands
 
@@ -65,7 +65,7 @@ python -m trader --api 0.0.0.0:8080 --auth-username admin --auth-password passwo
 python -m trader @configs/tasks/examples/backtrader_strategy.json
 
 # Run backtesting with specific task configuration
-python -m trader --tasks configs/tasks/examples/backtrader_strategy.json --db mongodb://localhost:27017/ --log_level DEBUG
+python -m trader --tasks configs/tasks/examples/backtrader_strategy.json --db sqlite://data/trader.db --log_level DEBUG
 ```
 
 ### Testing
@@ -90,30 +90,44 @@ pytest tests/test_strategy.py::test_function_name
 
 ## Architecture
 
+The repository uses a hexagonal (ports and adapters) layout. Dependencies point inward (`adapters` → `core`); `scripts/check_import_direction.py` and `tests/test_import_direction.py` enforce the boundary, and `scripts/check_repo_layout.py` enforces the file layout.
+
 ### Application Entry Points
-- **Main Entry**: `src/trader/__main__.py` → `src/trader/app/main.py`
-- **Core Application**: `src/trader/app/app.py` (orchestrates all components)
-- **Web API**: `src/trader/rpc/rpc_app.py` (FastAPI application)
+- **Main Entry**: `src/trader/__main__.py` → `src/trader/main.py`, the single composition root that instantiates concrete adapters and injects them into use cases and inbound adapters
+- **Web API**: `src/trader/adapters/inbound/http/factory.py` (`create_app(composition)`, FastAPI)
+- **CLI**: `src/trader/adapters/inbound/cli/` (console runner, terminal rendering, signal scanner, `src/trader/adapters/inbound/cli/db.py` for the `trader-db` command)
 
-### Core Systems
+### Core (`src/trader/core/`)
+Business rules, use cases, and outbound port definitions, organized by bounded context:
+- `shared/` — shared value objects (`Kline`, `SymbolInterval`, `OperateType`), config, interfaces
+- `task/` — task domain, config codec, lifecycle/submission/recovery/cleanup use cases, fund reservation, statistics
+- `execution/` — live execution modes, order semantics selection, gateway resolution, execution state
+- `marketdata/` — kline coverage, dataset preparation, backfill/update use cases
+- `exchange/` — exchange account and credential aggregate
+- `identity/` — users, sessions, password policy, credential encryption
+- `notification/` — notification rendering and use cases
+- `strategy/` — framework-free strategy kernel (signal routing, lifecycle, risk, indicators, `TraderResult`)
+- `optimization/` — optimization, market scanning, and selection use cases
 
-#### Task System (`src/trader/task/`)
-The application is built around an asynchronous task-based architecture managed by `task_manager.py`. Tasks communicate via message queues (`common/message.py`). All tasks inherit from `base_task.py`.
+### Adapters (`src/trader/adapters/`)
+- `inbound/http/` — FastAPI factory, API routers, HTTP templates, static assets
+- `inbound/cli/` — console entry points
+- `outbound/persistence/` — Tortoise ORM models, migrations, connection lifecycle, repositories
+- `outbound/binance/` — exchange client, REST access, execution gateway
+- `outbound/backtrader/` — engine, feeds, strategy discovery and subclasses, task runners, gateway, custom indicators
+- `outbound/marketstream/` — websocket and polling market-data connectors
+- `outbound/{notification,email,execution,logging,identity,files}/` — supporting adapters
 
-**Task Types** (defined in `task_type.py`):
-- `TRADER`: Live trading execution (`trader_task.py`)
-- `BACK_TRADER`: Historical backtesting (`backtrader_task.py`)
-- `UPDATE_KLINES`: Real-time data updates (`update_klines_task.py`)
-- `CHECK_KLINES`: Data validation (`check_klines_task.py`)
-- `IMPORT_CSV`: CSV data import (`import_csv_task.py`)
+### Task System
+Task types are `TRADER`, `BACK_TRADER`, `UPDATE_KLINES`, `CHECK_KLINES`, and `IMPORT_CSV`. Task domain rules and lifecycle use cases live in `src/trader/core/task/`; runners are implemented by outbound adapters such as `src/trader/adapters/outbound/backtrader/backtest_runner.py` and `live_trader_runner.py`.
 
 **Task Configuration**: JSON files in `configs/` define task parameters:
 - `configs/tasks/examples/backtrader_strategy.json` - Multiple backtest configurations
 - `configs/tasks/downloads/update_klines.json` - Data update settings
 - `configs/notices/notice.json` - Notification configuration
 
-#### Strategy Framework (`src/trader/strategy/`)
-All strategies inherit from `base_strategy.py`. There is also an intermediate base `TrilogyStrategy` (in `trilogy_strategy.py`) for strategies using inflection-point trend detection.
+### Strategy Framework
+Strategies live under `src/trader/adapters/outbound/backtrader/` and inherit from `BaseStrategy`; `TrilogyStrategy` is the intermediate base for inflection-point trend detection. The framework-free kernel lives in `src/trader/core/strategy/domain/` and must not import backtrader.
 
 `BaseStrategy` provides:
 - Order management with commission tracking
@@ -129,40 +143,31 @@ All strategies inherit from `base_strategy.py`. There is also an intermediate ba
 
 **Pine Script counterparts** live in `src/pine_scripts/` (indicators, libraries, and strategies directories) for TradingView compatibility.
 
-#### Exchange Integration (`src/trader/exchange/`)
-Modular exchange system currently supporting Binance:
-- **Main Interface**: `binance/exchange.py` - Exchange operations
-- **REST API**: `binance/restapi.py` - HTTP client
-- **Data Management**: `binance/data.py` - Real-time market data
-- **CSV Import**: `binance/csvdata.py` - Historical data from `data/` directory
+### Exchange Integration
+`src/trader/core/exchange/` defines the exchange ports; `src/trader/adapters/outbound/binance/` implements REST access, market data, and live order execution. Historical CSV feeds live in `src/trader/adapters/outbound/backtrader/csvdata.py` (data in `data/`).
 
 **Supported Intervals**: 1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M
 
-#### Database Layer (`src/trader/database/`)
-MongoDB integration for:
-- Kline data storage and retrieval
-- Task state persistence (`task.py`)
-- Historical data caching
+### Database Layer
+Tortoise ORM over SQL; local development defaults to SQLite (`TRADER_DB`, default `sqlite://data/trader.db`). Models, migrations, and repositories live in `src/trader/adapters/outbound/persistence/` and store klines, availability metadata, tasks, execution state, users, and encrypted credentials.
 
-#### Web API (`src/trader/rpc/`)
-FastAPI-based REST API with automatic routing (`fastapi-auto-router`):
+### Web API
+FastAPI app built by `create_app(composition)`; routers live in `src/trader/adapters/inbound/http/routers/`:
 - **Public Endpoints**: `/api/config`, `/api/info`, `/api/health`
 - **Admin Interface**: `/admin` dashboard, `/admin/tasks`, `/admin/klines`, `/admin/live`, `/admin/logs`, `/admin/users`
 - **Authentication**: database-backed login with HTTP-only session cookies
 
 ### Supporting Systems
 
-**ChainerTrader Library** (`libraries/chainer_trader.py`): Pine Script–compatible helper class (`ChainerTraderLib`) used inside strategies. Provides `stop_price()`, `entry_confirm()`, `exit_confirm()`, and static `breakeven_price()` methods. Mirrors `src/pine_scripts/libraries/chainer_trader.pine`.
+**ChainerTrader Library** (`src/trader/adapters/outbound/backtrader/libraries/chainer_trader.py`): Pine Script–compatible helper class (`ChainerTraderLib`) used inside strategies. Provides `stop_price()`, `entry_confirm()`, `exit_confirm()`, and static `breakeven_price()` methods. Mirrors `src/pine_scripts/libraries/chainer_trader.pine`.
 
-**Configuration**: `common/config.py` - Centralized configuration with environment variable support
+**Configuration**: `src/trader/core/shared/config.py` - Centralized configuration with environment variable support
 
-**Statistics**: `statistics/statistics.py` - Performance metrics and reporting
+**Statistics**: `src/trader/core/task/use_cases/statistics.py` - Performance metrics and reporting
 
-**Notifications**: `notify/notify_manager.py` - Email and notification system
+**Notifications**: `src/trader/core/notification/` with delivery through `src/trader/adapters/outbound/email/`
 
-**Indicators**: `indicators/` - Custom technical indicators (KDJ, RSRS, QQE, SuperTrend, ChainerRSI, PivotHigh, PivotLow)
-
-**Utilities**: `utils/` - Technical analysis helpers (MA, trend detection, kline utils, win rate, profit/loss ratio)
+**Indicators**: `src/trader/adapters/outbound/backtrader/indicators/` - Custom technical indicators (KDJ, RSRS, QQE, SuperTrend, ChainerRSI, PivotHigh, PivotLow)
 
 ## Development Guidelines
 
@@ -171,7 +176,7 @@ FastAPI-based REST API with automatic routing (`fastapi-auto-router`):
 2. Define strategy parameters using backtrader's `params` tuple
 3. Initialize indicators in `__init__()`
 4. Implement trading logic in `next()` method; use `enter_trade()`/`exit_trade()` for Chainer Framework v3 or `buy()`/`sell()` for direct orders
-5. **No registration needed** — the factory (`strategy/strategy.py`) uses dynamic loading. Name your file using snake_case and the class using the corresponding PascalCase + `Strategy` suffix (e.g., `my_signal.py` → `MySignalStrategy`). Place the file directly in `strategy/` or in a subfolder `strategy/MySignal/MySignal.py` with the same class name.
+5. **No registration needed** — discovery in `src/trader/adapters/outbound/backtrader/catalog.py` uses dynamic loading. Name your file using snake_case and the class using the corresponding PascalCase + `Strategy` suffix (e.g., `my_signal.py` → `MySignalStrategy`). Place the file directly in `src/trader/adapters/outbound/backtrader/` or in a subfolder `<Name>/<Name>.py` with the same class name.
 6. Reference via task config JSON using the file/folder name (e.g., `"strategy": "my_signal"` or `"strategy": "MySignal"`).
 
 ### Code Style
@@ -201,7 +206,7 @@ FastAPI-based REST API with automatic routing (`fastapi-auto-router`):
 - **Tests**: `tests/`
 - **Documentation**: `docs/`, `docs/strategies/`
 - **Entry Point**: `src/trader/__main__.py`
-- **Web Templates**: `src/trader/rpc/templates/` (if present)
+- **Web Templates**: `src/trader/adapters/inbound/http/templates/`
 
 ## Security Notes
 
