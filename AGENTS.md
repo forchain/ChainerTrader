@@ -75,6 +75,7 @@ Rules:
 - Treat test strategy as part of the implementation workflow from proposal through verification, not as a final optional step.
 - Default to test-driven development for code changes whenever the behavior can be exercised automatically.
 - Prefer automated tests over manual testing unless blocked by a concrete external limitation.
+- Every test MUST finish within the 60-second per-test budget enforced by `pytest-timeout` (`timeout = 60`, `timeout_method = signal` in `pytest.ini`); a test that exceeds it is invalidated by the architecture rather than repaired, and every deletion MUST be recorded in `docs/agents/test-retirement-log.md` before it happens.
 - If a proposed or implemented change cannot be covered by reliable automated tests, explicitly say so and explain why.
 - Do not claim a fix, feature, or refactor is complete without stating what was verified and how.
 

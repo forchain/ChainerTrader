@@ -197,6 +197,7 @@ FastAPI app built by `create_app(composition)`; routers live in `src/trader/adap
 - Mock external dependencies (APIs, databases)
 - Test both success and failure cases
 - Aim for high coverage (project targets 100%)
+- Every test must finish within the 60-second per-test budget enforced by `pytest-timeout` (`timeout = 60`, `timeout_method = signal` in `pytest.ini`); retire a test that exceeds it and record the retirement in `docs/agents/test-retirement-log.md`
 
 ## Important Paths
 
