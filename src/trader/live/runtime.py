@@ -171,9 +171,9 @@ class RealtimeLiveStrategyRuntime:
         if self.strategy_runner is not None:
             return self.strategy_runner(candles)
 
+        from trader.adapters.outbound.backtrader.catalog import parse_strategies
         from trader.adapters.outbound.backtrader.data import BinanceData
         from trader.adapters.outbound.backtrader.node import Node
-        from trader.strategy.strategy import parse_strategies
 
         strategy = parse_strategies(self.tcfg.strategies)
         if strategy is None:

@@ -5,10 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
+from trader.core.exchange.domain import parse_exchange_config
 from trader.core.identity.credentials import mask_api_key
 from trader.core.identity.domain import Role, User
 from trader.core.identity.exceptions import AuthenticationError
-from trader.core.identity.interfaces import PasswordHasher, SecretCipher, SessionRepository, UserRepository
+from trader.core.identity.interfaces import PasswordHasher, SecretCipher, SecretCipherFactory, SessionRepository, UserRepository
 from trader.core.identity.passwords import generate_temporary_password, validate_password, validate_username
 from trader.core.identity.sessions import create_session_token, hash_session_token, is_expired
 
@@ -155,3 +156,35 @@ class DecryptUserCredential:
             api_key=self.cipher.decrypt(encrypted_api_key),
             api_secret=self.cipher.decrypt(encrypted_api_secret),
         )
+
+
+async def bootstrap_admin_exchange_credential(
+    *,
+    cfg,
+    admin: User,
+    credential_repo,
+    log,
+    cipher_factory: SecretCipherFactory,
+) -> bool:
+    """Bootstrap the administrator's default exchange credential from configuration."""
+    if admin.id is None or credential_repo is None or not getattr(cfg, "exchange", None):
+        return False
+    if await credential_repo.get_default(admin.id, "BINANCE") is not None:
+        return False
+    cipher = cipher_factory(getattr(cfg, "secret_key", None))
+    if cipher is None:
+        log.warning("Skipping administrator exchange credential bootstrap: TRADER_SECRET_KEY is not configured")
+        return False
+    exchange_cfg = parse_exchange_config(cfg.exchange)
+    if exchange_cfg is None or not exchange_cfg.api_key or not exchange_cfg.api_secret:
+        return False
+    protected = EncryptUserCredential(cipher).execute(exchange_cfg.api_key, exchange_cfg.api_secret)
+    await credential_repo.upsert_default(
+        admin.id,
+        exchange="BINANCE",
+        encrypted_api_key=protected.encrypted_api_key,
+        encrypted_api_secret=protected.encrypted_api_secret,
+        masked_api_key=protected.masked_api_key,
+    )
+    log.info("Bootstrapped administrator default exchange credential from configuration")
+    return True

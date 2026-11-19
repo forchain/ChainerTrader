@@ -6,6 +6,7 @@ from asyncio import Queue
 from collections.abc import Callable
 from typing import Any
 
+from trader.adapters.outbound.backtrader.catalog import parse_strategies
 from trader.adapters.outbound.backtrader.live_runtime import BacktraderLiveRunner
 from trader.adapters.outbound.backtrader.live_trader_runner import LiveTraderTaskRunner
 from trader.adapters.outbound.binance.exchange import BinanceExchange
@@ -17,7 +18,6 @@ from trader.core.execution.modes import normalize_live_execution_mode
 from trader.core.task.interfaces import TaskEventPublisher
 from trader.live.market_data import plan_initial_backfill
 from trader.live.stream import GLOBAL_MARKET_STREAM_HUB
-from trader.strategy.strategy import parse_strategies
 from trader.strategy.trader_result import TraderResult
 from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig

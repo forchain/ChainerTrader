@@ -11,13 +11,10 @@ except ImportError:  # pragma: no cover - optional dependency outside uv-managed
     def load_dotenv() -> bool:
         return False
 
-from trader.scanner.top_volume_signal_scanner import (
-    build_runtime_config,
-    dump_signals_json,
-    render_signal_table,
-    scan_market_report,
-)
-from trader.strategy.strategy import parse_strategy
+from trader.adapters.inbound.cli.rendering import render_signal_table
+from trader.adapters.inbound.cli.signal_scanner import dump_signals_json, scan_market_report
+from trader.adapters.outbound.backtrader.catalog import parse_strategy
+from trader.main import compose_signal_scanner
 
 
 def parse_args() -> argparse.Namespace:
@@ -52,7 +49,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     load_dotenv()
     args = parse_args()
-    cfg, logger, db_manager, exchange = build_runtime_config()
+    cfg, logger, db_manager, exchange, runner = compose_signal_scanner()
     try:
         report = asyncio.run(
             scan_market_report(
@@ -60,6 +57,7 @@ def main() -> int:
                 logger,
                 db_manager,
                 exchange,
+                run_signals=runner.scan,
                 top_n=args.top,
                 strategy_name=args.strategy,
             )

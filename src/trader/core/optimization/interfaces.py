@@ -45,3 +45,19 @@ class CandidateSymbolSource(Protocol):
     def fetch_binance_exchange_info(self) -> dict[str, Any]: ...
 
     def fetch_cmc_index(self, index: str) -> dict[str, Any]: ...
+
+
+@runtime_checkable
+class SignalScanRunner(Protocol):
+    def scan(
+        self,
+        strategy_name: str,
+        symbol: str,
+        interval: Any,
+        klines: list[Any],
+        *,
+        cash: float = 100000.0,
+        commission: float = 0.001,
+        signal_start_time: int | None = None,
+        signal_end_time: int | None = None,
+    ) -> list[dict[str, Any]]: ...

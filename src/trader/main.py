@@ -13,6 +13,7 @@ from typing import Any
 from dotenv import load_dotenv
 
 from trader.adapters.inbound.cli.env_config import new_and_env
+from trader.adapters.inbound.cli.rendering import render_statistics_table
 from trader.adapters.outbound.backtrader.backtest_runner import BacktestTaskRunner
 from trader.adapters.outbound.backtrader.catalog import (
     BacktraderStrategyCatalog,
@@ -21,7 +22,9 @@ from trader.adapters.outbound.backtrader.catalog import (
 )
 from trader.adapters.outbound.backtrader.live_trader_runner import LiveTraderTaskRunner
 from trader.adapters.outbound.backtrader.optimization_runner import ProcessPoolBacktestRunner
+from trader.adapters.outbound.backtrader.signal_scanner import BacktraderSignalScanRunner
 from trader.adapters.outbound.binance.exchange import BinanceExchange
+from trader.adapters.outbound.email.config import parse_notice_config
 from trader.adapters.outbound.execution_gateway_factory import build_execution_gateway
 from trader.adapters.outbound.files.optimization_store import (
     FileOptimizationRuntimeStatus,
@@ -29,21 +32,20 @@ from trader.adapters.outbound.files.optimization_store import (
     FileTaskConfigFileStore,
 )
 from trader.adapters.outbound.files.task_config_loader import FileTaskConfigSourceLoader
+from trader.adapters.outbound.identity.argon2_hasher import Argon2PasswordHasher
+from trader.adapters.outbound.identity.fernet_cipher import FernetSecretCipher, service_key_available
 from trader.adapters.outbound.logging.logger import Logger
 from trader.adapters.outbound.persistence.manager import DatabaseManager, DatabaseSchemaError
-from trader.auth.bootstrap import bootstrap_admin_exchange_credential
-from trader.auth.credentials import FernetSecretCipher, service_key_available
-from trader.auth.passwords import Argon2PasswordHasher
 from trader.common import path
 from trader.core.exchange.domain import ExchangeType, MarginMode, parse_exchange_config
 from trader.core.identity.exceptions import PasswordPolicyError
-from trader.core.identity.use_cases import BootstrapAdministrator
+from trader.core.identity.use_cases import BootstrapAdministrator, bootstrap_admin_exchange_credential
+from trader.core.notification.manager import NotifyManager
 from trader.core.shared.config import Config, default
 from trader.core.task.interfaces import TaskEventPublisher
 from trader.core.task.use_cases import PlanStartupTasks, RecoverRunningTasks
+from trader.core.task.use_cases.statistics import Statistics
 from trader.live.monitor import LiveEventBus
-from trader.notify.notify_manager import NotifyManager
-from trader.statistics.statistics import Statistics
 from trader.task.backtrader_task import backtest_data_start_time
 from trader.task.live_startup_self_check import infer_required_margin_mode
 from trader.task.persisted_live_config_migration import assert_persisted_task_config_json_is_migrated
@@ -113,8 +115,8 @@ def compose_application(
                 ex_cfg = ex_cfg.with_margin_mode(MarginMode.CROSS_MARGIN)
             exchange = BinanceExchange(ex_cfg, app_logger.log())
 
-    notify_mgr = NotifyManager(cfg, app_logger)
-    stat = Statistics(cfg, app_logger.log(), db_manager)
+    notify_mgr = NotifyManager(cfg, app_logger, notices=parse_notice_config(cfg.notice) if cfg.notice else None)
+    stat = Statistics(cfg, app_logger.log(), db_manager, table_renderer=render_statistics_table)
     password_hasher = Argon2PasswordHasher()
     report_store = FileRankingReportStore(Path.cwd())
     config_file_store = FileTaskConfigFileStore()
@@ -195,6 +197,7 @@ def compose_application(
                 admin=admin,
                 credential_repo=db_manager.exchange_credential,
                 log=app_logger.log(),
+                cipher_factory=lambda key: FernetSecretCipher(key) if service_key_available(key) else None,
             )
 
     startup_planner = PlanStartupTasks(
@@ -228,6 +231,21 @@ def compose_application(
         strategy_loader=BacktraderStrategyCatalog(),
         task_config_loader=FileTaskConfigSourceLoader(),
     )
+
+
+def compose_signal_scanner() -> tuple[Config, Logger, DatabaseManager, BinanceExchange, BacktraderSignalScanRunner]:
+    """Compose the top-volume signal scanner runtime (exchange, database, and Backtrader runner)."""
+    cfg = new_and_env()
+    if not cfg.exchange:
+        raise ValueError("TRADER_EXCHANGE is required")
+    if not cfg.db:
+        raise ValueError("TRADER_DB is required")
+    logger = Logger(cfg)
+    db_manager = DatabaseManager(cfg, logger)
+    db_manager.start()
+    ex_cfg = parse_exchange_config(cfg.exchange)
+    exchange = BinanceExchange(ex_cfg, logger.log())
+    return cfg, logger, db_manager, exchange, BacktraderSignalScanRunner()
 
 
 def build_arg_parser() -> argparse.ArgumentParser:

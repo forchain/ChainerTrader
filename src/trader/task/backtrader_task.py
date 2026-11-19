@@ -12,6 +12,7 @@ from trader.adapters.outbound.backtrader.backtest_runner import (
 from trader.adapters.outbound.backtrader.backtest_runner import (
     backtest_data_start_time as _backtest_data_start_time,
 )
+from trader.adapters.outbound.backtrader.catalog import parse_strategies
 from trader.adapters.outbound.backtrader.dataset_feed import BacktraderDatasetFeedLoader, DatasetRef
 from trader.adapters.outbound.backtrader.node import Node
 from trader.adapters.outbound.binance.exchange import BinanceExchange
@@ -23,7 +24,6 @@ from trader.common.logger import Logger
 from trader.common.message import new_stat_msg
 from trader.core.shared.domain import Interval, SymbolInterval
 from trader.statistics.stat import BackTraderStat
-from trader.strategy.strategy import parse_strategies
 from trader.strategy.trader_result import TraderResult, parse_trader_result
 from trader.task.base_task import BaseTask
 from trader.task.task_config import TaskConfig

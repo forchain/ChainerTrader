@@ -5,8 +5,8 @@ import pandas as pd
 import pytest
 
 from trader.adapters.outbound.backtrader.base_strategy import BaseStrategy
+from trader.adapters.outbound.backtrader.catalog import parse_strategy
 from trader.core.strategy.domain.node import build_strategy_kwargs
-from trader.strategy.strategy import parse_strategy
 
 
 def _build_feed():

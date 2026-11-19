@@ -11,7 +11,7 @@ from trader.utils.task_state import TaskState
 def test_statistics_ignores_trader_stat_without_result_when_ranking_is_bounded():
     cfg = Config()
     cfg.stat = 1
-    statistics = Statistics(cfg, Logger(cfg), db_manager=None)
+    statistics = Statistics(cfg, Logger(cfg), db_manager=None, table_renderer=lambda stats: "")
     state = TaskState(1, "TRADER", "BTCUSDT-1m")
     stat = TraderStat("strategy", "BTCUSDT-1m", state)
 
@@ -23,7 +23,7 @@ def test_statistics_ignores_trader_stat_without_result_when_ranking_is_bounded()
 def test_statistics_keeps_and_sorts_stats_with_results():
     cfg = Config()
     cfg.stat = 1
-    statistics = Statistics(cfg, Logger(cfg), db_manager=None)
+    statistics = Statistics(cfg, Logger(cfg), db_manager=None, table_renderer=lambda stats: "")
     low = TraderStat("low", "BTCUSDT-1m", TaskState(1, "TRADER", "BTCUSDT-1m", tret=SimpleNamespace(total_return_rate=1.0)))
     high = TraderStat("high", "ETHUSDT-1m", TaskState(2, "TRADER", "ETHUSDT-1m", tret=SimpleNamespace(total_return_rate=2.0)))
 

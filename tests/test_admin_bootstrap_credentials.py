@@ -5,7 +5,7 @@ from trader.adapters.outbound.persistence.exchange_credential import ExchangeCre
 from trader.adapters.outbound.persistence.manager import DatabaseManager
 from trader.adapters.outbound.persistence.user import UserCol
 from trader.auth.bootstrap import bootstrap_admin_exchange_credential
-from trader.auth.credentials import decrypt_secret
+from trader.auth.credentials import FernetSecretCipher, decrypt_secret, service_key_available
 from trader.auth.passwords import Argon2PasswordHasher
 from trader.common.config import Config
 from trader.common.logger import Logger
@@ -31,6 +31,7 @@ async def _bootstrap(cfg: Config, manager: DatabaseManager) -> None:
         admin=admin,
         credential_repo=manager.exchange_credential,
         log=manager.log,
+        cipher_factory=lambda key: FernetSecretCipher(key) if service_key_available(key) else None,
     )
 
 

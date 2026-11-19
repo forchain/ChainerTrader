@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from datetime import datetime
+from typing import Protocol, runtime_checkable
 
 from trader.core.identity.domain import Session, User
 
@@ -70,3 +71,8 @@ class SecretCipher(ABC):
 
     @abstractmethod
     def decrypt(self, encrypted_value: str) -> str: ...
+
+
+@runtime_checkable
+class SecretCipherFactory(Protocol):
+    def __call__(self, service_key: str | None) -> SecretCipher | None: ...

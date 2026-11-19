@@ -2,7 +2,7 @@
 
 import pytest
 
-from trader.strategy.strategy import parse_strategy
+from trader.adapters.outbound.backtrader.catalog import parse_strategy
 
 ADAPTER_PREFIX = "trader.adapters.outbound.backtrader"
 
