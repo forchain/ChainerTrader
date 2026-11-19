@@ -427,7 +427,7 @@ def _validate_exchange_credential_connectivity(cfg: Config, exchange: str, api_k
         return None
     try:
         base = parse_exchange_config(getattr(cfg, "exchange", "") or "") if getattr(cfg, "exchange", "") else ExchangeConfig()
-        payload = base.model_dump()
+        payload = base.to_dict()
         payload["api_key"] = api_key
         payload["api_secret"] = api_secret
         probe = BinanceExchange(ExchangeConfig(**payload))

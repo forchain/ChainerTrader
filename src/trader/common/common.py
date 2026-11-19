@@ -3,13 +3,9 @@ import importlib
 from asyncio import Event
 from datetime import datetime
 
+from trader.core.shared.async_utils import sleep  # noqa: F401  # re-exported for legacy importers
+
 NAME = "trader"
-
-
-async def sleep(log, seconds, msg=None):
-    if msg:
-        log.info(f"Waiting for {seconds} seconds for {msg}")
-    await asyncio.sleep(seconds)
 
 
 async def sleep_loop(log, seconds, quit: Event, msg=None):

@@ -13,7 +13,7 @@ from trader.core.task.domain import parse_task_type
 from trader.core.task.interfaces import TaskRepository
 
 
-def _default_parse_persisted_config(config_json: str) -> list[TaskConfig]:
+def parse_persisted_task_config(config_json: str) -> list[TaskConfig]:
     payload = json.loads(config_json or "[]")
     if not isinstance(payload, list):
         raise ValueError("persisted task config_json must be a JSON array")
@@ -83,7 +83,7 @@ class PlanStartupTasks:
         log: Any = None,
     ):
         self.task_repository = task_repository
-        self.config_parser = config_parser or _default_parse_persisted_config
+        self.config_parser = config_parser or parse_persisted_task_config
         self.migration_validator = migration_validator
         self.log = log
 

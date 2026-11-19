@@ -2,9 +2,7 @@ from __future__ import annotations
 
 from fastapi import HTTPException, Request
 
-from trader.adapters.outbound.binance.exchange import BinanceExchange
 from trader.auth.context import current_user
-from trader.auth.credentials import FernetSecretCipher, service_key_available
 from trader.core.exchange.domain import MarginMode
 from trader.core.exchange.exceptions import UserExchangeCredentialError
 from trader.core.exchange.use_cases import RouteExchangeForTask, base_exchange_config
@@ -19,19 +17,24 @@ async def request_user_exchange(request: Request, *, margin_mode: MarginMode | N
     if user is None or getattr(user, "is_admin", False):
         return getattr(rpc_app, "exchange", None)
 
+    composition = getattr(request.app.state, "composition", None)
     cfg = getattr(request.app.state, "cfg", None)
     service_key = getattr(cfg, "secret_key", None)
+    cipher_factory = getattr(composition, "secret_cipher_factory", None)
+    exchange_factory = getattr(composition, "user_exchange_factory", None)
     db_manager = getattr(rpc_app, "db_manager", None)
     credential_repo = getattr(db_manager, "exchange_credential", None)
     base_cfg = base_exchange_config(getattr(rpc_app, "exchange", None), cfg)
     target_mode = margin_mode or base_cfg.margin_mode or MarginMode.SPOT
     logger = getattr(rpc_app, "logger", None)
+    if not callable(exchange_factory):
+        raise HTTPException(status_code=503, detail="exchange factory is not configured")
 
     route = RouteExchangeForTask(
         credential_repo,
         base_cfg=base_cfg,
-        cipher=FernetSecretCipher(service_key) if service_key_available(service_key) else None,
-        exchange_factory=lambda exchange_cfg: BinanceExchange(exchange_cfg, logger),
+        cipher=cipher_factory(service_key) if callable(cipher_factory) else None,
+        exchange_factory=lambda exchange_cfg: exchange_factory(exchange_cfg, logger),
     )
     try:
         exchange = await route.execute(user.id, margin_mode=target_mode)

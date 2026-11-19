@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from trader.common.config import Config
-from trader.common.logger import Logger
+from typing import Any
 
 
 def build_strategy_kwargs(
-    cfg: Config,
-    log: Logger,
+    cfg: Any,
+    log: Any,
     position: float,
     trader: bool,
     strategy_params: dict | None = None,

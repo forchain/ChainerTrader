@@ -9,6 +9,7 @@ from typing import Any
 from uuid import uuid4
 
 from trader.adapters.outbound.binance.exchange import BinanceExchange
+from trader.adapters.outbound.execution_gateway_factory import build_execution_gateway
 from trader.common.config import Config
 from trader.common.logger import Logger
 from trader.core.exchange.domain import ExchangeConfig, ExchangeDriverType, MarginMode
@@ -357,7 +358,7 @@ def _run_spot_long_flow(
     price = _latest_price(exchange, symbol)
     quantity = _quantity_for_notional(exchange, symbol, notional, price)
     tcfg = _task_config(symbol, notional, chainer_mode="LONG_ONLY")
-    router = AutoExecutionRouter(tcfg, exchange=exchange, cfg=cfg)
+    router = AutoExecutionRouter(tcfg, exchange=exchange, cfg=cfg, gateway=build_execution_gateway(tcfg.live_execution_mode, exchange))
     trace_id = _trace_id("spot-long")
     entry = _operation(OperateType.BUY, price)
     _attach_macd_like_metadata(
@@ -463,7 +464,7 @@ def _run_margin_short_flow(
     price = _latest_price(exchange, symbol)
     _quantity_for_notional(exchange, symbol, notional, price)
     tcfg = _task_config(symbol, notional, chainer_mode="BOTH")
-    router = AutoExecutionRouter(tcfg, exchange=exchange, cfg=cfg)
+    router = AutoExecutionRouter(tcfg, exchange=exchange, cfg=cfg, gateway=build_execution_gateway(tcfg.live_execution_mode, exchange))
     trace_id = _trace_id("margin-short")
     entry = _operation(OperateType.SHORT, price)
     _attach_macd_like_metadata(

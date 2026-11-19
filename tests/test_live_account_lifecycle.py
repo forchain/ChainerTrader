@@ -1,7 +1,6 @@
 import pytest
 
 from trader.core.exchange.account_lifecycle import (
-    InMemoryExchangeAdapter,
     LiveAccountError,
     LiveAccountLifecycle,
     capacity_snapshot,
@@ -15,6 +14,44 @@ from trader.core.shared.domain import Symbol
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
+
+
+class InMemoryExchangeAdapter:
+    """Deterministic exchange port fake for account lifecycle tests."""
+
+    def __init__(
+        self,
+        *,
+        balances: dict[str, float] | None = None,
+        max_borrowable: dict[str, float] | None = None,
+        borrow_limits: dict[str, float] | None = None,
+        open_orders: dict[str, list[dict]] | None = None,
+    ):
+        self._balances = {str(k).upper(): float(v) for k, v in (balances or {}).items()}
+        self._max_borrowable = {str(k).upper(): float(v) for k, v in (max_borrowable or {}).items()}
+        self._borrow_limits = {str(k).upper(): float(v) for k, v in (borrow_limits or {}).items()}
+        self._open_orders = {str(k).upper(): list(v) for k, v in (open_orders or {}).items()}
+        self.cancelled: list[tuple[str, str]] = []
+        self.cancelled_all: list[str] = []
+
+    def get_account_balance(self, asset: str) -> float:
+        return self._balances.get(str(asset).upper(), 0.0)
+
+    def get_account_balances(self) -> list[Balance]:
+        return [Balance(asset=asset, free=amount) for asset, amount in sorted(self._balances.items())]
+
+    def get_max_borrowable(self, asset: str, symbol: str | None = None) -> dict:
+        key = str(asset).upper()
+        return {"amount": self._max_borrowable.get(key, 0.0), "borrowLimit": self._borrow_limits.get(key)}
+
+    def get_open_orders(self, symbol: Symbol) -> list[dict]:
+        return list(self._open_orders.get(str(symbol.name()).replace("-", "").upper(), []))
+
+    def cancel_order(self, symbol: Symbol, order_id: str) -> None:
+        self.cancelled.append((symbol.name(), str(order_id)))
+
+    def cancel_all_open_orders(self, symbol: Symbol) -> None:
+        self.cancelled_all.append(symbol.name())
 
 
 def test_capacity_snapshot_adds_max_borrowable_to_free_balance():
@@ -130,7 +167,7 @@ def test_credential_context_requires_credential():
     with pytest.raises(LiveAccountError, match="missing BINANCE API credential"):
         LiveAccountLifecycle.build_credential_context(
             base_cfg=None,
-            service_key="secret",
+            cipher=None,
             credential=None,
             user_id=7,
             margin_mode=MarginMode.SPOT,

@@ -4,7 +4,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-FRAMEWORK_MODULES = frozenset({"fastapi", "tortoise", "backtrader", "ccxt"})
+FRAMEWORK_MODULES = frozenset({"fastapi", "tortoise", "backtrader", "ccxt", "pydantic", "cryptography", "argon2", "requests"})
 
 # Legacy test-compatibility shims and operational tools that still re-export or
 # construct concrete adapters for backwards compatibility with pre-hexagonal callers.
@@ -12,14 +12,12 @@ FRAMEWORK_MODULES = frozenset({"fastapi", "tortoise", "backtrader", "ccxt"})
 # added here; new code must accept ports and wire concrete adapters in ``main.py``.
 LEGACY_SHIM_ADAPTER_ALLOWLIST = frozenset(
     {
-        "live/auto_execution.py",
         "live/market_data.py",
         "live/runtime.py",
         "live/stream.py",
         "notify/notify_type.py",
         "rpc/api/tasks.py",
         "rpc/app.py",
-        "rpc/user_exchange.py",
         "scanner/top_volume_signal_scanner.py",
         "statistics/statistics.py",
         "strategy/strategy.py",

@@ -7,13 +7,13 @@ from datetime import datetime
 from typing import Any
 
 from trader.core.task.config import TaskConfig, apply_persisted_task_runtime_metadata
+from trader.core.task.config_parsing import parse_task_config_payload
 from trader.core.task.domain import TaskState
-from trader.task.persisted_live_config_migration import (
+from trader.core.task.persisted_config_migration import (
     assert_persisted_task_config_json_is_migrated,
     canonicalize_persisted_task_config_dict,
     sanitize_public_task_config_json,
 )
-from trader.task.task_config import parse_task_config, parse_task_config_payload
 
 
 def _task_config_symbol(symbol_interval) -> str:
@@ -34,9 +34,9 @@ class TaskConfigCodec:
     """
 
     @staticmethod
-    def from_input(raw: str, last_task_id: int = 0) -> list[TaskConfig]:
-        """Parse user/CLI input, expanding 候选币种集合, 任务模板, and parameter spaces."""
-        return parse_task_config(raw, last_task_id)
+    def from_input(raw: str, last_task_id: int = 0, *, min_live_trade_notional: float = 11.0) -> list[TaskConfig]:
+        """Parse an inline JSON task-config document into 任务 configurations."""
+        return parse_task_config_payload(json.loads(raw), last_task_id, min_live_trade_notional=min_live_trade_notional)
 
     @staticmethod
     def from_persisted_state(state: TaskState) -> TaskConfig | None:

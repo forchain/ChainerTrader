@@ -1,14 +1,12 @@
-import importlib
 import inspect
 import json
+import os
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
 
 from trader.adapters.inbound.http.exceptions import translate_domain_exception
-from trader.adapters.outbound.binance.exchange import BinanceExchange
 from trader.auth.context import current_user
-from trader.auth.credentials import FernetSecretCipher, service_key_available
 from trader.common import path as trader_path
 from trader.core.exchange.account_lifecycle import LiveAccountLifecycle
 from trader.core.exchange.domain import MarginMode
@@ -33,6 +31,7 @@ from trader.core.task.use_cases.submission import (
     validate_config_file_source as _core_validate_config_file_source,
 )
 from trader.rpc.task_state_payload import public_task_state_dict
+from trader.task.task_config import read_task_config_source
 from trader.task.task_type import TaskType
 
 router = APIRouter()
@@ -48,7 +47,7 @@ async def _resolve_user(request: Request):
 
 
 def _validate_config_file_source(cfg: str) -> None:
-    _core_validate_config_file_source(cfg, trader_path.get_file_path)
+    _core_validate_config_file_source(cfg, lambda path: os.path.isfile(trader_path.get_file_path(path)))
 
 
 def _normalize_save_file_name(raw: str) -> str:
@@ -66,7 +65,13 @@ async def add_tasks(request: Request):
     source = _task_submission_source(cfg)
     try:
         _validate_config_file_source(cfg)
-        taskcs = TaskConfigCodec.from_input(cfg) if cfg else []
+        taskcs = (
+            TaskConfigCodec.from_input(
+                read_task_config_source(cfg), min_live_trade_notional=getattr(request.app.state.cfg, "min_live_trade_notional", 11.0)
+            )
+            if cfg
+            else []
+        )
         _enforce_current_user_ownership(taskcs, user.id)
         await _stop_running_tasks_for_user(request, user)
         await _preflight_user_live_tasks(request, user, taskcs)
@@ -167,7 +172,7 @@ async def strategy_param_presets(strategy: str, request: Request):
     strategy_name = str(strategy or "").strip()
     if not strategy_name:
         raise HTTPException(status_code=400, detail="strategy is required")
-    return {"strategy": strategy_name, "params": _strategy_param_defaults(strategy_name)}
+    return {"strategy": strategy_name, "params": _strategy_param_defaults(request, strategy_name)}
 
 
 async def _preflight_user_live_tasks(request: Request, user, taskcs) -> None:
@@ -176,17 +181,15 @@ async def _preflight_user_live_tasks(request: Request, user, taskcs) -> None:
     if not any(taskc.ttype == TaskType.TRADER for taskc in taskcs):
         return
     cfg = getattr(request.app.state, "cfg", None)
-    service_key = getattr(cfg, "secret_key", None)
+    composition = getattr(request.app.state, "composition", None)
     rpc_app = getattr(request.app.state, "app", None)
     db_manager = getattr(rpc_app, "db_manager", None)
-    preflight = PreflightUserExchange(
-        getattr(db_manager, "exchange_credential", None),
-        cipher=FernetSecretCipher(service_key) if service_key_available(service_key) else None,
-    )
+    cipher = _secret_cipher(composition, cfg)
+    preflight = PreflightUserExchange(getattr(db_manager, "exchange_credential", None), cipher=cipher)
     try:
         await preflight.execute(
             user.id,
-            connectivity_check=lambda credential: _user_exchange_ping_ok(cfg, service_key, credential),
+            connectivity_check=lambda credential: _user_exchange_ping_ok(cfg, cipher, _exchange_factory(composition), credential),
         )
     except Exception as exc:
         raise translate_domain_exception(exc) from exc
@@ -224,59 +227,9 @@ async def _preflight_single_running_task_per_user(request: Request, user) -> Non
     await _stop_running_tasks_for_user(request, user)
 
 
-def _strategy_param_defaults(strategy_name: str) -> dict:
-    try:
-        module = importlib.import_module(f"trader.adapters.outbound.backtrader.{strategy_name}")
-    except Exception:
-        return {}
-
-    try:
-        from trader.adapters.outbound.backtrader.base_strategy import BaseStrategy
-    except Exception:
-        BaseStrategy = None
-
-    candidates = []
-    for attr in dir(module):
-        obj = getattr(module, attr, None)
-        if not isinstance(obj, type):
-            continue
-        if BaseStrategy is not None:
-            try:
-                if not issubclass(obj, BaseStrategy) or obj is BaseStrategy:
-                    continue
-            except Exception:
-                continue
-        params = getattr(obj, "params", None)
-        if params is not None:
-            candidates.append((obj.__name__, params))
-
-    if not candidates:
-        return {}
-
-    # Prefer class name matching module stem (case-insensitive), otherwise first candidate.
-    selected = None
-    lowered = strategy_name.lower()
-    for class_name, params in candidates:
-        if class_name.lower() == lowered:
-            selected = params
-            break
-    if selected is None:
-        selected = candidates[0][1]
-
-    defaults = {}
-    try:
-        for item in selected:
-            if not isinstance(item, tuple) or len(item) != 2:
-                continue
-            key, value = item
-            key_text = str(key or "").strip()
-            if not key_text:
-                continue
-            if isinstance(value, (str, int, float, bool)) or value is None:
-                defaults[key_text] = value
-    except Exception:
-        return {}
-    return defaults
+def _strategy_param_defaults(request: Request, strategy_name: str) -> dict:
+    provider = getattr(getattr(request.app.state, "composition", None), "strategy_param_defaults", None)
+    return dict(provider(strategy_name)) if callable(provider) else {}
 
 
 def _rpc_logger(rpc_app):
@@ -301,16 +254,27 @@ def _log_task_submission_success(rpc_app, user_id: int, source: str, task_count:
         logger.info(f"Task submission accepted: user_id={user_id} source={source} task_count={task_count}")
 
 
-def _user_exchange_ping_ok(cfg, service_key: str, credential) -> bool:
+def _secret_cipher(composition, cfg):
+    factory = getattr(composition, "secret_cipher_factory", None)
+    return factory(getattr(cfg, "secret_key", None)) if callable(factory) else None
+
+
+def _exchange_factory(composition):
+    factory = getattr(composition, "user_exchange_factory", None)
+    return factory if callable(factory) else None
+
+
+def _user_exchange_ping_ok(cfg, cipher, exchange_factory, credential) -> bool:
+    if exchange_factory is None:
+        return False
     try:
         context = LiveAccountLifecycle.build_credential_context(
             base_cfg=base_exchange_config(None, cfg),
-            service_key=service_key,
+            cipher=cipher,
             credential=credential,
             user_id=0,
             margin_mode=MarginMode.SPOT,
         )
-        exchange = BinanceExchange(context.cfg)
-        return bool(exchange.ping())
+        return bool(exchange_factory(context.cfg).ping())
     except Exception:
         return False

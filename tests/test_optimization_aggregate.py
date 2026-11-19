@@ -226,6 +226,9 @@ class _FakeConfigFileStore:
     def write_json(self, path: str, payload: object) -> None:
         self.files[path] = payload
 
+    def read_lines(self, path: str, limit: int) -> list[str]:
+        return []
+
 
 class _FakeSymbolSource:
     def fetch_binance_exchange_info(self) -> dict:

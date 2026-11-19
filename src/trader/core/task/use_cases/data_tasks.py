@@ -171,14 +171,14 @@ class ImportCsvTaskRunner:
         *,
         kline_repository: KlineRepository,
         file_store: DatasetFileStore,
+        data_dir: str | Path,
         task_repository: TaskRepository | None = None,
-        data_dir: str | Path | None = None,
         log: Any = None,
     ):
         self.kline_repository = kline_repository
         self.file_store = file_store
         self.task_repository = task_repository
-        self.data_dir = Path(data_dir) if data_dir is not None else Path.cwd()
+        self.data_dir = Path(data_dir)
         self.log = log
 
     def resolve_csv_path(self, csv_path: str) -> Path:

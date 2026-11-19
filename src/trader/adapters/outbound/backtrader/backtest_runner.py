@@ -10,7 +10,6 @@ from typing import Any, Callable
 from trader.adapters.outbound.backtrader.csvdata import BinanceCSVData
 from trader.adapters.outbound.backtrader.data import BinanceData
 from trader.adapters.outbound.backtrader.node import Node
-from trader.adapters.outbound.files.dataset import CsvDatasetFileStore
 from trader.common import path
 from trader.core.marketdata.interfaces import (
     AvailabilityStore,
@@ -68,7 +67,7 @@ class BacktestTaskRunner:
         kline_repository: KlineRepository | None = None,
         availability_store: AvailabilityStore | None = None,
         market_data_client: MarketDataClient | None = None,
-        dataset_file_store: DatasetFileStore | None = None,
+        dataset_file_store: DatasetFileStore,
         dataset_resolver: Any = None,
         path_resolver: Callable[[str], str] = path.get_file_path,
         strategy_parser: Callable[[list[str]], Any] = parse_strategies,
@@ -80,7 +79,7 @@ class BacktestTaskRunner:
         self.kline_repository = kline_repository
         self.availability_store = availability_store
         self.market_data_client = market_data_client
-        self.dataset_file_store = dataset_file_store or CsvDatasetFileStore()
+        self.dataset_file_store = dataset_file_store
         self.dataset_resolver = dataset_resolver
         self.path_resolver = path_resolver
         self.strategy_parser = strategy_parser

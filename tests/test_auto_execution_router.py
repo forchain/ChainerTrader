@@ -15,6 +15,12 @@ def anyio_backend():
     return "asyncio"
 
 
+class _StubGateway:
+    """Placeholder gateway; tests that route install their own double."""
+
+    capabilities = SimpleNamespace(gateway="live")
+
+
 def _router(**tcfg_overrides) -> AutoExecutionRouter:
     cfg = Config(tasks="[]", cash=1000.0)
     options = {"live_execution_mode": "auto_trade", **tcfg_overrides}
@@ -26,7 +32,7 @@ def _router(**tcfg_overrides) -> AutoExecutionRouter:
         free=500.0,
         **options,
     )
-    return AutoExecutionRouter(tcfg, exchange=None, cfg=cfg, log=None)
+    return AutoExecutionRouter(tcfg, exchange=None, cfg=cfg, log=None, gateway=_StubGateway())
 
 
 def _record(**kwargs):

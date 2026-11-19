@@ -8,6 +8,7 @@ from pathlib import Path
 
 from trader.adapters.outbound.backtrader.optimization_runner import ProcessPoolBacktestRunner
 from trader.adapters.outbound.binance.exchange import BinanceExchange
+from trader.adapters.outbound.execution_gateway_factory import build_execution_gateway
 from trader.adapters.outbound.files.optimization_store import FileOptimizationRuntimeStatus, FileRankingReportStore
 from trader.adapters.outbound.persistence.manager import DatabaseManager
 from trader.auth.credentials import FernetSecretCipher, service_key_available
@@ -50,6 +51,7 @@ from trader.task.dataset_resolver import DatasetResolver
 from trader.task.debug_task import DebugTask
 from trader.task.import_csv_task import ImportCSVTask
 from trader.task.live_startup_self_check import infer_required_margin_mode, task_requires_short_capability
+from trader.task.task_config import read_task_config_source
 from trader.task.trader_task import TraderTask
 from trader.task.update_klines_task import UpdateKlinesTask
 
@@ -67,6 +69,7 @@ class TaskManager:
         optimization_runner_factory=None,
         runtime_status_factory=None,
         cipher_factory=None,
+        execution_gateway_factory=None,
     ):
         self.log = log
         self.cfg = cfg
@@ -77,6 +80,7 @@ class TaskManager:
         self._optimization_runner_factory = optimization_runner_factory
         self._runtime_status_factory = runtime_status_factory
         self._cipher_factory = cipher_factory
+        self._execution_gateway_factory = execution_gateway_factory
         self._exchange_by_mode: dict[str, BinanceExchange] = {}
         if getattr(exchange, "margin_mode", None) is not None:
             self._exchange_by_mode[exchange.margin_mode.value] = exchange
@@ -88,7 +92,15 @@ class TaskManager:
 
     def _build_task(self, cfg: TaskConfig, exchange: BinanceExchange) -> BaseTask | None:
         if cfg.ttype == TaskType.TRADER:
-            return TraderTask(cfg, self.cfg, self.log, self.db_manager, exchange, event_publisher=self.event_publisher)
+            return TraderTask(
+                cfg,
+                self.cfg,
+                self.log,
+                self.db_manager,
+                exchange,
+                event_publisher=self.event_publisher,
+                execution_gateway_factory=self._execution_gateway_factory or build_execution_gateway,
+            )
         if cfg.ttype == TaskType.BACK_TRADER:
             return BackTraderTask(cfg, self.cfg, self.log, self.db_manager, exchange)
         if cfg.ttype == TaskType.UPDATE_KLINES:
@@ -106,7 +118,8 @@ class TaskManager:
     def start(self, taskcs: list[TaskConfig] | None = None):
         self.log.info("TaskManager start")
         if taskcs is None and self.cfg.tasks:
-            taskcs = TaskConfigCodec.from_input(self.cfg.tasks)
+            min_notional = getattr(self.cfg, "min_live_trade_notional", 11.0)
+            taskcs = TaskConfigCodec.from_input(read_task_config_source(self.cfg.tasks), min_live_trade_notional=min_notional)
         if taskcs is not None:
             required_margin_mode = infer_required_margin_mode(taskcs)
             if getattr(self.exchange, "margin_mode", None) is not None and required_margin_mode.value != self.exchange.margin_mode.value:

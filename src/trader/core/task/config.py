@@ -1,9 +1,7 @@
 """Task configuration domain value and its normalization rules."""
 
-import os
 from datetime import datetime
 
-from trader.common.config import TRADER_MIN_LIVE_TRADE_NOTIONAL
 from trader.core.execution.modes import (
     normalize_live_execution_mode,
     normalize_margin_borrow_block_policy,
@@ -11,7 +9,7 @@ from trader.core.execution.modes import (
 from trader.core.shared.domain import Interval, SymbolInterval
 from trader.core.task.domain import TaskType
 from trader.core.task.exceptions import TaskConfigError
-from trader.task.persisted_live_config_migration import (
+from trader.core.task.persisted_config_migration import (
     PERSISTED_LEGACY_LIVE_EXECUTION_MODE,
 )
 
@@ -68,10 +66,6 @@ def infer_strategy_requires_short(strategy_params: dict | None) -> bool:
     if mode is not None:
         return str(mode).strip().upper() in {"SHORT_ONLY", "BOTH"}
     return False
-
-
-def _global_min_live_trade_notional() -> float:
-    return float(os.environ.get(TRADER_MIN_LIVE_TRADE_NOTIONAL, 11.0) or 11.0)
 
 
 def apply_persisted_task_runtime_metadata(taskc, saved_config: dict | None) -> None:

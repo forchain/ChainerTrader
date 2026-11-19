@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from trader.auth.context import SessionAuthMiddleware
-from trader.auth.credentials import encrypt_secret
+from trader.auth.credentials import FernetSecretCipher, encrypt_secret
 from trader.common.config import Config
 from trader.core.exchange.domain import ExchangeConfig
 from trader.rpc.api.exchange.account import router as account_router
@@ -53,13 +53,15 @@ def _client_with_user_exchange(monkeypatch, *, account_payload=None, commission_
         def account_commission(self, symbol=None):
             return commission_payload or {"source": "user", "symbol": symbol, "api_key": self.cfg.api_key}
 
-    monkeypatch.setattr("trader.rpc.user_exchange.BinanceExchange", _UserExchange)
-
     app = FastAPI()
     app.add_middleware(SessionAuthMiddleware)
     app.include_router(account_router, prefix="/api/exchange/account")
     app.include_router(account_commission_router, prefix="/api/exchange/account_commission")
     app.state.cfg = Config(auth_username="admin", auth_password="AdminPass123", secret_key=service_key)
+    app.state.composition = SimpleNamespace(
+        secret_cipher_factory=lambda key: FernetSecretCipher(key) if key else None,
+        user_exchange_factory=_UserExchange,
+    )
     app.state.app = SimpleNamespace(
         db_manager=SimpleNamespace(user=_UserRepo(), exchange_credential=_CredentialRepo()),
         exchange=_SystemExchange(),

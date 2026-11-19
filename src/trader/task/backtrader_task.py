@@ -14,6 +14,7 @@ from trader.adapters.outbound.backtrader.backtest_runner import (
 )
 from trader.adapters.outbound.backtrader.node import Node
 from trader.adapters.outbound.binance.exchange import BinanceExchange
+from trader.adapters.outbound.files.dataset import CsvDatasetFileStore
 from trader.adapters.outbound.persistence.manager import DatabaseManager
 from trader.common import path
 from trader.common.config import Config
@@ -280,6 +281,7 @@ class BackTraderTask(BaseTask):
             availability_store=availability_store,
             market_data_client=self.exchange,
             dataset_resolver=resolver,
+            dataset_file_store=CsvDatasetFileStore(),
             strategy_parser=parse_strategies,
             node_factory=Node,
         )

@@ -13,9 +13,11 @@ from typing import Any
 from dotenv import load_dotenv
 
 from trader.adapters.outbound.backtrader.backtest_runner import BacktestTaskRunner
+from trader.adapters.outbound.backtrader.catalog import list_strategy_options, strategy_param_defaults
 from trader.adapters.outbound.backtrader.live_trader_runner import LiveTraderTaskRunner
 from trader.adapters.outbound.backtrader.optimization_runner import ProcessPoolBacktestRunner
 from trader.adapters.outbound.binance.exchange import BinanceExchange
+from trader.adapters.outbound.execution_gateway_factory import build_execution_gateway
 from trader.adapters.outbound.files.optimization_store import (
     FileOptimizationRuntimeStatus,
     FileRankingReportStore,
@@ -74,6 +76,8 @@ class AppContainer:
     schema_error_cls: type[Exception] = DatabaseSchemaError
     backtest_runner_cls: type[BacktestTaskRunner] = BacktestTaskRunner
     live_trader_runner_cls: type[LiveTraderTaskRunner] = LiveTraderTaskRunner
+    strategy_options: Callable[[], list[str]] = list_strategy_options
+    strategy_param_defaults: Callable[[str], dict] = strategy_param_defaults
 
 
 def compose_application(
@@ -164,6 +168,7 @@ def compose_application(
         optimization_runner_factory=build_optimization_runner,
         runtime_status_factory=build_runtime_status,
         cipher_factory=lambda service_key: FernetSecretCipher(service_key) if service_key_available(service_key) else None,
+        execution_gateway_factory=build_execution_gateway,
     )
 
     async def bootstrap_identity() -> None:
@@ -210,6 +215,8 @@ def compose_application(
         recovery_runner=recovery_runner,
         secret_cipher_factory=lambda key: FernetSecretCipher(key) if service_key_available(key) else None,
         secret_key_ready_fn=lambda: service_key_available(getattr(cfg, "secret_key", None)),
+        strategy_options=list_strategy_options,
+        strategy_param_defaults=strategy_param_defaults,
     )
 
 

@@ -9,6 +9,7 @@ import pytest
 from tests.persistence_harness import InMemoryTaskRepository
 from trader.adapters.outbound.backtrader.backtest_runner import BacktestTaskRunner
 from trader.adapters.outbound.backtrader.data import BinanceData
+from trader.adapters.outbound.files.dataset import CsvDatasetFileStore
 from trader.core.marketdata.domain import DatasetPreparationResult, DatasetRef
 from trader.core.shared.domain import Interval, Kline, SymbolInterval
 from trader.core.task import TaskConfig, TaskRunner, TaskStateType, TaskType
@@ -107,6 +108,7 @@ async def test_backtest_task_runner_executes_db_backtest_and_persists_via_ports(
         task_repository=task_repo,
         kline_repository=kline_repo,
         dataset_resolver=resolver,
+        dataset_file_store=CsvDatasetFileStore(),
         strategy_parser=lambda names: [f"strat:{n}" for n in names],
         node_factory=_FakeNode,
     )
@@ -165,6 +167,7 @@ async def test_backtest_task_runner_executes_csv_backtest_through_ports(tmp_path
         cfg=cfg,
         log=_DummyLog(),
         task_repository=task_repo,
+        dataset_file_store=CsvDatasetFileStore(),
         path_resolver=lambda p: str(p),
         strategy_parser=lambda names: list(names),
         node_factory=_FakeNode,

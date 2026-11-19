@@ -7,10 +7,10 @@ from datetime import datetime
 from types import SimpleNamespace
 from typing import Callable
 
-from trader.common.common import sleep
 from trader.core.marketdata.domain import require_ordered_range
 from trader.core.marketdata.exceptions import KlineRangeError
 from trader.core.marketdata.interfaces import AvailabilityStore, KlineRepository, MarketDataClient
+from trader.core.shared.async_utils import sleep
 from trader.core.shared.domain import SymbolInterval, add_time_duration, get_time_duration
 
 DOWNLOAD_SPACE_TIME = 5

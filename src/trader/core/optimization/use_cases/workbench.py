@@ -37,12 +37,11 @@ class OptimizationBackgroundStatusUseCase:
             proc_exists = False
 
         report_dir = self.base_dir / "reports" / "optimizations" / run_id
-        manifest_exists = (report_dir / "manifest.json").exists()
+        manifest_exists = self.config_store.exists(str(report_dir / "manifest.json"))
 
         log_tail: list[str] = []
-        if log_path.exists():
-            lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
-            log_tail = lines[-tail:]
+        if self.config_store.exists(str(log_path)):
+            log_tail = self.config_store.read_lines(str(log_path), tail)
 
         status = runtime_status.get("stage") if runtime_status else None
         if status is None and manifest_exists:
@@ -57,12 +56,12 @@ class OptimizationBackgroundStatusUseCase:
             "pid": pid,
             "process_running": proc_exists,
             "log_path": str(log_path),
-            "status_path": str(status_path) if status_path.exists() else None,
+            "status_path": str(status_path) if self.config_store.exists(str(status_path)) else None,
             "runtime_status": runtime_status,
-            "report_dir_exists": report_dir.exists(),
+            "report_dir_exists": self.config_store.exists(str(report_dir)),
             "manifest_exists": manifest_exists,
-            "aggregate_exists": (report_dir / "aggregate.json").exists(),
-            "rankings_exists": (report_dir / "rankings" / "by_score.json").exists(),
+            "aggregate_exists": self.config_store.exists(str(report_dir / "aggregate.json")),
+            "rankings_exists": self.config_store.exists(str(report_dir / "rankings" / "by_score.json")),
             "log_tail": log_tail,
         }
         return payload, 0

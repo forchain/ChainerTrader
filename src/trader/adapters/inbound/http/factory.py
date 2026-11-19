@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import inspect
-import os
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -42,35 +41,10 @@ def _rpc_dir() -> Path:
     return Path(__file__).resolve().parents[3] / "rpc"
 
 
-def list_strategy_options() -> list[str]:
-    strategy_dir = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "strategy"))
-    options: set[str] = set()
-    ignore_py_files = {
-        "__init__.py",
-        "base_strategy.py",
-        "backtrader_adapter.py",
-        "execution_kernel.py",
-        "lifecycle.py",
-        "node.py",
-        "risk.py",
-        "signal_router.py",
-        "strategy.py",
-        "trader_result.py",
-        "smoke_test.py",
-    }
-    if not os.path.isdir(strategy_dir):
-        return []
-
-    for name in os.listdir(strategy_dir):
-        full_path = os.path.join(strategy_dir, name)
-        if os.path.isfile(full_path) and name.endswith(".py") and name not in ignore_py_files:
-            options.add(name[:-3])
-            continue
-        if os.path.isdir(full_path):
-            nested = os.path.join(full_path, f"{name}.py")
-            if os.path.isfile(nested):
-                options.add(name)
-    return sorted(options)
+def list_strategy_options(composition: Any = None) -> list[str]:
+    """Return the strategy catalog wired by the composition root."""
+    provider = getattr(composition, "strategy_options", None)
+    return list(provider()) if callable(provider) else []
 
 
 def list_task_config_options() -> list[str]:
@@ -486,7 +460,7 @@ def create_app(
             {
                 "tasks_info": tasks_info,
                 "user": user,
-                "strategy_options": list_strategy_options(),
+                "strategy_options": list_strategy_options(getattr(request.app.state, "composition", None)),
                 "task_config_options": list_task_config_options(),
             },
         )

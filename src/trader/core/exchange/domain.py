@@ -6,11 +6,10 @@ protection views are shared with execution, so they are re-exported here.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import json
+from dataclasses import asdict, dataclass, fields, replace
 from enum import Enum
 from typing import Any
-
-from pydantic import BaseModel
 
 from trader.core.execution.domain import PositionView, ProtectionOrderView
 
@@ -56,7 +55,8 @@ def parse_ex_type(name):
     return None
 
 
-class ExchangeConfig(BaseModel):
+@dataclass
+class ExchangeConfig:
     ty: ExchangeType = ExchangeType.BINANCE
     driver: ExchangeDriverType = ExchangeDriverType.CCXT
     api_key: str = ""
@@ -73,20 +73,33 @@ class ExchangeConfig(BaseModel):
     def with_margin_mode(self, margin_mode: MarginMode) -> "ExchangeConfig":
         if self.margin_mode == margin_mode:
             return self
-        payload = self.model_dump()
-        payload["margin_mode"] = margin_mode
-        return ExchangeConfig(**payload)
+        return replace(self, margin_mode=margin_mode)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
 
 
 def parse_exchange_config(cfg_data: str) -> ExchangeConfig | None:
     """Parse a JSON exchange config or a bare exchange name (e.g. "BINANCE")."""
     try:
-        return ExchangeConfig.model_validate_json(cfg_data)
-    except Exception:
-        return ExchangeConfig(ty=parse_ex_type(cfg_data))
+        payload = json.loads(cfg_data)
+    except (TypeError, ValueError):
+        payload = None
+    if not isinstance(payload, dict):
+        ex_type = parse_ex_type(cfg_data)
+        if ex_type is None:
+            raise ValueError(f"invalid exchange config: {cfg_data!r}")
+        return ExchangeConfig(ty=ex_type)
+    allowed = {field.name for field in fields(ExchangeConfig)}
+    values = {key: value for key, value in payload.items() if key in allowed}
+    for key, enum_type in (("ty", ExchangeType), ("driver", ExchangeDriverType), ("margin_mode", MarginMode)):
+        if key in values and not isinstance(values[key], enum_type):
+            values[key] = enum_type(values[key])
+    return ExchangeConfig(**values)
 
 
-class Balance(BaseModel):
+@dataclass
+class Balance:
     asset: str = ""
     free: float = 0
     locked: float = 0

@@ -61,7 +61,7 @@ def build_user_exchange_context(
 
     api_key = cipher.decrypt(credential.encrypted_api_key)
     api_secret = cipher.decrypt(credential.encrypted_api_secret)
-    payload = (base_cfg or ExchangeConfig()).model_dump()
+    payload = (base_cfg or ExchangeConfig()).to_dict()
     payload["api_key"] = api_key
     payload["api_secret"] = api_secret
     payload["margin_mode"] = margin_mode

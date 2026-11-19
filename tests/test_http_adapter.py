@@ -108,3 +108,38 @@ def test_create_app_with_fakes_exercises_routes_without_db_exchange_or_network()
         invalid_submit = client.post("/api/tasks", content="configs/tasks/does_not_exist.json")
         assert invalid_submit.status_code == 400
         assert "detail" in invalid_submit.json()
+
+
+def test_admin_tasks_page_uses_injected_strategy_catalog():
+    from trader.adapters.inbound.http import create_app
+
+    fake_user = SimpleNamespace(id=0, username="local-admin", role="admin", status="active", is_admin=True, must_change_password=False)
+    composition = SimpleNamespace(
+        cfg=Config(),
+        logger=SimpleNamespace(info=lambda *a, **k: None, error=lambda *a, **k: None, debug=lambda *a, **k: None),
+        live_event_bus=SimpleNamespace(subscribe=None, unsubscribe=None, recent=lambda *a, **k: []),
+        db_manager=SimpleNamespace(kline=None, user=None, exchange_credential=None, task=None),
+        exchange=None,
+        task_manager=_FakeTaskManager([]),
+        stat=_FakeStat(),
+        version=lambda: "0.79.3-test",
+        current_user_resolver=lambda request: fake_user,
+        strategy_options=lambda: ["ShihunRSI2"],
+    )
+
+    with TestClient(create_app(composition)) as client:
+        response = client.get("/admin/tasks")
+
+    assert response.status_code == 200
+    assert "ShihunRSI2" in response.text
+
+
+def test_backtrader_catalog_lists_real_strategy_modules():
+    from trader.adapters.outbound.backtrader.catalog import list_strategy_options
+
+    options = list_strategy_options()
+
+    assert "ShihunRSI2" in options
+    assert "ShihunMACD2" in options
+    assert "catalog" not in options
+    assert "base_strategy" not in options

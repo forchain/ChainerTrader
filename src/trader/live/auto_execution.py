@@ -5,8 +5,6 @@ from enum import Enum
 from math import isfinite
 from typing import Any
 
-from trader.adapters.outbound.binance.execution_gateway import BinanceLiveExecutionGateway
-from trader.adapters.outbound.notification.execution_gateway import NotificationOnlyExecutionGateway
 from trader.core.execution import (
     ExecutionEvent,
     ExecutionEventType,
@@ -122,7 +120,9 @@ class AutoExecutionRouter:
         self.log = log
         self._reserved_budget_remaining = self._initial_reserved_budget()
         self.mode = self._resolved_runtime_mode()
-        self.gateway = gateway if gateway is not None else self._build_gateway()
+        if gateway is None:
+            raise ValueError("AutoExecutionRouter requires an injected ExecutionGateway")
+        self.gateway = gateway
         self.margin_borrow_block_policy = normalize_margin_borrow_block_policy(
             getattr(tcfg, "live_margin_borrow_block_policy", None)
         )
@@ -340,11 +340,6 @@ class AutoExecutionRouter:
             return
         if outcome.status == AutoExecutionStatus.SKIPPED and str(outcome.reason or "").startswith("margin_borrow_blocked_-3006"):
             logger.warning(f"[auto_execution] margin_borrow_blocked {payload}")
-
-    def _build_gateway(self) -> ExecutionGateway:
-        if self.mode == LiveExecutionMode.MANUAL_NOTIFY.value:
-            return NotificationOnlyExecutionGateway(staged_execution_mode=self.mode)
-        return BinanceLiveExecutionGateway(self.exchange, staged_execution_mode=self.mode)
 
     def _gateway_mode(self) -> GatewayMode:
         return self.gateway.capabilities.gateway

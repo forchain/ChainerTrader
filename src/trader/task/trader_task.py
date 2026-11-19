@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 from asyncio import Queue
+from collections.abc import Callable
+from typing import Any
 
 from trader.adapters.outbound.backtrader.live_runtime import BacktraderLiveRunner
 from trader.adapters.outbound.backtrader.live_trader_runner import LiveTraderTaskRunner
 from trader.adapters.outbound.binance.exchange import BinanceExchange
+from trader.adapters.outbound.execution_gateway_factory import build_execution_gateway
 from trader.adapters.outbound.persistence.manager import DatabaseManager
 from trader.common.config import Config
 from trader.common.logger import Logger
+from trader.core.execution.modes import normalize_live_execution_mode
 from trader.core.task.interfaces import TaskEventPublisher
 from trader.live.market_data import plan_initial_backfill
 from trader.live.stream import GLOBAL_MARKET_STREAM_HUB
@@ -28,9 +32,11 @@ class TraderTask(BaseTask):
         db_manager: DatabaseManager,
         exchange: BinanceExchange,
         event_publisher: TaskEventPublisher | None = None,
+        execution_gateway_factory: Callable[[str, Any], Any] = build_execution_gateway,
     ):
         super().__init__(tcfg, cfg, log, db_manager, exchange)
         self.event_publisher = event_publisher
+        self._execution_gateway_factory = execution_gateway_factory
         self._runner = self._make_runner()
         self._session = self._runner.build_session(tcfg, self.ts)
         self._manual_cash = self._session._manual_cash
@@ -44,6 +50,7 @@ class TraderTask(BaseTask):
             cfg=self.cfg,
             log=self.log,
             exchange_client=self.exchange,
+            execution_gateway=self._execution_gateway_factory(normalize_live_execution_mode(self.tcfg.live_execution_mode), self.exchange),
             execution_state_store=getattr(self.db_manager, "execution_state", None),
             task_repository=getattr(self.db_manager, "task", None),
             kline_repository=getattr(self.db_manager, "kline", None),

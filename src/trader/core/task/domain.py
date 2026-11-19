@@ -8,7 +8,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
-from trader.strategy.trader_result import TraderResult, parse_trader_result
+from trader.core.strategy.domain.trader_result import TraderResult, parse_trader_result
 
 
 class TaskType(Enum):
@@ -219,9 +219,7 @@ def parse_task_state(data) -> TaskState:
     if "tret" in data and data["tret"] is not None:
         try:
             ts.tret = parse_trader_result(data["tret"])
-        except Exception as e:
-            # Log error and continue without tret
-            print(f"Error parsing trader result: {e}")
+        except Exception:
             ts.tret = None
 
     commission = data.get("commission")

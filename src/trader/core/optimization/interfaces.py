@@ -37,6 +37,8 @@ class TaskConfigFileStore(Protocol):
 
     def write_json(self, path: str, payload: Any) -> None: ...
 
+    def read_lines(self, path: str, limit: int) -> list[str]: ...
+
 
 @runtime_checkable
 class CandidateSymbolSource(Protocol):

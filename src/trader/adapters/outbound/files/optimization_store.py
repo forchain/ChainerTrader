@@ -31,6 +31,10 @@ class FileTaskConfigFileStore:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
+    def read_lines(self, path: str | Path, limit: int) -> list[str]:
+        lines = Path(path).read_text(encoding="utf-8", errors="replace").splitlines()
+        return lines[-limit:]
+
 
 class FileRankingReportStore:
     """File-system implementation of RankingReportStore under base_dir/reports/optimizations."""

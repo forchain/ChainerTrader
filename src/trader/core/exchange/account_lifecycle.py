@@ -17,7 +17,9 @@ from typing import Any, Protocol
 from trader.core.exchange.domain import Balance, ExchangeConfig, MarginMode, UserExchangeContext
 from trader.core.exchange.use_cases import attach_user_exchange_context, base_exchange_config
 from trader.core.identity.credentials import mask_api_key
+from trader.core.identity.interfaces import SecretCipher
 from trader.core.shared.domain import Symbol
+from trader.core.task.domain import task_requires_short_capability
 
 # Quote assets used to split compact symbols such as SOLUSDT.
 QUOTE_ASSETS = ("USDT", "USDC", "FDUSD", "BUSD", "TUSD", "USDP", "DAI", "BTC", "ETH", "BNB", "EUR", "TRY", "USD")
@@ -51,47 +53,6 @@ class CapacitySnapshot:
     @property
     def operable_capacity(self) -> float:
         return self.balance + self.max_borrowable
-
-
-class InMemoryExchangeAdapter:
-    """Deterministic exchange port fake for account lifecycle tests."""
-
-    def __init__(
-        self,
-        *,
-        balances: dict[str, float] | None = None,
-        max_borrowable: dict[str, float] | None = None,
-        borrow_limits: dict[str, float] | None = None,
-        open_orders: dict[str, list[dict[str, Any]]] | None = None,
-    ):
-        self._balances = {str(k).upper(): float(v) for k, v in (balances or {}).items()}
-        self._max_borrowable = {str(k).upper(): float(v) for k, v in (max_borrowable or {}).items()}
-        self._borrow_limits = {str(k).upper(): float(v) for k, v in (borrow_limits or {}).items()}
-        self._open_orders = {str(k).upper(): list(v) for k, v in (open_orders or {}).items()}
-        self.cancelled: list[tuple[str, str]] = []
-        self.cancelled_all: list[str] = []
-
-    def get_account_balance(self, asset: str) -> float:
-        return self._balances.get(str(asset).upper(), 0.0)
-
-    def get_account_balances(self) -> list[Balance]:
-        return [Balance(asset=asset, free=amount) for asset, amount in sorted(self._balances.items())]
-
-    def get_max_borrowable(self, asset: str, symbol: str | None = None) -> dict[str, Any]:
-        key = str(asset).upper()
-        return {
-            "amount": self._max_borrowable.get(key, 0.0),
-            "borrowLimit": self._borrow_limits.get(key),
-        }
-
-    def get_open_orders(self, symbol: Symbol) -> list[dict[str, Any]]:
-        return list(self._open_orders.get(str(symbol.name()).replace("-", "").upper(), []))
-
-    def cancel_order(self, symbol: Symbol, order_id: str) -> None:
-        self.cancelled.append((symbol.name(), str(order_id)))
-
-    def cancel_all_open_orders(self, symbol: Symbol) -> None:
-        self.cancelled_all.append(symbol.name())
 
 
 def parse_symbol(raw_symbol: str, quote_asset: str = "USDT") -> Symbol | None:
@@ -183,17 +144,17 @@ class LiveAccountLifecycle:
         log: Any = None,
         credential_repo: Any = None,
         exchange_factory: Any = None,
+        cipher: SecretCipher | None = None,
     ):
         self.base_exchange = base_exchange
         self.cfg = cfg
         self.log = log
         self.credential_repo = credential_repo
         self.exchange_factory = exchange_factory
+        self.cipher = cipher
         self.exchanges_by_mode: dict[str, Any] = {}
 
     async def exchange_for_task(self, task_cfg: Any, *, runtime_live_execution_mode: str) -> Any:
-        from trader.task.live_startup_self_check import task_requires_short_capability
-
         target_mode = MarginMode.CROSS_MARGIN if task_requires_short_capability(task_cfg) else MarginMode.SPOT
         user_id = getattr(task_cfg, "user_id", None)
         if user_id is not None:
@@ -214,17 +175,14 @@ class LiveAccountLifecycle:
         repository = self.credential_repo
         if repository is None:
             raise LiveAccountError("live trading requires a user exchange credential store")
-        from trader.auth.credentials import service_key_available
-
-        service_key = getattr(self.cfg, "secret_key", None)
-        if not service_key_available(service_key):
+        if self.cipher is None:
             raise LiveAccountError("TRADER_SECRET_KEY is required to start user-owned live trading tasks")
         credential = repository.get_default(user_id, "BINANCE")
         if inspect.isawaitable(credential):
             credential = await credential
         context = self.build_credential_context(
             base_cfg=base_exchange_config(self.base_exchange, self.cfg),
-            service_key=service_key,
+            cipher=self.cipher,
             credential=credential,
             user_id=user_id,
             margin_mode=mode,
@@ -246,22 +204,18 @@ class LiveAccountLifecycle:
     def build_credential_context(
         *,
         base_cfg: ExchangeConfig | None,
-        service_key: str | None,
+        cipher: SecretCipher | None,
         credential: Any,
         user_id: int,
         margin_mode: MarginMode,
     ) -> UserExchangeContext:
         if credential is None:
             raise LiveAccountError(f"missing BINANCE API credential for user_id={user_id}")
-        from trader.auth.credentials import service_key_available
-
-        if not service_key_available(service_key):
+        if cipher is None:
             raise LiveAccountError("TRADER_SECRET_KEY is required to read user-owned Binance credentials")
-        from trader.auth.credentials import decrypt_secret
-
-        api_key = decrypt_secret(service_key, credential.encrypted_api_key)
-        api_secret = decrypt_secret(service_key, credential.encrypted_api_secret)
-        payload = (base_cfg or ExchangeConfig()).model_dump()
+        api_key = cipher.decrypt(credential.encrypted_api_key)
+        api_secret = cipher.decrypt(credential.encrypted_api_secret)
+        payload = (base_cfg or ExchangeConfig()).to_dict()
         payload["api_key"] = api_key
         payload["api_secret"] = api_secret
         payload["margin_mode"] = margin_mode

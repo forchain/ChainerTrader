@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import os
 import re
 from datetime import datetime
-from typing import Iterable
+from typing import Callable, Iterable
 
 
 def enforce_current_user_ownership(taskcs: Iterable, current_user_id: int) -> None:
@@ -39,14 +38,14 @@ def normalize_task_config_path(raw_path: str) -> str:
     return text
 
 
-def validate_config_file_source(cfg: str, path_resolver) -> None:
+def validate_config_file_source(cfg: str, path_exists: Callable[[str], bool]) -> None:
     text = (cfg or "").strip()
     if not text or text.startswith("[") or text.startswith("{"):
         return
     if not text.endswith(".json"):
         return
     normalized = normalize_task_config_path(text)
-    if os.path.isfile(path_resolver(normalized)):
+    if path_exists(normalized):
         return
     raise ValueError(f"task config file not found: {normalized}")
 

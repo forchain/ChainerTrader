@@ -10,7 +10,7 @@ from trader.core.task.domain import TaskState, TaskStateType, task_state_name
 from trader.core.task.interfaces import FundReservationStore, TaskRepository, TaskRunner
 from trader.core.task.use_cases.cleanup import CancelTaskOpenOrders
 from trader.core.task.use_cases.fund_reservation import PreflightLiveTaskFunds, ReleaseTaskFunds
-from trader.core.task.use_cases.recovery import _default_parse_persisted_config
+from trader.core.task.use_cases.recovery import parse_persisted_task_config
 
 
 def _default_config_from_state(state: TaskState) -> Any:
@@ -18,7 +18,7 @@ def _default_config_from_state(state: TaskState) -> Any:
     if not config_json:
         return None
     try:
-        parsed = _default_parse_persisted_config(config_json)
+        parsed = parse_persisted_task_config(config_json)
     except Exception:
         return None
     for cfg in parsed:

@@ -18,7 +18,7 @@ from trader.task.persisted_live_config_migration import (
     assert_persisted_task_config_json_is_migrated,
     migrate_persisted_live_task_configs,
 )
-from trader.task.task_config import TaskConfig, parse_task_config
+from trader.task.task_config import TaskConfig, parse_task_config, read_task_config_source
 
 RECOVERY_TASK_CONCURRENCY = 10
 
@@ -360,7 +360,8 @@ class App:
     def send_add_tasks_msg(self, tasks_cfg: str, user_id: int | None = None):
         taskcs: list[TaskConfig] = []
         if tasks_cfg:
-            taskcs = TaskConfigCodec.from_input(tasks_cfg)
+            min_notional = getattr(self.cfg, "min_live_trade_notional", 11.0)
+            taskcs = TaskConfigCodec.from_input(read_task_config_source(tasks_cfg), min_live_trade_notional=min_notional)
         if user_id is not None:
             for taskc in taskcs:
                 taskc.user_id = user_id
