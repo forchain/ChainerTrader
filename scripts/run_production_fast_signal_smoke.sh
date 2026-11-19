@@ -123,7 +123,7 @@ echo "[prod-smoke] collecting cleanup/cancel evidence"
 set +e
 CLEANUP_EXIT=1
 for attempt in 1 2; do
-  CHAINERTRADER_LIVE_SMOKE_CLEANUP_ONLY=1 uv run python -m trader.tools.binance_live_smoke >/tmp/chainer_prod_fast_signal_cleanup.log 2>&1
+  CHAINERTRADER_LIVE_SMOKE_CLEANUP_ONLY=1 uv run python -m trader.adapters.outbound.binance.live_smoke >/tmp/chainer_prod_fast_signal_cleanup.log 2>&1
   CLEANUP_EXIT=$?
   if [ "$CLEANUP_EXIT" -eq 0 ]; then
     break

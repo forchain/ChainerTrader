@@ -15,9 +15,9 @@ from typing import Any
 import requests
 from dotenv import load_dotenv
 
-from trader.auth.credentials import encrypt_secret, mask_api_key
-from trader.auth.passwords import hash_password
-
+from trader.adapters.outbound.identity.argon2_hasher import hash_password
+from trader.adapters.outbound.identity.fernet_cipher import encrypt_secret
+from trader.core.identity.credentials import mask_api_key
 
 ROOT = Path(__file__).resolve().parents[2]
 RUN_ROOT = ROOT / "tmp" / "acceptance" / "multi_user_runtime_isolation"
@@ -121,7 +121,7 @@ def _acceptance_env(port: int, db_path: Path, log_path: Path, *, mode: str) -> d
 
 
 def _migrate(env: dict[str, str]) -> None:
-    result = _run([sys.executable, "-m", "trader.tools.db", "migrate"], env=env, timeout=60)
+    result = _run([sys.executable, "-m", "trader.adapters.inbound.cli.db", "migrate"], env=env, timeout=60)
     if result.returncode != 0:
         raise RuntimeError(f"migration failed\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}")
 

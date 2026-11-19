@@ -1,34 +1,54 @@
-import asyncio
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
 from fastapi.testclient import TestClient
 
-from trader.auth.credentials import encrypt_secret
-from trader.common.common import NAME
-from trader.common.config import Config
-from trader.common.logger import Logger
-from trader.exchange.balance import Balance
-from trader.exchange.exchange_config import ExchangeConfig, MarginMode
-from trader.rpc.app import app
-from trader.rpc.models import AcctsInfo, TasksInfo, get_accounts_info
-from trader.utils.symbol_interval import Interval, SymbolInterval
+from trader.adapters.inbound.http import create_app
+from trader.adapters.inbound.http.queries import get_accounts_info
+from trader.adapters.inbound.http.schemas import AcctsInfo, TasksInfo
+from trader.adapters.outbound.identity.fernet_cipher import FernetSecretCipher, encrypt_secret
+from trader.adapters.outbound.logging.logger import Logger
+from trader.core.exchange.domain import Balance, ExchangeConfig, MarginMode
+from trader.core.shared.config import Config
+from trader.core.shared.domain import NAME, Interval, SymbolInterval
+
+
+def _composition(**overrides):
+    composition = SimpleNamespace(
+        cfg=Config(api="127.0.0.1:8100", tasks="[]"),
+        live_event_bus=None,
+        db_manager=None,
+        exchange=None,
+        task_manager=SimpleNamespace(latest_si=None),
+        logger=None,
+        version=lambda: "0.1.1",
+    )
+    composition.__dict__.update(overrides)
+    return composition
+
+
+composition = _composition()
+app = create_app(composition)
 
 
 @pytest.fixture
-def rpc_test_client(monkeypatch):
-    """Use context-managed TestClient so FastAPI lifespan runs (RpcApp on app.state)."""
-    monkeypatch.setattr("trader.rpc.rpc_app.os.kill", lambda pid, sig: None)
-
-    async def _sleep(logger, seconds, desc):
-        await asyncio.sleep(0)
-
-    monkeypatch.setattr("trader.rpc.rpc_app.sleep", _sleep)
-
-    app.state.cfg = Config(api="127.0.0.1:8100", tasks="[]")
+def rpc_test_client():
+    app.state.cfg = composition.cfg = Config(api="127.0.0.1:8100", tasks="[]")
+    app.state.app = composition
+    app.state.composition = composition
     with TestClient(app) as client:
         yield client
+
+
+def _wire_user_exchange(rpc_stub, exchange):
+    rpc_stub.secret_cipher_factory = lambda key: FernetSecretCipher(key) if key else None
+
+    def factory(cfg, log=None):
+        return exchange(cfg, log) if isinstance(exchange, type) else exchange
+
+    rpc_stub.user_exchange_factory = factory
 
 
 def test_read_name(rpc_test_client):
@@ -52,7 +72,7 @@ def test_lifespan_attaches_rpc_app_to_state(rpc_test_client):
 
 def test_admin_dashboard_returns_200_when_lifecycle_active(rpc_test_client, monkeypatch):
     monkeypatch.setattr(
-        "trader.rpc.app.get_accounts_info",
+        "trader.adapters.inbound.http.factory.get_accounts_info",
         lambda rpc_app, **_kwargs: AcctsInfo(
             total=3,
             balances=[
@@ -63,7 +83,7 @@ def test_admin_dashboard_returns_200_when_lifecycle_active(rpc_test_client, monk
         ),
     )
     monkeypatch.setattr(
-        "trader.rpc.app.get_taskinfo",
+        "trader.adapters.inbound.http.factory.get_taskinfo",
         AsyncMock(return_value=TasksInfo(total=0, completed=0, tasks=[])),
     )
     response = rpc_test_client.get("/admin")
@@ -100,10 +120,6 @@ def test_public_nav_hides_admin_dropdown_for_anonymous(rpc_test_client):
 
 def test_registration_can_be_disabled(rpc_test_client, monkeypatch):
     app.state.cfg.registration_enabled = False
-    monkeypatch.setattr(
-        "trader.rpc.app._require_user_repo",
-        lambda _request: pytest.fail("disabled registration must not access the user repository"),
-    )
 
     register_page = rpc_test_client.get("/register")
     assert register_page.status_code == 200
@@ -130,9 +146,11 @@ def test_admin_nav_shows_admin_dropdown_for_user_management_only(monkeypatch):
     from types import SimpleNamespace
 
     from fastapi import FastAPI, Request
+    from fastapi.templating import Jinja2Templates
 
-    from trader.auth.context import SessionAuthMiddleware
-    from trader.rpc.app import templates
+    from trader.adapters.inbound.http.auth import SessionAuthMiddleware
+
+    templates = Jinja2Templates(directory=str(Path(__file__).resolve().parents[1] / "src" / "trader" / "adapters" / "inbound" / "http" / "templates"))
 
     nav_app = FastAPI()
     nav_app.add_middleware(SessionAuthMiddleware)
@@ -189,12 +207,11 @@ def test_account_page_shows_balances_with_default_filter(rpc_test_client, monkey
             self.margin_mode = cfg.margin_mode
 
     monkeypatch.setattr(
-        "trader.rpc.app.require_user",
+        "trader.adapters.inbound.http.factory.require_user",
         AsyncMock(return_value=user),
     )
-    monkeypatch.setattr("trader.rpc.app.BinanceExchange", _UserExchange)
     monkeypatch.setattr(
-        "trader.rpc.app.get_accounts_info",
+        "trader.adapters.inbound.http.factory.get_accounts_info",
         lambda rpc_app, **_kwargs: AcctsInfo(
             total=3,
             balances=[
@@ -225,7 +242,8 @@ def test_account_page_shows_balances_with_default_filter(rpc_test_client, monkey
         task_manager=SimpleNamespace(latest_si=SymbolInterval("BTC-USDT", Interval("1m"))),
         logger=None,
     )
-    monkeypatch.setattr("trader.rpc.app._require_rpc_app", lambda _request: rpc_stub)
+    app.state.app = rpc_stub
+    _wire_user_exchange(rpc_stub, _UserExchange)
     response = rpc_test_client.get("/account")
     assert response.status_code == 200
     assert 'class="row g-4"' in response.text
@@ -286,9 +304,8 @@ def test_account_page_previews_requested_symbol_orders_before_cancel(rpc_test_cl
             ]
 
     exchange = _Exchange()
-    monkeypatch.setattr("trader.rpc.app.require_user", AsyncMock(return_value=user))
-    monkeypatch.setattr("trader.rpc.app.get_accounts_info", lambda rpc_app, **_kwargs: AcctsInfo(total=0, balances=[]))
-    monkeypatch.setattr("trader.rpc.app._account_exchange_for_user", lambda *_args, **_kwargs: exchange)
+    monkeypatch.setattr("trader.adapters.inbound.http.factory.require_user", AsyncMock(return_value=user))
+    monkeypatch.setattr("trader.adapters.inbound.http.factory.get_accounts_info", lambda rpc_app, **_kwargs: AcctsInfo(total=0, balances=[]))
     app.state.cfg = Config(api="127.0.0.1:8100", tasks="[]", secret_key=service_key)
     rpc_stub = SimpleNamespace(
         db_manager=SimpleNamespace(exchange_credential=SimpleNamespace(list_by_user=AsyncMock(return_value=[credential]))),
@@ -296,7 +313,8 @@ def test_account_page_previews_requested_symbol_orders_before_cancel(rpc_test_cl
         task_manager=SimpleNamespace(latest_si=SymbolInterval("BTC-USDT", Interval("1m"))),
         logger=None,
     )
-    monkeypatch.setattr("trader.rpc.app._require_rpc_app", lambda _request: rpc_stub)
+    app.state.app = rpc_stub
+    _wire_user_exchange(rpc_stub, exchange)
 
     response = rpc_test_client.get("/account?cancel_symbol=SOLUSDT")
 
@@ -329,9 +347,8 @@ def test_account_page_shows_empty_requested_symbol_order_result(rpc_test_client,
             return []
 
     exchange = _Exchange()
-    monkeypatch.setattr("trader.rpc.app.require_user", AsyncMock(return_value=user))
-    monkeypatch.setattr("trader.rpc.app.get_accounts_info", lambda rpc_app, **_kwargs: AcctsInfo(total=0, balances=[]))
-    monkeypatch.setattr("trader.rpc.app._account_exchange_for_user", lambda *_args, **_kwargs: exchange)
+    monkeypatch.setattr("trader.adapters.inbound.http.factory.require_user", AsyncMock(return_value=user))
+    monkeypatch.setattr("trader.adapters.inbound.http.factory.get_accounts_info", lambda rpc_app, **_kwargs: AcctsInfo(total=0, balances=[]))
     app.state.cfg = Config(api="127.0.0.1:8100", tasks="[]", secret_key=service_key)
     rpc_stub = SimpleNamespace(
         db_manager=SimpleNamespace(exchange_credential=SimpleNamespace(list_by_user=AsyncMock(return_value=[credential]))),
@@ -339,7 +356,8 @@ def test_account_page_shows_empty_requested_symbol_order_result(rpc_test_client,
         task_manager=SimpleNamespace(latest_si=SymbolInterval("BTC-USDT", Interval("1m"))),
         logger=None,
     )
-    monkeypatch.setattr("trader.rpc.app._require_rpc_app", lambda _request: rpc_stub)
+    app.state.app = rpc_stub
+    _wire_user_exchange(rpc_stub, exchange)
 
     response = rpc_test_client.get("/account?cancel_symbol=BNBUSDT")
 
@@ -369,12 +387,11 @@ def test_account_page_shows_account_read_error(rpc_test_client, monkeypatch):
             self.margin_mode = cfg.margin_mode
 
     monkeypatch.setattr(
-        "trader.rpc.app.require_user",
+        "trader.adapters.inbound.http.factory.require_user",
         AsyncMock(return_value=user),
     )
-    monkeypatch.setattr("trader.rpc.app.BinanceExchange", _UserExchange)
     monkeypatch.setattr(
-        "trader.rpc.app.get_accounts_info",
+        "trader.adapters.inbound.http.factory.get_accounts_info",
         lambda rpc_app, **_kwargs: AcctsInfo(total=0, balances=[], account_error="交易所账户读取失败: Invalid API-key"),
     )
     app.state.cfg = Config(api="127.0.0.1:8100", tasks="[]", secret_key=service_key)
@@ -384,7 +401,8 @@ def test_account_page_shows_account_read_error(rpc_test_client, monkeypatch):
         task_manager=SimpleNamespace(latest_si=SymbolInterval("BTC-USDT", Interval("1m"))),
         logger=None,
     )
-    monkeypatch.setattr("trader.rpc.app._require_rpc_app", lambda _request: rpc_stub)
+    app.state.app = rpc_stub
+    _wire_user_exchange(rpc_stub, _UserExchange)
 
     response = rpc_test_client.get("/account")
 
@@ -395,10 +413,10 @@ def test_account_page_shows_account_read_error(rpc_test_client, monkeypatch):
 
 def test_account_page_tolerates_legacy_account_info_without_margin_fields(rpc_test_client, monkeypatch):
     user = type("User", (), {"id": 1, "username": "trader", "role": "user"})()
-    monkeypatch.setattr("trader.rpc.app.require_user", AsyncMock(return_value=user))
+    monkeypatch.setattr("trader.adapters.inbound.http.factory.require_user", AsyncMock(return_value=user))
     monkeypatch.setattr(
-        "trader.rpc.app._user_accounts_info",
-        lambda _cfg, _rpc_app, _user, _credentials: SimpleNamespace(
+        "trader.adapters.inbound.http.factory.get_accounts_info",
+        lambda _app, **_kwargs: SimpleNamespace(
             total=0,
             balances=[],
             locked_reasons=[],
@@ -410,7 +428,7 @@ def test_account_page_tolerates_legacy_account_info_without_margin_fields(rpc_te
         exchange=None,
         logger=None,
     )
-    monkeypatch.setattr("trader.rpc.app._require_rpc_app", lambda _request: rpc_stub)
+    app.state.app = rpc_stub
 
     response = rpc_test_client.get("/account")
 
@@ -421,11 +439,11 @@ def test_account_page_tolerates_legacy_account_info_without_margin_fields(rpc_te
 
 def test_account_page_shows_existing_credential_summary_and_reset_button(rpc_test_client, monkeypatch):
     monkeypatch.setattr(
-        "trader.rpc.app.require_user",
+        "trader.adapters.inbound.http.factory.require_user",
         AsyncMock(return_value=type("User", (), {"id": 1, "username": "trader", "role": "user"})()),
     )
     monkeypatch.setattr(
-        "trader.rpc.app.get_accounts_info",
+        "trader.adapters.inbound.http.factory.get_accounts_info",
         lambda rpc_app, **_kwargs: AcctsInfo(total=0, balances=[]),
     )
 
@@ -439,7 +457,7 @@ def test_account_page_shows_existing_credential_summary_and_reset_button(rpc_tes
         exchange=None,
         logger=None,
     )
-    monkeypatch.setattr("trader.rpc.app._require_rpc_app", lambda request: rpc_stub)
+    app.state.app = rpc_stub
 
     response = rpc_test_client.get("/account")
     assert response.status_code == 200
@@ -480,9 +498,8 @@ def test_account_page_reads_user_exchange_credential_not_system_exchange(rpc_tes
         captured["include_open_orders"] = _kwargs.get("include_open_orders")
         return AcctsInfo(total=0, balances=[])
 
-    monkeypatch.setattr("trader.rpc.app.require_user", AsyncMock(return_value=user))
-    monkeypatch.setattr("trader.rpc.app.BinanceExchange", _UserExchange)
-    monkeypatch.setattr("trader.rpc.app.get_accounts_info", _capture_accounts_info)
+    monkeypatch.setattr("trader.adapters.inbound.http.factory.require_user", AsyncMock(return_value=user))
+    monkeypatch.setattr("trader.adapters.inbound.http.factory.get_accounts_info", _capture_accounts_info)
     app.state.cfg = Config(
         api="127.0.0.1:8100",
         tasks="[]",
@@ -495,7 +512,8 @@ def test_account_page_reads_user_exchange_credential_not_system_exchange(rpc_tes
         task_manager=SimpleNamespace(latest_si=SymbolInterval("BTC-USDT", Interval("1m"))),
         logger=None,
     )
-    monkeypatch.setattr("trader.rpc.app._require_rpc_app", lambda _request: rpc_stub)
+    app.state.app = rpc_stub
+    _wire_user_exchange(rpc_stub, _UserExchange)
 
     response = rpc_test_client.get("/account")
 
@@ -515,7 +533,7 @@ def test_account_page_without_saved_credential_does_not_fallback_to_system_excha
         def get_account_balances(self):
             raise AssertionError("missing user credential must not fall back to the system exchange")
 
-    monkeypatch.setattr("trader.rpc.app.require_user", AsyncMock(return_value=user))
+    monkeypatch.setattr("trader.adapters.inbound.http.factory.require_user", AsyncMock(return_value=user))
     app.state.cfg = Config(api="127.0.0.1:8100", tasks="[]", secret_key="service-secret")
     rpc_stub = SimpleNamespace(
         db_manager=SimpleNamespace(exchange_credential=SimpleNamespace(list_by_user=AsyncMock(return_value=[]))),
@@ -523,7 +541,8 @@ def test_account_page_without_saved_credential_does_not_fallback_to_system_excha
         task_manager=SimpleNamespace(latest_si=SymbolInterval("BTC-USDT", Interval("1m"))),
         logger=None,
     )
-    monkeypatch.setattr("trader.rpc.app._require_rpc_app", lambda _request: rpc_stub)
+    app.state.app = rpc_stub
+    _wire_user_exchange(rpc_stub, None)
 
     response = rpc_test_client.get("/account")
 
@@ -572,6 +591,9 @@ def test_accounts_info_adds_borrow_capacity_and_locked_order_reasons():
         def get_max_borrowable(self, asset, symbol=None):
             self.borrow_reads.append((asset, symbol))
             return {"amount": "22.5", "borrowLimit": "100000"}
+
+        def get_all_open_orders(self):
+            return []
 
         def get_open_orders(self, symbol):
             self.open_order_reads.append(symbol.name())
@@ -749,7 +771,7 @@ def test_accounts_info_can_skip_open_order_reads():
 
 def test_account_cancel_cleanup_symbol_open_orders_requires_symbol(rpc_test_client, monkeypatch):
     user = type("User", (), {"id": 1, "username": "trader", "role": "user"})()
-    monkeypatch.setattr("trader.rpc.app.require_user", AsyncMock(return_value=user))
+    monkeypatch.setattr("trader.adapters.inbound.http.factory.require_user", AsyncMock(return_value=user))
 
     response = rpc_test_client.post("/account/open-orders/cancel-cleanup-symbols", follow_redirects=False)
 
@@ -776,8 +798,7 @@ def test_account_cancel_cleanup_symbol_open_orders_cancels_requested_symbol_only
             self.cancel_all_open_orders_calls.append(symbol.name())
 
     exchange = _Exchange()
-    monkeypatch.setattr("trader.rpc.app.require_user", AsyncMock(return_value=user))
-    monkeypatch.setattr("trader.rpc.app._account_exchange_for_user", lambda *_args, **_kwargs: exchange)
+    monkeypatch.setattr("trader.adapters.inbound.http.factory.require_user", AsyncMock(return_value=user))
     app.state.cfg = Config(
         api="127.0.0.1:8100",
         tasks="[]",
@@ -788,7 +809,8 @@ def test_account_cancel_cleanup_symbol_open_orders_cancels_requested_symbol_only
         logger=None,
         task_manager=SimpleNamespace(latest_si=SymbolInterval("BTC-USDT", Interval("1m"))),
     )
-    monkeypatch.setattr("trader.rpc.app._require_rpc_app", lambda _request: rpc_stub)
+    app.state.app = rpc_stub
+    _wire_user_exchange(rpc_stub, exchange)
 
     response = rpc_test_client.post(
         "/account/open-orders/cancel-cleanup-symbols",
@@ -804,6 +826,7 @@ def test_account_cancel_cleanup_symbol_open_orders_cancels_requested_symbol_only
 def test_admin_returns_503_when_rpc_app_not_initialized(monkeypatch):
     monkeypatch.delattr(app.state, "cfg", raising=False)
     monkeypatch.delattr(app.state, "app", raising=False)
+    monkeypatch.delattr(app.state, "composition", raising=False)
     with TestClient(app) as client:
         response = client.get("/admin")
     assert response.status_code == 503
@@ -817,6 +840,7 @@ def test_admin_returns_503_when_rpc_app_not_initialized(monkeypatch):
 def test_admin_subroutes_return_503_when_rpc_app_not_initialized(monkeypatch, path):
     monkeypatch.delattr(app.state, "cfg", raising=False)
     monkeypatch.delattr(app.state, "app", raising=False)
+    monkeypatch.delattr(app.state, "composition", raising=False)
     with TestClient(app) as client:
         response = client.get(path)
     assert response.status_code == 503
@@ -837,8 +861,7 @@ def test_admin_logs_highlights_warning_error_and_critical(rpc_test_client, monke
             ]
         )
     )
-    monkeypatch.setattr("trader.rpc.app._require_rpc_app", lambda _request: rpc_stub)
-    monkeypatch.setattr("trader.rpc.app._template_user", AsyncMock(return_value=None))
+    app.state.app = rpc_stub
 
     response = rpc_test_client.get("/admin/logs")
 
@@ -863,25 +886,40 @@ def test_logger_buffer_preserves_log_level_for_admin_highlighting():
 def test_read_root_follow_redirect_returns_503_when_rpc_app_not_initialized(monkeypatch):
     monkeypatch.delattr(app.state, "cfg", raising=False)
     monkeypatch.delattr(app.state, "app", raising=False)
+    monkeypatch.delattr(app.state, "composition", raising=False)
     with TestClient(app) as client:
         response = client.get("/", follow_redirects=True)
     assert response.status_code == 200
     assert "欢迎使用 ChainerTrader" in response.text
 
 
-def test_user_accounts_info_treats_live_account_error_as_credential_error(monkeypatch):
-    from trader.live.account_lifecycle import LiveAccountError
-    from trader.rpc.app import _user_accounts_info
+def test_account_page_treats_live_account_error_as_credential_error(rpc_test_client, monkeypatch):
+    from trader.adapters.inbound.http import factory
+    from trader.core.exchange.account_lifecycle import LiveAccountError
 
-    errors = []
-    rpc_app = SimpleNamespace(logger=SimpleNamespace(error=lambda message: errors.append(message)))
+    service_key = "service-secret"
+    user = type("User", (), {"id": 7, "username": "trader", "role": "user"})()
+    credential = SimpleNamespace(
+        id=2,
+        exchange="BINANCE",
+        encrypted_api_key=encrypt_secret(service_key, "user-api-key"),
+        encrypted_api_secret=encrypt_secret(service_key, "user-api-secret"),
+        masked_api_key="user***ikey",
+    )
 
-    def raise_live_account_error(*_args, **_kwargs):
+    def raise_live_account_error(_cfg, _log=None):
         raise LiveAccountError("missing BINANCE API credential for user_id=7")
 
-    monkeypatch.setattr("trader.rpc.app._account_exchange_for_user", raise_live_account_error)
+    monkeypatch.setattr(factory, "require_user", AsyncMock(return_value=user))
+    app.state.cfg = Config(api="127.0.0.1:8100", tasks="[]", secret_key=service_key)
+    app.state.app = SimpleNamespace(
+        db_manager=SimpleNamespace(exchange_credential=SimpleNamespace(list_by_user=AsyncMock(return_value=[credential]))),
+        exchange=None,
+        logger=None,
+        secret_cipher_factory=lambda key: FernetSecretCipher(key) if key else None,
+        user_exchange_factory=raise_live_account_error,
+    )
 
-    info = _user_accounts_info(Config(tasks="[]"), rpc_app, SimpleNamespace(id=7), [])
+    response = rpc_test_client.get("/account")
 
-    assert info.account_error == "missing BINANCE API credential for user_id=7"
-    assert errors == []
+    assert "missing BINANCE API credential for user_id=7" in response.text

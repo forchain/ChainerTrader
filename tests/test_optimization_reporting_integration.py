@@ -2,13 +2,14 @@ from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
-from trader.common.config import Config
-from trader.strategy.trader_result import TraderResult
-from trader.task.backtrader_task import process_backtrader
-from trader.task.task_config import TaskConfig
-from trader.task.task_manager import TaskManager
-from trader.task.task_type import TaskType
-from trader.utils.symbol_interval import Interval, SymbolInterval
+from trader.adapters.outbound.backtrader.sample_worker import process_backtrader
+from trader.adapters.outbound.files.optimization_store import FileRankingReportStore
+from trader.adapters.outbound.files.task_config_loader import TaskConfig
+from trader.core.shared.config import Config
+from trader.core.shared.domain import Interval, SymbolInterval
+from trader.core.strategy.domain.trader_result import TraderResult
+from trader.core.task.domain import TaskType
+from trader.core.task.use_cases.task_manager import TaskManager
 
 
 class DummyLog:
@@ -63,7 +64,7 @@ def test_process_backtrader_emits_sample_report_metadata_for_optimization_runs(m
         def start(self):
             return _make_trader_result()
 
-    monkeypatch.setattr("trader.task.backtrader_task.Node", FakeNode)
+    monkeypatch.setattr("trader.adapters.outbound.backtrader.sample_worker.Node", FakeNode)
 
     tcfg = TaskConfig(
         id=1,
@@ -87,7 +88,7 @@ def test_process_backtrader_emits_sample_report_metadata_for_optimization_runs(m
 
 def test_task_manager_finalize_optimization_runs_writes_run_directory(monkeypatch, tmp_path: Path):
     cfg = Config()
-    task_manager = TaskManager(cfg, DummyLog(), db_manager=None, exchange=None)
+    task_manager = TaskManager(cfg, DummyLog(), db_manager=None, exchange=None, report_store=FileRankingReportStore(Path.cwd()))
     tasks = [
         TaskConfig(
             id=1,

@@ -36,6 +36,6 @@ done
 cleanup
 trap - EXIT
 
-uv run python -m trader.tools.live_operational_verify \
+uv run python -m trader.adapters.inbound.cli.live_operational_verify \
   --log "$LOG_PATH" \
   --min-request-spacing-seconds "$MIN_REQUEST_SPACING_SECONDS"

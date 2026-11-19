@@ -27,7 +27,7 @@ _ensure_pymongo_stub()
 
 
 def _ensure_binance_exchange_stub():
-    module_name = "trader.exchange.binance.exchange"
+    module_name = "trader.adapters.outbound.binance.exchange"
     if module_name in sys.modules:
         return
 
@@ -47,8 +47,9 @@ def _ensure_binance_exchange_stub():
 
 _ensure_binance_exchange_stub()
 
-from trader.task.update_klines_task import _compute_limit_for_range, download_range, download_range_backward  # noqa: E402
-from trader.utils.symbol_interval import Interval, SymbolInterval, add_time_duration  # noqa: E402
+from trader.core.marketdata.use_cases.update_klines import compute_limit_for_range as _compute_limit_for_range  # noqa: E402
+from trader.core.marketdata.use_cases.update_klines import download_range, download_range_backward  # noqa: E402
+from trader.core.shared.domain import Interval, SymbolInterval, add_time_duration  # noqa: E402
 
 
 class DummyLog:
@@ -245,18 +246,18 @@ def test_download_range_empty_response_retry():
             get_klines=MagicMock(return_value=[]),
         )
 
-        with patch("trader.task.update_klines_task.DOWNLOAD_SPACE_TIME", 0):
-            result = await download_range(
-                "update-task",
-                log,
-                db_manager,
-                collection_name,
-                exchange,
-                symbol_interval,
-                start_time,
-                end_time,
-                quit_event,
-            )
+        result = await download_range(
+            "update-task",
+            log,
+            db_manager,
+            collection_name,
+            exchange,
+            symbol_interval,
+            start_time,
+            end_time,
+            quit_event,
+            retry_delay_seconds=0,
+        )
 
         assert result is False
         assert exchange.get_klines.call_count == 6  # 1 initial + 5 retries
@@ -495,9 +496,9 @@ class TestDeleteKlinesInRange:
     def test_delete_range_called_on_force_update(self):
         """Verify delete is called when force_update is True."""
         import asyncio
-        from unittest.mock import AsyncMock, MagicMock, patch
+        from unittest.mock import AsyncMock, MagicMock
 
-        from trader.database.kline import KlineCol
+        from trader.adapters.outbound.persistence.kline import KlineCol
 
         log = DummyLog()
         kline_col = KlineCol(log)
@@ -524,24 +525,24 @@ class TestTaskConfigForceUpdate:
 
     def test_force_update_default_false(self):
         """Verify force_update defaults to False."""
-        from trader.task.task_config import TaskConfig
-        from trader.task.task_type import TaskType
+        from trader.adapters.outbound.files.task_config_loader import TaskConfig
+        from trader.core.task.domain import TaskType
 
         tc = TaskConfig(1, TaskType.UPDATE_KLINES)
         assert tc.force_update is False
 
     def test_force_update_set_true(self):
         """Verify force_update can be set to True."""
-        from trader.task.task_config import TaskConfig
-        from trader.task.task_type import TaskType
+        from trader.adapters.outbound.files.task_config_loader import TaskConfig
+        from trader.core.task.domain import TaskType
 
         tc = TaskConfig(1, TaskType.UPDATE_KLINES, force_update=True)
         assert tc.force_update is True
 
     def test_force_update_in_to_dict(self):
         """Verify force_update is included in to_dict output."""
-        from trader.task.task_config import TaskConfig
-        from trader.task.task_type import TaskType
+        from trader.adapters.outbound.files.task_config_loader import TaskConfig
+        from trader.core.task.domain import TaskType
 
         tc = TaskConfig(1, TaskType.UPDATE_KLINES, force_update=True)
         d = tc.to_dict()
@@ -552,7 +553,7 @@ class TestTaskConfigForceUpdate:
         """Verify force_update is parsed from config."""
         import json
 
-        from trader.task.task_config import parse_task_config
+        from trader.adapters.outbound.files.task_config_loader import parse_task_config
 
         config = json.dumps(
             [
@@ -573,7 +574,7 @@ class TestTaskConfigForceUpdate:
         """Verify force_update defaults to False when not specified."""
         import json
 
-        from trader.task.task_config import parse_task_config
+        from trader.adapters.outbound.files.task_config_loader import parse_task_config
 
         config = json.dumps(
             [
@@ -590,18 +591,20 @@ class TestTaskConfigForceUpdate:
         assert tasks[0].force_update is False
 
 
-def test_force_update_requests_force_sync_from_dataset_resolver():
-    from trader.common.config import Config
-    from trader.common.logger import Logger
-    from trader.task.task_config import TaskConfig
-    from trader.task.task_type import TaskType
-    from trader.task.update_klines_task import UpdateKlinesTask
+def test_force_update_deletes_the_range_and_downloads_it_again():
+    """A forced update re-downloads the whole requested range."""
+    from trader.adapters.outbound.files.task_config_loader import TaskConfig
+    from trader.adapters.outbound.logging.logger import Logger
+    from trader.core.shared.config import Config
+    from trader.core.task.domain import TaskType
+    from trader.core.task.use_cases.data_tasks import UpdateKlinesTaskRunner
 
-    cfg = Config(tasks="[]")
     tcfg = TaskConfig(
         1,
         TaskType.UPDATE_KLINES,
         SymbolInterval("BTC-USDT", Interval.INTERVAL_1h),
+        start_time=1000,
+        end_time=2000,
         force_update=True,
     )
     deleted = []
@@ -611,15 +614,19 @@ def test_force_update_requests_force_sync_from_dataset_resolver():
         return 3
 
     db = SimpleNamespace(kline=SimpleNamespace(delete_klines_in_range=delete_klines_in_range))
-    task = UpdateKlinesTask(tcfg, cfg, Logger(cfg), db, None)
-    captured = {}
+    downloaded = []
 
-    async def fake_sync_range(self, symbol_interval, start_time, end_time, **kwargs):
-        captured.update(kwargs)
-        return SimpleNamespace(ok=True, failure=None, dataset_ref=None)
+    async def fake_download_range(name, log, repo, col_name, exchange, symbol_interval, start, end, quit):
+        downloaded.append((col_name, start, end))
+        return True
 
-    with patch("trader.task.dataset_resolver.DatasetResolver.sync_range", fake_sync_range):
-        asyncio.run(task._handle_force_update("BTCUSDT-1h", 1000, 2000))
+    runner = UpdateKlinesTaskRunner(
+        kline_repository=db.kline,
+        market_data_client=None,
+        log=Logger(Config(tasks="[]")),
+        range_downloader=fake_download_range,
+    )
+    asyncio.run(runner.run(tcfg))
 
     assert deleted == [("BTCUSDT-1h", 1000, 2000)]
-    assert captured["force_sync"] is True
+    assert downloaded == [("BTCUSDT-1h", 1000, 2000)]

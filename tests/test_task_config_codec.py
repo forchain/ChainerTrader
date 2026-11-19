@@ -3,11 +3,10 @@ from datetime import datetime
 
 import pytest
 
-from trader.task.task_config import TaskConfig
-from trader.task.task_config_codec import TaskConfigCodec
-from trader.task.task_type import TaskType
-from trader.utils.symbol_interval import Interval, SymbolInterval
-from trader.utils.task_state import TaskState
+from trader.adapters.outbound.files.task_config_loader import TaskConfig
+from trader.core.shared.domain import Interval, SymbolInterval
+from trader.core.task.config_codec import TaskConfigCodec
+from trader.core.task.domain import TaskState, TaskType
 
 
 def _trader_config(task_id: int = 123) -> TaskConfig:
@@ -193,3 +192,46 @@ def test_codec_round_trip_preserves_missing_run_id_without_minting():
 
     assert restored is not None
     assert restored.run_id is None
+
+
+def test_file_task_config_source_loader_reads_configs_and_symbol_lists(tmp_path):
+    from trader.adapters.outbound.files.task_config_loader import FileTaskConfigSourceLoader
+    from trader.adapters.outbound.files.task_config_loader import TaskConfig as LoaderTaskConfig
+
+    symbols_file = tmp_path / "symbols.txt"
+    symbols_file.write_text("BTC-USDT\nETH-USDT\n", encoding="utf-8")
+    config_file = tmp_path / "tasks.json"
+    config_file.write_text(
+        json.dumps(
+            [
+                {
+                    "task_type": "BACK_TRADER",
+                    "symbols": str(symbols_file),
+                    "interval": "1h",
+                    "start_time": "2020-01-01 00:00:00",
+                    "end_time": "2020-01-02 00:00:00",
+                    "strategy": "ShihunRSI2",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    loader = FileTaskConfigSourceLoader()
+    configs = loader.load_configs(str(config_file))
+
+    assert len(configs) == 2
+    assert isinstance(configs[0], LoaderTaskConfig)
+    assert sorted(item.symbol_interval.symbol() for item in configs) == ["BTCUSDT", "ETHUSDT"]
+    assert loader.source_exists(str(config_file)) is True
+    assert json.loads(loader.read_source_text(str(config_file)))[0]["interval"] == "1h"
+
+
+def test_file_task_config_source_loader_supports_inline_json():
+    from trader.adapters.outbound.files.task_config_loader import FileTaskConfigSourceLoader
+
+    loader = FileTaskConfigSourceLoader()
+    source = '[{"task_type": "DEBUG", "limit": 1}]'
+
+    assert loader.source_exists(source) is True
+    assert loader.load_configs(source)[0].ttype.name == "DEBUG"

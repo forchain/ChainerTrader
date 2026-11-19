@@ -4,7 +4,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_live_monitor_template_loads_tradingview_lightweight_charts_and_workspace():
-    template = (ROOT / "src/trader/rpc/templates/live.html").read_text(encoding="utf-8")
+    template = (ROOT / "src/trader/adapters/inbound/http/templates/live.html").read_text(encoding="utf-8")
 
     assert "lightweight-charts" in template
     assert "live-strategy-list" in template
@@ -17,14 +17,14 @@ def test_live_monitor_template_loads_tradingview_lightweight_charts_and_workspac
 
 
 def test_base_navigation_hides_standalone_klines_entry():
-    template = (ROOT / "src/trader/rpc/templates/base.html").read_text(encoding="utf-8")
+    template = (ROOT / "src/trader/adapters/inbound/http/templates/base.html").read_text(encoding="utf-8")
 
     assert 'href="/admin/klines"' not in template
     assert '<i class="fas fa-info-circle me-1"></i>K线' not in template
 
 
 def test_live_monitor_javascript_uses_snapshot_sse_and_incremental_candle_updates():
-    script = (ROOT / "src/trader/rpc/static/js/live-monitor.js").read_text(encoding="utf-8")
+    script = (ROOT / "src/trader/adapters/inbound/http/static/js/live-monitor.js").read_text(encoding="utf-8")
 
     assert "LightweightCharts" in script
     assert "/api/live/current-task" in script
@@ -51,7 +51,7 @@ def test_live_monitor_javascript_uses_snapshot_sse_and_incremental_candle_update
 
 
 def test_live_monitor_backtest_renderer_uses_kline_chart_when_candles_exist():
-    script = (ROOT / "src/trader/rpc/static/js/live-monitor.js").read_text(encoding="utf-8")
+    script = (ROOT / "src/trader/adapters/inbound/http/static/js/live-monitor.js").read_text(encoding="utf-8")
 
     assert "if (Array.isArray(snapshot.candles))" in script
     assert "renderSnapshot(snapshot);" in script
@@ -59,8 +59,8 @@ def test_live_monitor_backtest_renderer_uses_kline_chart_when_candles_exist():
 
 
 def test_live_monitor_javascript_reuses_marker_api_and_filters_noisy_diagnostics():
-    template = (ROOT / "src/trader/rpc/templates/live.html").read_text(encoding="utf-8")
-    script = (ROOT / "src/trader/rpc/static/js/live-monitor.js").read_text(encoding="utf-8")
+    template = (ROOT / "src/trader/adapters/inbound/http/templates/live.html").read_text(encoding="utf-8")
+    script = (ROOT / "src/trader/adapters/inbound/http/static/js/live-monitor.js").read_text(encoding="utf-8")
 
     assert "markerApi" in script
     assert "createSeriesMarkers(state.candleSeries, markers, { zOrder: \"top\" })" in script
@@ -80,7 +80,7 @@ def test_live_monitor_javascript_reuses_marker_api_and_filters_noisy_diagnostics
 
 
 def test_live_monitor_risk_overlay_uses_single_visible_price_line_layer():
-    script = (ROOT / "src/trader/rpc/static/js/live-monitor.js").read_text(encoding="utf-8")
+    script = (ROOT / "src/trader/adapters/inbound/http/static/js/live-monitor.js").read_text(encoding="utf-8")
 
     assert "state.candleSeries.createPriceLine({" in script
     assert "renderRiskOverlaySeries(price, color, overlayType)" not in script
@@ -88,8 +88,8 @@ def test_live_monitor_risk_overlay_uses_single_visible_price_line_layer():
 
 
 def test_live_monitor_uses_generic_strategy_event_layer_label_and_email_smoke_control():
-    template = (ROOT / "src/trader/rpc/templates/live.html").read_text(encoding="utf-8")
-    script = (ROOT / "src/trader/rpc/static/js/live-monitor.js").read_text(encoding="utf-8")
+    template = (ROOT / "src/trader/adapters/inbound/http/templates/live.html").read_text(encoding="utf-8")
+    script = (ROOT / "src/trader/adapters/inbound/http/static/js/live-monitor.js").read_text(encoding="utf-8")
 
     assert "Strategy events" in template
     assert "MACD divergence</label>" not in template
@@ -104,7 +104,7 @@ def test_live_monitor_uses_generic_strategy_event_layer_label_and_email_smoke_co
 
 
 def test_live_monitor_javascript_surfaces_task_and_parameter_identity():
-    script = (ROOT / "src/trader/rpc/static/js/live-monitor.js").read_text(encoding="utf-8")
+    script = (ROOT / "src/trader/adapters/inbound/http/static/js/live-monitor.js").read_text(encoding="utf-8")
 
     assert "strategy.task_id" in script
     assert "snapshot.parameter_fingerprint" in script
@@ -119,7 +119,7 @@ def test_live_monitor_javascript_surfaces_task_and_parameter_identity():
 
 
 def test_live_monitor_javascript_surfaces_run_rerun_action():
-    script = (ROOT / "src/trader/rpc/static/js/live-monitor.js").read_text(encoding="utf-8")
+    script = (ROOT / "src/trader/adapters/inbound/http/static/js/live-monitor.js").read_text(encoding="utf-8")
 
     assert "Run #" in script
     assert "live-rerun-task" in script
@@ -128,7 +128,7 @@ def test_live_monitor_javascript_surfaces_run_rerun_action():
 
 
 def test_live_monitor_javascript_uses_local_chart_time_and_numbered_events():
-    script = (ROOT / "src/trader/rpc/static/js/live-monitor.js").read_text(encoding="utf-8")
+    script = (ROOT / "src/trader/adapters/inbound/http/static/js/live-monitor.js").read_text(encoding="utf-8")
 
     assert "eventSequence" in script
     assert "toChartTime" in script
@@ -146,8 +146,8 @@ def test_live_monitor_javascript_uses_local_chart_time_and_numbered_events():
 
 
 def test_live_monitor_javascript_formats_diagnostics_with_collapsible_json():
-    script = (ROOT / "src/trader/rpc/static/js/live-monitor.js").read_text(encoding="utf-8")
-    style = (ROOT / "src/trader/rpc/static/css/style.css").read_text(encoding="utf-8")
+    script = (ROOT / "src/trader/adapters/inbound/http/static/js/live-monitor.js").read_text(encoding="utf-8")
+    style = (ROOT / "src/trader/adapters/inbound/http/static/css/style.css").read_text(encoding="utf-8")
 
     assert "renderStructuredValue" in script
     assert "diagnostic-json-details" in script
@@ -157,7 +157,7 @@ def test_live_monitor_javascript_formats_diagnostics_with_collapsible_json():
 
 
 def test_live_monitor_runtime_status_renders_object_values_as_collapsible_details():
-    script = (ROOT / "src/trader/rpc/static/js/live-monitor.js").read_text(encoding="utf-8")
+    script = (ROOT / "src/trader/adapters/inbound/http/static/js/live-monitor.js").read_text(encoding="utf-8")
 
     assert "if (value != null && typeof value === \"object\")" in script
     assert "查看详情" in script

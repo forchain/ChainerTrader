@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 
-from trader.tools.optimization_workbench_server import serve_workbench
+from trader.adapters.inbound.http.workbench_server import serve_workbench
 
 
 def main() -> int:

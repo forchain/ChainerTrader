@@ -7,9 +7,9 @@ import os.path
 import backtrader as bt
 from backtrader import num2date
 
-from trader.common import path
-from trader.indicators.pivot_high import PivotHigh
-from trader.indicators.pivot_low import PivotLow
+from trader.adapters.outbound.backtrader.indicators.pivot_high import PivotHigh
+from trader.adapters.outbound.backtrader.indicators.pivot_low import PivotLow
+from trader.core.shared import paths as path
 
 
 class TestStrategy(bt.Strategy):

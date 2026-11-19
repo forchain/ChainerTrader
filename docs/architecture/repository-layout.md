@@ -4,11 +4,58 @@ This document defines where new files belong in ChainerTrader.
 
 ## Directory Responsibilities
 
-- `src/trader/`: reusable application logic, product code, CLI modules, internal tools
+- `src/trader/`: application entry points (`main.py`, `__main__.py`) plus hexagonal layers
+- `src/trader/core/`: stable domain and application layer, organized by bounded context
+- `src/trader/adapters/inbound/`: HTTP and CLI entry adapters
+- `src/trader/adapters/outbound/`: persistence, exchange, backtrader, market-stream, notification, email, file, logging, and identity adapters
 - `configs/`: non-executable configuration assets such as task JSON and notice JSON
 - `scripts/`: operational shell scripts and thin compatibility wrappers
 - `tests/`: automated verification, fixtures, and test-only helpers
 - `docs/architecture/`: durable architecture and repository-structure guidance
+
+## Hexagonal Package Layout
+
+Layering follows ADR-0003. Dependencies point inward: `adapters/` may import `core/`, but `core/` must never import `adapters/` or a framework.
+
+```text
+src/trader/
+├── main.py                    # single composition root (wires adapters, use cases, API/CLI modes)
+├── core/                      # stable domain + application layer
+│   ├── shared/                # Symbol, SymbolInterval, Kline, Operate, time ranges
+│   ├── task/                  # task bounded context
+│   ├── execution/             # execution state records bounded context
+│   ├── marketdata/            # kline and dataset bounded context
+│   ├── exchange/              # exchange account bounded context
+│   ├── identity/              # users, sessions, credentials
+│   ├── notification/          # notice rendering and delivery use cases
+│   ├── strategy/              # framework-free signal/risk kernel and indicators
+│   └── optimization/          # candidate universes, task templates, selection results
+└── adapters/
+    ├── inbound/
+    │   ├── http/              # FastAPI factory create_app(composition), exception table, middleware
+    │   └── cli/               # console-mode execution and PrettyTable report rendering
+    └── outbound/
+        ├── persistence/       # Tortoise models, migrations, repositories
+        ├── binance/           # exchange and market-data clients
+        ├── backtrader/        # engine, live feeds, strategy subclasses, gateway, task runners
+        ├── marketstream/      # websocket connector and hub
+        ├── notification/      # notification-only execution gateway
+        ├── email/             # notice sender
+        ├── execution/         # execution-gateway factory used by the composition root
+        ├── logging/           # Logger and log buffer
+        ├── identity/          # password hashing and credential ciphers
+        └── files/             # CSV, task-config, report storage, diagnostics
+```
+
+Rules:
+
+- New business rules and use cases belong under `src/trader/core/<bounded-context>/`
+- New outbound integrations belong under `src/trader/adapters/outbound/<kind>/`
+- New inbound interfaces belong under `src/trader/adapters/inbound/{http,cli}/`
+- `src/trader/main.py` is the single composition root that instantiates concrete adapters and injects them into use cases and inbound adapters
+- `scripts/check_repo_layout.py` rejects any Python file under `src/trader/` outside `core/`, `adapters/`, `main.py`, `__init__.py`, or `__main__.py`
+- `scripts/check_import_direction.py` rejects direct and transitive `core/` imports of `trader.adapters` or a framework, and blocks `trader.adapters` imports outside `adapters/` and `main.py` (no allowlist)
+- `make lint` runs both guardrail scripts
 
 ## File Placement Rules
 
@@ -22,6 +69,9 @@ This document defines where new files belong in ChainerTrader.
 | Operational shell script | `scripts/ops/...` | `src/trader/...` |
 | Thin compatibility wrapper | `scripts/wrappers/...` | root directory |
 | Test fixtures | `tests/fixtures/...` | random paths under `tests/` |
+| Business rule or use case | `src/trader/core/<bounded-context>/...` | `src/trader/adapters/...` |
+| Outbound integration | `src/trader/adapters/outbound/<kind>/...` | `src/trader/core/...` |
+| Inbound HTTP or CLI adapter | `src/trader/adapters/inbound/{http,cli}/...` | `src/trader/core/...` |
 
 ## Common Examples
 
@@ -30,15 +80,18 @@ This document defines where new files belong in ChainerTrader.
 - Add a new optimization task template:
   `configs/tasks/optimizations/<name>.json`
 - Add a reusable status summarizer:
-  `src/trader/tools/<name>.py`
-- Add a product CLI entry:
-  `src/trader/cli/<name>.py`
+  `src/trader/core/<bounded-context>/` or `src/trader/adapters/outbound/files/<name>.py`
+- Add a product CLI entry or renderer:
+  `src/trader/adapters/inbound/cli/<name>.py`
 - Add a shell helper for developers:
   `scripts/ops/<name>.sh`
 
 ## Anti-Patterns
 
+- Adding Python modules directly under `src/trader/` or in retired legacy packages (`task/`, `common/`, `rpc/`, `tools/`, `utils/`, ...)
 - Adding new `scripts/*.json` task files
+- Importing `trader.adapters` or a framework from `src/trader/core/`
+- Putting outbound integrations or inbound routes under `src/trader/core/`
 - Leaving reusable, unit-testable Python logic in `scripts/*.py`
 - Making tests depend on `scripts/...` when they could target `src/trader/...`
 - Committing generated reports or other runtime output under `tests/output/`

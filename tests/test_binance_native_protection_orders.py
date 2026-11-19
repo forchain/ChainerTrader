@@ -1,13 +1,9 @@
 from types import SimpleNamespace
 
-import pytest
-
-from trader.exchange.binance.exchange import BinanceExchange
-from trader.exchange.driver import ExchangeDriverType
-from trader.exchange.binance.margin import MarginTradingManager
-from trader.exchange.exchange_config import ExchangeConfig, MarginMode
-from trader.utils.operate import OperateType
-from trader.utils.symbol_interval import Symbol
+from trader.adapters.outbound.binance.exchange import BinanceExchange
+from trader.adapters.outbound.binance.margin import MarginTradingManager
+from trader.core.exchange.domain import ExchangeConfig, ExchangeDriverType, MarginMode
+from trader.core.shared.domain import OperateType, Symbol
 
 
 class _Log:
@@ -132,7 +128,7 @@ def test_protection_side_mapping_closes_shorts_with_buy_side_orders():
 def test_margin_single_leg_protection_uses_margin_order_api(monkeypatch):
     manager_rest_api = _MarginRestApi()
     manager = _margin_manager(manager_rest_api)
-    monkeypatch.setattr("trader.exchange.binance.exchange.MarginTradingManager", lambda *_args, **_kwargs: manager)
+    monkeypatch.setattr("trader.adapters.outbound.binance.exchange.MarginTradingManager", lambda *_args, **_kwargs: manager)
     exchange = _exchange(mode=MarginMode.CROSS_MARGIN)
 
     exchange.new_stop_order(Symbol("BTC-USDT"), OperateType.CLOSE, 0.25, 105.0)

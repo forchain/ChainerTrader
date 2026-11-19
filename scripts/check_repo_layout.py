@@ -7,9 +7,34 @@ from pathlib import Path
 ALLOWED_JSON_ROOTS = (
     Path("configs/tasks"),
     Path("configs/notices"),
+    Path("configs/market_universes"),
+    Path("data/market_universes"),
     Path("tests/fixtures"),
     Path(".claude"),
 )
+
+CORE_ROOT = Path("src/trader/core")
+CORE_PACKAGES = frozenset(
+    {
+        "shared",
+        "task",
+        "execution",
+        "marketdata",
+        "exchange",
+        "identity",
+        "notification",
+        "strategy",
+        "optimization",
+    }
+)
+
+ADAPTERS_ROOT = Path("src/trader/adapters")
+ADAPTER_PACKAGES = {
+    "inbound": frozenset({"http", "cli"}),
+    "outbound": frozenset(
+        {"persistence", "binance", "backtrader", "marketstream", "notification", "email", "files", "logging", "identity", "execution"}
+    ),
+}
 
 
 def _is_under(path: Path, root: Path) -> bool:
@@ -20,6 +45,41 @@ def _is_under(path: Path, root: Path) -> bool:
         return False
 
 
+TRADER_ROOT = Path("src/trader")
+TRADER_ROOT_FILES = frozenset({"__init__.py", "__main__.py", "main.py"})
+
+
+def _check_hexagonal_placement(path: Path) -> str | None:
+    if path.suffix != ".py":
+        return None
+
+    if _is_under(path, TRADER_ROOT) and not (_is_under(path, CORE_ROOT) or _is_under(path, ADAPTERS_ROOT)):
+        if path.relative_to(TRADER_ROOT).as_posix() in TRADER_ROOT_FILES:
+            return None
+        return f"{path}: Python modules must live under src/trader/core/ or src/trader/adapters/"
+
+    if _is_under(path, CORE_ROOT):
+        parts = path.relative_to(CORE_ROOT).parts
+        if parts == ("__init__.py",):
+            return None
+        if parts[0] not in CORE_PACKAGES:
+            allowed = ", ".join(sorted(CORE_PACKAGES))
+            return f"{path}: core modules must live under a bounded-context package: {allowed}"
+        return None
+
+    if _is_under(path, ADAPTERS_ROOT):
+        parts = path.relative_to(ADAPTERS_ROOT).parts
+        if parts == ("__init__.py",):
+            return None
+        if parts[0] not in ADAPTER_PACKAGES:
+            return f"{path}: adapters must live under inbound/ or outbound/"
+        if len(parts) > 1 and parts[1] != "__init__.py" and parts[1] not in ADAPTER_PACKAGES[parts[0]]:
+            allowed = ", ".join(sorted(ADAPTER_PACKAGES[parts[0]]))
+            return f"{path}: adapter packages must be one of: {allowed}"
+
+    return None
+
+
 def check_paths(paths: list[Path]) -> list[str]:
     violations: list[str] = []
 
@@ -27,6 +87,10 @@ def check_paths(paths: list[Path]) -> list[str]:
         path = Path(str(raw_path).replace("\\", "/"))
         if not path.exists():
             continue
+
+        placement_violation = _check_hexagonal_placement(path)
+        if placement_violation:
+            violations.append(placement_violation)
 
         if path.suffix == ".json" and _is_under(path, Path("scripts")):
             violations.append(f"{path}: JSON configuration assets must not live under scripts/")

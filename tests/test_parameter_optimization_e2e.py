@@ -3,13 +3,12 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-from trader.common.config import Config
-from trader.task.dataset_resolver import DatasetResolver
-from trader.task.optimization_report import write_optimization_artifacts
-from trader.task.task_config import parse_task_config
-from trader.task.task_manager import TaskManager
-from trader.utils.kline import Kline
-from trader.utils.symbol_interval import Interval, SymbolInterval
+from trader.adapters.outbound.backtrader.dataset_feed import BacktraderDatasetFeedLoader as DatasetResolver
+from trader.adapters.outbound.files.optimization_store import FileRankingReportStore, write_optimization_artifacts
+from trader.adapters.outbound.files.task_config_loader import parse_task_config
+from trader.core.shared.config import Config
+from trader.core.shared.domain import Interval, Kline, SymbolInterval
+from trader.core.task.use_cases.task_manager import TaskManager
 
 
 class DummyLog:
@@ -71,7 +70,6 @@ class MemoryKlineStore:
 def test_e2e_dataset_resolver_ignores_internal_gap_and_returns_db_ref():
     async def _test():
         start_time = 1_700_000_000
-        mid_time = start_time + 3600
         end_time = start_time + 7200
         symbol_interval = SymbolInterval("BTC-USDT", Interval.INTERVAL_1h)
         store = MemoryKlineStore(
@@ -233,7 +231,7 @@ def test_e2e_artifact_directory_contains_runs_aggregate_failures_and_rankings(tm
 
 def test_e2e_optimization_run_id_links_manifest_run_reports_and_aggregate(tmp_path: Path):
     cfg = Config()
-    task_manager = TaskManager(cfg, DummyLog(), db_manager=None, exchange=None)
+    task_manager = TaskManager(cfg, DummyLog(), db_manager=None, exchange=None, report_store=FileRankingReportStore(Path.cwd()))
     tasks = parse_task_config(
         json.dumps(
             [

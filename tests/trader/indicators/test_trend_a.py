@@ -20,8 +20,8 @@ import pytest
 from dotenv import load_dotenv
 from matplotlib.ticker import ScalarFormatter
 
-from trader.indicators.trend_a import TrendA
-from trader.utils.ma import MAType
+from trader.adapters.outbound.backtrader.indicators.trend_a import TrendA
+from trader.core.strategy.domain.types import MAType
 
 load_dotenv()
 logging.basicConfig(
@@ -140,7 +140,7 @@ def get_klines_from_db():
     """Load klines from MongoDB."""
     from pymongo import MongoClient  # noqa: E402
 
-    from trader.database.kline import KlineCol  # noqa: E402
+    from trader.adapters.outbound.persistence.kline import KlineCol  # noqa: E402
 
     db_uri = os.environ.get("TRADER_DB", "mongodb://localhost:27017/")
     db_name = os.environ.get("TRADER_DB_NAME", "trader")
@@ -240,7 +240,7 @@ def save_trend_a_csv(path, klines, series):
 
 def run_trend_a_manual(main=False):
     """Test TrendA indicator with BTC-USDT 1h data."""
-    from trader.exchange.binance.data import BinanceData  # noqa: E402
+    from trader.adapters.outbound.backtrader.data import BinanceData  # noqa: E402
 
     klines = get_klines_from_db()
 

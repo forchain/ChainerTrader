@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from trader.task.task_config import parse_task_config
+from trader.adapters.outbound.files.task_config_loader import parse_task_config
 
 
 def test_parse_task_config_reads_migrated_backtest_config_from_configs_directory():

@@ -7,17 +7,15 @@ from types import SimpleNamespace
 import pytest
 from tortoise.context import TortoiseContext, get_current_context
 
-from trader.common.config import Config
-from trader.common.logger import Logger
-from trader.execution.models import ExecutionSide, ExecutionStatus, GatewayMode, OrderIntent
-from trader.execution.state import ExecutionStateRecord
-from trader.live.market_data import BackfillPlan, BackfillRequestKind, normalize_binance_kline_message
-from trader.task.task_config import TaskConfig
-from trader.task.task_type import TaskType
-from trader.task.trader_task import TraderTask
-from trader.utils.kline import Kline
-from trader.utils.operate import OperateType
-from trader.utils.symbol_interval import Interval, SymbolInterval
+from trader.adapters.outbound.backtrader.task_handles import LiveTraderTaskHandle
+from trader.adapters.outbound.files.task_config_loader import TaskConfig
+from trader.adapters.outbound.logging.logger import Logger
+from trader.adapters.outbound.marketstream.binance import normalize_binance_kline_message
+from trader.core.execution import ExecutionSide, ExecutionStateRecord, ExecutionStatus, GatewayMode, OrderIntent
+from trader.core.marketdata.warmup import BackfillPlan, BackfillRequestKind
+from trader.core.shared.config import Config
+from trader.core.shared.domain import Interval, Kline, OperateType, SymbolInterval
+from trader.core.task.domain import TaskType
 
 BASE = 1_714_281_600
 
@@ -183,7 +181,7 @@ async def test_trader_task_persists_live_auto_execution_state_records():
         free=1000,
         live_execution_mode="auto_trade",
     )
-    task = TraderTask(tcfg, Config(window=500), Logger(Config(window=500)), db, FakeExchange([]))
+    task = LiveTraderTaskHandle(tcfg, Config(window=500), Logger(Config(window=500)), db, FakeExchange([]))
     intent = OrderIntent.entry(
         intent_id="intent-1",
         operation_id="op-1",
@@ -222,7 +220,7 @@ async def test_trader_task_logs_execution_state_context_when_persist_fails():
         live_execution_mode="auto_trade",
     )
     log = CaptureLog()
-    task = TraderTask(tcfg, Config(window=500), log, db, FakeExchange([]))
+    task = LiveTraderTaskHandle(tcfg, Config(window=500), log, db, FakeExchange([]))
     intent = OrderIntent.entry(
         intent_id="intent-2",
         operation_id="signal_event_id:2",
@@ -297,11 +295,11 @@ async def test_trader_task_realtime_uses_backtrader_live_runner_for_warmup_and_c
         free=1000,
         live_execution_mode="manual_notify",
     )
-    task = TraderTask(tcfg, cfg, Logger(cfg), FakeDb(), FakeExchange(fetched))
+    task = LiveTraderTaskHandle(tcfg, cfg, Logger(cfg), FakeDb(), FakeExchange(fetched))
     hub = FakeHub([_update(BASE + 180, closed=False), _update(BASE + 180, closed=True)], task.quit)
 
-    monkeypatch.setattr("trader.task.trader_task.BacktraderLiveRunner", FakeRunner)
-    monkeypatch.setattr("trader.task.trader_task.GLOBAL_MARKET_STREAM_HUB", hub)
+    monkeypatch.setattr("trader.adapters.outbound.backtrader.task_handles.BacktraderLiveRunner", FakeRunner)
+    monkeypatch.setattr("trader.adapters.outbound.backtrader.task_handles.GLOBAL_MARKET_STREAM_HUB", hub)
 
     with caplog.at_level(logging.DEBUG):
         await task.start_realtime(asyncio.Queue(), [NoopStrategy])
@@ -340,7 +338,7 @@ async def test_trader_task_realtime_fetches_latest_configured_warmup_when_local_
         free=1000,
         live_execution_mode="manual_notify",
     )
-    task = TraderTask(tcfg, cfg, Logger(cfg), db, exchange)
+    task = LiveTraderTaskHandle(tcfg, cfg, Logger(cfg), db, exchange)
 
     class QuitOnSubscribeHub(FakeHub):
         async def subscribe(self, key, reconnect_callback=None):
@@ -349,10 +347,10 @@ async def test_trader_task_realtime_fetches_latest_configured_warmup_when_local_
             return subscription
 
     hub = QuitOnSubscribeHub([], task.quit)
-    monkeypatch.setattr("trader.task.trader_task.BacktraderLiveRunner", FakeRunner)
-    monkeypatch.setattr("trader.task.trader_task.GLOBAL_MARKET_STREAM_HUB", hub)
+    monkeypatch.setattr("trader.adapters.outbound.backtrader.task_handles.BacktraderLiveRunner", FakeRunner)
+    monkeypatch.setattr("trader.adapters.outbound.backtrader.task_handles.GLOBAL_MARKET_STREAM_HUB", hub)
     monkeypatch.setattr(
-        "trader.task.trader_task.plan_initial_backfill",
+        "trader.adapters.outbound.backtrader.task_handles.plan_initial_backfill",
         lambda *args, **kwargs: BackfillPlan(kind=BackfillRequestKind.NONE, limit=0, missing_count=0),
     )
 
@@ -394,11 +392,11 @@ async def test_trader_task_realtime_startup_blocking_work_does_not_stall_event_l
         free=1000,
         live_execution_mode="manual_notify",
     )
-    task = TraderTask(tcfg, cfg, Logger(cfg), FakeDb(), BlockingExchange(fetched))
+    task = LiveTraderTaskHandle(tcfg, cfg, Logger(cfg), FakeDb(), BlockingExchange(fetched))
     hub = QuitOnSubscribeHub([], task.quit)
 
-    monkeypatch.setattr("trader.task.trader_task.BacktraderLiveRunner", BlockingRunner)
-    monkeypatch.setattr("trader.task.trader_task.GLOBAL_MARKET_STREAM_HUB", hub)
+    monkeypatch.setattr("trader.adapters.outbound.backtrader.task_handles.BacktraderLiveRunner", BlockingRunner)
+    monkeypatch.setattr("trader.adapters.outbound.backtrader.task_handles.GLOBAL_MARKET_STREAM_HUB", hub)
 
     runtime = asyncio.create_task(task.start_realtime(asyncio.Queue(), [NoopStrategy]))
     started_at = time.perf_counter()
@@ -426,7 +424,7 @@ async def test_trader_task_realtime_catches_up_missing_closed_klines_through_sam
     )
     db = FakeDb()
     db.kline.add_klines(tcfg.symbol_interval.name(), warmup)
-    task = TraderTask(tcfg, cfg, Logger(cfg), db, FakeExchange(warmup + catch_up))
+    task = LiveTraderTaskHandle(tcfg, cfg, Logger(cfg), db, FakeExchange(warmup + catch_up))
     hub = FakeHub([], task.quit)
 
     async def subscribe_and_reconnect(key, reconnect_callback=None):
@@ -446,9 +444,9 @@ async def test_trader_task_realtime_catches_up_missing_closed_klines_through_sam
     def next_plan(*args, **kwargs):
         return plans.pop(0)
 
-    monkeypatch.setattr("trader.task.trader_task.BacktraderLiveRunner", FakeRunner)
-    monkeypatch.setattr("trader.task.trader_task.GLOBAL_MARKET_STREAM_HUB", hub)
-    monkeypatch.setattr("trader.task.trader_task.plan_initial_backfill", next_plan)
+    monkeypatch.setattr("trader.adapters.outbound.backtrader.task_handles.BacktraderLiveRunner", FakeRunner)
+    monkeypatch.setattr("trader.adapters.outbound.backtrader.task_handles.GLOBAL_MARKET_STREAM_HUB", hub)
+    monkeypatch.setattr("trader.adapters.outbound.backtrader.task_handles.plan_initial_backfill", next_plan)
 
     await task.start_realtime(asyncio.Queue(), [NoopStrategy])
 
@@ -459,7 +457,7 @@ async def test_trader_task_realtime_catches_up_missing_closed_klines_through_sam
 
 @pytest.mark.anyio
 async def test_trader_task_realtime_publishes_dashboard_events_and_runtime_status(monkeypatch):
-    from trader.live.dashboard import DashboardEvent
+    from trader.core.task.dashboard import DashboardEvent
 
     class OperationRunner(FakeRunner):
         def start(self, warmup=None):
@@ -499,15 +497,15 @@ async def test_trader_task_realtime_publishes_dashboard_events_and_runtime_statu
         free=1000,
         live_execution_mode="manual_notify",
     )
-    task = TraderTask(tcfg, cfg, Logger(cfg), FakeDb(), FakeExchange(fetched))
+    task = LiveTraderTaskHandle(tcfg, cfg, Logger(cfg), FakeDb(), FakeExchange(fetched))
     hub = FakeHub([_update(BASE + 180, closed=True)], task.quit)
 
     async def capture_event(event: DashboardEvent):
         events.append(event)
 
-    monkeypatch.setattr("trader.task.trader_task.BacktraderLiveRunner", OperationRunner)
-    monkeypatch.setattr("trader.task.trader_task.GLOBAL_MARKET_STREAM_HUB", hub)
-    monkeypatch.setattr("trader.task.trader_task.GLOBAL_LIVE_EVENT_BUS", SimpleNamespace(publish=capture_event))
+    monkeypatch.setattr("trader.adapters.outbound.backtrader.task_handles.BacktraderLiveRunner", OperationRunner)
+    monkeypatch.setattr("trader.adapters.outbound.backtrader.task_handles.GLOBAL_MARKET_STREAM_HUB", hub)
+    task.event_publisher = SimpleNamespace(publish=capture_event)
 
     await task.start_realtime(asyncio.Queue(), [NoopStrategy])
 
@@ -577,11 +575,11 @@ async def test_trader_task_realtime_preserves_tortoise_context_for_threaded_oper
     )
     db = FakeDb()
     db.task = ContextRecordingTaskStore()
-    task = TraderTask(tcfg, cfg, Logger(cfg), db, FakeExchange(fetched))
+    task = LiveTraderTaskHandle(tcfg, cfg, Logger(cfg), db, FakeExchange(fetched))
     hub = FakeHub([_update(BASE + 180, closed=True)], task.quit)
 
-    monkeypatch.setattr("trader.task.trader_task.BacktraderLiveRunner", ThreadedOperationRunner)
-    monkeypatch.setattr("trader.task.trader_task.GLOBAL_MARKET_STREAM_HUB", hub)
+    monkeypatch.setattr("trader.adapters.outbound.backtrader.task_handles.BacktraderLiveRunner", ThreadedOperationRunner)
+    monkeypatch.setattr("trader.adapters.outbound.backtrader.task_handles.GLOBAL_MARKET_STREAM_HUB", hub)
 
     with TortoiseContext() as ctx:
         await task.start_realtime(asyncio.Queue(), [NoopStrategy])
@@ -592,7 +590,7 @@ async def test_trader_task_realtime_preserves_tortoise_context_for_threaded_oper
 
 @pytest.mark.anyio
 async def test_trader_task_realtime_publishes_warmup_operations_for_dashboard_without_notifications(monkeypatch):
-    from trader.live.dashboard import DashboardEvent
+    from trader.core.task.dashboard import DashboardEvent
 
     class WarmupOperationRunner(FakeRunner):
         def start(self, warmup=None):
@@ -629,7 +627,7 @@ async def test_trader_task_realtime_publishes_warmup_operations_for_dashboard_wi
         free=1000,
         live_execution_mode="manual_notify",
     )
-    task = TraderTask(tcfg, cfg, Logger(cfg), FakeDb(), FakeExchange(fetched))
+    task = LiveTraderTaskHandle(tcfg, cfg, Logger(cfg), FakeDb(), FakeExchange(fetched))
 
     class QuitOnSubscribeHub(FakeHub):
         async def subscribe(self, key, reconnect_callback=None):
@@ -643,9 +641,9 @@ async def test_trader_task_realtime_publishes_warmup_operations_for_dashboard_wi
         events.append(event)
 
     queue = asyncio.Queue()
-    monkeypatch.setattr("trader.task.trader_task.BacktraderLiveRunner", WarmupOperationRunner)
-    monkeypatch.setattr("trader.task.trader_task.GLOBAL_MARKET_STREAM_HUB", hub)
-    monkeypatch.setattr("trader.task.trader_task.GLOBAL_LIVE_EVENT_BUS", SimpleNamespace(publish=capture_event))
+    monkeypatch.setattr("trader.adapters.outbound.backtrader.task_handles.BacktraderLiveRunner", WarmupOperationRunner)
+    monkeypatch.setattr("trader.adapters.outbound.backtrader.task_handles.GLOBAL_MARKET_STREAM_HUB", hub)
+    task.event_publisher = SimpleNamespace(publish=capture_event)
 
     await task.start_realtime(queue, [NoopStrategy])
 
@@ -696,12 +694,12 @@ async def test_trader_task_realtime_warmup_operations_do_not_route_auto_executio
         live_execution_mode="auto_trade",
         live_trade_max_notional=11,
     )
-    task = TraderTask(tcfg, cfg, Logger(cfg), FakeDb(), FakeExchange(fetched))
+    task = LiveTraderTaskHandle(tcfg, cfg, Logger(cfg), FakeDb(), FakeExchange(fetched))
     task._auto_execution_router = RouteMustNotBeCalled()
     hub = QuitOnSubscribeHub([], task.quit)
 
-    monkeypatch.setattr("trader.task.trader_task.BacktraderLiveRunner", WarmupOperationRunner)
-    monkeypatch.setattr("trader.task.trader_task.GLOBAL_MARKET_STREAM_HUB", hub)
+    monkeypatch.setattr("trader.adapters.outbound.backtrader.task_handles.BacktraderLiveRunner", WarmupOperationRunner)
+    monkeypatch.setattr("trader.adapters.outbound.backtrader.task_handles.GLOBAL_MARKET_STREAM_HUB", hub)
 
     await task.start_realtime(asyncio.Queue(), [NoopStrategy])
 
@@ -754,11 +752,11 @@ async def test_trader_task_realtime_warmup_operations_are_not_persisted(monkeypa
         live_execution_mode="auto_trade",
         live_trade_max_notional=11,
     )
-    task = TraderTask(tcfg, cfg, Logger(cfg), db, FakeExchange(fetched))
+    task = LiveTraderTaskHandle(tcfg, cfg, Logger(cfg), db, FakeExchange(fetched))
     hub = QuitOnSubscribeHub([], task.quit)
 
-    monkeypatch.setattr("trader.task.trader_task.BacktraderLiveRunner", WarmupOperationRunner)
-    monkeypatch.setattr("trader.task.trader_task.GLOBAL_MARKET_STREAM_HUB", hub)
+    monkeypatch.setattr("trader.adapters.outbound.backtrader.task_handles.BacktraderLiveRunner", WarmupOperationRunner)
+    monkeypatch.setattr("trader.adapters.outbound.backtrader.task_handles.GLOBAL_MARKET_STREAM_HUB", hub)
 
     await task.start_realtime(asyncio.Queue(), [NoopStrategy])
 
@@ -810,11 +808,11 @@ async def test_trader_task_realtime_does_not_disconnect_on_business_message_idle
         free=1000,
         live_execution_mode="manual_notify",
     )
-    task = TraderTask(tcfg, cfg, Logger(cfg), FakeDb(), FakeExchange(fetched))
+    task = LiveTraderTaskHandle(tcfg, cfg, Logger(cfg), FakeDb(), FakeExchange(fetched))
     hub = IdleHub(task.quit)
 
-    monkeypatch.setattr("trader.task.trader_task.BacktraderLiveRunner", FakeRunner)
-    monkeypatch.setattr("trader.task.trader_task.GLOBAL_MARKET_STREAM_HUB", hub)
+    monkeypatch.setattr("trader.adapters.outbound.backtrader.task_handles.BacktraderLiveRunner", FakeRunner)
+    monkeypatch.setattr("trader.adapters.outbound.backtrader.task_handles.GLOBAL_MARKET_STREAM_HUB", hub)
 
     await asyncio.wait_for(task.start_realtime(asyncio.Queue(), [NoopStrategy]), timeout=0.5)
 

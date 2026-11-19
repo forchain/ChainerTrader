@@ -2,13 +2,12 @@ import time
 
 import backtrader as bt
 
-from trader.common.config import Config
-from trader.common.logger import Logger
-from trader.live.backtrader_runtime import BacktraderLiveRunner
-from trader.strategy.macd_triple_divergence import MacdTripleDivergenceStrategy
-from trader.strategy.node import build_strategy_kwargs
-from trader.utils.kline import Kline
-from trader.utils.operate import Operate, OperateType
+from trader.adapters.outbound.backtrader.live_runtime import BacktraderLiveRunner
+from trader.adapters.outbound.backtrader.macd_triple_divergence import MacdTripleDivergenceStrategy
+from trader.adapters.outbound.logging.logger import Logger
+from trader.core.shared.config import Config
+from trader.core.shared.domain import Kline, Operate, OperateType
+from trader.core.strategy.domain.node import build_strategy_kwargs
 
 BASE = 1_714_281_600
 

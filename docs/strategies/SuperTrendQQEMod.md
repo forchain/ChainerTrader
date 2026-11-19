@@ -85,7 +85,7 @@ QQE MOD 是一个基于 RSI 的动量指标，结合布林带提供额外的信�
 ### Backtrader (Python)
 
 ```python
-from trader.strategy.super_trend_qqe_mod import SuperTrendQQEMODStrategy
+from trader.adapters.outbound.backtrader.super_trend_qqe_mod import SuperTrendQQEMODStrategy
 
 cerebro.addstrategy(
     SuperTrendQQEMODStrategy,

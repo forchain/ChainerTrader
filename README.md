@@ -59,24 +59,43 @@ ChainerTrader exposes one runtime with several user-visible capabilities:
                    +----------------------+
 ```
 
+### Hexagonal Layering
+
+The codebase follows a hexagonal (ports and adapters) layout, recorded in [ADR-0003](docs/adr/0003-hexagonal-layering.md):
+
+```text
+adapters/inbound (http, cli) ──┐
+                                ├──> core (domain + application) <── main.py (composition root)
+adapters/outbound            ──┘
+```
+
+- `src/trader/main.py`
+  The single composition root (`trader` CLI entry point) that parses configuration, instantiates concrete outbound adapters, injects them into use cases, and selects API mode (`create_app`) or console mode (`run_console`).
+- `src/trader/core/`
+  Stable domain and application layer: business rules, use cases, and outbound port definitions, organized by bounded context (`shared`, `task`, `execution`, `marketdata`, `exchange`, `identity`, `notification`, `strategy`, `optimization`). Core code must not import adapters or external frameworks.
+- `src/trader/adapters/inbound/`
+  `http/` (`create_app(composition)` FastAPI factory, session middleware, SSE, unified exception translation) and `cli/` (`ConsoleRunner` one-shot console mode and `PrettyTable` terminal report rendering).
+- `src/trader/adapters/outbound/`
+  Implementations of core ports for persistence, Binance access, backtrader engine/runners/gateway, market streams, notification gateway, email, and files.
+
+Dependencies point inward (`adapters` → `core`), and `tests/test_import_direction.py` + `scripts/check_import_direction.py` enforce both the core isolation and composition-root boundaries. See [docs/adr/README.md](docs/adr/README.md) for architecture decision records.
+
 ### Module Overview
 
-- `src/trader/app/`
-  User entrypoint and application startup.
-- `src/trader/task/`
-  Task parsing, task scheduling, background optimization orchestration, and report generation.
+- `src/trader/main.py`
+  Package entry point and composition root (`trader`); `trader-db` remains wrapped by `src/trader/tools/db.py`.
+- `src/trader/core/`
+  Domain and application layer for the trading business, organized by bounded context.
+- `src/trader/adapters/`
+  Inbound HTTP/CLI adapters and outbound persistence, exchange, backtrader, market-stream, notification, email, and file adapters.
+- `src/trader/adapters/outbound/persistence/`
+  Tortoise models, migrations, connection lifecycle, and repository adapters.
+- `src/trader/rpc/` & `src/trader/app/` & `src/trader/task/`
+  HTTP templates/static assets, API routers, and legacy compatibility wrappers delegating to `core/` and `adapters/`.
 - `src/trader/strategy/`
-  Trading and backtesting strategies plus the Chainer strategy kernel. Strategy subclasses provide signal conditions and signal context, while shared framework modules handle signal routing, trade lifecycle state, risk decisions, and Backtrader execution adaptation.
-- `src/trader/execution/`
-  Portable execution contracts, gateway implementations, execution state, and reconciliation primitives shared by backtest and live modes.
-- `src/trader/exchange/`
-  Exchange access and market-data handling.
-- `src/trader/database/`
-  Database-facing storage and query logic.
-- `src/trader/rpc/`
-  Web API and admin pages.
-- `src/trader/scanner/`
-  Market scanning workflows and signal extraction.
+  Strategy discovery over `adapters/outbound/backtrader/` subclasses and `TraderResult`; the framework-free signal, lifecycle, and risk kernel lives in `src/trader/core/strategy/domain/`.
+- `src/trader/scanner/` & `src/trader/tools/`
+  Thin market scanning and optimization/selection wrappers delegating to `core/optimization/`.
 - `configs/`
   User-facing task and notice configuration assets.
 
@@ -90,7 +109,7 @@ Detailed database design reference:
 
 ### Tables Overview
 
-ChainerTrader uses three main table families through repository interfaces under `src/trader/database/`.
+ChainerTrader uses three main table families through repository interfaces under `src/trader/adapters/outbound/persistence/`.
 
 #### 1. `klines`
 

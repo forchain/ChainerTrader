@@ -3,7 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from trader.task.optimization_report import build_optimization_artifacts, write_optimization_artifacts
+from trader.adapters.outbound.files.optimization_store import write_optimization_artifacts
+from trader.core.optimization.domain import build_optimization_artifacts
 
 
 def _sample_report(

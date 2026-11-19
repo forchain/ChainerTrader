@@ -3,10 +3,11 @@ from argparse import Namespace
 
 import pytest
 
-from trader.app.app import App
-from trader.common import path
-from trader.common.common import NAME
-from trader.common.config import Config, default, new_and_env
+from trader.adapters.inbound.cli.env_config import new_and_env
+from trader.core.shared import paths as path
+from trader.core.shared.config import Config, default
+from trader.core.shared.domain import NAME
+from trader.main import App
 
 
 def test_app():
@@ -108,9 +109,11 @@ def test_registration_enabled_does_not_shift_legacy_positional_config_args():
 def test_app_start_cleans_up_threads_with_sqlite_db(tmp_path, monkeypatch):
     import asyncio
     import threading
+
     from tortoise import Tortoise
-    from trader.database.config import build_tortoise_config
-    from trader.common.message import new_exit_msg
+
+    from trader.adapters.outbound.persistence.config import build_tortoise_config
+    from trader.core.shared.messages import new_exit_msg
 
     db_path = tmp_path / "test_app_exit.db"
     db_url = f"sqlite://{db_path}"

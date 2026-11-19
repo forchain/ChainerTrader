@@ -12,7 +12,6 @@ from email.parser import BytesParser
 from pathlib import Path
 from urllib.parse import urlparse
 
-
 START_TOKEN = '<div class="WB_editor_iframe_new" node-type="contentBody" style="opacity: 1; zoom: 1;">'
 END_TOKEN = '<div style="color: #999;font-size: 14px;text-align: left;margin: 0 0 0 0;">'
 

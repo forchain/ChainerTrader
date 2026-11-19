@@ -1,7 +1,7 @@
-from trader.app.app import App
-from trader.common.config import Config
-from trader.strategy.strategy import parse_strategies, parse_strategy
-from trader.utils.trend import TrendType
+from trader.adapters.outbound.backtrader.catalog import parse_strategies, parse_strategy
+from trader.core.shared.config import Config
+from trader.core.strategy.domain.types import TrendType
+from trader.main import App
 
 
 def test_ShihunMACD():

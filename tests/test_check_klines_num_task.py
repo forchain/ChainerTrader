@@ -1,15 +1,10 @@
-from asyncio import Queue
-from types import SimpleNamespace
+import asyncio
+from asyncio import Event
 
 import pytest
 
-from trader.common.config import Config
-from trader.common.logger import Logger
-from trader.task.check_klines_num_task import CheckKlinesNumTask
-from trader.task.task_config import TaskConfig
-from trader.task.task_type import TaskType
-from trader.utils.kline import Kline
-from trader.utils.symbol_interval import Interval, SymbolInterval
+from trader.core.marketdata.use_cases.check_klines import check_kline_count
+from trader.core.shared.domain import Interval, Kline, SymbolInterval
 
 BASE = 1_700_000_000 - (1_700_000_000 % 3600)
 
@@ -17,6 +12,13 @@ BASE = 1_700_000_000 - (1_700_000_000 % 3600)
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
+
+
+class DummyLog:
+    def info(self, *args, **kwargs):
+        pass
+
+    warning = error = debug = info
 
 
 def make_kline(open_time: int) -> Kline:
@@ -36,57 +38,46 @@ def make_kline(open_time: int) -> Kline:
     )
 
 
-class KlineStore:
-    def __init__(self, first: Kline, latest: Kline):
-        self.first = first
-        self.latest = latest
+class RecordingKlineStore:
+    """Kline repository double that records the candles it was asked for."""
+
+    def __init__(self, klines):
+        self.klines = {kline.open_time: kline for kline in klines}
+        self.requested_open_times: list[int] = []
 
     async def get_first_kline(self, _name):
-        return self.first
+        return self.klines[min(self.klines)] if self.klines else None
 
     async def get_latest_kline(self, _name):
-        return self.latest
+        return self.klines[max(self.klines)] if self.klines else None
+
+    async def get_kline(self, _name, open_time):
+        self.requested_open_times.append(open_time)
+        return self.klines.get(open_time)
 
 
-def _task(limit: int) -> CheckKlinesNumTask:
-    cfg = Config(tasks="[]")
-    tcfg = TaskConfig(
-        1,
-        TaskType.CHECK_KLINES_NUM,
-        SymbolInterval("BTC-USDT", Interval.INTERVAL_1h),
-        limit=limit,
+def _hourly_klines(count: int) -> list[Kline]:
+    return [make_kline(BASE + index * 3600) for index in range(count)]
+
+
+def test_limit_zero_checks_back_to_first_available_kline():
+    store = RecordingKlineStore(_hourly_klines(3))
+
+    count = asyncio.run(
+        check_kline_count(store, SymbolInterval("BTC-USDT", Interval.INTERVAL_1h), 0, Event(), DummyLog(), "check")
     )
-    latest = make_kline(BASE + 500 * 3600)
-    return CheckKlinesNumTask(tcfg, cfg, Logger(cfg), SimpleNamespace(kline=KlineStore(make_kline(BASE), latest)), None)
+
+    # The walk-back stops at the first available kline.
+    assert count == 1
+    assert store.requested_open_times == [BASE + 3600]
 
 
-@pytest.mark.anyio
-async def test_limit_zero_checks_back_to_first_available_kline(monkeypatch):
-    calls = []
+def test_limit_counts_at_most_limit_candles_back_from_latest():
+    store = RecordingKlineStore(_hourly_klines(5))
 
-    async def fake_inspect(self, symbol_interval, start_time, end_time):
-        calls.append((start_time, end_time))
-        return SimpleNamespace(missing_ranges=[], present_count=0, expected_count=0)
+    count = asyncio.run(
+        check_kline_count(store, SymbolInterval("BTC-USDT", Interval.INTERVAL_1h), 2, Event(), DummyLog(), "check")
+    )
 
-    monkeypatch.setattr("trader.task.check_klines_num_task.DatasetResolver.inspect_coverage", fake_inspect)
-
-    task = _task(limit=0)
-    await task.start(Queue())
-
-    assert calls == [(BASE, BASE + 500 * 3600)]
-
-
-@pytest.mark.anyio
-async def test_limit_counts_exactly_limit_candles_including_latest(monkeypatch):
-    calls = []
-
-    async def fake_inspect(self, symbol_interval, start_time, end_time):
-        calls.append((start_time, end_time))
-        return SimpleNamespace(missing_ranges=[], present_count=0, expected_count=0)
-
-    monkeypatch.setattr("trader.task.check_klines_num_task.DatasetResolver.inspect_coverage", fake_inspect)
-
-    task = _task(limit=100)
-    await task.start(Queue())
-
-    assert calls == [(BASE + 500 * 3600 - 99 * 3600, BASE + 500 * 3600)]
+    assert count == 2
+    assert store.requested_open_times == [BASE + 3 * 3600, BASE + 2 * 3600]

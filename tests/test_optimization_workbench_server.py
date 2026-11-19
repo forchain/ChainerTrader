@@ -1,22 +1,23 @@
 from pathlib import Path
 
-from trader.tools.optimization_workbench_server import build_workbench_url
+from trader.adapters.inbound.http.workbench_server import build_workbench_url
 
 
 def test_build_workbench_url_points_to_shared_static_app():
     url = build_workbench_url("http://127.0.0.1:8765", "run-123")
 
     assert url == (
-        "http://127.0.0.1:8765/src/trader/rpc/static/optimization-workbench/index.html"
+        "http://127.0.0.1:8765/src/trader/adapters/inbound/http/static/optimization-workbench/index.html"
         "?run_id=run-123"
     )
 
 
 def test_static_workbench_assets_expect_run_id_and_workbench_json():
     root = Path(__file__).resolve().parents[1]
-    index_html = (root / "src" / "trader" / "rpc" / "static" / "optimization-workbench" / "index.html").read_text(encoding="utf-8")
-    app_js = (root / "src" / "trader" / "rpc" / "static" / "optimization-workbench" / "app.js").read_text(encoding="utf-8")
-    style_css = (root / "src" / "trader" / "rpc" / "static" / "optimization-workbench" / "style.css").read_text(encoding="utf-8")
+    workbench = root / "src" / "trader" / "adapters" / "inbound" / "http" / "static" / "optimization-workbench"
+    index_html = (workbench / "index.html").read_text(encoding="utf-8")
+    app_js = (workbench / "app.js").read_text(encoding="utf-8")
+    style_css = (workbench / "style.css").read_text(encoding="utf-8")
 
     assert "Optimization Validation Workbench" in index_html
     assert 'id="candidate-list"' in index_html

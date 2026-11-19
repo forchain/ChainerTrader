@@ -14,7 +14,7 @@ def anyio_backend():
 )
 @pytest.mark.anyio
 async def test_binance_kline_websocket_smoke_receives_one_message():
-    from trader.live.stream import run_binance_kline_websocket_smoke
+    from trader.adapters.outbound.marketstream.binance import run_binance_kline_websocket_smoke
 
     result = await run_binance_kline_websocket_smoke(timeout_seconds=15.0)
 

@@ -41,8 +41,8 @@ requires = ["setuptools>=42", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project.scripts]
-trader = "trader.app.main:main"
-trader-db = "trader.tools.db:main"
+trader = "trader.main:main"
+trader-db = "trader.adapters.inbound.cli.db:main"
 
 [tool.setuptools]
 include-package-data = true

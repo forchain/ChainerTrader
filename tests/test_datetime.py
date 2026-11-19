@@ -2,7 +2,7 @@ from datetime import date, datetime, time
 
 from backtrader import date2num, num2date
 
-from trader.common.common import parse_datetime
+from trader.core.shared.domain import parse_datetime
 
 
 def test_datetime():

@@ -1,9 +1,9 @@
-from types import SimpleNamespace
 from pathlib import Path
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
-from trader.rpc.app import app
+from trader.adapters.inbound.http import create_app
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -15,16 +15,24 @@ def test_admin_tasks_page_renders_visual_task_form_with_strategy_options(monkeyp
     async def _fake_get_taskinfo(_app, _user, page=1, per_page=None):
         return SimpleNamespace(total=0, completed=0, tasks=[], page=page, per_page=20, total_pages=1)
 
-    monkeypatch.setattr("trader.rpc.app.current_user", _fake_current_user)
-    monkeypatch.setattr("trader.rpc.app.get_taskinfo", _fake_get_taskinfo)
-    monkeypatch.setattr("trader.rpc.app._list_strategy_options", lambda: ["ShihunRSI2", "MACDRSI"])
+    composition = SimpleNamespace(
+        cfg=None,
+        live_event_bus=None,
+        db_manager=None,
+        exchange=None,
+        task_manager=None,
+        logger=None,
+        version=lambda: "0.1.1",
+        current_user_resolver=_fake_current_user,
+        strategy_options=lambda: ["ShihunRSI2", "MACDRSI"],
+    )
+    monkeypatch.setattr("trader.adapters.inbound.http.factory.get_taskinfo", _fake_get_taskinfo)
     monkeypatch.setattr(
-        "trader.rpc.app._list_task_config_options",
+        "trader.adapters.inbound.http.factory.list_task_config_options",
         lambda: ["configs/tasks/live/binance_smoke_test.json", "configs/tasks/downloads/update_klines.json"],
     )
-    app.state.app = SimpleNamespace()
 
-    client = TestClient(app)
+    client = TestClient(create_app(composition))
     response = client.get("/admin/tasks")
 
     assert response.status_code == 200
@@ -84,7 +92,7 @@ def test_admin_tasks_page_renders_visual_task_form_with_strategy_options(monkeyp
 
 
 def test_tasks_page_loads_operation_records_on_demand_in_paginated_modal():
-    template = (ROOT / "src/trader/rpc/templates/tasks.html").read_text(encoding="utf-8")
+    template = (ROOT / "src/trader/adapters/inbound/http/templates/tasks.html").read_text(encoding="utf-8")
 
     assert "renderOperationRecordsButton" in template
     assert "id=\"operationRecordsModal\"" in template
@@ -99,7 +107,7 @@ def test_tasks_page_loads_operation_records_on_demand_in_paginated_modal():
 
 
 def test_tasks_page_persists_config_file_form_state_before_submit_reload():
-    template = (ROOT / "src/trader/rpc/templates/tasks.html").read_text(encoding="utf-8")
+    template = (ROOT / "src/trader/adapters/inbound/http/templates/tasks.html").read_text(encoding="utf-8")
 
     assert "TASK_CONFIG_FORM_STATE_STORAGE_KEY" in template
     assert "writeTaskConfigFormState" in template
@@ -112,7 +120,7 @@ def test_tasks_page_persists_config_file_form_state_before_submit_reload():
 
 
 def test_tasks_page_renders_failed_task_error_state():
-    template = (ROOT / "src/trader/rpc/templates/tasks.html").read_text(encoding="utf-8")
+    template = (ROOT / "src/trader/adapters/inbound/http/templates/tasks.html").read_text(encoding="utf-8")
 
     assert "task.state == 'FAILED'" in template
     assert "启动失败" in template
@@ -121,7 +129,7 @@ def test_tasks_page_renders_failed_task_error_state():
 
 
 def test_tasks_page_waits_for_async_startup_failures_before_reload():
-    template = (ROOT / "src/trader/rpc/templates/tasks.html").read_text(encoding="utf-8")
+    template = (ROOT / "src/trader/adapters/inbound/http/templates/tasks.html").read_text(encoding="utf-8")
 
     assert "async function waitForSubmittedTaskFailures(taskIds)" in template
     assert "const failure = await waitForSubmittedTaskFailures(taskIds);" in template

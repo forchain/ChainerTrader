@@ -1,14 +1,14 @@
 from datetime import datetime
 
-from trader.strategy.lifecycle import (
+from trader.core.shared.domain import OperateType
+from trader.core.strategy.domain.lifecycle import (
     EntryConfirmation,
     ExitConfirmation,
     KlineRef,
     OperateFactory,
     TradeLifecycleEngine,
 )
-from trader.strategy.risk import StrategyRiskEngine
-from trader.utils.operate import OperateType
+from trader.core.strategy.domain.risk import StrategyRiskEngine
 
 
 def _ctx(engine: TradeLifecycleEngine, *, direction="LONG", entry_need_confirm=True, trailing=0.0):

@@ -1,5 +1,5 @@
-from trader.app.app import App
-from trader.common.config import default
+from trader.core.shared.config import default
+from trader.main import App
 
 
 def main():

@@ -1,8 +1,9 @@
 import json
 from pathlib import Path
 
-from trader.task.optimization_report import build_optimization_artifacts, write_optimization_artifacts
-from trader.task.optimization_workbench import build_parameter_observations
+from trader.adapters.outbound.files.optimization_store import write_optimization_artifacts
+from trader.core.optimization.domain import build_optimization_artifacts
+from trader.core.optimization.workbench import build_parameter_observations
 
 
 def _signal(signal_time: str, status: str, side: str = "LONG") -> dict:

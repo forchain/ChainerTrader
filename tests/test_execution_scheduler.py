@@ -1,20 +1,75 @@
 import asyncio
 import json
+from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeoutError
 from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
-from trader.common.config import Config
-from trader.exchange.binance.data import BinanceData
-from trader.strategy.trader_result import TraderResult
-from trader.task.backtrader_task import BacktestSampleSpec, build_backtest_sample_spec, run_backtest_sample
-from trader.task.optimization_runtime import OptimizationRuntimeStatus
-from trader.task.task_config import TaskConfig
-from trader.task.task_manager import TaskManager
-from trader.task.task_type import TaskType
-from trader.utils.kline import Kline
-from trader.utils.symbol_interval import Interval, SymbolInterval
+from trader.adapters.outbound.backtrader.data import BinanceData
+from trader.adapters.outbound.backtrader.optimization_runner import ProcessPoolBacktestRunner
+from trader.adapters.outbound.backtrader.sample_worker import (
+    BacktestSampleSpec,
+    backtest_data_start_time,
+    build_backtest_sample_spec,
+    run_backtest_sample,
+)
+from trader.adapters.outbound.execution.factory import build_execution_gateway
+from trader.adapters.outbound.files.optimization_store import FileOptimizationRuntimeStatus, FileRankingReportStore
+from trader.adapters.outbound.files.optimization_store import FileOptimizationRuntimeStatus as OptimizationRuntimeStatus
+from trader.adapters.outbound.files.task_config_loader import TaskConfig
+from trader.core.shared.config import Config
+from trader.core.shared.domain import Interval, Kline, SymbolInterval
+from trader.core.strategy.domain.trader_result import TraderResult
+from trader.core.task.domain import TaskType
+from trader.core.task.use_cases.task_manager import TaskManager
+from trader.main import _MainTaskRunnerFactory
+
+
+class _OptimizationRunnerFactory:
+    def __init__(self, cfg, db_manager=None, exchange=None, log=None, process_pool_factory=ProcessPoolExecutor):
+        self.cfg = cfg
+        self.db_manager = db_manager
+        self.exchange = exchange
+        self.log = log
+        self.process_pool_factory = process_pool_factory
+
+    def __call__(self, **kwargs):
+        return ProcessPoolBacktestRunner(
+            cfg=self.cfg,
+            db_manager=self.db_manager,
+            exchange=self.exchange,
+            log=self.log,
+            process_pool_factory=self.process_pool_factory,
+            **kwargs,
+        )
+
+
+def _runtime_status_factory(run_id, run_cfgs, max_workers):
+    return FileOptimizationRuntimeStatus(
+        Path.cwd() / "tmp" / "optimization_runs" / run_id,
+        run_id,
+        total_samples=len(run_cfgs),
+        total_datasets=len(
+            {
+                (item.symbol_interval.name(), backtest_data_start_time(Config(), item), item.end_time)
+                for item in run_cfgs
+                if item.ttype == TaskType.BACK_TRADER and not item.csv
+            }
+        ),
+        configured_workers=max_workers,
+    )
+
+
+def _wire_task_manager_ports(task_manager):
+    task_manager._task_runner_factory = _MainTaskRunnerFactory(
+        task_manager.cfg, DummyLog(), task_manager.db_manager, task_manager.event_publisher, build_execution_gateway
+    )
+    task_manager._optimization_runner_factory = _OptimizationRunnerFactory(
+        task_manager.cfg, task_manager.db_manager, task_manager.exchange, DummyLog()
+    )
+    task_manager._runtime_status_factory = _runtime_status_factory
+    task_manager._report_store = FileRankingReportStore(Path.cwd())
 
 
 class DummyLog:
@@ -112,6 +167,7 @@ def test_prepare_backtest_datasets_runs_unique_jobs_with_bounded_parallelism(mon
     async def _test():
         cfg = Config()
         task_manager = TaskManager(cfg, DummyLog(), db_manager=SimpleNamespace(kline=SimpleNamespace()), exchange=SimpleNamespace())
+        _wire_task_manager_ports(task_manager)
         tasks = [
             _make_backtest_task(1, "BTC-USDT", Interval.INTERVAL_1h, 1_700_000_000, 1_700_000_000 + 3600),
             _make_backtest_task(2, "BTC-USDT", Interval.INTERVAL_1h, 1_700_000_000, 1_700_000_000 + 3600),
@@ -157,6 +213,7 @@ def test_prepare_backtest_datasets_times_out_one_dataset_and_continues(monkeypat
     async def _test():
         cfg = Config()
         task_manager = TaskManager(cfg, DummyLog(), db_manager=SimpleNamespace(kline=SimpleNamespace()), exchange=SimpleNamespace())
+        _wire_task_manager_ports(task_manager)
         slow_task = _make_backtest_task(1, "BTC-USDT", Interval.INTERVAL_1h, 1_700_000_000, 1_700_000_000 + 3600)
         fast_task = _make_backtest_task(2, "ETH-USDT", Interval.INTERVAL_1h, 1_700_000_000, 1_700_000_000 + 3600)
 
@@ -190,6 +247,7 @@ def test_prepare_backtest_datasets_emits_runtime_dataset_events(monkeypatch, tmp
     async def _test():
         cfg = Config()
         task_manager = TaskManager(cfg, DummyLog(), db_manager=SimpleNamespace(kline=SimpleNamespace()), exchange=SimpleNamespace())
+        _wire_task_manager_ports(task_manager)
         task = _make_backtest_task(1, "BTC-USDT", Interval.INTERVAL_1h, 1_700_000_000, 1_700_000_000 + 3600)
         runtime = OptimizationRuntimeStatus(tmp_path / "run", "run-1", total_samples=1, total_datasets=1, configured_workers=1)
         runtime.start()
@@ -223,6 +281,7 @@ def test_execute_sample_specs_uses_process_pool_with_cpu_bound_limit(monkeypatch
     async def _test():
         cfg = Config()
         task_manager = TaskManager(cfg, DummyLog(), db_manager=None, exchange=None)
+        _wire_task_manager_ports(task_manager)
         sample_specs = [
             _make_sample_spec(tmp_path / "a.csv"),
             BacktestSampleSpec(**{**_make_sample_spec(tmp_path / "b.csv").__dict__, "task_id": 2, "param_id": "param-b"}),
@@ -263,7 +322,9 @@ def test_execute_sample_specs_uses_process_pool_with_cpu_bound_limit(monkeypatch
                 )
 
         monkeypatch.setattr(TaskManager, "_sample_max_workers", lambda self: 2)
-        monkeypatch.setattr("trader.task.task_manager.ProcessPoolExecutor", FakeExecutor)
+        task_manager._optimization_runner_factory = _OptimizationRunnerFactory(
+            cfg, task_manager.db_manager, task_manager.exchange, DummyLog(), process_pool_factory=FakeExecutor
+        )
 
         results = await task_manager._execute_sample_specs(sample_specs)
 
@@ -277,6 +338,7 @@ def test_execute_sample_specs_uses_process_pool_with_cpu_bound_limit(monkeypatch
 def test_execute_sample_specs_records_timeout_and_continues(monkeypatch, tmp_path: Path):
     cfg = Config(optimization_sample_timeout_seconds=0.01)
     task_manager = TaskManager(cfg, DummyLog(), db_manager=None, exchange=None)
+    _wire_task_manager_ports(task_manager)
     first = _make_sample_spec(tmp_path / "timeout.csv")
     second = BacktestSampleSpec(**{**_make_sample_spec(tmp_path / "ok.csv").__dict__, "task_id": 2, "param_id": "param-b"})
 
@@ -320,7 +382,9 @@ def test_execute_sample_specs_records_timeout_and_continues(monkeypatch, tmp_pat
             self.submitted.append(spec)
             return TimeoutFuture() if spec.task_id == first.task_id else SuccessFuture(spec)
 
-    monkeypatch.setattr("trader.task.task_manager.ProcessPoolExecutor", FakeExecutor)
+    task_manager._optimization_runner_factory = _OptimizationRunnerFactory(
+        cfg, task_manager.db_manager, task_manager.exchange, DummyLog(), process_pool_factory=FakeExecutor
+    )
 
     results = task_manager._execute_sample_specs_sync([first, second])
 
@@ -373,12 +437,12 @@ def test_run_backtest_sample_builds_runtime_objects_from_sample_spec(monkeypatch
                 data_len=100,
             )
 
-    monkeypatch.setattr("trader.exchange.binance.csvdata.BinanceCSVData", FakeCSVData)
+    monkeypatch.setattr("trader.adapters.outbound.backtrader.dataset_feed.BinanceCSVData", FakeCSVData)
     monkeypatch.setattr(
-        "trader.task.backtrader_task.parse_strategies",
+        "trader.adapters.outbound.backtrader.sample_worker.parse_strategies",
         lambda strategies: strategy_calls.append(list(strategies)) or ["fake-strategy"],
     )
-    monkeypatch.setattr("trader.task.backtrader_task.Node", FakeNode)
+    monkeypatch.setattr("trader.adapters.outbound.backtrader.sample_worker.Node", FakeNode)
 
     result = run_backtest_sample(_make_sample_spec(dataset_path))
 
@@ -444,9 +508,9 @@ def test_run_backtest_sample_reads_db_source_without_csv_materialization(monkeyp
                 data_len=1,
             )
 
-    monkeypatch.setattr("trader.task.backtrader_task.DatabaseManager", FakeDatabaseManager)
-    monkeypatch.setattr("trader.task.backtrader_task.parse_strategies", lambda strategies: ["fake-strategy"])
-    monkeypatch.setattr("trader.task.backtrader_task.Node", FakeNode)
+    monkeypatch.setattr("trader.adapters.outbound.backtrader.sample_worker.DatabaseManager", FakeDatabaseManager)
+    monkeypatch.setattr("trader.adapters.outbound.backtrader.sample_worker.parse_strategies", lambda strategies: ["fake-strategy"])
+    monkeypatch.setattr("trader.adapters.outbound.backtrader.sample_worker.Node", FakeNode)
 
     result = run_backtest_sample(spec)
 
@@ -459,6 +523,7 @@ def test_add_backtrader_task_builds_sample_specs_from_shared_dataset_refs(monkey
     async def _test():
         cfg = Config()
         task_manager = TaskManager(cfg, DummyLog(), db_manager=None, exchange=None)
+        _wire_task_manager_ports(task_manager)
         queue = asyncio.Queue()
         shared_ref = SimpleNamespace(path=str(tmp_path / "shared.csv"), dataset_key="dataset-a")
         tasks = [
@@ -536,6 +601,7 @@ def test_add_backtrader_task_runs_regular_db_backtest_without_sample_worker(monk
     async def _test():
         cfg = Config()
         task_manager = TaskManager(cfg, DummyLog(), db_manager=SimpleNamespace(kline=SimpleNamespace()), exchange=SimpleNamespace())
+        _wire_task_manager_ports(task_manager)
         queue = asyncio.Queue()
         task = _make_backtest_task(1, "BTC-USDT", Interval.INTERVAL_1h, 1_700_000_000, 1_700_000_000 + 3600)
         task.optimization_run_id = None
@@ -561,11 +627,11 @@ def test_add_backtrader_task_runs_regular_db_backtest_without_sample_worker(monk
 
         monkeypatch.setattr(TaskManager, "_prepare_backtest_datasets", fake_prepare)
         monkeypatch.setattr(TaskManager, "_execute_sample_specs", fake_execute)
-        monkeypatch.setattr("trader.task.backtrader_task.BackTraderTask.start", fake_task_start)
+        monkeypatch.setattr("trader.adapters.outbound.backtrader.task_handles.BacktestTaskHandle.start", fake_task_start)
 
-        import trader.task.task_manager as task_manager_module
+        import trader.main as main_module
 
-        monkeypatch.setattr(task_manager_module, "process_backtrader", fake_process_backtrader, raising=False)
+        monkeypatch.setattr(main_module, "process_backtrader", fake_process_backtrader, raising=False)
 
         await task_manager.add_backtrader_task([task], queue)
 
@@ -578,6 +644,7 @@ def test_add_backtrader_task_propagates_execution_failures_to_optimization_artif
     async def _test():
         cfg = Config()
         task_manager = TaskManager(cfg, DummyLog(), db_manager=None, exchange=None)
+        _wire_task_manager_ports(task_manager)
         queue = asyncio.Queue()
         tasks = [
             _make_backtest_task(1, "BTC-USDT", Interval.INTERVAL_1h, 1_700_000_000, 1_700_000_000 + 3600),
@@ -669,6 +736,7 @@ def test_add_backtrader_task_writes_runtime_status_with_final_report_run_id(monk
     async def _test():
         cfg = Config()
         task_manager = TaskManager(cfg, DummyLog(), db_manager=None, exchange=None)
+        _wire_task_manager_ports(task_manager)
         queue = asyncio.Queue()
         tasks = [_make_backtest_task(1, "BTC-USDT", Interval.INTERVAL_1h, 1_700_000_000, 1_700_000_000 + 3600)]
         tasks[0].optimization_run_id = "run-status-1"
@@ -745,6 +813,7 @@ def test_add_backtrader_task_records_dataset_failures_as_skipped_samples(monkeyp
     async def _test():
         cfg = Config()
         task_manager = TaskManager(cfg, DummyLog(), db_manager=None, exchange=None)
+        _wire_task_manager_ports(task_manager)
         queue = asyncio.Queue()
         failed = _make_backtest_task(1, "BTC-USDT", Interval.INTERVAL_1h, 1_700_000_000, 1_700_000_000 + 3600)
         runnable = _make_backtest_task(2, "ETH-USDT", Interval.INTERVAL_1h, 1_700_000_000, 1_700_000_000 + 3600)
@@ -791,6 +860,7 @@ def test_add_backtrader_task_records_sample_timeouts_distinctly(monkeypatch, tmp
     async def _test():
         cfg = Config()
         task_manager = TaskManager(cfg, DummyLog(), db_manager=None, exchange=None)
+        _wire_task_manager_ports(task_manager)
         queue = asyncio.Queue()
         task = _make_backtest_task(1, "BTC-USDT", Interval.INTERVAL_1h, 1_700_000_000, 1_700_000_000 + 3600)
         task.optimization_run_id = "run-timeout-1"
@@ -834,6 +904,7 @@ def test_add_backtrader_task_aborts_when_runnable_ratio_too_low(monkeypatch, tmp
     async def _test():
         cfg = Config(optimization_min_runnable_ratio=0.5)
         task_manager = TaskManager(cfg, DummyLog(), db_manager=None, exchange=None)
+        _wire_task_manager_ports(task_manager)
         queue = asyncio.Queue()
         tasks = [_make_backtest_task(index, f"BTC{index}-USDT", Interval.INTERVAL_1h, 1_700_000_000, 1_700_000_000 + 3600) for index in range(1, 11)]
         for task in tasks:

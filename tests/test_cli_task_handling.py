@@ -5,17 +5,16 @@ from types import SimpleNamespace
 import pytest
 
 from scripts.migrate_persisted_live_task_configs import main as migrate_persisted_live_task_configs_main
-from trader.app.app import App
-from trader.common.config import TRADER_DB, TRADER_EXCHANGE, TRADER_TASKS, Config
-from trader.common.logger import Logger
-from trader.common.message import new_add_tasks_msg, new_exit_msg
-from trader.task.base_task import BaseTask
-from trader.task.persisted_live_config_migration import migrate_persisted_task_config_json
-from trader.task.task_config import TaskConfig
-from trader.task.task_manager import TaskManager
-from trader.task.task_type import TaskType
-from trader.utils.symbol_interval import Interval, SymbolInterval
-from trader.utils.task_state import TaskState, TaskStateType
+from trader.adapters.outbound.files.task_config_loader import TaskConfig
+from trader.adapters.outbound.logging.logger import Logger
+from trader.core.shared.config import TRADER_DB, TRADER_EXCHANGE, TRADER_TASKS, Config
+from trader.core.shared.domain import Interval, SymbolInterval
+from trader.core.shared.messages import new_add_tasks_msg, new_exit_msg
+from trader.core.task.domain import TaskState, TaskStateType, TaskType
+from trader.core.task.persisted_config_migration import migrate_persisted_task_config_json
+from trader.core.task.runtime_task import ManagedTask
+from trader.core.task.use_cases.task_manager import TaskManager
+from trader.main import App
 
 
 def test_task_manager_start_returns_none_when_tasks_parse_to_empty():
@@ -86,9 +85,9 @@ def test_base_task_stop_without_db_manager_does_not_crash():
         symbol_interval=SymbolInterval("ETH-USDT", Interval("1h")),
         strategies=["macd_triple_divergence"],
     )
-    task = BaseTask(tcfg, cfg, Logger(cfg))
+    task = ManagedTask(tcfg, cfg, Logger(cfg))
 
-    task.start(None)
+    asyncio.run(task.start(None))
     task.stop()
 
     assert task.ts.state.name == "DONE"
@@ -109,9 +108,9 @@ def test_base_task_start_persists_running_state_immediately():
         symbol_interval=SymbolInterval("ETH-USDT", Interval("1h")),
         strategies=[],
     )
-    task = BaseTask(tcfg, cfg, Logger(cfg), db_manager)
+    task = ManagedTask(tcfg, cfg, Logger(cfg), db_manager)
 
-    task.start(None)
+    asyncio.run(task.start(None))
 
     assert saved_batches
     assert saved_batches[0][0]["task_id"] == tcfg.id
@@ -157,10 +156,10 @@ def test_app_start_restores_running_tasks_from_database(monkeypatch):
 
     recovered_calls = []
 
-    def _fake_process(msgs):
+    async def _fake_handler(msgs, quit):
         app.queue = asyncio.Queue()
         app._mark_handler_ready()
-        asyncio.run(app._recover_running_tasks_in_background())
+        await app._recover_running_tasks_in_background()
         events.append(("process", len(msgs)))
 
     app.db_manager = _FakeDbManager()
@@ -172,9 +171,9 @@ def test_app_start_restores_running_tasks_from_database(monkeypatch):
         start=lambda *_args, **_kwargs: None,
         recover_task=_recover_task,
     )
-    app.process = _fake_process
+    app.handler = _fake_handler
 
-    monkeypatch.setattr("trader.app.app.TaskConfigCodec.from_persisted_state", lambda _state: recovered)
+    monkeypatch.setattr("trader.core.task.use_cases.runtime.TaskConfigCodec.from_persisted_state", lambda _state: recovered)
 
     assert app.start() is True
     assert "db.get_all_tasks" in events
@@ -184,7 +183,7 @@ def test_app_start_restores_running_tasks_from_database(monkeypatch):
 def test_app_start_recovers_live_task_state_persisted_by_current_base_task():
     cfg = Config(tasks="[]", api="0.0.0.0:8000")
     app = App(cfg)
-    persisted_task = BaseTask(
+    persisted_task = ManagedTask(
         TaskConfig(
             id=61,
             ttype=TaskType.TRADER,
@@ -222,10 +221,10 @@ def test_app_start_recovers_live_task_state_persisted_by_current_base_task():
         async def get_startup_admin(self):
             return SimpleNamespace(id=1)
 
-    def _fake_process(msgs):
+    async def _fake_handler(msgs, quit):
         app.queue = asyncio.Queue()
         app._mark_handler_ready()
-        asyncio.run(app._recover_running_tasks_in_background())
+        await app._recover_running_tasks_in_background()
         events.append(("process", len(msgs)))
 
     async def _recover_task(taskc, queue):
@@ -241,7 +240,7 @@ def test_app_start_recovers_live_task_state_persisted_by_current_base_task():
 
     app.db_manager = _FakeDbManager()
     app.task_manager = SimpleNamespace(start=lambda *_args, **_kwargs: None, recover_task=_recover_task)
-    app.process = _fake_process
+    app.handler = _fake_handler
 
     assert app.start() is True
     assert "db.get_all_tasks" in events
@@ -274,10 +273,10 @@ def test_app_start_skips_startup_task_when_matching_running_task_will_recover(mo
         async def get_startup_admin(self):
             return SimpleNamespace(id=1)
 
-    def _fake_process(msgs):
+    async def _fake_handler(msgs, quit):
         app.queue = asyncio.Queue()
         app._mark_handler_ready()
-        asyncio.run(app._recover_running_tasks_in_background())
+        await app._recover_running_tasks_in_background()
         events.append(("process", len(msgs)))
 
     recovered_calls = []
@@ -290,7 +289,7 @@ def test_app_start_skips_startup_task_when_matching_running_task_will_recover(mo
         start=lambda taskcs: new_add_tasks_msg(taskcs) if taskcs else None,
         recover_task=_recover_task,
     )
-    app.process = _fake_process
+    app.handler = _fake_handler
 
     assert app.start() is True
     assert ("process", 0) in events
@@ -338,7 +337,11 @@ def test_app_start_skips_all_startup_tasks_when_any_running_task_will_recover():
         start=lambda taskcs: new_add_tasks_msg(taskcs) if taskcs else None,
         recover_task=lambda *_args, **_kwargs: None,
     )
-    app.process = lambda msgs: events.append(("process", len(msgs)))
+
+    async def _fake_handler(msgs, quit):
+        events.append(("process", len(msgs)))
+
+    app.handler = _fake_handler
 
     assert app.start() is True
     assert ("process", 0) in events
@@ -417,7 +420,11 @@ def test_app_start_skips_startup_task_when_migrated_persisted_row_matches_startu
         start=lambda taskcs: new_add_tasks_msg(taskcs) if taskcs else None,
         recover_task=lambda *_args, **_kwargs: None,
     )
-    app.process = lambda msgs: events.append(("process", len(msgs)))
+
+    async def _fake_handler(msgs, quit):
+        events.append(("process", len(msgs)))
+
+    app.handler = _fake_handler
 
     assert app.start() is True
     assert ("process", 0) in events
@@ -462,7 +469,11 @@ def test_app_start_ignores_recovery_only_live_data_mode_when_deduping_startup_ta
         start=lambda taskcs: new_add_tasks_msg(taskcs) if taskcs else None,
         recover_task=lambda *_args, **_kwargs: None,
     )
-    app.process = lambda msgs: events.append(("process", len(msgs)))
+
+    async def _fake_handler(msgs, quit):
+        events.append(("process", len(msgs)))
+
+    app.handler = _fake_handler
 
     assert app.start() is True
     assert ("process", 0) in events
@@ -855,7 +866,7 @@ def test_task_manager_awaits_completed_task_state_persistence():
         )
 
         async def fake_add_task(taskc, queue):
-            task = BaseTask(taskc, cfg, Logger(cfg), db_manager)
+            task = ManagedTask(taskc, cfg, Logger(cfg), db_manager)
             task_manager.tasks[task.id()] = task
             await task.start(queue)
 
@@ -921,7 +932,7 @@ def test_task_manager_recover_task_keeps_running_state_persisted():
             saved_batches.append([state.to_dict() for state in states])
             return len(states)
 
-        class _FakeLongRunningTask(BaseTask):
+        class _FakeLongRunningTask(ManagedTask):
             async def start(self, queue):
                 await super().start(queue)
                 await release_task.wait()
@@ -1017,7 +1028,7 @@ def test_task_manager_close_preserves_running_live_tasks_for_restart_recovery():
             strategies=["macd_triple_divergence"],
             live_execution_mode="manual_notify",
         )
-        task = BaseTask(task_config, cfg, logger, db_manager)
+        task = ManagedTask(task_config, cfg, logger, db_manager)
         await task.start(asyncio.Queue())
         task_manager.tasks[task.id()] = task
         saved_batches.clear()
@@ -1041,7 +1052,7 @@ def test_task_manager_dispatch_shutdown_preserves_running_live_tasks_for_restart
             saved_batches.append([state.to_dict() for state in states])
             return len(states)
 
-        class _FakeLiveTraderTask(BaseTask):
+        class _FakeLiveTraderTask(ManagedTask):
             async def start(self, queue):
                 await super().start(queue)
                 await self.quit.wait()

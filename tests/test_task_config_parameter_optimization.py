@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from trader.task.task_config import parse_task_config
+from trader.adapters.outbound.files.task_config_loader import parse_task_config
 
 
 def test_parse_task_config_expands_param_grid_into_cartesian_product():

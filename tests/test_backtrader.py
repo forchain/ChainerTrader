@@ -5,7 +5,7 @@ import os.path
 
 import backtrader as bt
 
-from trader.common import path
+from trader.core.shared import paths as path
 
 
 class TestStrategy(bt.Strategy):

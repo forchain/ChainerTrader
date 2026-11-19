@@ -1,12 +1,14 @@
 import pytest
 
-from trader.execution import ExecutionSide, OrderIntentType, ProtectionIntentType
-from trader.execution.order_semantics import (
+from trader.core.execution import (
+    ExecutionSide,
+    OrderIntentType,
     OrderSemanticsError,
+    ProtectionIntentType,
     select_order_semantics,
     validate_protection_prices,
 )
-from trader.utils.operate import Operate, OperateType
+from trader.core.shared.domain import Operate, OperateType
 
 
 def _op(otype, price=100.0):
@@ -34,9 +36,18 @@ def test_stop_take_profit_and_bracket_select_native_protection_intents():
     bracket.stop_loss = 95.0
     bracket.take_profit = 110.0
 
-    assert select_order_semantics(stop_only, symbol="BTCUSDT", side=ExecutionSide.LONG, quantity=0.25).risk.protection_type == ProtectionIntentType.STOP_LOSS
-    assert select_order_semantics(take_profit_only, symbol="BTCUSDT", side=ExecutionSide.LONG, quantity=0.25).risk.protection_type == ProtectionIntentType.TAKE_PROFIT
-    assert select_order_semantics(bracket, symbol="BTCUSDT", side=ExecutionSide.LONG, quantity=0.25).risk.protection_type == ProtectionIntentType.BRACKET
+    assert (
+        select_order_semantics(stop_only, symbol="BTCUSDT", side=ExecutionSide.LONG, quantity=0.25).risk.protection_type
+        == ProtectionIntentType.STOP_LOSS
+    )
+    assert (
+        select_order_semantics(take_profit_only, symbol="BTCUSDT", side=ExecutionSide.LONG, quantity=0.25).risk.protection_type
+        == ProtectionIntentType.TAKE_PROFIT
+    )
+    assert (
+        select_order_semantics(bracket, symbol="BTCUSDT", side=ExecutionSide.LONG, quantity=0.25).risk.protection_type
+        == ProtectionIntentType.BRACKET
+    )
 
 
 def test_breakeven_update_selects_replacement_protection_intent():

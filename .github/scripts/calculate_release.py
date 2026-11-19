@@ -109,8 +109,8 @@ def calculate_current_release(
 
     if is_collision:
         release_body += (
-            f"\n> ⚠️ **Note**: This release tag overwrites a legacy tag under the "
-            f"sequential merged PR count rule.\n"
+            "\n> ⚠️ **Note**: This release tag overwrites a legacy tag under the "
+            "sequential merged PR count rule.\n"
         )
 
     return {

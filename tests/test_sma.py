@@ -7,9 +7,9 @@ import backtrader as bt
 import backtrader.indicators as btind
 from backtrader import num2date
 
-from trader.common import path
-from trader.exchange.binance.csvdata import BinanceCSVData
-from trader.strategy.trilogy_strategy import TrilogyStrategy
+from trader.adapters.outbound.backtrader.csvdata import BinanceCSVData
+from trader.adapters.outbound.backtrader.trilogy_strategy import TrilogyStrategy
+from trader.core.shared import paths as path
 
 
 class SMAStrategy(TrilogyStrategy):

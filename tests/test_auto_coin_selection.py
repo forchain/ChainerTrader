@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from trader.tools.auto_coin_selection import (
+from trader.adapters.outbound.files.auto_coin_selection import (
     CMC_INDEXES,
     DEFAULT_CONFIG_PATH,
     build_cmc_binance_universe,

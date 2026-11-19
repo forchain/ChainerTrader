@@ -4,9 +4,9 @@ import backtrader as bt
 import pandas as pd
 import pytest
 
-from trader.strategy.base_strategy import BaseStrategy
-from trader.strategy.node import build_strategy_kwargs
-from trader.strategy.strategy import parse_strategy
+from trader.adapters.outbound.backtrader.base_strategy import BaseStrategy
+from trader.adapters.outbound.backtrader.catalog import parse_strategy
+from trader.core.strategy.domain.node import build_strategy_kwargs
 
 
 def _build_feed():

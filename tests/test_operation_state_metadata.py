@@ -1,8 +1,8 @@
 from types import SimpleNamespace
 
-from trader.strategy.lifecycle import OperateFactory
-from trader.utils.operate import Operate, OperateType, parse_opts
-from trader.utils.operation_state import MaxDrawdownAnalyzer
+from trader.adapters.outbound.backtrader.analyzers.operation_state import MaxDrawdownAnalyzer
+from trader.core.shared.domain import Operate, OperateType, parse_opts
+from trader.core.strategy.domain.lifecycle import OperateFactory
 
 
 def test_operate_factory_copies_framework_risk_references():

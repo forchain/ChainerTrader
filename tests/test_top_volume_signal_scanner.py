@@ -6,7 +6,8 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from trader.scanner.top_volume_signal_scanner import (
+from trader.adapters.inbound.cli.rendering import render_signal_table
+from trader.adapters.inbound.cli.signal_scanner import (
     DEFAULT_SYMBOL_WHITELIST,
     STABLECOIN_BASE_ASSETS,
     build_scan_report,
@@ -18,17 +19,15 @@ from trader.scanner.top_volume_signal_scanner import (
     fetch_top_usdt_symbols,
     load_window_klines,
     normalize_symbol,
-    render_signal_table,
-    run_strategy_triggered_signals,
     scan_market,
     scan_market_report,
-    select_whitelist_usdt_symbols,
     select_top_usdt_symbols,
+    select_whitelist_usdt_symbols,
 )
-from trader.strategy.base_strategy import BaseStrategy
-from trader.task.task_type import TaskType
-from trader.utils.kline import Kline
-from trader.utils.symbol_interval import Interval
+from trader.adapters.outbound.backtrader.base_strategy import BaseStrategy
+from trader.adapters.outbound.backtrader.signal_scanner import run_strategy_triggered_signals
+from trader.core.shared.domain import Interval, Kline
+from trader.core.task.domain import TaskType
 
 
 def test_select_top_usdt_symbols_filters_stablecoins_and_limits_to_top_n():
@@ -82,7 +81,7 @@ def test_fetch_top_usdt_symbols_uses_binance_exchange_info_and_whitelist_order()
         ]
     }
 
-    with patch("trader.scanner.top_volume_signal_scanner.requests.get") as mock_get:
+    with patch("trader.adapters.inbound.cli.signal_scanner.requests.get") as mock_get:
         mock_get.return_value = Mock(json=Mock(return_value=exchange_info))
 
         selected = fetch_top_usdt_symbols(top_n=2)
@@ -217,12 +216,12 @@ def test_ensure_symbol_window_builds_update_task_with_requested_range():
     async def _run():
         cfg = SimpleNamespace()
         logger = SimpleNamespace()
-        db_manager = SimpleNamespace()
+        db_manager = SimpleNamespace(kline=SimpleNamespace())
         exchange = SimpleNamespace()
 
-        with patch("trader.scanner.top_volume_signal_scanner.UpdateKlinesTask") as task_cls:
-            task = task_cls.return_value
-            task.start = AsyncMock()
+        with patch("trader.adapters.inbound.cli.signal_scanner.UpdateKlinesTaskRunner") as runner_cls:
+            runner = runner_cls.return_value
+            runner.run = AsyncMock()
 
             await ensure_symbol_window(
                 cfg,
@@ -235,7 +234,7 @@ def test_ensure_symbol_window_builds_update_task_with_requested_range():
                 200,
             )
 
-        tcfg = task_cls.call_args.args[0]
+        tcfg = runner.run.call_args.args[0]
         assert tcfg.ttype == TaskType.UPDATE_KLINES
         assert tcfg.symbol_interval.name() == "BTCUSDT-1d"
         assert tcfg.start_time == 100
@@ -273,11 +272,11 @@ def test_scan_market_updates_db_then_reads_db_and_sorts_results():
         exchange = SimpleNamespace()
 
         with (
-            patch("trader.scanner.top_volume_signal_scanner.fetch_top_usdt_symbols", return_value=["BTC-USDT", "ETH-USDT"]),
-            patch("trader.scanner.top_volume_signal_scanner.ensure_symbol_window") as ensure_mock,
-            patch("trader.scanner.top_volume_signal_scanner.load_window_klines", new=AsyncMock(return_value=["klines"])) as load_mock,
-            patch(
-                "trader.scanner.top_volume_signal_scanner.run_strategy_triggered_signals",
+            patch("trader.adapters.inbound.cli.signal_scanner.fetch_top_usdt_symbols", return_value=["BTC-USDT", "ETH-USDT"]),
+            patch("trader.adapters.inbound.cli.signal_scanner.ensure_symbol_window") as ensure_mock,
+            patch("trader.adapters.inbound.cli.signal_scanner.load_window_klines", new=AsyncMock(return_value=["klines"])) as load_mock,
+        ):
+            run_mock = Mock(
                 side_effect=[
                     [
                         {
@@ -310,14 +309,14 @@ def test_scan_market_updates_db_then_reads_db_and_sorts_results():
                             "price": 50,
                         }
                     ],
-                ],
-            ) as run_mock,
-        ):
+                ]
+            )
             results = await scan_market(
                 cfg,
                 logger,
                 db_manager,
                 exchange,
+                run_signals=run_mock,
                 top_n=2,
                 strategy_name="macd_triple_divergence",
                 now_ts=int(dt.datetime(2026, 4, 9, 12, 0, 0).timestamp()),
@@ -365,7 +364,7 @@ def test_run_strategy_triggered_signals_uses_strategy_signal_events():
         Kline(3, 100, 102, 98, 101, 4, 1, 1, 1, 1, 1),
     ]
 
-    with patch("trader.scanner.top_volume_signal_scanner.parse_strategy", return_value=_FakeStrategy):
+    with patch("trader.adapters.outbound.backtrader.signal_scanner.parse_strategy", return_value=_FakeStrategy):
         signals = run_strategy_triggered_signals(
             "fake_strategy",
             "BTCUSDT",
@@ -465,16 +464,17 @@ def test_scanner_cli_defaults_and_json_output(tmp_path, monkeypatch, capsys):
 
     monkeypatch.setattr(
         cli,
-        "build_runtime_config",
+        "compose_signal_scanner",
         lambda: (
             SimpleNamespace(cash=100000.0, commission=0.001),
             SimpleNamespace(),
             db_manager,
             SimpleNamespace(),
+            SimpleNamespace(scan=lambda *args, **kwargs: []),
         ),
     )
 
-    async def _fake_scan_market(cfg, log, db_manager_arg, exchange, top_n, strategy_name):
+    async def _fake_scan_market(cfg, log, db_manager_arg, exchange, *, run_signals=None, top_n, strategy_name):
         assert top_n == 10
         assert strategy_name == "macd_triple_divergence"
         assert db_manager_arg is db_manager
@@ -501,9 +501,9 @@ def test_scan_market_report_wraps_signals_with_metadata():
         exchange = SimpleNamespace()
 
         with (
-            patch("trader.scanner.top_volume_signal_scanner.fetch_top_usdt_symbols", return_value=["BTCUSDT"]),
+            patch("trader.adapters.inbound.cli.signal_scanner.fetch_top_usdt_symbols", return_value=["BTCUSDT"]),
             patch(
-                "trader.scanner.top_volume_signal_scanner.scan_market",
+                "trader.adapters.inbound.cli.signal_scanner.scan_market",
                 return_value=[{"signal_time": "2026-04-09T10:00:00", "symbol": "BTCUSDT"}],
             ),
         ):
@@ -512,6 +512,7 @@ def test_scan_market_report_wraps_signals_with_metadata():
                 logger,
                 db_manager,
                 exchange,
+                run_signals=Mock(),
                 top_n=1,
                 strategy_name="macd_triple_divergence",
                 now_ts=int(dt.datetime(2026, 4, 9, 12, 0, 0).timestamp()),

@@ -2,20 +2,21 @@ from types import SimpleNamespace
 
 import pytest
 
-from trader.live.auto_execution import (
+from trader.adapters.outbound.binance.execution_gateway import BinanceLiveExecutionGateway
+from trader.adapters.outbound.files.task_config_loader import TaskConfig
+from trader.adapters.outbound.notification.execution_gateway import NotificationOnlyExecutionGateway
+from trader.core.execution.use_cases import (
     AUTO_EXECUTION_EVENT_TYPE,
     AutoExecutionRouter,
     AutoExecutionStatus,
     LiveExecutionMode,
     execution_outcome_event,
+    normalize_live_execution_mode,
     operation_identity,
 )
-from trader.live.monitor import build_initial_snapshot
-from trader.task.task_config import TaskConfig
-from trader.task.task_type import TaskType
-from trader.utils.kline import Kline
-from trader.utils.operate import Operate, OperateType
-from trader.utils.symbol_interval import Interval, SymbolInterval
+from trader.core.shared.domain import Interval, Kline, Operate, OperateType, SymbolInterval
+from trader.core.task.domain import TaskType
+from trader.core.task.live_monitor import build_initial_snapshot
 
 BASE = 1_714_281_600
 
@@ -133,6 +134,17 @@ def _short_tcfg(mode, **kwargs):
     return _tcfg(mode, chainer_mode="BOTH", **kwargs)
 
 
+def _gateway(tcfg, exchange):
+    mode = normalize_live_execution_mode(tcfg.live_execution_mode)
+    if mode == LiveExecutionMode.MANUAL_NOTIFY.value:
+        return NotificationOnlyExecutionGateway(staged_execution_mode=mode)
+    return BinanceLiveExecutionGateway(exchange, staged_execution_mode=mode)
+
+
+def _router(tcfg, *, gateway=None, **kwargs):
+    return AutoExecutionRouter(tcfg, gateway=gateway or _gateway(tcfg, kwargs.get("exchange")), **kwargs)
+
+
 def _op(otype, price=100.0, dtime=BASE):
     return Operate(otype, dtime, price)
 
@@ -155,9 +167,31 @@ def test_paper_auto_mode_is_rejected_before_routing():
         _tcfg("paper_auto")
 
 
+def test_manual_notify_mode_uses_notification_gateway_and_never_places_orders():
+    exchange = RecordingExchange(quote_balance=1000.0)
+    router = _router(
+        _tcfg(LiveExecutionMode.MANUAL_NOTIFY, free=500.0),
+        exchange=exchange,
+        cfg=SimpleNamespace(cash=10000.0),
+    )
+
+    outcome = router.route(_op(OperateType.BUY, 100.0))
+
+    assert isinstance(router.gateway, NotificationOnlyExecutionGateway)
+    assert outcome.status == AutoExecutionStatus.SKIPPED
+    assert outcome.reason == "manual_notify_no_order"
+    assert outcome.exchange_order is None
+    assert [event["gateway"] for event in outcome.execution_events] == ["notification_only"]
+    assert outcome.execution_state_records == []
+    assert exchange.new_order_calls == []
+    assert exchange.margin_order_calls == []
+    assert exchange.oco_order_calls == []
+    assert exchange.balance_reads == []
+
+
 def test_auto_trade_caps_real_long_order_by_fixed_notional():
     exchange = RecordingExchange(quote_balance=1000.0)
-    router = AutoExecutionRouter(
+    router = _router(
         _tcfg(LiveExecutionMode.AUTO_TRADE, free=500.0, live_trade_max_notional=25.0),
         exchange=exchange,
         cfg=SimpleNamespace(cash=10000.0),
@@ -174,7 +208,7 @@ def test_auto_trade_caps_real_long_order_by_fixed_notional():
 def test_auto_trade_cap_uses_explicit_max_notional_without_legacy_hint():
     exchange = RecordingExchange(quote_balance=1000.0)
     tcfg = _tcfg(LiveExecutionMode.AUTO_TRADE, free=500.0, live_trade_max_notional=25.0)
-    router = AutoExecutionRouter(
+    router = _router(
         tcfg,
         exchange=exchange,
         cfg=SimpleNamespace(cash=10000.0),
@@ -191,7 +225,7 @@ def test_auto_trade_cap_uses_explicit_max_notional_without_legacy_hint():
 
 def test_auto_trade_places_native_protection_for_stop_and_take_profit():
     exchange = RecordingExchange(quote_balance=1000.0)
-    router = AutoExecutionRouter(
+    router = _router(
         _tcfg(LiveExecutionMode.AUTO_TRADE, free=500.0, live_trade_max_notional=25.0),
         exchange=exchange,
         cfg=SimpleNamespace(cash=10000.0),
@@ -214,7 +248,7 @@ def test_auto_trade_places_native_protection_for_stop_and_take_profit():
 
 def test_auto_trade_spot_close_uses_router_position_not_account_total_balance():
     exchange = RecordingExchange(quote_balance=1000.0, base_balance=0.75)
-    router = AutoExecutionRouter(
+    router = _router(
         _tcfg(LiveExecutionMode.AUTO_TRADE, live_trade_max_notional=25.0),
         exchange=exchange,
         cfg=SimpleNamespace(cash=10000.0),
@@ -234,7 +268,7 @@ def test_auto_trade_spot_close_uses_router_position_not_account_total_balance():
 
 def test_live_auto_rejects_side_invalid_protection_before_order_submission():
     exchange = RecordingExchange(quote_balance=1000.0)
-    router = AutoExecutionRouter(
+    router = _router(
         _tcfg(LiveExecutionMode.AUTO_TRADE, live_trade_max_notional=25.0),
         exchange=exchange,
         cfg=SimpleNamespace(cash=10000.0),
@@ -251,7 +285,7 @@ def test_live_auto_rejects_side_invalid_protection_before_order_submission():
 
 
 def test_auto_trade_skips_when_requested_notional_invalid_or_balance_insufficient():
-    invalid_notional = AutoExecutionRouter(
+    invalid_notional = _router(
         _tcfg(LiveExecutionMode.AUTO_TRADE, free=0.0, live_trade_max_notional=0.0),
         exchange=RecordingExchange(),
         cfg=SimpleNamespace(cash=10000.0),
@@ -260,7 +294,7 @@ def test_auto_trade_skips_when_requested_notional_invalid_or_balance_insufficien
     assert invalid_notional.reason == "invalid_notional"
 
     exchange = RecordingExchange(quote_balance=5.0)
-    insufficient = AutoExecutionRouter(
+    insufficient = _router(
         _tcfg(LiveExecutionMode.AUTO_TRADE, live_trade_max_notional=25.0),
         exchange=exchange,
         cfg=SimpleNamespace(cash=10000.0),
@@ -272,7 +306,7 @@ def test_auto_trade_skips_when_requested_notional_invalid_or_balance_insufficien
 
 def test_auto_trade_without_max_notional_uses_configured_free_sizing():
     exchange = RecordingExchange(quote_balance=1000.0)
-    router = AutoExecutionRouter(
+    router = _router(
         _tcfg(LiveExecutionMode.AUTO_TRADE, free=500.0, live_trade_max_notional=0.0),
         exchange=exchange,
         cfg=SimpleNamespace(cash=10000.0),
@@ -287,7 +321,7 @@ def test_auto_trade_without_max_notional_uses_configured_free_sizing():
 
 def test_margin_long_caps_full_live_requested_exposure_by_leverage_ratio():
     exchange = RecordingExchange(quote_balance=60.0, margin_ready=True)
-    router = AutoExecutionRouter(
+    router = _router(
         _short_tcfg(LiveExecutionMode.AUTO_TRADE, free=500.0),
         exchange=exchange,
         cfg=_cfg(leverage_ratio=2.0),
@@ -305,7 +339,7 @@ def test_margin_long_caps_full_live_requested_exposure_by_leverage_ratio():
 
 def test_margin_leverage_ratio_caps_but_does_not_auto_enlarge_requested_size():
     exchange = RecordingExchange(quote_balance=60.0, margin_ready=True)
-    router = AutoExecutionRouter(
+    router = _router(
         _short_tcfg(LiveExecutionMode.AUTO_TRADE, free=60.0),
         exchange=exchange,
         cfg=_cfg(leverage_ratio=2.0),
@@ -323,7 +357,7 @@ def test_margin_leverage_ratio_caps_but_does_not_auto_enlarge_requested_size():
 
 def test_small_live_margin_hard_cap_is_not_enlarged_by_leverage_ratio():
     exchange = RecordingExchange(quote_balance=60.0, margin_ready=True)
-    router = AutoExecutionRouter(
+    router = _router(
         _short_tcfg(LiveExecutionMode.AUTO_TRADE, live_trade_max_notional=10.0),
         exchange=exchange,
         cfg=_cfg(leverage_ratio=2.0),
@@ -343,7 +377,7 @@ def test_real_auto_entry_skips_when_reserved_budget_is_too_small_even_if_exchang
     exchange = RecordingExchange(quote_balance=1000.0)
     tcfg = _tcfg(LiveExecutionMode.AUTO_TRADE, free=50.0)
     tcfg.fund_reservation_amount = 20.0
-    router = AutoExecutionRouter(
+    router = _router(
         tcfg,
         exchange=exchange,
         cfg=SimpleNamespace(cash=10000.0),
@@ -360,7 +394,7 @@ def test_real_auto_entry_marks_reserved_budget_spent_after_successful_submit():
     exchange = RecordingExchange(quote_balance=1000.0)
     tcfg = _tcfg(LiveExecutionMode.AUTO_TRADE, free=50.0)
     tcfg.fund_reservation_amount = 50.0
-    router = AutoExecutionRouter(
+    router = _router(
         tcfg,
         exchange=exchange,
         cfg=SimpleNamespace(cash=10000.0),
@@ -375,7 +409,7 @@ def test_real_auto_entry_marks_reserved_budget_spent_after_successful_submit():
 
 def test_real_short_is_skipped_for_long_only_and_both_mode_short_uses_margin_path():
     disabled_exchange = RecordingExchange()
-    disabled = AutoExecutionRouter(
+    disabled = _router(
         _tcfg(LiveExecutionMode.AUTO_TRADE, live_trade_max_notional=10.0, chainer_mode="LONG_ONLY"),
         exchange=disabled_exchange,
         cfg=SimpleNamespace(cash=10000.0),
@@ -386,7 +420,7 @@ def test_real_short_is_skipped_for_long_only_and_both_mode_short_uses_margin_pat
     assert disabled_exchange.margin_order_calls == []
 
     margin_exchange = RecordingExchange(margin_ready=True)
-    submitted = AutoExecutionRouter(
+    submitted = _router(
         _short_tcfg(
             LiveExecutionMode.AUTO_TRADE,
             live_trade_max_notional=10.0,
@@ -402,7 +436,7 @@ def test_real_short_is_skipped_for_long_only_and_both_mode_short_uses_margin_pat
 
 def test_cross_margin_short_places_native_buy_side_protection_when_configured():
     exchange = RecordingExchange(margin_ready=True)
-    router = AutoExecutionRouter(
+    router = _router(
         _short_tcfg(
             LiveExecutionMode.AUTO_TRADE,
             live_trade_max_notional=10.0,
@@ -425,7 +459,7 @@ def test_cross_margin_short_places_native_buy_side_protection_when_configured():
 
 def test_cross_margin_short_risk_update_replaces_buy_side_stop_with_short_exposure():
     exchange = RecordingExchange(margin_ready=True)
-    router = AutoExecutionRouter(
+    router = _router(
         _short_tcfg(
             LiveExecutionMode.AUTO_TRADE,
             live_trade_max_notional=10.0,
@@ -454,7 +488,7 @@ def test_live_auto_submits_fail_safe_close_when_required_protection_is_unverifie
             return False
 
     exchange = UnverifiedProtectionExchange(quote_balance=1000.0)
-    router = AutoExecutionRouter(
+    router = _router(
         _tcfg(LiveExecutionMode.AUTO_TRADE, free=500.0, live_trade_max_notional=25.0),
         exchange=exchange,
         cfg=SimpleNamespace(cash=10000.0),
@@ -481,7 +515,7 @@ def test_live_auto_submits_fail_safe_close_when_protection_order_is_rejected_by_
             raise RuntimeError("binance Stop price would trigger immediately.")
 
     exchange = RejectStopProtectionExchange(quote_balance=1000.0)
-    router = AutoExecutionRouter(
+    router = _router(
         _tcfg(LiveExecutionMode.AUTO_TRADE, free=500.0, live_trade_max_notional=25.0),
         exchange=exchange,
         cfg=SimpleNamespace(cash=10000.0),
@@ -503,7 +537,7 @@ def test_live_auto_submits_fail_safe_close_when_protection_order_is_rejected_by_
 
 def test_cross_margin_short_close_requires_known_short_exposure():
     unknown_exchange = RecordingExchange(margin_ready=True)
-    unknown = AutoExecutionRouter(
+    unknown = _router(
         _short_tcfg(
             LiveExecutionMode.AUTO_TRADE,
             live_trade_max_notional=10.0,
@@ -516,7 +550,7 @@ def test_cross_margin_short_close_requires_known_short_exposure():
     assert unknown_exchange.margin_order_calls == []
 
     exchange = RecordingExchange(margin_ready=True)
-    router = AutoExecutionRouter(
+    router = _router(
         _short_tcfg(
             LiveExecutionMode.AUTO_TRADE,
             live_trade_max_notional=10.0,
@@ -539,7 +573,7 @@ def test_cross_margin_short_close_requires_known_short_exposure():
 
 def test_short_capable_tasks_use_margin_for_long_and_exit_when_margin_is_ready():
     exchange = RecordingExchange(margin_ready=True)
-    router = AutoExecutionRouter(
+    router = _router(
         _short_tcfg(
             LiveExecutionMode.AUTO_TRADE,
             live_trade_max_notional=10.0,
@@ -556,7 +590,7 @@ def test_short_capable_tasks_use_margin_for_long_and_exit_when_margin_is_ready()
 
 def test_spot_execution_does_not_apply_leverage_ratio_cap():
     exchange = RecordingExchange(quote_balance=5.0, margin_ready=False)
-    router = AutoExecutionRouter(
+    router = _router(
         _tcfg(LiveExecutionMode.AUTO_TRADE, live_trade_max_notional=10.0, chainer_mode="LONG_ONLY"),
         exchange=exchange,
         cfg=_cfg(leverage_ratio=2.0),
@@ -572,7 +606,7 @@ def test_spot_execution_does_not_apply_leverage_ratio_cap():
 
 def test_long_only_stays_on_spot_path_even_when_margin_is_ready():
     exchange = RecordingExchange(quote_balance=1000.0, base_balance=0.75, margin_ready=True)
-    router = AutoExecutionRouter(
+    router = _router(
         _tcfg(LiveExecutionMode.AUTO_TRADE, live_trade_max_notional=25.0, chainer_mode="LONG_ONLY"),
         exchange=exchange,
         cfg=_cfg(leverage_ratio=2.0),
@@ -612,7 +646,7 @@ def test_margin_borrow_block_skip_policy_skips_short_and_continues():
             return {"ok": True, "symbol": symbol}
 
     exchange = BorrowBlockedExchange()
-    router = AutoExecutionRouter(
+    router = _router(
         _short_tcfg(
             LiveExecutionMode.AUTO_TRADE,
             live_trade_max_notional=10.0,
@@ -643,7 +677,7 @@ def test_margin_borrow_block_stop_task_policy_fails_short():
             return {"orderId": "spot-1"}
 
     exchange = BorrowBlockedExchange()
-    router = AutoExecutionRouter(
+    router = _router(
         _short_tcfg(
             LiveExecutionMode.AUTO_TRADE,
             live_trade_max_notional=10.0,
@@ -679,7 +713,7 @@ def test_margin_borrow_block_repay_single_policy_retries_once_and_submits():
             return {"ok": True, "symbol": symbol}
 
     exchange = BorrowBlockedThenPassExchange()
-    router = AutoExecutionRouter(
+    router = _router(
         _short_tcfg(
             LiveExecutionMode.AUTO_TRADE,
             live_trade_max_notional=10.0,
@@ -730,7 +764,7 @@ def test_margin_borrow_block_exception_triggers_auto_repay_retry_with_capacity_c
             }
 
     exchange = BorrowBlockedExceptionThenPassExchange()
-    router = AutoExecutionRouter(
+    router = _router(
         _short_tcfg(
             LiveExecutionMode.AUTO_TRADE,
             live_trade_max_notional=10.0,
@@ -761,7 +795,7 @@ def test_margin_long_leverage_cap_ignores_quote_borrow_capacity_when_cap_removes
             return {"asset": asset, "amount": "4.0", "borrowLimit": "4.0"}
 
     exchange = LowBorrowCapacityExchange(quote_balance=5.0, margin_ready=True)
-    router = AutoExecutionRouter(
+    router = _router(
         _short_tcfg(
             LiveExecutionMode.AUTO_TRADE,
             live_trade_max_notional=10.0,
@@ -782,7 +816,7 @@ def test_margin_long_leverage_cap_ignores_quote_borrow_capacity_when_cap_removes
 
 def test_margin_long_leverage_cap_prevents_unnecessary_borrow_precheck_when_shortfall_is_removed():
     exchange = RecordingExchange(quote_balance=5.0, margin_ready=True)
-    router = AutoExecutionRouter(
+    router = _router(
         _short_tcfg(
             LiveExecutionMode.AUTO_TRADE,
             live_trade_max_notional=10.0,
@@ -822,7 +856,7 @@ def test_leverage_cap_falls_back_to_cfg_cash_when_live_quote_balance_is_unreadab
         live_trade_max_notional=100.0,
     )
     exchange = UnreadableBalanceExchange()
-    router = AutoExecutionRouter(
+    router = _router(
         tcfg,
         exchange=exchange,
         cfg=_cfg(cash=30.0, leverage_ratio=2.0),
@@ -844,7 +878,7 @@ def test_margin_borrow_precheck_skips_margin_short_when_base_borrow_capacity_is_
             return {"asset": asset, "amount": "0.05", "borrowLimit": "0.05"}
 
     exchange = LowBorrowCapacityExchange(base_balance=0.02, margin_ready=True)
-    router = AutoExecutionRouter(
+    router = _router(
         _short_tcfg(
             LiveExecutionMode.AUTO_TRADE,
             live_trade_max_notional=10.0,
@@ -869,7 +903,7 @@ def test_margin_short_applies_leverage_cap_on_quote_notional_before_borrow_capac
             return {"asset": asset, "amount": "0.07", "borrowLimit": "0.07"}
 
     exchange = BorrowCapacityExchange(quote_balance=6.0, base_balance=0.0, margin_ready=True)
-    router = AutoExecutionRouter(
+    router = _router(
         _short_tcfg(
             LiveExecutionMode.AUTO_TRADE,
             live_trade_max_notional=10.0,
@@ -895,7 +929,7 @@ def test_margin_long_leverage_cap_ignores_zero_quote_borrow_capacity_when_cap_re
             return {"asset": asset, "amount": "0.0", "borrowLimit": "0.0"}
 
     exchange = ZeroBorrowExchange(quote_balance=5.0, margin_ready=True)
-    router = AutoExecutionRouter(
+    router = _router(
         _short_tcfg(
             LiveExecutionMode.AUTO_TRADE,
             live_trade_max_notional=10.0,
@@ -935,7 +969,7 @@ def test_margin_borrow_block_repay_single_policy_handles_margin_long_orders():
             return {"ok": True, "symbol": symbol}
 
     exchange = LongBorrowBlockedThenPassExchange()
-    router = AutoExecutionRouter(
+    router = _router(
         _short_tcfg(
             LiveExecutionMode.AUTO_TRADE,
             live_trade_max_notional=10.0,
@@ -972,7 +1006,7 @@ def test_margin_borrow_block_repay_single_policy_retries_once_then_skips():
             return {"ok": True, "symbol": symbol}
 
     exchange = BorrowBlockedAlwaysExchange()
-    router = AutoExecutionRouter(
+    router = _router(
         _short_tcfg(
             LiveExecutionMode.AUTO_TRADE,
             live_trade_max_notional=10.0,
@@ -1033,7 +1067,7 @@ def test_margin_borrow_block_repay_all_policy_uses_account_level_repay_report():
     tcfg.live_margin_auto_repay_max_per_asset = 50.0
     tcfg.live_margin_auto_repay_min_amount = 0.000001
     tcfg.live_margin_auto_repay_excluded_assets = ["BNB"]
-    router = AutoExecutionRouter(tcfg, exchange=exchange, cfg=SimpleNamespace(cash=10000.0))
+    router = _router(tcfg, exchange=exchange, cfg=SimpleNamespace(cash=10000.0))
 
     outcome = router.route(_op(OperateType.SHORT, 100.0))
 
@@ -1045,7 +1079,7 @@ def test_margin_borrow_block_repay_all_policy_uses_account_level_repay_report():
 
 def test_duplicate_operation_is_skipped_before_second_execution():
     exchange = RecordingExchange(quote_balance=1000.0)
-    router = AutoExecutionRouter(
+    router = _router(
         _tcfg(LiveExecutionMode.AUTO_TRADE, live_trade_max_notional=25.0),
         exchange=exchange,
         cfg=SimpleNamespace(cash=10000.0),
@@ -1064,7 +1098,7 @@ def test_duplicate_operation_is_skipped_before_second_execution():
 
 @pytest.mark.anyio
 async def test_execution_outcomes_are_visible_in_dashboard_events_and_snapshot():
-    outcome = AutoExecutionRouter(
+    outcome = _router(
         _tcfg(LiveExecutionMode.AUTO_TRADE, live_trade_max_notional=25.0),
         exchange=RecordingExchange(quote_balance=1000.0),
         cfg=SimpleNamespace(cash=10000.0),
@@ -1082,3 +1116,8 @@ async def test_execution_outcomes_are_visible_in_dashboard_events_and_snapshot()
     assert event.payload["status"] == "submitted"
     assert snapshot["auto_execution_outcomes"][0]["status"] == "submitted"
     assert snapshot["auto_execution_outcomes"][0]["effective_notional"] == 25.0
+
+
+def test_auto_execution_router_requires_an_injected_gateway():
+    with pytest.raises(ValueError, match="requires an injected ExecutionGateway"):
+        AutoExecutionRouter(_tcfg(LiveExecutionMode.AUTO_TRADE), exchange=RecordingExchange(), cfg=_cfg())

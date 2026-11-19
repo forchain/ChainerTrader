@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
-from trader.tools.open_sync import (
+from scripts.open_sync import (
     CommitInfo,
     execute_open_sync,
     format_version,

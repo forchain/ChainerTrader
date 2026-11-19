@@ -7,8 +7,8 @@ from binance_sdk_spot import Spot
 from binance_sdk_spot.rest_api.models import KlinesIntervalEnum
 from dotenv import load_dotenv
 
-from trader.common.config import new_and_env
-from trader.exchange.exchange_config import parse_exchange_config
+from trader.adapters.inbound.cli.env_config import new_and_env
+from trader.core.exchange.domain import parse_exchange_config
 
 
 def init_spot_client():

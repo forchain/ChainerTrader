@@ -3,7 +3,8 @@ from unittest.mock import AsyncMock
 
 from fastapi.testclient import TestClient
 
-from trader.rpc.app import app
+from trader.adapters.inbound.http import create_app
+from trader.adapters.outbound.identity.argon2_hasher import Argon2PasswordHasher
 
 
 class _UserRepo:
@@ -49,11 +50,20 @@ def test_admin_reset_user_password_deletes_target_sessions(monkeypatch):
         must_change_password=False,
         is_admin=True,
     )
-    app.state.app = SimpleNamespace(db_manager=SimpleNamespace(user=repo))
-    monkeypatch.setattr("trader.rpc.app.require_admin", AsyncMock(return_value=admin))
-    monkeypatch.setattr("trader.rpc.app.current_user", AsyncMock(return_value=admin))
+    composition = SimpleNamespace(
+        cfg=None,
+        live_event_bus=None,
+        db_manager=SimpleNamespace(user=repo),
+        exchange=None,
+        task_manager=None,
+        logger=None,
+        password_hasher=Argon2PasswordHasher(),
+        version=lambda: "0.1.1",
+    )
+    monkeypatch.setattr("trader.adapters.inbound.http.factory.require_admin", AsyncMock(return_value=admin))
+    monkeypatch.setattr("trader.adapters.inbound.http.factory.current_user", AsyncMock(return_value=admin))
 
-    response = TestClient(app).post("/admin/users/2/reset-password")
+    response = TestClient(create_app(composition)).post("/admin/users/2/reset-password")
 
     assert response.status_code == 200
     assert repo.updated_password_user_id == 2

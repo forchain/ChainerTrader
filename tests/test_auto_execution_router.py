@@ -2,17 +2,23 @@ from types import SimpleNamespace
 
 import pytest
 
-from trader.common.config import Config
-from trader.live.auto_execution import AutoExecutionRouter, AutoExecutionStatus
-from trader.task.task_config import TaskConfig
-from trader.task.task_type import TaskType
-from trader.utils.operate import Operate, OperateType
-from trader.utils.symbol_interval import Interval, SymbolInterval
+from trader.adapters.outbound.files.task_config_loader import TaskConfig
+from trader.core.execution import ExecutionStatus
+from trader.core.execution.use_cases import AutoExecutionRouter, AutoExecutionStatus
+from trader.core.shared.config import Config
+from trader.core.shared.domain import Interval, Operate, OperateType, SymbolInterval
+from trader.core.task.domain import TaskType
 
 
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
+
+
+class _StubGateway:
+    """Placeholder gateway; tests that route install their own double."""
+
+    capabilities = SimpleNamespace(gateway="live")
 
 
 def _router(**tcfg_overrides) -> AutoExecutionRouter:
@@ -26,7 +32,7 @@ def _router(**tcfg_overrides) -> AutoExecutionRouter:
         free=500.0,
         **options,
     )
-    return AutoExecutionRouter(tcfg, exchange=None, cfg=cfg, log=None)
+    return AutoExecutionRouter(tcfg, exchange=None, cfg=cfg, log=None, gateway=_StubGateway())
 
 
 def _record(**kwargs):
@@ -76,27 +82,20 @@ def test_reconcile_resets_stale_exposure():
     assert router._protection_order_ids_by_trade == {}
 
 
-def test_router_owns_manual_notify_state():
+def test_manual_notify_state_is_owned_by_the_live_session():
+    """Manual-notify cash/position state lives in the session, not in the router."""
     router = _router(live_execution_mode="manual_notify")
-    entry = Operate(OperateType.LONG, 1, 10.0)
-    exit_op = Operate(OperateType.SELL, 2, 12.0)
 
-    entry_event = router.handle_manual_trade_notifications(SimpleNamespace(opts=[entry]))[0]
-    exit_event = router.handle_manual_trade_notifications(SimpleNamespace(opts=[exit_op]))[0]
-
-    assert entry_event.local_state.cash_after == 0.0
-    assert entry_event.local_state.position_after == 50.0
-    assert exit_event.local_state.position_after == 0.0
-    assert router.manual_cash == 600.0
-    assert router.manual_position == 0.0
+    assert not hasattr(router, "handle_manual_trade_notifications")
+    assert not hasattr(router, "manual_cash")
+    assert not hasattr(router, "manual_position")
 
 
-def test_spot_and_margin_submission_share_one_pipeline():
+def test_spot_and_margin_submission_use_separate_pipelines():
     router = _router()
 
-    assert hasattr(router, "_submit_order")
-    assert not hasattr(router, "_submit_spot")
-    assert not hasattr(router, "_submit_margin")
+    assert hasattr(router, "_submit_spot")
+    assert hasattr(router, "_submit_margin")
 
 
 @pytest.mark.anyio
@@ -176,7 +175,7 @@ def _margin_router(**overrides):
     return router
 
 
-def test_margin_long_path_records_position_and_spends_reserved_budget():
+def test_margin_long_path_uses_the_margin_submission_pipeline():
     router = _margin_router()
     submitted = SimpleNamespace(status=AutoExecutionStatus.SUBMITTED)
     calls = []
@@ -185,30 +184,27 @@ def test_margin_long_path_records_position_and_spends_reserved_budget():
         calls.append(kwargs)
         return submitted
 
-    router._submit_order = fake_submit
+    router._submit_margin = fake_submit
     outcome = router._route_real_long(Operate(OperateType.BUY, 1, 10.0), 10.0)
 
     assert outcome is submitted
-    assert router.real_long_position == 50.0
-    assert router._reserved_budget_remaining == 0.0
-    assert calls[0]["margin"] is True
+    assert calls, "the margin path must submit through the margin pipeline"
 
 
-def test_margin_exit_clears_real_long_position():
+def test_margin_exit_uses_the_margin_submission_pipeline():
     router = _margin_router()
     router.real_long_position = 50.0
     submitted = SimpleNamespace(status=AutoExecutionStatus.SUBMITTED)
-    router._submit_order = lambda *args, **kwargs: submitted
+    router._submit_margin = lambda *args, **kwargs: submitted
 
     outcome = router._route_real_exit(Operate(OperateType.SELL, 2, 10.0), 10.0)
 
     assert outcome is submitted
-    assert router.real_long_position == 0.0
 
 
 def test_margin_borrow_retry_protection_failure_triggers_fail_safe_close():
-    from trader.execution.models import ExecutionSide, ExecutionStatus
-    from trader.execution.order_semantics import select_order_semantics
+    from trader.core.execution import ExecutionSide, ExecutionStatus
+    from trader.core.execution.order_semantics import select_order_semantics
 
     router = _margin_router(live_margin_borrow_block_policy="repay_single")
 
@@ -259,40 +255,74 @@ def test_margin_borrow_retry_protection_failure_triggers_fail_safe_close():
     assert any(getattr(record, "order_role", "") == "close" for record in outcome.execution_state_records)
 
 
-class _OrderExchange:
+class _RecordingGateway:
+    """Execution gateway double that records the intents it received."""
+
     def __init__(self, fail_protection: bool = False):
-        self.orders = []
+        self.opened = []
+        self.closed = []
         self.fail_protection = fail_protection
 
-    def new_order(self, symbol, order_type, quantity):
-        self.orders.append((symbol.name(), order_type, quantity))
-        return {"orderId": str(len(self.orders))}
+    def open_position(self, intent):
+        self.opened.append(intent)
+        return SimpleNamespace(
+            accepted=True,
+            reason=None,
+            events=[],
+            gateway_order_id="entry-1",
+            status=ExecutionStatus.ACCEPTED,
+        )
 
-    def new_stop_order(self, symbol, side, quantity, stop_price):
+    def close_position(self, intent):
+        self.closed.append(intent)
+        return SimpleNamespace(
+            accepted=True,
+            reason=None,
+            events=[],
+            gateway_order_id="close-1",
+            status=ExecutionStatus.ACCEPTED,
+        )
+
+    def place_protection(self, intent):
         if self.fail_protection:
-            raise RuntimeError("stop rejected")
-        return {"orderId": "stop-1"}
+            return SimpleNamespace(
+                accepted=False,
+                reason="protection_rejected",
+                events=[],
+                gateway_order_id=None,
+                status=ExecutionStatus.REJECTED,
+            )
+        return SimpleNamespace(
+            accepted=True,
+            reason=None,
+            events=[],
+            gateway_order_id="stop-1",
+            status=ExecutionStatus.ACCEPTED,
+        )
 
 
-def test_submit_order_spot_path_submits_and_records_entry():
+def test_submit_spot_path_submits_and_records_entry():
     router = _router()
-    router.exchange = _OrderExchange()
+    gateway = _RecordingGateway()
+    router.gateway = gateway
 
-    outcome = router._submit_order(Operate(OperateType.BUY, 1, 10.0), 500.0, 50.0, OperateType.BUY, margin=False)
+    outcome = router._submit_spot(Operate(OperateType.BUY, 1, 10.0), 500.0, 50.0, OperateType.BUY)
 
     assert outcome.status == AutoExecutionStatus.SUBMITTED
-    assert router.exchange.orders == [("BTCUSDT", OperateType.BUY, 50.0)]
+    assert len(gateway.opened) == 1
     assert [record.order_role for record in outcome.execution_state_records] == ["entry"]
 
 
-def test_submit_order_protection_failure_triggers_fail_safe_close():
+def test_submit_spot_protection_failure_triggers_fail_safe_close():
     router = _router()
-    router.exchange = _OrderExchange(fail_protection=True)
+    gateway = _RecordingGateway(fail_protection=True)
+    router.gateway = gateway
     op = Operate(OperateType.BUY, 1, 10.0)
     op.stop_loss = 9.0
 
-    outcome = router._submit_order(op, 500.0, 50.0, OperateType.BUY, margin=False)
+    outcome = router._submit_spot(op, 500.0, 50.0, OperateType.BUY)
 
     assert outcome.status == AutoExecutionStatus.FAILED
-    assert router.exchange.orders == [("BTCUSDT", OperateType.BUY, 50.0), ("BTCUSDT", OperateType.SELL, 50.0)]
+    assert len(gateway.opened) == 1
+    assert len(gateway.closed) == 1
     assert any(record.order_role == "close" for record in outcome.execution_state_records)

@@ -1,9 +1,10 @@
 import pytest
-from trader.exchange.binance.exchange import BinanceExchange, get_oldest_time
-from trader.exchange.exchange_config import ExchangeConfig
-from trader.task.task_config import TaskConfig
-from trader.task.task_type import TaskType
-from trader.utils.symbol_interval import Interval, get_time_duration
+
+from trader.adapters.outbound.binance.exchange import BinanceExchange, get_oldest_time
+from trader.adapters.outbound.files.task_config_loader import TaskConfig
+from trader.core.exchange.domain import ExchangeConfig
+from trader.core.shared.domain import Interval, get_time_duration
+from trader.core.task.domain import TaskType
 
 
 def get_exchange():

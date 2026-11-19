@@ -13,13 +13,11 @@ import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from trader.common.config import Config
-from trader.execution.models import ExecutionStatus, GatewayMode
-from trader.execution.state import ExecutionStateRecord
-from trader.task.task_manager import TaskManager
-from trader.task.task_type import TaskType
-from trader.utils.symbol_interval import Interval, Symbol, SymbolInterval
-
+from trader.core.execution import ExecutionStateRecord, ExecutionStatus, GatewayMode
+from trader.core.shared.config import Config
+from trader.core.shared.domain import Interval, Symbol, SymbolInterval
+from trader.core.task.domain import TaskType
+from trader.core.task.use_cases.task_manager import TaskManager
 
 # ---------------------------------------------------------------------------
 # Helpers

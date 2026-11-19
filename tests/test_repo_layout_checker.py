@@ -12,7 +12,7 @@ def test_check_repo_layout_accepts_configs_and_wrapper_paths():
             Path("configs/notices/notice.sample.json"),
             Path("scripts/ops/setup_worktree.sh"),
             Path("scripts/wrappers/run_top_volume_signal_scanner.py"),
-            Path("src/trader/tools/repo_layout.py"),
+            Path("src/trader/adapters/inbound/cli/repo_layout.py"),
         ]
     )
 
@@ -64,3 +64,69 @@ def test_check_repo_layout_rejects_task_json_outside_configs(tmp_path: Path, mon
 )
 def test_check_repo_layout_allows_task_json_inside_configs(path: Path):
     assert check_paths([path]) == []
+
+
+def _create_path(tmp_path: Path, monkeypatch, relative: str) -> Path:
+    path = tmp_path / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    return Path(relative)
+
+
+@pytest.mark.parametrize(
+    "relative",
+    [
+        "src/trader/core/__init__.py",
+        "src/trader/core/shared/__init__.py",
+        "src/trader/core/task/domain.py",
+        "src/trader/core/task/use_cases/run_task.py",
+        "src/trader/adapters/__init__.py",
+        "src/trader/adapters/inbound/__init__.py",
+        "src/trader/adapters/inbound/http/routes.py",
+        "src/trader/adapters/inbound/cli/console.py",
+        "src/trader/adapters/outbound/__init__.py",
+        "src/trader/adapters/outbound/persistence/repositories.py",
+        "src/trader/adapters/outbound/binance/exchange.py",
+        "src/trader/adapters/outbound/backtrader/engine.py",
+        "src/trader/adapters/outbound/marketstream/hub.py",
+        "src/trader/adapters/outbound/notification/execution_gateway.py",
+        "src/trader/adapters/outbound/email/sender.py",
+        "src/trader/adapters/outbound/files/store.py",
+        "src/trader/adapters/outbound/logging/logger.py",
+        "src/trader/adapters/outbound/identity/fernet_cipher.py",
+        "src/trader/adapters/outbound/execution/factory.py",
+        "src/trader/main.py",
+        "src/trader/__main__.py",
+    ],
+)
+def test_check_repo_layout_allows_hexagonal_package_paths(tmp_path: Path, monkeypatch, relative: str):
+    path = _create_path(tmp_path, monkeypatch, relative)
+
+    assert check_paths([path]) == []
+
+
+@pytest.mark.parametrize(
+    "relative",
+    [
+        "src/trader/core/rogue.py",
+        "src/trader/core/unknown/thing.py",
+        "src/trader/adapters/rogue.py",
+        "src/trader/adapters/middleware/http.py",
+        "src/trader/adapters/inbound/rogue.py",
+        "src/trader/adapters/inbound/unknown/thing.py",
+        "src/trader/adapters/outbound/rogue.py",
+        "src/trader/adapters/outbound/unknown/thing.py",
+        "src/trader/task/rogue.py",
+        "src/trader/common/rogue.py",
+        "src/trader/tools/rogue.py",
+        "src/trader/utils/rogue.py",
+    ],
+)
+def test_check_repo_layout_rejects_python_outside_hexagonal_packages(tmp_path: Path, monkeypatch, relative: str):
+    path = _create_path(tmp_path, monkeypatch, relative)
+
+    violations = check_paths([path])
+
+    assert violations
+    assert relative in violations[0]

@@ -4,10 +4,10 @@ import backtrader as bt
 import pandas as pd
 import pytest
 
-from trader.analyzers.backtest_report import BacktestReportAnalyzer
-from trader.strategy.base_strategy import BaseStrategy
-from trader.strategy.lifecycle import KlineRef, TradeLifecycleEngine
-from trader.strategy.risk import StrategyRiskEngine
+from trader.adapters.outbound.backtrader.analyzers.backtest_report import BacktestReportAnalyzer
+from trader.adapters.outbound.backtrader.base_strategy import BaseStrategy
+from trader.core.strategy.domain.lifecycle import KlineRef, TradeLifecycleEngine
+from trader.core.strategy.domain.risk import StrategyRiskEngine
 
 
 def _build_df(rows):

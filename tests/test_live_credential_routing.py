@@ -4,15 +4,18 @@ from types import SimpleNamespace
 
 import pytest
 
-from trader.auth.credentials import encrypt_secret
-from trader.common.config import Config
-from trader.common.logger import Logger
-from trader.exchange.exchange_config import ExchangeConfig, MarginMode
-from trader.task.task_config import TaskConfig
-from trader.task.task_manager import TaskManager
-from trader.task.task_type import TaskType
-from trader.utils.symbol_interval import Interval, SymbolInterval
-from trader.utils.task_state import TaskState
+from trader.adapters.outbound.files.task_config_loader import TaskConfig
+from trader.adapters.outbound.identity.fernet_cipher import FernetSecretCipher, encrypt_secret, service_key_available
+from trader.adapters.outbound.logging.logger import Logger
+from trader.core.exchange.domain import ExchangeConfig, MarginMode
+from trader.core.shared.config import Config
+from trader.core.shared.domain import Interval, SymbolInterval
+from trader.core.task.domain import TaskState, TaskType
+from trader.core.task.use_cases.task_manager import TaskManager
+
+
+def _make_cipher(service_key):
+    return FernetSecretCipher(service_key) if service_key_available(service_key) else None
 
 
 class _FakeExchange:
@@ -61,7 +64,6 @@ def test_user_live_exchange_routing_decrypts_async_user_credentials(monkeypatch)
             assert exchange == "BINANCE"
             return credential
 
-        monkeypatch.setattr("trader.task.task_manager.BinanceExchange", FakeBinanceExchange)
         cfg = Config(tasks="[]", secret_key=service_key)
         base_exchange = _FakeExchange(ExchangeConfig(api_key="base-key", api_secret="base-secret"))
         manager = TaskManager(
@@ -69,6 +71,8 @@ def test_user_live_exchange_routing_decrypts_async_user_credentials(monkeypatch)
             Logger(cfg),
             SimpleNamespace(exchange_credential=SimpleNamespace(get_default=get_default)),
             base_exchange,
+            exchange_factory=FakeBinanceExchange,
+            cipher_factory=_make_cipher,
         )
         task = _live_task()
 
@@ -101,7 +105,6 @@ def test_user_live_exchange_routing_logs_target_and_actual_margin_mode(monkeypat
             await asyncio.sleep(0)
             return credential
 
-        monkeypatch.setattr("trader.task.task_manager.BinanceExchange", FakeBinanceExchange)
         cfg = Config(tasks="[]", secret_key=service_key)
         log = _CaptureLog()
         manager = TaskManager(
@@ -109,6 +112,8 @@ def test_user_live_exchange_routing_logs_target_and_actual_margin_mode(monkeypat
             log,
             SimpleNamespace(exchange_credential=SimpleNamespace(get_default=get_default)),
             _FakeExchange(ExchangeConfig(api_key="base-key", api_secret="base-secret")),
+            exchange_factory=FakeBinanceExchange,
+            cipher_factory=_make_cipher,
         )
 
         routed = await manager._exchange_for_task(_live_task(chainer_mode="BOTH"))
@@ -155,6 +160,7 @@ def test_user_live_exchange_routing_requires_user_credential():
             Logger(cfg),
             SimpleNamespace(exchange_credential=SimpleNamespace(get_default=get_default)),
             base_exchange,
+            cipher_factory=_make_cipher,
         )
 
         with pytest.raises(RuntimeError, match="missing BINANCE API credential"):
@@ -208,7 +214,6 @@ def test_user_owned_real_auto_task_builds_task_with_user_exchange(monkeypatch):
             assert exchange == "BINANCE"
             return credential
 
-        monkeypatch.setattr("trader.task.task_manager.BinanceExchange", FakeBinanceExchange)
         cfg = Config(tasks="[]", secret_key=service_key, cash=1000.0)
         base_exchange = _FakeExchange(ExchangeConfig(api_key="system-key", api_secret="system-secret"))
         base_exchange.get_account_balance = lambda asset: 999.0
@@ -217,6 +222,8 @@ def test_user_owned_real_auto_task_builds_task_with_user_exchange(monkeypatch):
             Logger(cfg),
             SimpleNamespace(exchange_credential=SimpleNamespace(get_default=get_default)),
             base_exchange,
+            exchange_factory=FakeBinanceExchange,
+            cipher_factory=_make_cipher,
         )
 
         def build_task(task_cfg, exchange):
@@ -258,7 +265,6 @@ def test_user_exchange_routing_logs_credential_source(monkeypatch):
             await asyncio.sleep(0)
             return credential
 
-        monkeypatch.setattr("trader.task.task_manager.BinanceExchange", FakeBinanceExchange)
         cfg = Config(tasks="[]", secret_key=service_key)
         log = _CaptureLog()
         manager = TaskManager(
@@ -266,6 +272,8 @@ def test_user_exchange_routing_logs_credential_source(monkeypatch):
             log,
             SimpleNamespace(exchange_credential=SimpleNamespace(get_default=get_default)),
             _FakeExchange(ExchangeConfig(api_key="system-key", api_secret="system-secret")),
+            exchange_factory=FakeBinanceExchange,
+            cipher_factory=_make_cipher,
         )
 
         routed = await manager._exchange_for_task(_live_task(user_id=7, chainer_mode="BOTH"))
@@ -308,13 +316,14 @@ def test_user_exchange_routing_refreshes_when_user_credential_changes(monkeypatc
             await asyncio.sleep(0)
             return credentials.pop(0)
 
-        monkeypatch.setattr("trader.task.task_manager.BinanceExchange", FakeBinanceExchange)
         cfg = Config(tasks="[]", secret_key=service_key)
         manager = TaskManager(
             cfg,
             _CaptureLog(),
             SimpleNamespace(exchange_credential=SimpleNamespace(get_default=get_default)),
             _FakeExchange(ExchangeConfig(api_key="system-key", api_secret="system-secret")),
+            exchange_factory=FakeBinanceExchange,
+            cipher_factory=_make_cipher,
         )
 
         first = await manager._exchange_for_task(_live_task(user_id=7))

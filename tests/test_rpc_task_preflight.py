@@ -8,17 +8,28 @@ from unittest.mock import Mock
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from trader.auth.context import SessionAuthMiddleware
-from trader.auth.credentials import encrypt_secret
-from trader.common.config import Config
-from trader.exchange.exchange_config import ExchangeConfig
-from trader.rpc.api.tasks import router
-from trader.strategy.trader_result import TraderResult
-from trader.task.task_config import TaskConfig
-from trader.task.task_manager import TaskManager
-from trader.task.task_type import TaskType
-from trader.utils.symbol_interval import Interval, SymbolInterval
-from trader.utils.task_state import TaskState
+from trader.adapters.inbound.http.auth import SessionAuthMiddleware
+from trader.adapters.inbound.http.routers.tasks import router
+from trader.adapters.outbound.files.task_config_loader import TaskConfig
+from trader.adapters.outbound.identity.fernet_cipher import encrypt_secret
+from trader.core.exchange.domain import ExchangeConfig
+from trader.core.shared.config import Config
+from trader.core.shared.domain import Interval, SymbolInterval
+from trader.core.strategy.domain.trader_result import TraderResult
+from trader.core.task.domain import TaskState, TaskType
+from trader.core.task.use_cases.task_manager import TaskManager
+
+
+def _composition():
+    from trader.adapters.outbound.binance.exchange import BinanceExchange
+    from trader.adapters.outbound.files.task_config_loader import FileTaskConfigSourceLoader
+    from trader.adapters.outbound.identity.fernet_cipher import FernetSecretCipher
+
+    return SimpleNamespace(
+        secret_cipher_factory=lambda key: FernetSecretCipher(key) if key else None,
+        user_exchange_factory=BinanceExchange,
+        task_config_loader=FileTaskConfigSourceLoader(),
+    )
 
 
 class _UserRepo:
@@ -64,6 +75,7 @@ def test_user_owned_live_task_requires_saved_exchange_credential():
     app.add_middleware(SessionAuthMiddleware)
     app.include_router(router, prefix="/api/tasks")
     app.state.cfg = Config(auth_username="admin", auth_password="AdminPass123", secret_key="service-secret")
+    app.state.composition = _composition()
     logger = _Logger()
     app.state.app = SimpleNamespace(
         db_manager=SimpleNamespace(user=_UserRepo(), exchange_credential=_CredentialRepo()),
@@ -94,6 +106,7 @@ def test_user_owned_manual_notify_live_task_requires_saved_exchange_credential()
     app.include_router(router, prefix="/api/tasks")
     send_add_tasks_msg = Mock(return_value={"result": "success"})
     app.state.cfg = Config(auth_username="admin", auth_password="AdminPass123", secret_key="service-secret")
+    app.state.composition = _composition()
     app.state.app = SimpleNamespace(
         db_manager=SimpleNamespace(user=_UserRepo(), exchange_credential=_CredentialRepo()),
         task_manager=_TaskManager([]),
@@ -146,12 +159,15 @@ def test_task_manager_uses_user_exchange_for_user_owned_manual_notify_task(monke
             assert exchange == "BINANCE"
             return credential
 
-        monkeypatch.setattr("trader.task.task_manager.BinanceExchange", _UserExchange)
+        from trader.adapters.outbound.identity.fernet_cipher import FernetSecretCipher
+
         manager = TaskManager(
             Config(tasks="[]", secret_key=service_key),
             SimpleNamespace(info=lambda *_args, **_kwargs: None),
             SimpleNamespace(exchange_credential=SimpleNamespace(get_default=get_default)),
             _BaseExchange(),
+            exchange_factory=_UserExchange,
+            cipher_factory=lambda key: FernetSecretCipher(key) if key else None,
         )
         cfg = TaskConfig(
             1,
@@ -316,6 +332,7 @@ def test_task_creation_from_config_path_attaches_current_user_id():
     app.include_router(router, prefix="/api/tasks")
     send_add_tasks_msg = Mock(return_value={"result": "success"})
     app.state.cfg = Config(auth_username="admin", auth_password="AdminPass123", secret_key="service-secret")
+    app.state.composition = _composition()
     logger = _Logger()
     class _CredentialOkRepo:
         async def get_default(self, _user_id, _exchange):
@@ -334,7 +351,7 @@ def test_task_creation_from_config_path_attaches_current_user_id():
         return await call_next(request)
 
     monkeypatch = __import__("pytest").MonkeyPatch()
-    monkeypatch.setattr("trader.rpc.api.tasks._user_exchange_ping_ok", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr("trader.adapters.inbound.http.routers.tasks._user_exchange_ping_ok", lambda *_args, **_kwargs: True)
     try:
         client = TestClient(app)
         response = client.post("/api/tasks", content="configs/tasks/live/manual_notify_btc_1m.json")

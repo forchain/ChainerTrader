@@ -16,7 +16,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from trader.tools.runtime_context import PROFILE_REQUIREMENTS, validate_runtime_context
+from trader.adapters.inbound.cli.runtime_context import PROFILE_REQUIREMENTS, validate_runtime_context
 
 
 def parse_args() -> argparse.Namespace:

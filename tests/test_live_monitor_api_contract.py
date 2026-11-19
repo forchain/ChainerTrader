@@ -7,15 +7,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from trader.live.dashboard import DashboardEvent
-from trader.live.monitor import (
-    LiveEventBus,
-    build_initial_snapshot,
-    build_live_strategy_summary,
-    serialize_dashboard_event,
-)
-from trader.common.config import Config
-from trader.rpc.api.live import (
+from trader.adapters.inbound.http import create_app
+from trader.adapters.inbound.http.routers.live import (
     current_task_workspace,
     dispatch_debug_manual_signal,
     is_local_request,
@@ -26,18 +19,18 @@ from trader.rpc.api.live import (
     live_strategy_snapshot,
     rerun_task,
 )
-from trader.rpc.api.task import get_task_operations
-from trader.rpc.api.live import (
+from trader.adapters.inbound.http.routers.live import (
     router as live_router,
 )
-from trader.rpc.app import app as rpc_app
-from trader.strategy.trader_result import TraderResult
-from trader.task.task_config import TaskConfig
-from trader.task.task_type import TaskType
-from trader.utils.kline import Kline
-from trader.utils.operate import Operate, OperateType
-from trader.utils.symbol_interval import Interval, SymbolInterval
-from trader.utils.task_state import TaskStateType
+from trader.adapters.inbound.http.routers.task import get_task_operations
+from trader.adapters.outbound.files.task_config_loader import TaskConfig
+from trader.core.shared.config import Config
+from trader.core.shared.domain import Interval, Kline, Operate, OperateType, SymbolInterval
+from trader.core.strategy.domain.trader_result import TraderResult
+from trader.core.task.dashboard import DashboardEvent
+from trader.core.task.domain import TaskStateType, TaskType
+from trader.core.task.event_bus import LiveEventBus
+from trader.core.task.live_monitor import build_initial_snapshot, build_live_strategy_summary, serialize_dashboard_event
 
 BASE = 1_714_281_600
 
@@ -392,27 +385,26 @@ def test_live_api_http_smoke_lists_strategies_and_loads_snapshot():
     assert snapshot.json()["candles"][-1]["close"] == 102.0
 
 
+async def _no_task_states(user_id=None):
+    return []
+
+
 def test_admin_live_route_returns_monitor_layout():
-    import trader.rpc.rpc_app as rpc_app_module
-
-    rpc_app_module.os.kill = lambda pid, sig: None
-
-    async def _sleep(logger, seconds, desc):
-        await asyncio.sleep(0)
-
-    rpc_app_module.sleep = _sleep
-    rpc_app.state.app = SimpleNamespace(
+    composition = SimpleNamespace(
+        cfg=Config(api="127.0.0.1:0", tasks="[]", warmup_candles=20),
+        live_event_bus=None,
+        db_manager=FakeDb([_kline(BASE)]),
+        exchange=None,
         task_manager=SimpleNamespace(
             tasks={7: FakeTask()},
-            get_all_task_state=lambda user_id=None: [],
+            get_all_task_state=_no_task_states,
             get_task=lambda task_id: FakeTask() if task_id == 7 else None,
         ),
-        db_manager=FakeDb([_kline(BASE)]),
-        cfg=Config(warmup_candles=20),
+        logger=None,
+        version=lambda: "0.1.1",
     )
-    rpc_app.state.cfg = Config(api="127.0.0.1:0", tasks="[]")
 
-    with TestClient(rpc_app) as client:
+    with TestClient(create_app(composition)) as client:
         response = client.get("/admin/live")
 
     assert response.status_code == 200
@@ -423,26 +415,21 @@ def test_admin_live_route_returns_monitor_layout():
 
 
 def test_admin_dashboard_renders_task_monitor_navigation_without_klines_entry():
-    import trader.rpc.rpc_app as rpc_app_module
-
-    rpc_app_module.os.kill = lambda pid, sig: None
-
-    async def _sleep(logger, seconds, desc):
-        await asyncio.sleep(0)
-
-    rpc_app_module.sleep = _sleep
-    rpc_app.state.app = SimpleNamespace(
+    composition = SimpleNamespace(
+        cfg=Config(api="127.0.0.1:0", tasks="[]", warmup_candles=20),
+        live_event_bus=None,
+        db_manager=FakeDb([_kline(BASE)]),
+        exchange=None,
         task_manager=SimpleNamespace(
             tasks={7: FakeTask()},
-            get_all_task_state=lambda user_id=None: [],
+            get_all_task_state=_no_task_states,
             get_task=lambda task_id: FakeTask() if task_id == 7 else None,
         ),
-        db_manager=FakeDb([_kline(BASE)]),
-        cfg=Config(warmup_candles=20),
+        logger=None,
+        version=lambda: "0.1.1",
     )
-    rpc_app.state.cfg = Config(api="127.0.0.1:0", tasks="[]")
 
-    with TestClient(rpc_app) as client:
+    with TestClient(create_app(composition)) as client:
         response = client.get("/admin")
 
     assert response.status_code == 200
@@ -589,7 +576,9 @@ async def test_current_task_workspace_latest_done_backtest_run_returns_batch_cha
         strategy_start_time=BASE,
         strategy_end_time=BASE + 4 * 60,
         config_json=btc_config,
-        tret=TraderResult(0.12, 0.02, timedelta(seconds=60), 0.1, 0.5, 1.2, 2.0, -1.0, 1, 0, [Operate(OperateType.BUY, BASE + 2 * 60, 102.0)], 0.3, 5),
+        tret=TraderResult(
+            0.12, 0.02, timedelta(seconds=60), 0.1, 0.5, 1.2, 2.0, -1.0, 1, 0, [Operate(OperateType.BUY, BASE + 2 * 60, 102.0)], 0.3, 5
+        ),
     )
     backtest_eth = SimpleNamespace(
         id=31,
@@ -1040,7 +1029,7 @@ async def test_live_debug_manual_entry_endpoint_delegates_to_dispatch(monkeypatc
         captured["side"] = side
         return {"ok": True, "side": side}
 
-    monkeypatch.setattr("trader.rpc.api.live.dispatch_debug_manual_signal", fake_dispatch)
+    monkeypatch.setattr("trader.adapters.inbound.http.routers.live.dispatch_debug_manual_signal", fake_dispatch)
     payload = await live_debug_manual_entry(11, request=SimpleNamespace())
 
     assert payload == {"ok": True, "side": "entry"}
@@ -1056,7 +1045,7 @@ async def test_live_debug_manual_exit_endpoint_delegates_to_dispatch(monkeypatch
         captured["side"] = side
         return {"ok": True, "side": side}
 
-    monkeypatch.setattr("trader.rpc.api.live.dispatch_debug_manual_signal", fake_dispatch)
+    monkeypatch.setattr("trader.adapters.inbound.http.routers.live.dispatch_debug_manual_signal", fake_dispatch)
     payload = await live_debug_manual_exit(12, request=SimpleNamespace())
 
     assert payload == {"ok": True, "side": "exit"}

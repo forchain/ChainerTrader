@@ -14,7 +14,6 @@ from __future__ import annotations
 import argparse
 import json
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -28,10 +27,8 @@ from rich.columns import Columns
 from rich.console import Console
 from rich.live import Live
 from rich.panel import Panel
-from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 from rich.text import Text
-
 
 REFRESH_HZ = 2  # dashboard refresh rate
 WORKERS_SUBDIR = "workers"
@@ -179,16 +176,16 @@ def _build_overview_panel(status: dict[str, Any], run_id: str) -> Panel:
     pct = int(completed / total * 100) if total else 0
 
     text = Text()
-    text.append(f"Run ID : ", style="dim")
+    text.append("Run ID : ", style="dim")
     text.append(f"{run_id}\n", style="bold white")
-    text.append(f"Stage  : ", style="dim")
+    text.append("Stage  : ", style="dim")
     text.append(f"{stage}\n", style=_status_color(stage))
-    text.append(f"Health : ", style="dim")
+    text.append("Health : ", style="dim")
     text.append(f"{health}", style=_health_color(health))
     if abort_reason:
         text.append(f"  ({abort_reason})", style="red")
     text.append("\n")
-    text.append(f"Elapsed: ", style="dim")
+    text.append("Elapsed: ", style="dim")
     text.append(f"{elapsed}s\n", style="white")
     text.append("\n")
 
@@ -208,11 +205,11 @@ def _build_overview_panel(status: dict[str, Any], run_id: str) -> Panel:
     text.append("\n")
 
     # Workers & CPU
-    text.append(f"Workers (running/expected) : ", style="dim")
+    text.append("Workers (running/expected) : ", style="dim")
     worker_color = "green" if running_workers >= expected_workers * 0.8 else "red"
     text.append(f"{running_workers}/{expected_workers}  ", style=f"bold {worker_color}")
     text.append(f"Parallelism: {p_ratio * 100:.0f}%\n", style="dim")
-    text.append(f"Host CPU : ", style="dim")
+    text.append("Host CPU : ", style="dim")
     cpu_color = "green" if host_cpu < 80 else "yellow" if host_cpu < 95 else "red"
     text.append(f"{host_cpu:.1f}%  (psutil-per-worker below)\n", style=cpu_color)
 
@@ -318,7 +315,9 @@ def main() -> int:
                 workers = _enrich_workers_with_psutil(workers)
                 live.update(_build_layout(run_id, status, workers))
                 console.print(
-                    f"\n[bold]Run [cyan]{run_id}[/cyan] has [{'green' if status.get('stage') == 'finished' else 'red'}]{status.get('stage', 'ended')}[/]. Exiting monitor.[/bold]"
+                    f"\n[bold]Run [cyan]{run_id}[/cyan] has "
+                    f"[{'green' if status.get('stage') == 'finished' else 'red'}]{status.get('stage', 'ended')}[/]. "
+                    "Exiting monitor.[/bold]"
                 )
                 break
 

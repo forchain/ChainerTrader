@@ -1,6 +1,7 @@
 import asyncio
 import csv
 import sys
+import time
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from unittest.mock import AsyncMock
@@ -26,24 +27,11 @@ def _ensure_pymongo_stub():
     sys.modules["pymongo.synchronous.collection"] = collection_module
 
 
-def _ensure_binance_exchange_stub():
-    module_name = "trader.exchange.binance.exchange"
-    if module_name in sys.modules:
-        return
-
-    binance_module = ModuleType(module_name)
-    binance_module.BinanceExchange = object
-    binance_module.KLINE_LIMIT_MAX = 1000
-    binance_module.get_oldest_time = lambda: None
-    sys.modules[module_name] = binance_module
-
-
 _ensure_pymongo_stub()
-_ensure_binance_exchange_stub()
 
-from trader.task.dataset_resolver import DatasetRef, DatasetResolver  # noqa: E402
-from trader.utils.kline import Kline  # noqa: E402
-from trader.utils.symbol_interval import Interval, SymbolInterval  # noqa: E402
+from trader.adapters.outbound.backtrader.dataset_feed import BacktraderDatasetFeedLoader as DatasetResolver  # noqa: E402
+from trader.adapters.outbound.backtrader.dataset_feed import DatasetRef  # noqa: E402
+from trader.core.shared.domain import Interval, Kline, SymbolInterval  # noqa: E402
 
 
 class DummyLog:
@@ -84,7 +72,7 @@ def test_cache_range_does_not_extend_current_day_into_future_candles(monkeypatch
     resolver = DatasetResolver(db_manager=None, exchange=None, log=DummyLog())
     start_time = 1_700_000_000
     end_time = start_time + 5 * 3600 + 17 * 60
-    monkeypatch.setattr("trader.task.dataset_resolver.time.time", lambda: end_time)
+    monkeypatch.setattr(time, "time", lambda: end_time)
 
     _, cache_end = resolver._cache_range(SymbolInterval("BTC-USDT", Interval.INTERVAL_1h), start_time, end_time)
 
