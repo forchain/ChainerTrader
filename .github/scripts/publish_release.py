@@ -9,11 +9,10 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 COLLISION_NOTE = (
     "\n\n> ⚠️ **Note**: This release tag overwrites a legacy tag under the "

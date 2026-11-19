@@ -2,11 +2,12 @@
 """
 下载完整的 ETH-USDT 历史数据（4年），用于策略优化
 """
-import requests
-import pandas as pd
+import os
 import time
 from datetime import datetime, timedelta
-import os
+
+import pandas as pd
+import requests
 
 BINANCE_API = "https://api.binance.com/api/v3/klines"
 SYMBOL = "ETHUSDT"
@@ -78,7 +79,7 @@ if klines:
     os.makedirs('data', exist_ok=True)
     df.to_csv(OUTPUT, index=False)
     
-    print(f"\nDownload complete!")
+    print("\nDownload complete!")
     print(f"  Total candles: {len(df)}")
     print(f"  Time range: {df['datetime'].min()} to {df['datetime'].max()}")
     print(f"  File: {OUTPUT}")

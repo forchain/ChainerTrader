@@ -4,6 +4,7 @@ import argparse
 import sys
 from pathlib import Path
 
+
 def find_repo_root(start: Path) -> Path:
     for p in [start, *start.parents]:
         if (p / ".agent").exists() or (p / ".git").exists():
