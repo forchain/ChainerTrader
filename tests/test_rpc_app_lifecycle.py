@@ -1,15 +1,20 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from types import SimpleNamespace
 
 import pytest
 
+from trader.adapters.inbound.http.lifecycle import ApiServerLifecycle
 from trader.common.config import Config
 from trader.core.shared.domain import Interval, SymbolInterval
-from trader.rpc import app as rpc_module
-from trader.rpc.rpc_app import RpcApp
-from trader.task.task_config import TaskConfig
+from trader.main import compose_application, make_api_lifespan
+from trader.task.task_config import TaskConfig, parse_task_config
 from trader.task.task_type import TaskType
+
+
+def RpcApp(cfg):
+    return ApiServerLifecycle(container=compose_application(cfg, task_parser=parse_task_config))
 
 
 @pytest.fixture
@@ -124,8 +129,9 @@ async def test_rpc_lifespan_bootstraps_database_before_exchange_start(monkeypatc
     events = []
 
     class FakeRpcApp:
-        def __init__(self, cfg):
-            self.cfg = cfg
+        def __init__(self, *, container):
+            self.container = container
+            self.live_event_bus = None
 
         async def bootstrap_database_for_startup(self):
             events.append("db.bootstrap")
@@ -142,14 +148,14 @@ async def test_rpc_lifespan_bootstraps_database_before_exchange_start(monkeypatc
         async def stop(self):
             events.append("app.stop")
 
-    monkeypatch.setattr(rpc_module, "RpcApp", FakeRpcApp)
+    monkeypatch.setattr("trader.adapters.inbound.http.lifecycle.ApiServerLifecycle", FakeRpcApp)
 
     class State:
         cfg = Config(tasks="[]")
 
     @asynccontextmanager
     async def run_lifespan():
-        async with rpc_module.lifespan(type("App", (), {"state": State()})()):
+        async with make_api_lifespan(container=SimpleNamespace(live_event_bus=None))(type("App", (), {"state": State()})()):
             events.append("yielded")
             yield
 

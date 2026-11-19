@@ -5,7 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from fastapi import FastAPI, Request, Response, status
+from fastapi import FastAPI, HTTPException, Request, Response, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -21,6 +21,7 @@ from trader.adapters.inbound.http.queries import (
     open_orders_for_symbol_from_exchange,
 )
 from trader.adapters.inbound.http.schemas import AcctsInfo
+from trader.core.exchange.account_lifecycle import LiveAccountError
 from trader.core.exchange.domain import MarginMode
 from trader.core.exchange.exceptions import UserExchangeCredentialError
 from trader.core.exchange.use_cases import SymbolOpenOrders, base_exchange_config, build_user_exchange_context
@@ -140,7 +141,7 @@ def create_app(
     def _require_runtime(request: Request):
         runtime = getattr(request.app.state, "app", None) or getattr(request.app.state, "composition", None)
         if runtime is None:
-            raise translate_domain_exception(RuntimeError("RPC application is not initialized"))
+            raise HTTPException(status_code=503, detail="RPC application is not initialized")
         return runtime
 
     def _require_user_repo(request: Request):
@@ -178,7 +179,7 @@ def create_app(
     def _user_accounts_info(request: Request, runtime, user, credentials: list) -> AcctsInfo:
         try:
             exchange = _account_exchange_for_user(request, runtime, user, credentials)
-        except UserExchangeCredentialError as exc:
+        except (UserExchangeCredentialError, LiveAccountError) as exc:
             return AcctsInfo(total=0, balances=[], account_error=str(exc))
         except Exception as exc:
             return AcctsInfo(total=0, balances=[], account_error=f"交易所账户读取失败: {exc}")

@@ -544,15 +544,10 @@ def _parse_bind_addr(bind_addr: str | None) -> tuple[str, int]:
     return addr, 8000
 
 
-def run_api_mode(cfg: Config) -> None:
+def make_api_lifespan(container):
     from contextlib import asynccontextmanager
 
-    import uvicorn
-
-    from trader.adapters.inbound.http import create_app
     from trader.adapters.inbound.http.lifecycle import ApiServerLifecycle
-
-    container = compose_application(cfg)
 
     @asynccontextmanager
     async def api_lifespan(fast_app):
@@ -566,8 +561,18 @@ def run_api_mode(cfg: Config) -> None:
         yield
         await rpc_app.stop()
 
+    return api_lifespan
+
+
+def run_api_mode(cfg: Config) -> None:
+    import uvicorn
+
+    from trader.adapters.inbound.http import create_app
+
+    container = compose_application(cfg)
+
     host, port = _parse_bind_addr(cfg.api)
-    web_app = create_app(container, lifespan=api_lifespan)
+    web_app = create_app(container, lifespan=make_api_lifespan(container))
     uvicorn.run(
         web_app,
         host=host,

@@ -7,6 +7,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from trader.adapters.inbound.http import create_app
 from trader.adapters.inbound.http.routers.live import (
     current_task_workspace,
     dispatch_debug_manual_signal,
@@ -31,7 +32,6 @@ from trader.live.monitor import (
     build_live_strategy_summary,
     serialize_dashboard_event,
 )
-from trader.rpc.app import app as rpc_app
 from trader.strategy.trader_result import TraderResult
 from trader.task.task_config import TaskConfig
 from trader.task.task_type import TaskType
@@ -390,27 +390,26 @@ def test_live_api_http_smoke_lists_strategies_and_loads_snapshot():
     assert snapshot.json()["candles"][-1]["close"] == 102.0
 
 
+async def _no_task_states(user_id=None):
+    return []
+
+
 def test_admin_live_route_returns_monitor_layout():
-    import trader.adapters.inbound.http.lifecycle as rpc_app_module
-
-    rpc_app_module.os.kill = lambda pid, sig: None
-
-    async def _sleep(logger, seconds, desc):
-        await asyncio.sleep(0)
-
-    rpc_app_module.sleep = _sleep
-    rpc_app.state.app = SimpleNamespace(
+    composition = SimpleNamespace(
+        cfg=Config(api="127.0.0.1:0", tasks="[]", warmup_candles=20),
+        live_event_bus=None,
+        db_manager=FakeDb([_kline(BASE)]),
+        exchange=None,
         task_manager=SimpleNamespace(
             tasks={7: FakeTask()},
-            get_all_task_state=lambda user_id=None: [],
+            get_all_task_state=_no_task_states,
             get_task=lambda task_id: FakeTask() if task_id == 7 else None,
         ),
-        db_manager=FakeDb([_kline(BASE)]),
-        cfg=Config(warmup_candles=20),
+        logger=None,
+        version=lambda: "0.1.1",
     )
-    rpc_app.state.cfg = Config(api="127.0.0.1:0", tasks="[]")
 
-    with TestClient(rpc_app) as client:
+    with TestClient(create_app(composition)) as client:
         response = client.get("/admin/live")
 
     assert response.status_code == 200
@@ -421,26 +420,21 @@ def test_admin_live_route_returns_monitor_layout():
 
 
 def test_admin_dashboard_renders_task_monitor_navigation_without_klines_entry():
-    import trader.adapters.inbound.http.lifecycle as rpc_app_module
-
-    rpc_app_module.os.kill = lambda pid, sig: None
-
-    async def _sleep(logger, seconds, desc):
-        await asyncio.sleep(0)
-
-    rpc_app_module.sleep = _sleep
-    rpc_app.state.app = SimpleNamespace(
+    composition = SimpleNamespace(
+        cfg=Config(api="127.0.0.1:0", tasks="[]", warmup_candles=20),
+        live_event_bus=None,
+        db_manager=FakeDb([_kline(BASE)]),
+        exchange=None,
         task_manager=SimpleNamespace(
             tasks={7: FakeTask()},
-            get_all_task_state=lambda user_id=None: [],
+            get_all_task_state=_no_task_states,
             get_task=lambda task_id: FakeTask() if task_id == 7 else None,
         ),
-        db_manager=FakeDb([_kline(BASE)]),
-        cfg=Config(warmup_candles=20),
+        logger=None,
+        version=lambda: "0.1.1",
     )
-    rpc_app.state.cfg = Config(api="127.0.0.1:0", tasks="[]")
 
-    with TestClient(rpc_app) as client:
+    with TestClient(create_app(composition)) as client:
         response = client.get("/admin")
 
     assert response.status_code == 200

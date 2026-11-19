@@ -3,8 +3,8 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
+from trader.adapters.inbound.http import create_app
 from trader.adapters.inbound.http.queries import get_taskinfo
-from trader.rpc.app import app
 from trader.utils.task_state import TaskStateType
 
 
@@ -79,10 +79,18 @@ def test_admin_tasks_page_shows_pagination_controls_when_multiple_pages(monkeypa
             total_pages=3,
         )
 
-    monkeypatch.setattr("trader.rpc.app.current_user", _fake_current_user)
-    monkeypatch.setattr("trader.rpc.app.get_taskinfo", _fake_get_taskinfo)
-    app.state.app = SimpleNamespace()
-    client = TestClient(app)
+    composition = SimpleNamespace(
+        cfg=None,
+        live_event_bus=None,
+        db_manager=None,
+        exchange=None,
+        task_manager=None,
+        logger=None,
+        version=lambda: "0.1.1",
+        current_user_resolver=_fake_current_user,
+    )
+    monkeypatch.setattr("trader.adapters.inbound.http.factory.get_taskinfo", _fake_get_taskinfo)
+    client = TestClient(create_app(composition))
 
     response = client.get("/admin/tasks?page=2")
 
