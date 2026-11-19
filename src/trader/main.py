@@ -42,10 +42,10 @@ from trader.core.identity.exceptions import PasswordPolicyError
 from trader.core.identity.use_cases import BootstrapAdministrator, bootstrap_admin_exchange_credential
 from trader.core.notification.manager import NotifyManager
 from trader.core.shared.config import Config, default
+from trader.core.task.event_bus import LiveEventBus
 from trader.core.task.interfaces import TaskEventPublisher
 from trader.core.task.use_cases import PlanStartupTasks, RecoverRunningTasks
 from trader.core.task.use_cases.statistics import Statistics
-from trader.live.monitor import LiveEventBus
 from trader.task.backtrader_task import backtest_data_start_time
 from trader.task.live_startup_self_check import infer_required_margin_mode
 from trader.task.persisted_live_config_migration import assert_persisted_task_config_json_is_migrated

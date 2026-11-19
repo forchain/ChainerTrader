@@ -11,7 +11,7 @@ from trader.adapters.outbound.binance.exchange import BinanceExchange
 from trader.common.config import Config, new_and_env
 from trader.core.exchange.domain import parse_exchange_config
 from trader.core.shared.domain import Interval, SymbolInterval
-from trader.live.runtime import RealtimeLiveStrategyRuntime
+from trader.core.task.use_cases.realtime_runtime import RealtimeLiveStrategyRuntime
 from trader.live.stream import run_binance_kline_websocket_smoke
 from trader.task.task_config import TaskConfig
 from trader.task.task_type import TaskType

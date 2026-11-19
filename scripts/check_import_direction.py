@@ -20,7 +20,6 @@ LEGACY_SHIM_ADAPTER_ALLOWLIST = frozenset(
         "common/logger.py",
         "common/path.py",
         "live/market_data.py",
-        "live/runtime.py",
         "live/stream.py",
         "notify/notify_type.py",
         "notify/trade_notification.py",

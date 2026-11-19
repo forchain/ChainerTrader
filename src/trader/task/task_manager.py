@@ -20,6 +20,7 @@ from trader.common.logger import Logger
 from trader.common.message import new_add_tasks_msg, new_exit_msg, new_stat_msg
 from trader.core.exchange.domain import MarginMode
 from trader.core.exchange.use_cases import RouteExchangeForTask, base_exchange_config
+from trader.core.execution.use_cases import is_real_auto_mode
 from trader.core.optimization.use_cases.parameter_optimization import RunParameterOptimizationUseCase
 from trader.core.shared.domain import Symbol, SymbolInterval
 from trader.core.task.config import TaskConfig
@@ -36,7 +37,6 @@ from trader.core.task.use_cases import (
     StopUserRunningTasks,
     symbol_from_value,
 )
-from trader.live.auto_execution import is_real_auto_mode
 from trader.statistics.stat import BackTraderStat
 from trader.strategy.trader_result import parse_trader_result
 from trader.task.backtrader_task import (
