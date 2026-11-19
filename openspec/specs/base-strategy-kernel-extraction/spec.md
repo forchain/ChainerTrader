@@ -1,7 +1,7 @@
 # base-strategy-kernel-extraction Specification
 
 ## Purpose
-TBD - created by archiving change modularize-base-strategy-kernel. Update Purpose after archive.
+Defines the strategy kernel responsibilities extracted from BaseStrategy so strategies delegate signal and risk logic to testable core modules.
 ## Requirements
 ### Requirement: BaseStrategy Delegates Kernel Responsibilities
 `BaseStrategy` SHALL act as a Backtrader compatibility shell and strategy hook surface, while signal routing, trade lifecycle, risk computation, and execution orchestration are owned by dedicated framework modules.

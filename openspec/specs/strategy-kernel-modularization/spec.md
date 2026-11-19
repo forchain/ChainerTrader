@@ -1,7 +1,7 @@
 # strategy-kernel-modularization Specification
 
 ## Purpose
-TBD - created by archiving change decouple-execution-gateway-and-strategy-kernel. Update Purpose after archive.
+Defines the composable strategy kernel modules that replace the monolithic BaseStrategy internals.
 ## Requirements
 ### Requirement: Composable Strategy Kernel Modules
 The framework SHALL separate strategy runtime responsibilities into composable modules for signal processing, trade lifecycle state transitions, risk computation, and execution orchestration.

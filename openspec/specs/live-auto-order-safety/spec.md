@@ -1,7 +1,7 @@
 # live-auto-order-safety Specification
 
 ## Purpose
-TBD - created by archiving change staged-realtime-auto-trading. Update Purpose after archive.
+Defines the safety gates that must pass before a live task may place real automatic orders.
 ## Requirements
 ### Requirement: Real automatic order placement requires explicit staged mode selection
 The system SHALL place live exchange orders only when the task execution mode explicitly selects `auto_trade`. `manual_notify` MUST NOT call exchange order placement APIs. Removed modes such as `small_live_auto`, `full_live_auto`, `staged_auto_trade`, and `paper_auto` SHALL be rejected as unsupported and MUST NOT simulate or place orders.

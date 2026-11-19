@@ -1,7 +1,7 @@
 # live-cross-margin-short-execution Specification
 
 ## Purpose
-TBD - created by archiving change staged-realtime-auto-trading. Update Purpose after archive.
+Defines the safety conditions under which real cross-margin short execution is permitted.
 ## Requirements
 ### Requirement: Real short execution is disabled unless cross margin is explicitly selected
 The system SHALL disable real short order placement by default. Realtime real automatic modes SHALL place a real `SHORT` order only when the task explicitly configures `live_short_execution` as `margin_cross`.

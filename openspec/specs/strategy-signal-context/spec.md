@@ -1,7 +1,7 @@
 # strategy-signal-context Specification
 
 ## Purpose
-TBD - created by archiving change macd-triple-divergence-decoupling. Update Purpose after archive.
+Defines the unified interface strategies use to expose entry context to the framework.
 ## Requirements
 ### Requirement: 策略通过统一接口向框架提供入场上下文
 
