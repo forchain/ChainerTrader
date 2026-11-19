@@ -132,6 +132,7 @@ def test_console_runner_runs_startup_once_without_recovery_and_cleans_up():
         notify_mgr = SimpleNamespace(start=lambda: events.append("notify.start"), handler=lambda msg: None)
         stat = _FakeStat()
         task_manager = _FakeTaskManager()
+        strategy_loader = SimpleNamespace(load=lambda names: [object()])
         bootstrap_admin_fn = lambda *a, **k: asyncio.sleep(0)  # noqa: E731
         recovery_runner = SimpleNamespace(
             execute=lambda *a, **k: (_ for _ in ()).throw(AssertionError("console mode must not recover tasks"))

@@ -7,6 +7,19 @@ from trader.task.task_config import TaskConfig
 from trader.task.task_type import TaskType
 
 
+class _FakeStrategyLoader:
+    def __init__(self, loaded=True):
+        self.loaded = loaded
+        self.calls = []
+
+    def load(self, strategy_names):
+        self.calls.append(list(strategy_names))
+        return [object()] if self.loaded else None
+
+    def load_one(self, strategy_name):
+        return object() if self.loaded else None
+
+
 def _task(mode: str) -> TaskConfig:
     return TaskConfig(
         1,
@@ -61,6 +74,7 @@ def test_live_startup_self_check_reports_exchange_and_kline_and_short_capability
     result = evaluate_live_startup_self_check(
         exchange=exchange,
         tasks=[_task("BOTH")],
+        strategy_loader=_FakeStrategyLoader(),
     )
 
     assert result.passed
@@ -96,8 +110,44 @@ def test_live_startup_self_check_skips_kline_probe_for_backtests():
     result = evaluate_live_startup_self_check(
         exchange=FakeExchange(),
         tasks=[task],
+        strategy_loader=_FakeStrategyLoader(),
     )
 
     assert result.passed
     assert result.kline_checks == []
     assert result.klines_available is True
+
+
+def test_live_startup_self_check_uses_injected_strategy_loader():
+    class FakeExchange:
+        margin_mode = MarginMode.SPOT
+
+        def ping(self):
+            return True
+
+        def time(self):
+            return SimpleNamespace()
+
+        def get_latest_klines(self, symbol_interval, limit):
+            return [SimpleNamespace(open_time=1)]
+
+    loader = _FakeStrategyLoader(loaded=False)
+    result = evaluate_live_startup_self_check(
+        exchange=FakeExchange(),
+        tasks=[_task("LONG_ONLY")],
+        strategy_loader=loader,
+    )
+
+    assert loader.calls == [["macd_triple_divergence"]]
+    assert result.passed is False
+    assert "strategy_load_failed" in result.details
+
+
+def test_backtrader_strategy_catalog_loads_real_strategy_classes():
+    from trader.adapters.outbound.backtrader.catalog import BacktraderStrategyCatalog
+
+    catalog = BacktraderStrategyCatalog()
+
+    assert [cls.__name__ for cls in catalog.load(["ShihunRSI2"])] == ["ShihunRSI2Strategy"]
+    assert catalog.load_one("macd_triple_divergence").__name__ == "MacdTripleDivergenceStrategy"
+    assert "ShihunRSI2" in catalog.list_options()

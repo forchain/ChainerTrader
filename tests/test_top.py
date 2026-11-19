@@ -3,7 +3,7 @@ import os
 import pytest
 from dotenv import load_dotenv
 
-from trader.utils.top import get_symbol_top, write_symbols_top100_config
+from trader.adapters.outbound.binance.symbol_source import get_symbol_top, write_symbols_top100_config
 
 
 def test_get_symbol_top100():

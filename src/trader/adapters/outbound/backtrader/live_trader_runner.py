@@ -7,6 +7,7 @@ import contextvars
 from datetime import datetime, timedelta
 from typing import Any, Callable
 
+from trader.adapters.outbound.backtrader.catalog import parse_strategies
 from trader.adapters.outbound.backtrader.live_runtime import BacktraderLiveRunner
 from trader.core.exchange.interfaces import ExchangeClient
 from trader.core.execution import ExecutionGateway, ExecutionStateStore
@@ -40,7 +41,6 @@ from trader.live.dashboard import (
     strategy_execution_event,
 )
 from trader.live.market_data import BackfillRequestKind, plan_initial_backfill
-from trader.strategy.strategy import parse_strategies
 from trader.strategy.trader_result import TraderResult
 
 REALTIME_STREAM_QUEUE_TIMEOUT_SECONDS = 1.0

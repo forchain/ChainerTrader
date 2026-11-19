@@ -6,6 +6,7 @@ from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime
 from pathlib import Path
 
+from trader.adapters.outbound.backtrader.dataset_feed import BacktraderDatasetFeedLoader
 from trader.adapters.outbound.backtrader.optimization_runner import ProcessPoolBacktestRunner
 from trader.adapters.outbound.binance.exchange import BinanceExchange
 from trader.adapters.outbound.execution_gateway_factory import build_execution_gateway
@@ -47,7 +48,6 @@ from trader.task.backtrader_task import (
 from trader.task.base_task import BaseTask
 from trader.task.check_klines_num_task import CheckKlinesNumTask
 from trader.task.check_klines_task import CheckKlinesTask
-from trader.task.dataset_resolver import DatasetResolver
 from trader.task.debug_task import DebugTask
 from trader.task.import_csv_task import ImportCSVTask
 from trader.task.live_startup_self_check import infer_required_margin_mode, task_requires_short_capability
@@ -466,7 +466,7 @@ class TaskManager:
                 dataset_download_request_budget=self._optimization_dataset_download_request_budget(),
                 sample_timeout_seconds=self._optimization_sample_timeout_seconds(),
                 process_pool_factory=ProcessPoolExecutor,
-                dataset_resolver_cls=DatasetResolver,
+                dataset_resolver_cls=BacktraderDatasetFeedLoader,
             )
         return ProcessPoolBacktestRunner(
             cfg=self.cfg,
@@ -480,7 +480,7 @@ class TaskManager:
             dataset_download_request_budget=self._optimization_dataset_download_request_budget(),
             sample_timeout_seconds=self._optimization_sample_timeout_seconds(),
             process_pool_factory=ProcessPoolExecutor,
-            dataset_resolver_cls=DatasetResolver,
+            dataset_resolver_cls=BacktraderDatasetFeedLoader,
         )
 
     def _optimization_use_case(self, backtest_runner=None) -> RunParameterOptimizationUseCase:
@@ -607,7 +607,7 @@ class TaskManager:
 
     async def _prepare_dataset_job(
         self,
-        resolver: DatasetResolver,
+        resolver: BacktraderDatasetFeedLoader,
         symbol_interval,
         start_time: int,
         end_time: int,

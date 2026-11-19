@@ -278,3 +278,7 @@ def parse_task_config_payload(
 def parse_task_config_json(raw: str, last_task_id: int = 0, **kwargs: Any) -> list[TaskConfig]:
     """Parse an inline JSON task-config document."""
     return parse_task_config_payload(json.loads(raw), last_task_id, **kwargs)
+
+
+def get_symbols(tcfgs: list[TaskConfig]) -> list[str]:
+    return [tcfg.symbol_interval.symbol() for tcfg in tcfgs]

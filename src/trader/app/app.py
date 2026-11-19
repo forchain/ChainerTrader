@@ -151,7 +151,9 @@ class App:
             else:
                 startup_taskcs = await self._startup_task_configs_to_start()
                 if self.exchange and startup_taskcs:
-                    self.startup_self_check = evaluate_live_startup_self_check(self.exchange, startup_taskcs)
+                    self.startup_self_check = evaluate_live_startup_self_check(
+                        self.exchange, startup_taskcs, strategy_loader=self._container.strategy_loader
+                    )
                     self.logger.info(f"Startup self-check: {self.startup_self_check.summary()}", LogTag.PRIVATE)
                     if not self.startup_self_check.passed:
                         self.logger.warning(f"Startup self-check details: {self.startup_self_check.to_dict()}", LogTag.PRIVATE)

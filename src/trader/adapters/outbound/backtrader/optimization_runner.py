@@ -8,6 +8,11 @@ from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeoutError
 from typing import Any, Callable
 
+from trader.adapters.outbound.backtrader.dataset_feed import (
+    BacktraderDatasetFeedLoader,
+    DatasetPreparationFailure,
+    DatasetPreparationResult,
+)
 from trader.core.optimization.domain import make_param_id
 from trader.task.backtrader_task import (
     BacktestSampleResult,
@@ -15,17 +20,12 @@ from trader.task.backtrader_task import (
     build_backtest_sample_spec,
     run_backtest_sample,
 )
-from trader.task.dataset_resolver import (
-    DatasetPreparationFailure,
-    DatasetPreparationResult,
-    DatasetResolver,
-)
 from trader.task.task_config import parse_task_config
 from trader.task.task_type import TaskType
 
 
 class ProcessPoolBacktestRunner:
-    """Adapter implementing BacktestRunner using DatasetResolver and ProcessPoolExecutor."""
+    """Adapter implementing BacktestRunner using BacktraderDatasetFeedLoader and ProcessPoolExecutor."""
 
     def __init__(
         self,
@@ -41,7 +41,7 @@ class ProcessPoolBacktestRunner:
         dataset_download_request_budget: int | None = None,
         sample_timeout_seconds: float | None = None,
         process_pool_factory: Any = ProcessPoolExecutor,
-        dataset_resolver_cls: Any = DatasetResolver,
+        dataset_resolver_cls: Any = BacktraderDatasetFeedLoader,
     ):
         self.cfg = cfg
         self.db_manager = db_manager
@@ -118,7 +118,7 @@ class ProcessPoolBacktestRunner:
             )
 
         async def default_prepare_job(
-            resolver: DatasetResolver,
+            resolver: BacktraderDatasetFeedLoader,
             symbol_interval,
             start_time: int,
             end_time: int,
@@ -287,7 +287,7 @@ class ProcessPoolBacktestRunner:
         if cfg_obj.param_id is None:
             cfg_obj.param_id = make_param_id(cfg_obj.strategy_params)
         data_start_time = backtest_data_start_time(self.cfg, cfg_obj)
-        resolver = DatasetResolver(self.db_manager, self.exchange, self.log)
+        resolver = BacktraderDatasetFeedLoader(self.db_manager, self.exchange, self.log)
         prepare_result = await resolver.prepare(
             cfg_obj.symbol_interval,
             data_start_time,

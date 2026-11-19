@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Callable
 
+from trader.adapters.outbound.backtrader.catalog import parse_strategies
 from trader.adapters.outbound.backtrader.csvdata import BinanceCSVData
 from trader.adapters.outbound.backtrader.data import BinanceData
 from trader.adapters.outbound.backtrader.node import Node
@@ -22,7 +23,6 @@ from trader.core.shared.domain import get_time_duration
 from trader.core.task.config import TaskConfig
 from trader.core.task.domain import TaskState, TaskStateType, task_state_name
 from trader.core.task.interfaces import TaskRepository
-from trader.strategy.strategy import parse_strategies
 
 
 def backtest_data_start_time(cfg: Any, tcfg: TaskConfig) -> int:

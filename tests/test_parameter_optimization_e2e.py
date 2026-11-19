@@ -3,9 +3,9 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
+from trader.adapters.outbound.backtrader.dataset_feed import BacktraderDatasetFeedLoader as DatasetResolver
 from trader.common.config import Config
 from trader.core.shared.domain import Interval, Kline, SymbolInterval
-from trader.task.dataset_resolver import DatasetResolver
 from trader.task.optimization_report import write_optimization_artifacts
 from trader.task.task_config import parse_task_config
 from trader.task.task_manager import TaskManager

@@ -89,3 +89,19 @@ class TaskEventPublisher(Protocol):
     """Port for publishing live task dashboard/runtime events."""
 
     async def publish(self, event: Any) -> Any: ...
+
+
+@runtime_checkable
+class TaskConfigSourceLoader(Protocol):
+    """Port for loading task configuration from files or inline JSON."""
+
+    def load_configs(
+        self,
+        source: str,
+        *,
+        last_task_id: int = 0,
+        min_live_trade_notional: float = 11.0,
+    ) -> list[Any]: ...
+
+    def read_source_text(self, source: str) -> str: ...
+    def source_exists(self, source: str) -> bool: ...

@@ -14,7 +14,11 @@ from dotenv import load_dotenv
 
 from trader.adapters.inbound.cli.env_config import new_and_env
 from trader.adapters.outbound.backtrader.backtest_runner import BacktestTaskRunner
-from trader.adapters.outbound.backtrader.catalog import list_strategy_options, strategy_param_defaults
+from trader.adapters.outbound.backtrader.catalog import (
+    BacktraderStrategyCatalog,
+    list_strategy_options,
+    strategy_param_defaults,
+)
 from trader.adapters.outbound.backtrader.live_trader_runner import LiveTraderTaskRunner
 from trader.adapters.outbound.backtrader.optimization_runner import ProcessPoolBacktestRunner
 from trader.adapters.outbound.binance.exchange import BinanceExchange
@@ -24,6 +28,7 @@ from trader.adapters.outbound.files.optimization_store import (
     FileRankingReportStore,
     FileTaskConfigFileStore,
 )
+from trader.adapters.outbound.files.task_config_loader import FileTaskConfigSourceLoader
 from trader.adapters.outbound.logging.logger import Logger
 from trader.adapters.outbound.persistence.manager import DatabaseManager, DatabaseSchemaError
 from trader.auth.bootstrap import bootstrap_admin_exchange_credential
@@ -79,6 +84,8 @@ class AppContainer:
     live_trader_runner_cls: type[LiveTraderTaskRunner] = LiveTraderTaskRunner
     strategy_options: Callable[[], list[str]] = list_strategy_options
     strategy_param_defaults: Callable[[str], dict] = strategy_param_defaults
+    strategy_loader: Any = None
+    task_config_loader: Any = None
 
 
 def compose_application(
@@ -218,6 +225,8 @@ def compose_application(
         secret_key_ready_fn=lambda: service_key_available(getattr(cfg, "secret_key", None)),
         strategy_options=list_strategy_options,
         strategy_param_defaults=strategy_param_defaults,
+        strategy_loader=BacktraderStrategyCatalog(),
+        task_config_loader=FileTaskConfigSourceLoader(),
     )
 
 

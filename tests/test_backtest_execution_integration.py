@@ -108,7 +108,7 @@ def test_backtrader_task_start_uses_dataset_resolver_for_db_backtests(monkeypatc
                 klines = await get_klines("BTCUSDT-1h", dataset_ref.start_time, dataset_ref.end_time)
                 return BinanceData(klines)
 
-        monkeypatch.setattr("trader.task.backtrader_task.DatasetResolver", FakeResolver)
+        monkeypatch.setattr("trader.task.backtrader_task.BacktraderDatasetFeedLoader", FakeResolver)
         monkeypatch.setattr("trader.task.backtrader_task.parse_strategies", lambda strategies: ["fake-strategy"])
 
         tcfg = TaskConfig(
@@ -166,7 +166,7 @@ def test_task_manager_prepares_shared_dataset_once_for_same_dataset_key(monkeypa
                     ),
                 )
 
-        monkeypatch.setattr("trader.task.task_manager.DatasetResolver", FakeResolver)
+        monkeypatch.setattr("trader.task.task_manager.BacktraderDatasetFeedLoader", FakeResolver)
 
         cfg = Config()
         task_manager = TaskManager(cfg, DummyLog(), db_manager=SimpleNamespace(kline=SimpleNamespace()), exchange=SimpleNamespace())

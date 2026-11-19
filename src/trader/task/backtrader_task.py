@@ -12,6 +12,7 @@ from trader.adapters.outbound.backtrader.backtest_runner import (
 from trader.adapters.outbound.backtrader.backtest_runner import (
     backtest_data_start_time as _backtest_data_start_time,
 )
+from trader.adapters.outbound.backtrader.dataset_feed import BacktraderDatasetFeedLoader, DatasetRef
 from trader.adapters.outbound.backtrader.node import Node
 from trader.adapters.outbound.binance.exchange import BinanceExchange
 from trader.adapters.outbound.files.dataset import CsvDatasetFileStore
@@ -25,7 +26,6 @@ from trader.statistics.stat import BackTraderStat
 from trader.strategy.strategy import parse_strategies
 from trader.strategy.trader_result import TraderResult, parse_trader_result
 from trader.task.base_task import BaseTask
-from trader.task.dataset_resolver import DatasetRef, DatasetResolver
 from trader.task.task_config import TaskConfig
 
 
@@ -117,7 +117,7 @@ def _build_csv_data_for_spec(spec: BacktestSampleSpec):
     if spec.data_path is None:
         raise ValueError(f"missing CSV path for backtest sample task_id={spec.task_id}")
     data_start_time = spec.data_start_time if spec.data_start_time is not None else spec.start_time
-    return DatasetResolver.build_csv_feed(
+    return BacktraderDatasetFeedLoader.build_csv_feed(
         spec.data_path,
         data_start_time=data_start_time,
         end_time=spec.end_time,
@@ -137,7 +137,7 @@ async def _build_db_data_for_spec(spec: BacktestSampleSpec, cfg: Config, logger:
             start_time=data_start_time,
             end_time=spec.end_time,
         )
-        return await DatasetResolver(db_manager, None, logger).load_backtest_feed(dataset_ref)
+        return await BacktraderDatasetFeedLoader(db_manager, None, logger).load_backtest_feed(dataset_ref)
     finally:
         await db_manager.stop()
 
@@ -272,7 +272,7 @@ class BackTraderTask(BaseTask):
 
         kline_repo = self.db_manager.kline if self.db_manager is not None else None
         availability_store = getattr(self.db_manager, "availability", None) if self.db_manager is not None else None
-        resolver = DatasetResolver(self.db_manager, self.exchange, self.log) if self.db_manager is not None else None
+        resolver = BacktraderDatasetFeedLoader(self.db_manager, self.exchange, self.log) if self.db_manager is not None else None
         runner = BacktestTaskRunner(
             cfg=self.cfg,
             log=self.log,

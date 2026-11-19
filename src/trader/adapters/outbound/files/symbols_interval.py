@@ -1,13 +1,13 @@
 import os
 
-from trader.common import path
+from trader.adapters.outbound.files import paths
 from trader.core.shared.domain import Interval, SymbolInterval
 
 
 class SymbolsInterval:
     def __init__(self, symbols: str, interval: Interval):
         symbol_list = []
-        file_path = path.get_file_path(symbols)
+        file_path = paths.get_file_path(symbols)
         if os.path.isfile(file_path):
             try:
                 with open(file_path, "r", encoding="utf-8") as file:

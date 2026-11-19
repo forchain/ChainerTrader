@@ -9,7 +9,7 @@ from typing import Any
 from trader.core.shared.domain import NAME
 from trader.core.shared.logging import LogTag
 from trader.core.shared.messages import Message, new_exit_msg
-from trader.task.live_startup_self_check import evaluate_live_startup_self_check
+from trader.core.task.use_cases.startup_self_check import evaluate_live_startup_self_check
 
 
 class ConsoleRunner:
@@ -100,7 +100,9 @@ class ConsoleRunner:
         msgs: list[Message] = []
         if self.task_manager:
             if self.exchange and self.tasks_cfg:
-                self_check = evaluate_live_startup_self_check(self.exchange, self.tasks_cfg)
+                self_check = evaluate_live_startup_self_check(
+                    self.exchange, self.tasks_cfg, strategy_loader=self.container.strategy_loader
+                )
                 self.logger.info(f"Startup self-check: {self_check.summary()}", LogTag.PRIVATE)
                 if not self_check.passed:
                     self.logger.warning(f"Startup self-check details: {self_check.to_dict()}", LogTag.PRIVATE)
