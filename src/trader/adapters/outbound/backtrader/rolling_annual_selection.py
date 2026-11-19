@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 
 from trader.adapters.outbound.backtrader.optimization_runner import ProcessPoolBacktestRunner
 from trader.adapters.outbound.binance.exchange import BinanceExchange
+from trader.adapters.outbound.files.auto_coin_selection import DEFAULT_CONFIG_PATH
 from trader.adapters.outbound.files.optimization_store import FileRankingReportStore, FileTaskConfigFileStore
 from trader.adapters.outbound.persistence.manager import DatabaseManager
 from trader.common.config import TRADER_DB, TRADER_EXCHANGE, TRADER_WARMUP_CANDLES, Config
@@ -24,7 +25,6 @@ from trader.core.optimization.domain import (
     compounded_return_pct as _compounded_return_pct,
 )
 from trader.core.optimization.use_cases.selection import RollingAnnualSelectionUseCase
-from trader.tools.auto_coin_selection import DEFAULT_CONFIG_PATH
 
 DEFAULT_YEAR = 2025
 DEFAULT_REPORT_ID = "rolling_annual_selection_2025_cmc20"

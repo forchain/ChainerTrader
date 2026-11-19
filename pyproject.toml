@@ -42,7 +42,7 @@ build-backend = "setuptools.build_meta"
 
 [project.scripts]
 trader = "trader.main:main"
-trader-db = "trader.tools.db:main"
+trader-db = "trader.adapters.inbound.cli.db:main"
 
 [tool.setuptools]
 include-package-data = true

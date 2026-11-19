@@ -24,17 +24,9 @@ LEGACY_SHIM_ADAPTER_ALLOWLIST = frozenset(
         "notify/notify_type.py",
         "notify/trade_notification.py",
         "task/optimization_audit.py",
-        "task/optimization_audit_workflow.py",
-        "task/optimization_report.py",
         "task/optimization_runtime.py",
         "task/optimization_workbench.py",
         "task/task_config.py",
-        "tools/auto_coin_selection.py",
-        "tools/binance_live_smoke.py",
-        "tools/db.py",
-        "tools/live_signal_reconciliation.py",
-        "tools/optimization_status.py",
-        "tools/rolling_annual_auto_selection.py",
     }
 )
 

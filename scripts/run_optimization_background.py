@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from trader.tools.optimization_background import launch_background_run
+from trader.adapters.inbound.cli.optimization_background import launch_background_run
 
 
 def parse_args() -> argparse.Namespace:

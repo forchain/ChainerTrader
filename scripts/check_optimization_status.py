@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from trader.tools.optimization_status import build_status
+from trader.adapters.outbound.files.optimization_status import build_status
 
 
 def parse_args() -> argparse.Namespace:

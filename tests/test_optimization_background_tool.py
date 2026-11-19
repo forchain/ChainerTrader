@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from trader.tools.optimization_background import launch_background_run
+from trader.adapters.inbound.cli.optimization_background import launch_background_run
 
 
 class DummyProcess:

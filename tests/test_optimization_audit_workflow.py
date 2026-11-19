@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from trader.task.optimization_audit_workflow import run_optimization_audit
+from trader.adapters.outbound.files.optimization_store import run_optimization_audit
 
 
 def _write_run_report(run_dir: Path, name: str, payload: dict) -> None:

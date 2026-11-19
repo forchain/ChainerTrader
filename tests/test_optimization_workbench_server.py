@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from trader.tools.optimization_workbench_server import build_workbench_url
+from trader.adapters.inbound.http.workbench_server import build_workbench_url
 
 
 def test_build_workbench_url_points_to_shared_static_app():

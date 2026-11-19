@@ -1,4 +1,4 @@
-from trader.tools.rolling_annual_auto_selection import _compounded_return_pct, monthly_windows
+from trader.adapters.outbound.backtrader.rolling_annual_selection import _compounded_return_pct, monthly_windows
 
 
 def test_monthly_windows_2025_are_calendar_aligned():

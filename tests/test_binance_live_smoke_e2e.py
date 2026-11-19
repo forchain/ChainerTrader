@@ -6,10 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from trader.adapters.outbound.binance.exchange import BinanceExchange
-from trader.core.exchange.domain import ExchangeConfig, ExchangeDriverType
-from trader.core.execution import GatewayCapability
-from trader.core.shared.domain import Operate, OperateType, Symbol
-from trader.tools.binance_live_smoke import (
+from trader.adapters.outbound.binance.live_smoke import (
     LiveSmokeReport,
     _attach_breakeven_update,
     _cancel_all_open_orders,
@@ -27,6 +24,9 @@ from trader.tools.binance_live_smoke import (
     _verify_replace_protection,
     run_binance_live_smoke_from_env,
 )
+from trader.core.exchange.domain import ExchangeConfig, ExchangeDriverType
+from trader.core.execution import GatewayCapability
+from trader.core.shared.domain import Operate, OperateType, Symbol
 
 
 @pytest.mark.skipif(
@@ -277,7 +277,7 @@ def test_preflight_exchange_fails_when_open_protection_orders_exist_without_canc
 
     report = LiveSmokeReport(symbol="BTCUSDT", notional=11.0, spot_enabled=True, margin_enabled=True)
     with pytest.raises(RuntimeError, match="does not support cancel_all_open_orders"):
-        from trader.tools.binance_live_smoke import _preflight_exchange
+        from trader.adapters.outbound.binance.live_smoke import _preflight_exchange
 
         _preflight_exchange(FakeExchange(), Symbol("BTC-USDT"), Decimal("11"), require_margin=False, report=report)
 
@@ -305,7 +305,7 @@ def test_preflight_exchange_auto_cleans_orders_before_failing():
         def is_cross_margin_ready(self):
             return True
 
-    from trader.tools.binance_live_smoke import _preflight_exchange
+    from trader.adapters.outbound.binance.live_smoke import _preflight_exchange
 
     exchange = FakeExchange()
     report = LiveSmokeReport(symbol="BTCUSDT", notional=11.0, spot_enabled=True, margin_enabled=True)

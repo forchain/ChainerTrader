@@ -10,7 +10,7 @@ def test_trader_db_migrate_initializes_required_schema_for_new_sqlite_db(tmp_pat
     env = {**os.environ, "TRADER_DB": db_url}
 
     result = subprocess.run(
-        [sys.executable, "-m", "trader.tools.db", "migrate"],
+        [sys.executable, "-m", "trader.adapters.inbound.cli.db", "migrate"],
         env=env,
         text=True,
         capture_output=True,

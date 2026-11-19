@@ -8,7 +8,8 @@ import backtrader as bt
 from trader.adapters.outbound.backtrader.analyzers.backtest_report import BacktestReportAnalyzer
 from trader.adapters.outbound.backtrader.csvdata import BinanceCSVData
 from trader.adapters.outbound.backtrader.macd_triple_divergence import MacdTripleDivergenceStrategy
-from trader.task.optimization_report import build_optimization_artifacts, write_optimization_artifacts
+from trader.adapters.outbound.files.optimization_store import write_optimization_artifacts
+from trader.core.optimization.domain import build_optimization_artifacts
 
 
 class _SilentReportStrategy(MacdTripleDivergenceStrategy):

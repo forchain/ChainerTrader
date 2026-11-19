@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from trader.tools.runtime_context import validate_runtime_context
+from trader.adapters.inbound.cli.runtime_context import validate_runtime_context
 
 
 def test_validate_runtime_context_reports_missing_env_file(tmp_path: Path):

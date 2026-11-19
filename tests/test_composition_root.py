@@ -11,7 +11,7 @@ def test_pyproject_scripts_point_to_composition_root_and_db_tool():
     pyproject = tomllib.loads((repo_root / "pyproject.toml").read_text(encoding="utf-8"))
     scripts = pyproject["project"]["scripts"]
     assert scripts["trader"] == "trader.main:main"
-    assert scripts["trader-db"] == "trader.tools.db:main"
+    assert scripts["trader-db"] == "trader.adapters.inbound.cli.db:main"
 
 
 def test_compose_application_wires_container_and_promotes_short_margin_mode(monkeypatch):

@@ -121,7 +121,7 @@ def _acceptance_env(port: int, db_path: Path, log_path: Path, *, mode: str) -> d
 
 
 def _migrate(env: dict[str, str]) -> None:
-    result = _run([sys.executable, "-m", "trader.tools.db", "migrate"], env=env, timeout=60)
+    result = _run([sys.executable, "-m", "trader.adapters.inbound.cli.db", "migrate"], env=env, timeout=60)
     if result.returncode != 0:
         raise RuntimeError(f"migration failed\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}")
 

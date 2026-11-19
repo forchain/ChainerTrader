@@ -11,6 +11,7 @@ from trader.adapters.outbound.files.optimization_html import (
     write_workbench_html,
 )
 from trader.core.optimization.domain import TERMINAL_STAGES, build_optimization_artifacts
+from trader.core.optimization.use_cases.audit import RunOptimizationAuditUseCase
 
 
 def _utc_now_iso() -> str:
@@ -324,3 +325,21 @@ class FileOptimizationRuntimeStatus:
 
 def _write_json(path: Path, payload: Any) -> None:
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def write_optimization_artifacts(
+    base_dir: str | Path,
+    optimization_run_id: str,
+    sample_reports: list[dict],
+    failures: list[dict],
+) -> Path:
+    store = FileRankingReportStore(base_dir)
+    store.write_artifacts(optimization_run_id, sample_reports, failures)
+    return store.run_dir(optimization_run_id)
+
+
+def run_optimization_audit(base_dir: str | Path, run_id: str, *, block_on_failure: bool = True) -> dict[str, Any]:
+    return RunOptimizationAuditUseCase(FileRankingReportStore(base_dir)).execute(
+        run_id,
+        block_on_failure=block_on_failure,
+    )

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from trader.tools.live_operational_verify import verify_log
+from trader.adapters.inbound.cli.live_operational_verify import verify_log
 
 
 def _write_log(tmp_path: Path, text: str) -> Path:

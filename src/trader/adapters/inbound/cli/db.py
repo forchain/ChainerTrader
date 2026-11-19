@@ -3,8 +3,6 @@ from __future__ import annotations
 import subprocess
 import sys
 
-from trader.adapters.outbound.persistence.config import TORTOISE_ORM
-
 CONFIG_PATH = "trader.adapters.outbound.persistence.config.TORTOISE_ORM"
 
 
@@ -14,8 +12,6 @@ def main() -> int:
         print("Usage: trader-db <init|makemigrations|migrate|history|heads|sqlmigrate|downgrade> [args...]")
         return 2
 
-    # Importing TORTOISE_ORM here ensures packaging tools include the config module.
-    _ = TORTOISE_ORM
     cmd = ["tortoise", "-c", CONFIG_PATH, *args]
     return subprocess.call(cmd)
 
