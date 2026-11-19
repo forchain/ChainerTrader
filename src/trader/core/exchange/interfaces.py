@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Protocol, runtime_checkable
 
-from trader.core.exchange.domain import Balance, PositionView, ProtectionOrderView
+from trader.core.exchange.domain import Balance, ExchangeConfig, PositionView, ProtectionOrderView
 from trader.core.shared.domain import Kline, OperateType, Symbol, SymbolInterval
 
 
@@ -123,3 +123,23 @@ class ExchangeCredentialRepository(Protocol):
     async def list_by_user(self, user_id: int) -> list[ExchangeCredential]: ...
 
     async def delete_for_user(self, credential_id: int, user_id: int) -> bool: ...
+
+
+@runtime_checkable
+class ExchangeFactory(Protocol):
+    """Port for constructing an exchange client from an exchange config."""
+
+    def __call__(self, exchange_cfg: ExchangeConfig, log: Any = None) -> ExchangeClient: ...
+
+
+@runtime_checkable
+class CredentialConnectivityValidator(Protocol):
+    """Port for validating user-supplied exchange credential connectivity."""
+
+    def __call__(
+        self,
+        base_cfg: ExchangeConfig | None,
+        exchange_name: str,
+        api_key: str,
+        api_secret: str,
+    ) -> str | None: ...

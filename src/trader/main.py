@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import os
 from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor
@@ -22,11 +23,14 @@ from trader.adapters.outbound.backtrader.catalog import (
 )
 from trader.adapters.outbound.backtrader.live_trader_runner import LiveTraderTaskRunner
 from trader.adapters.outbound.backtrader.optimization_runner import ProcessPoolBacktestRunner
-from trader.adapters.outbound.backtrader.sample_worker import backtest_data_start_time
+from trader.adapters.outbound.backtrader.sample_worker import backtest_data_start_time, build_backtest_sample_spec, process_backtrader
 from trader.adapters.outbound.backtrader.signal_scanner import BacktraderSignalScanRunner
-from trader.adapters.outbound.binance.exchange import BinanceExchange
+from trader.adapters.outbound.backtrader.task_handles import BacktestTaskHandle, LiveTraderTaskHandle
+from trader.adapters.outbound.binance.exchange import BinanceExchange, get_oldest_time
 from trader.adapters.outbound.email.config import parse_notice_config
 from trader.adapters.outbound.execution_gateway_factory import build_execution_gateway
+from trader.adapters.outbound.files import paths as path
+from trader.adapters.outbound.files.dataset import CsvDatasetFileStore
 from trader.adapters.outbound.files.optimization_store import (
     FileOptimizationRuntimeStatus,
     FileRankingReportStore,
@@ -37,15 +41,23 @@ from trader.adapters.outbound.identity.argon2_hasher import Argon2PasswordHasher
 from trader.adapters.outbound.identity.fernet_cipher import FernetSecretCipher, service_key_available
 from trader.adapters.outbound.logging.logger import Logger
 from trader.adapters.outbound.persistence.manager import DatabaseManager, DatabaseSchemaError
-from trader.common import path
 from trader.core.exchange.domain import ExchangeType, MarginMode, parse_exchange_config
 from trader.core.identity.exceptions import PasswordPolicyError
 from trader.core.identity.use_cases import BootstrapAdministrator, bootstrap_admin_exchange_credential
 from trader.core.notification.manager import NotifyManager
 from trader.core.shared.config import Config, default
+from trader.core.shared.logging import LogTag
 from trader.core.task.event_bus import LiveEventBus
 from trader.core.task.interfaces import TaskEventPublisher
+from trader.core.task.runtime_task import RunnerTaskHandle
 from trader.core.task.use_cases import PlanStartupTasks, RecoverRunningTasks
+from trader.core.task.use_cases.data_tasks import (
+    CheckKlinesNumTaskRunner,
+    CheckKlinesTaskRunner,
+    DebugTaskRunner,
+    ImportCsvTaskRunner,
+    UpdateKlinesTaskRunner,
+)
 from trader.core.task.use_cases.statistics import Statistics
 from trader.task.live_startup_self_check import infer_required_margin_mode
 from trader.task.persisted_live_config_migration import assert_persisted_task_config_json_is_migrated
@@ -90,6 +102,106 @@ class AppContainer:
     task_config_loader: Any = None
 
 
+class _MainTaskRunnerFactory:
+    """Composition-root factory mapping task types to concrete managed task handles."""
+
+    def __init__(self, cfg: Config, log: Any, db_manager: Any, event_publisher: TaskEventPublisher | None, execution_gateway_factory):
+        self.cfg = cfg
+        self.log = log
+        self.db_manager = db_manager
+        self.event_publisher = event_publisher
+        self._execution_gateway_factory = execution_gateway_factory
+
+    def build(self, cfg: TaskConfig, exchange: Any):
+        task_repository = getattr(self.db_manager, "task", None)
+        if cfg.ttype == TaskType.TRADER:
+            return LiveTraderTaskHandle(
+                cfg,
+                self.cfg,
+                self.log,
+                self.db_manager,
+                exchange,
+                event_publisher=self.event_publisher,
+                execution_gateway_factory=self._execution_gateway_factory,
+            )
+        if cfg.ttype == TaskType.BACK_TRADER:
+            return BacktestTaskHandle(cfg, self.cfg, self.log, self.db_manager, exchange)
+
+        def runner_handle(runner, *, include_symbol_in_name: bool = True):
+            return RunnerTaskHandle(
+                runner=runner,
+                tcfg=cfg,
+                cfg=self.cfg,
+                log=self.log,
+                task_repository=task_repository,
+                exchange=exchange,
+                include_symbol_in_name=include_symbol_in_name,
+            )
+
+        if cfg.ttype == TaskType.UPDATE_KLINES:
+            if not exchange or not self.db_manager:
+                self.log.error(f"Missing exchange or db for {cfg.to_dict()}")
+                return None
+            return runner_handle(
+                UpdateKlinesTaskRunner(
+                    kline_repository=self.db_manager.kline,
+                    market_data_client=exchange,
+                    availability_store=getattr(self.db_manager, "availability", None),
+                    task_repository=task_repository,
+                    log=self.log,
+                    oldest_time_ts=int(get_oldest_time().timestamp()),
+                )
+            )
+        if cfg.ttype == TaskType.CHECK_KLINES:
+            if not self.db_manager:
+                self.log.error(f"No config db_uri for {cfg.to_dict()}")
+                return None
+            return runner_handle(CheckKlinesTaskRunner(kline_repository=self.db_manager.kline, task_repository=task_repository, log=self.log))
+        if cfg.ttype == TaskType.CHECK_KLINES_NUM:
+            if not self.db_manager:
+                self.log.error(f"No config db_uri for {cfg.to_dict()}")
+                return None
+            return runner_handle(
+                CheckKlinesNumTaskRunner(kline_repository=self.db_manager.kline, task_repository=task_repository, log=self.log)
+            )
+        if cfg.ttype == TaskType.IMPORT_CSV:
+            if not cfg.csv or not self.db_manager:
+                self.log.error(f"Missing data_file or db_uri for {cfg.to_dict()}")
+                return None
+            return runner_handle(
+                ImportCsvTaskRunner(
+                    kline_repository=self.db_manager.kline,
+                    file_store=CsvDatasetFileStore(),
+                    task_repository=task_repository,
+                    data_dir=path.GetDataDir(),
+                    log=self.log,
+                )
+            )
+        if cfg.ttype == TaskType.DEBUG:
+            return runner_handle(DebugTaskRunner(task_repository=task_repository, log=self.log), include_symbol_in_name=False)
+        return None
+
+    def build_sample_spec(self, cfg: TaskConfig):
+        return build_backtest_sample_spec(self.cfg, cfg)
+
+    async def run_backtest_task(self, task: Any, queue: Any) -> list[Any]:
+        task_params = await task.start(queue)
+        if task_params is None:
+            return []
+        result: list[Any] = []
+        await asyncio.to_thread(
+            process_backtrader,
+            [self.cfg, task_params[1], task_params[0], task.tcfg, task.ts],
+            result,
+        )
+        for msg, logs, _report_record in result:
+            for log_str in logs:
+                self.log.add_log_buffer(log_str, LogTag.STRATEGY)
+            self.log.info(f"Relay process queue message:{msg.name()}", LogTag.STRATEGY)
+            await queue.put(msg)
+        return result
+
+
 def compose_application(
     cfg: Config = default(),
     *,
@@ -123,35 +235,26 @@ def compose_application(
 
     def build_optimization_runner(
         *,
-        tm_cfg,
-        tm_db,
-        tm_exchange,
-        tm_log,
         prepare_dataset_job_fn,
         sample_max_workers,
         dataset_prepare_max_workers,
         dataset_prepare_timeout_seconds,
         dataset_download_request_budget,
         sample_timeout_seconds,
-        process_pool_factory=ProcessPoolExecutor,
-        dataset_resolver_cls=None,
     ):
-        kwargs: dict[str, Any] = {
-            "cfg": tm_cfg,
-            "db_manager": tm_db,
-            "exchange": tm_exchange,
-            "log": tm_log,
-            "prepare_dataset_job_fn": prepare_dataset_job_fn,
-            "sample_max_workers": sample_max_workers,
-            "dataset_prepare_max_workers": dataset_prepare_max_workers,
-            "dataset_prepare_timeout_seconds": dataset_prepare_timeout_seconds,
-            "dataset_download_request_budget": dataset_download_request_budget,
-            "sample_timeout_seconds": sample_timeout_seconds,
-            "process_pool_factory": process_pool_factory,
-        }
-        if dataset_resolver_cls is not None:
-            kwargs["dataset_resolver_cls"] = dataset_resolver_cls
-        return ProcessPoolBacktestRunner(**kwargs)
+        return ProcessPoolBacktestRunner(
+            cfg=cfg,
+            db_manager=db_manager,
+            exchange=exchange,
+            log=app_logger,
+            prepare_dataset_job_fn=prepare_dataset_job_fn,
+            sample_max_workers=sample_max_workers,
+            dataset_prepare_max_workers=dataset_prepare_max_workers,
+            dataset_prepare_timeout_seconds=dataset_prepare_timeout_seconds,
+            dataset_download_request_budget=dataset_download_request_budget,
+            sample_timeout_seconds=sample_timeout_seconds,
+            process_pool_factory=ProcessPoolExecutor,
+        )
 
     def build_runtime_status(run_id: str, run_cfgs: list[TaskConfig], max_workers: int):
         return FileOptimizationRuntimeStatus(
@@ -168,12 +271,18 @@ def compose_application(
             configured_workers=max_workers,
         )
 
+    def exchange_factory(ex_cfg, log=None):
+        return BinanceExchange(ex_cfg, log or app_logger.log())
+    task_runner_factory = _MainTaskRunnerFactory(cfg, app_logger, db_manager, event_bus, build_execution_gateway)
     task_manager = TaskManager(
         cfg,
         app_logger,
         db_manager,
         exchange,
         event_publisher=event_bus,
+        task_runner_factory=task_runner_factory,
+        task_config_loader=FileTaskConfigSourceLoader(),
+        exchange_factory=exchange_factory,
         report_store=report_store,
         optimization_runner_factory=build_optimization_runner,
         runtime_status_factory=build_runtime_status,

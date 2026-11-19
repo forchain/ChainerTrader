@@ -158,12 +158,15 @@ def test_task_manager_uses_user_exchange_for_user_owned_manual_notify_task(monke
             assert exchange == "BINANCE"
             return credential
 
-        monkeypatch.setattr("trader.task.task_manager.BinanceExchange", _UserExchange)
+        from trader.auth.credentials import FernetSecretCipher
+
         manager = TaskManager(
             Config(tasks="[]", secret_key=service_key),
             SimpleNamespace(info=lambda *_args, **_kwargs: None),
             SimpleNamespace(exchange_credential=SimpleNamespace(get_default=get_default)),
             _BaseExchange(),
+            exchange_factory=_UserExchange,
+            cipher_factory=lambda key: FernetSecretCipher(key) if key else None,
         )
         cfg = TaskConfig(
             1,

@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 from trader.adapters.outbound.backtrader.data import BinanceData
+from trader.adapters.outbound.backtrader.optimization_runner import ProcessPoolBacktestRunner
 from trader.adapters.outbound.backtrader.task_handles import BacktestTaskHandle
 from trader.common.config import Config
 from trader.core.shared.domain import Interval, Kline, SymbolInterval
@@ -166,10 +167,16 @@ def test_task_manager_prepares_shared_dataset_once_for_same_dataset_key(monkeypa
                     ),
                 )
 
-        monkeypatch.setattr("trader.task.task_manager.BacktraderDatasetFeedLoader", FakeResolver)
-
         cfg = Config()
         task_manager = TaskManager(cfg, DummyLog(), db_manager=SimpleNamespace(kline=SimpleNamespace()), exchange=SimpleNamespace())
+        task_manager._optimization_runner_factory = lambda **kwargs: ProcessPoolBacktestRunner(
+            cfg=cfg,
+            db_manager=task_manager.db_manager,
+            exchange=task_manager.exchange,
+            log=DummyLog(),
+            dataset_resolver_cls=FakeResolver,
+            **kwargs,
+        )
         shared_si = SymbolInterval("BTC-USDT", Interval.INTERVAL_1h)
         tasks = [
             TaskConfig(

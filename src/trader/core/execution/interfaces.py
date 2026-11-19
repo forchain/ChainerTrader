@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Protocol
+from typing import Any, Protocol, runtime_checkable
 
 from trader.core.execution.domain import ExecutionResult, GatewayCapabilities, OrderIntent, ReconcileRequest, ReconcileResult, RiskIntent
 from trader.core.execution.state import ExecutionStateRecord, ExecutionStateReservation
@@ -35,6 +35,13 @@ class ExecutionGateway(ABC):
     @abstractmethod
     def reconcile(self, request: ReconcileRequest) -> ReconcileResult:
         raise NotImplementedError
+
+
+@runtime_checkable
+class ExecutionGatewayFactory(Protocol):
+    """Port for constructing an execution gateway for a mode and exchange."""
+
+    def __call__(self, mode: str, exchange: Any) -> ExecutionGateway: ...
 
 
 class ExecutionStateStore(Protocol):

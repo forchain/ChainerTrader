@@ -28,6 +28,30 @@ def test_compose_application_wires_container_and_promotes_short_margin_mode(monk
     assert container.task_manager is not None
     assert container.report_store is not None
     assert container.config_file_store is not None
+    task_manager = container.task_manager
+    assert task_manager._task_runner_factory is not None
+    assert task_manager._task_config_loader is not None
+    assert task_manager._exchange_factory is not None
+    assert task_manager._cipher_factory is not None
+    assert task_manager._optimization_runner_factory is not None
+    assert task_manager._runtime_status_factory is not None
+
+
+def test_task_manager_requires_ports_for_task_build_and_optimization():
+    import pytest
+
+    from trader.adapters.outbound.logging.logger import Logger
+    from trader.core.shared.config import Config
+    from trader.core.shared.domain import Interval, SymbolInterval
+    from trader.core.task.config import TaskConfig
+    from trader.core.task.domain import TaskType
+    from trader.core.task.use_cases.task_manager import TaskManager
+
+    cfg = Config(tasks="[]")
+    task_manager = TaskManager(cfg, Logger(cfg))
+    assert task_manager._build_task(TaskConfig(1, TaskType.DEBUG, SymbolInterval("BTC-USDT", Interval.INTERVAL_1h)), None) is None
+    with pytest.raises(ValueError, match="optimization_runner_factory"):
+        task_manager._optimization_backtest_runner()
 
 
 def test_main_routes_api_vs_console_mode(monkeypatch):

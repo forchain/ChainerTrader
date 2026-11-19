@@ -3,6 +3,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from trader.adapters.outbound.backtrader.sample_worker import process_backtrader
+from trader.adapters.outbound.files.optimization_store import FileRankingReportStore
 from trader.common.config import Config
 from trader.core.shared.domain import Interval, SymbolInterval
 from trader.strategy.trader_result import TraderResult
@@ -87,7 +88,7 @@ def test_process_backtrader_emits_sample_report_metadata_for_optimization_runs(m
 
 def test_task_manager_finalize_optimization_runs_writes_run_directory(monkeypatch, tmp_path: Path):
     cfg = Config()
-    task_manager = TaskManager(cfg, DummyLog(), db_manager=None, exchange=None)
+    task_manager = TaskManager(cfg, DummyLog(), db_manager=None, exchange=None, report_store=FileRankingReportStore(Path.cwd()))
     tasks = [
         TaskConfig(
             id=1,

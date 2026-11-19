@@ -31,7 +31,6 @@ LEGACY_SHIM_ADAPTER_ALLOWLIST = frozenset(
         "task/optimization_runtime.py",
         "task/optimization_workbench.py",
         "task/task_config.py",
-        "task/task_manager.py",
         "tools/auto_coin_selection.py",
         "tools/binance_live_smoke.py",
         "tools/db.py",
