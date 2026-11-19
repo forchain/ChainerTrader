@@ -13,7 +13,7 @@ def test_live_monitor_template_loads_tradingview_lightweight_charts_and_workspac
     assert "strategy-parameters" in template
     assert "diagnostic-events" in template
     assert "任务监控" in template
-    assert "Current task workspace" in template
+    assert "正在运行任务工作台" in template
 
 
 def test_base_navigation_hides_standalone_klines_entry():
@@ -121,7 +121,8 @@ def test_live_monitor_javascript_surfaces_task_and_parameter_identity():
 def test_live_monitor_javascript_surfaces_run_rerun_action():
     script = (ROOT / "src/trader/adapters/inbound/http/static/js/live-monitor.js").read_text(encoding="utf-8")
 
-    assert "Run #" in script
+    assert "Run ${escapeHtml(strategy.run_id)}" in script
+    assert "重新运行" in script
     assert "live-rerun-task" in script
     assert "/api/live/tasks/${encodeURIComponent(taskId)}/rerun" in script
     assert "rerunSelectedTask" in script
