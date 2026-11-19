@@ -15,8 +15,8 @@ from typing import Any
 import requests
 from dotenv import load_dotenv
 
-from trader.auth.credentials import encrypt_secret
-from trader.auth.passwords import hash_password
+from trader.adapters.outbound.identity.argon2_hasher import hash_password
+from trader.adapters.outbound.identity.fernet_cipher import encrypt_secret
 from trader.core.identity.credentials import mask_api_key
 
 ROOT = Path(__file__).resolve().parents[2]

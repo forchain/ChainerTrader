@@ -4,9 +4,9 @@ from typing import Any, Callable
 
 import requests
 
-from trader.adapters.outbound.files.paths import get_file_path
 from trader.core.optimization.domain import BINANCE_EXCHANGE_INFO_URL, CMC_INDEXES
 from trader.core.optimization.exceptions import OptimizationConfigError
+from trader.core.shared.paths import get_file_path
 
 
 def default_fetch_json(url: str) -> dict[str, Any]:

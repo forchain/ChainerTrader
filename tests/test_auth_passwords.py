@@ -1,6 +1,6 @@
 import pytest
 
-from trader.auth.passwords import hash_password, verify_password
+from trader.adapters.outbound.identity.argon2_hasher import hash_password, verify_password
 from trader.core.identity.exceptions import PasswordPolicyError
 from trader.core.identity.passwords import generate_temporary_password, validate_password, validate_username
 

@@ -4,7 +4,7 @@ This document defines where new files belong in ChainerTrader.
 
 ## Directory Responsibilities
 
-- `src/trader/`: reusable application logic, product code, CLI modules, internal tools
+- `src/trader/`: application entry points (`main.py`, `__main__.py`) plus hexagonal layers
 - `src/trader/core/`: stable domain and application layer, organized by bounded context
 - `src/trader/adapters/inbound/`: HTTP and CLI entry adapters
 - `src/trader/adapters/outbound/`: persistence, exchange, backtrader, market-stream, notification, email, file, logging, and identity adapters
@@ -41,7 +41,10 @@ src/trader/
         ├── marketstream/      # websocket connector and hub
         ├── notification/      # notification-only execution gateway
         ├── email/             # notice sender
-        └── files/             # CSV, task-config, and report storage
+        ├── execution/         # execution-gateway factory used by the composition root
+        ├── logging/           # Logger and log buffer
+        ├── identity/          # password hashing and credential ciphers
+        └── files/             # CSV, task-config, report storage, diagnostics
 ```
 
 Rules:
@@ -50,8 +53,9 @@ Rules:
 - New outbound integrations belong under `src/trader/adapters/outbound/<kind>/`
 - New inbound interfaces belong under `src/trader/adapters/inbound/{http,cli}/`
 - `src/trader/main.py` is the single composition root that instantiates concrete adapters and injects them into use cases and inbound adapters
-- `scripts/check_repo_layout.py` rejects Python files outside the bounded-context and adapter packages above
-- `tests/test_import_direction.py` (`scripts/check_import_direction.py`) rejects any `core/` import of `trader.adapters` or a framework and blocks un-allowlisted `trader.adapters` imports outside `adapters/` and `main.py`
+- `scripts/check_repo_layout.py` rejects any Python file under `src/trader/` outside `core/`, `adapters/`, `main.py`, `__init__.py`, or `__main__.py`
+- `scripts/check_import_direction.py` rejects direct and transitive `core/` imports of `trader.adapters` or a framework, and blocks `trader.adapters` imports outside `adapters/` and `main.py` (no allowlist)
+- `make lint` runs both guardrail scripts
 
 ## File Placement Rules
 
@@ -76,7 +80,7 @@ Rules:
 - Add a new optimization task template:
   `configs/tasks/optimizations/<name>.json`
 - Add a reusable status summarizer:
-  `src/trader/tools/<name>.py`
+  `src/trader/core/<bounded-context>/` or `src/trader/adapters/outbound/files/<name>.py`
 - Add a product CLI entry or renderer:
   `src/trader/adapters/inbound/cli/<name>.py`
 - Add a shell helper for developers:
@@ -84,6 +88,7 @@ Rules:
 
 ## Anti-Patterns
 
+- Adding Python modules directly under `src/trader/` or in retired legacy packages (`task/`, `common/`, `rpc/`, `tools/`, `utils/`, ...)
 - Adding new `scripts/*.json` task files
 - Importing `trader.adapters` or a framework from `src/trader/core/`
 - Putting outbound integrations or inbound routes under `src/trader/core/`

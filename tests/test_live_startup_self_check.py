@@ -1,10 +1,10 @@
 from types import SimpleNamespace
 
+from trader.adapters.outbound.files.task_config_loader import TaskConfig
 from trader.core.exchange.domain import MarginMode
 from trader.core.shared.domain import Interval, SymbolInterval
-from trader.task.live_startup_self_check import evaluate_live_startup_self_check, infer_required_margin_mode
-from trader.task.task_config import TaskConfig
-from trader.task.task_type import TaskType
+from trader.core.task.domain import TaskType
+from trader.core.task.use_cases.startup_self_check import evaluate_live_startup_self_check, infer_required_margin_mode
 
 
 class _FakeStrategyLoader:

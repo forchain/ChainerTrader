@@ -3,7 +3,7 @@ from __future__ import annotations
 import tomllib
 from pathlib import Path
 
-from trader.common.config import Config
+from trader.core.shared.config import Config
 
 
 def test_pyproject_scripts_point_to_composition_root_and_db_tool():
@@ -86,8 +86,7 @@ def test_main_version_exits_early_without_starting_modes(monkeypatch, capsys):
 
 
 def test_app_accepts_injected_container():
-    from trader.app.app import App
-    from trader.main import compose_application
+    from trader.main import App, compose_application
 
     cfg = Config()
     container = compose_application(cfg)

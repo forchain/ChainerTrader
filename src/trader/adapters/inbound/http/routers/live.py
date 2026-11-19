@@ -7,10 +7,30 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
+from trader.adapters.inbound.http.auth import current_user
 from trader.adapters.inbound.http.routers.tasks import _enforce_current_user_ownership, _preflight_user_live_tasks
-from trader.auth.context import current_user
-from trader.common.message import new_add_tasks_msg
 from trader.core.shared.domain import Interval, Operate, OperateType, SymbolInterval
+from trader.core.shared.messages import new_add_tasks_msg
+from trader.core.strategy.domain.trader_result import TraderResult
+from trader.core.task.config import apply_persisted_task_runtime_metadata
+from trader.core.task.config_parsing import parse_task_config_payload
+from trader.core.task.dashboard import (
+    build_risk_overlay_events,
+    build_signal_marker_event,
+    kline_to_chart_candle,
+    notification_event,
+    strategy_execution_event,
+)
+from trader.core.task.domain import TaskStateType, TaskType
+from trader.core.task.live_monitor import (
+    build_initial_snapshot,
+    build_snapshot_overlays,
+    list_live_strategy_summaries,
+    parameter_fingerprint,
+    parameter_summary,
+    serialize_dashboard_event,
+)
+from trader.core.task.persisted_config_migration import sanitize_public_task_config_json
 from trader.core.task.use_cases.live_ops import (
     rerun_config_json as _rerun_config_json,
 )
@@ -26,26 +46,6 @@ from trader.core.task.use_cases.live_ops import (
 from trader.core.task.use_cases.live_ops import (
     task_config_value as _task_config_value,
 )
-from trader.live.dashboard import (
-    build_risk_overlay_events,
-    build_signal_marker_event,
-    kline_to_chart_candle,
-    notification_event,
-    strategy_execution_event,
-)
-from trader.live.monitor import (
-    build_initial_snapshot,
-    build_snapshot_overlays,
-    list_live_strategy_summaries,
-    parameter_fingerprint,
-    parameter_summary,
-    serialize_dashboard_event,
-)
-from trader.strategy.trader_result import TraderResult
-from trader.task.persisted_live_config_migration import sanitize_public_task_config_json
-from trader.task.task_config import apply_persisted_task_runtime_metadata, parse_task_config
-from trader.task.task_type import TaskType
-from trader.utils.task_state import TaskStateType
 
 router = APIRouter()
 
@@ -435,12 +435,12 @@ async def rerun_task(request: Request, task_id: int):
         raise HTTPException(status_code=400, detail=f"task({task_id}) has no reusable config")
     try:
         saved_config = _task_config_dict(selected)
-        taskcs = parse_task_config(_rerun_config_json(config_json))
+        taskcs = parse_task_config_payload(json.loads(_rerun_config_json(config_json)))
         if not taskcs:
             # Fallback for legacy/atypical saved config_json payloads: rebuild from task state config.
             fallback_cfg = _reusable_task_config_dict(selected)
             if fallback_cfg:
-                taskcs = parse_task_config(json.dumps([fallback_cfg], ensure_ascii=False))
+                taskcs = parse_task_config_payload([fallback_cfg])
         if not taskcs:
             fallback_cfg = _reusable_task_config_dict(selected)
             keys = ",".join(sorted(fallback_cfg.keys())) if fallback_cfg else "none"

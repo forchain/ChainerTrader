@@ -6,11 +6,11 @@ from types import SimpleNamespace
 import pytest
 
 from trader.adapters.inbound.http.lifecycle import ApiServerLifecycle
-from trader.common.config import Config
+from trader.adapters.outbound.files.task_config_loader import TaskConfig, parse_task_config
+from trader.core.shared.config import Config
 from trader.core.shared.domain import Interval, SymbolInterval
+from trader.core.task.domain import TaskType
 from trader.main import compose_application, make_api_lifespan
-from trader.task.task_config import TaskConfig, parse_task_config
-from trader.task.task_type import TaskType
 
 
 def RpcApp(cfg):

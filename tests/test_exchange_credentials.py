@@ -1,6 +1,6 @@
 import pytest
 
-from trader.auth.credentials import decrypt_secret, encrypt_secret, service_key_available
+from trader.adapters.outbound.identity.fernet_cipher import decrypt_secret, encrypt_secret, service_key_available
 from trader.core.identity.credentials import mask_api_key
 from trader.core.identity.exceptions import CredentialEncryptionError
 

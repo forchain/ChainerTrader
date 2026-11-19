@@ -3,12 +3,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from trader.common.config import Config
+from trader.adapters.outbound.files.task_config_loader import TaskConfig
+from trader.adapters.outbound.marketstream.binance import normalize_binance_kline_message
+from trader.core.shared.config import Config
 from trader.core.shared.domain import Interval, Kline, Operate, OperateType, SymbolInterval
+from trader.core.task.domain import TaskType
 from trader.core.task.use_cases.realtime_runtime import RealtimeLiveStrategyRuntime
-from trader.live.market_data import normalize_binance_kline_message
-from trader.task.task_config import TaskConfig
-from trader.task.task_type import TaskType
 
 BASE = 1_714_281_600
 

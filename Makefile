@@ -33,10 +33,12 @@ fmt:              ## Format code using black & isort.
 lint:             ## Run linters.
 	@if [ "$(USING_UV)" ]; then \
 		uv run ruff check .; \
-		uv run python scripts/check_repo_layout.py $$(git ls-files --cached --others --exclude-standard -- '*.json' 'tests/output/*' 'src/trader/core/**' 'src/trader/adapters/**'); \
+		uv run python scripts/check_repo_layout.py $$(git ls-files --cached --others --exclude-standard -- '*.json' 'tests/output/*' 'src/trader/**/*.py'); \
+		uv run python scripts/check_import_direction.py; \
 	else \
 		$(ENV_PREFIX)ruff check .; \
-		$(ENV_PREFIX)python scripts/check_repo_layout.py $$(git ls-files --cached --others --exclude-standard -- '*.json' 'tests/output/*' 'src/trader/core/**' 'src/trader/adapters/**'); \
+		$(ENV_PREFIX)python scripts/check_repo_layout.py $$(git ls-files --cached --others --exclude-standard -- '*.json' 'tests/output/*' 'src/trader/**/*.py'); \
+		$(ENV_PREFIX)python scripts/check_import_direction.py; \
 	fi
 
 .PHONY: test

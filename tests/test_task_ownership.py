@@ -2,16 +2,15 @@ import asyncio
 from datetime import datetime
 
 from tests.persistence_harness import initialized_database
+from trader.adapters.outbound.files.task_config_loader import TaskConfig, parse_task_config
+from trader.adapters.outbound.logging.logger import Logger
 from trader.adapters.outbound.persistence.task import TaskCol
-from trader.app.app import App
-from trader.common.config import Config
-from trader.common.logger import Logger
+from trader.core.shared.config import Config
 from trader.core.shared.domain import Interval, SymbolInterval
+from trader.core.task.domain import TaskState, TaskType
 from trader.core.task.runtime_task import ManagedTask
-from trader.task.task_config import TaskConfig, parse_task_config
-from trader.task.task_manager import TaskManager
-from trader.task.task_type import TaskType
-from trader.utils.task_state import TaskState
+from trader.core.task.use_cases.task_manager import TaskManager
+from trader.main import App
 
 
 class _Log:

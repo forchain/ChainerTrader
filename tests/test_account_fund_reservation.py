@@ -5,15 +5,15 @@ import pytest
 
 from tests.persistence_harness import initialized_database
 from trader.adapters.outbound.backtrader.task_handles import LiveTraderTaskHandle
+from trader.adapters.outbound.files.task_config_loader import TaskConfig, parse_task_config
+from trader.adapters.outbound.logging.logger import Logger
 from trader.adapters.outbound.persistence.account_fund_reservation import AccountFundReservationCol, FundReservationError
-from trader.common.config import Config
-from trader.common.logger import Logger
 from trader.core.execution import ExecutionStateRecord, ExecutionStatus, GatewayMode
+from trader.core.shared.config import Config
 from trader.core.shared.domain import Interval, SymbolInterval
+from trader.core.task.domain import TaskType
 from trader.core.task.runtime_task import ManagedTask
-from trader.task.task_config import TaskConfig, parse_task_config
-from trader.task.task_manager import TaskManager
-from trader.task.task_type import TaskType
+from trader.core.task.use_cases.task_manager import TaskManager
 
 
 class _Log:

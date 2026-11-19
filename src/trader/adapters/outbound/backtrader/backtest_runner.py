@@ -11,7 +11,6 @@ from trader.adapters.outbound.backtrader.catalog import parse_strategies
 from trader.adapters.outbound.backtrader.csvdata import BinanceCSVData
 from trader.adapters.outbound.backtrader.data import BinanceData
 from trader.adapters.outbound.backtrader.node import Node
-from trader.common import path
 from trader.core.marketdata.interfaces import (
     AvailabilityStore,
     DatasetFileStore,
@@ -19,6 +18,7 @@ from trader.core.marketdata.interfaces import (
     MarketDataClient,
 )
 from trader.core.marketdata.use_cases.dataset import DatasetResolver
+from trader.core.shared import paths as path
 from trader.core.shared.domain import get_time_duration
 from trader.core.task.config import TaskConfig
 from trader.core.task.domain import TaskState, TaskStateType, task_state_name

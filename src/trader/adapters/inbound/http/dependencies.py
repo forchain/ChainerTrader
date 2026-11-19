@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import HTTPException, Request
 
-from trader.auth.context import current_user
+from trader.adapters.inbound.http.auth import current_user
 from trader.core.exchange.domain import MarginMode
 from trader.core.exchange.exceptions import UserExchangeCredentialError
 from trader.core.exchange.use_cases import RouteExchangeForTask, base_exchange_config

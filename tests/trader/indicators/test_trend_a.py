@@ -21,7 +21,7 @@ from dotenv import load_dotenv
 from matplotlib.ticker import ScalarFormatter
 
 from trader.adapters.outbound.backtrader.indicators.trend_a import TrendA
-from trader.utils.ma import MAType
+from trader.core.strategy.domain.types import MAType
 
 load_dotenv()
 logging.basicConfig(

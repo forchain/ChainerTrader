@@ -30,9 +30,10 @@ from trader.core.optimization.domain import (
 from trader.core.optimization.use_cases.signal_scanner import scan_market as _scan_market
 from trader.core.optimization.use_cases.signal_scanner import scan_market_report as _scan_market_report
 from trader.core.shared.domain import Interval, Kline, SymbolInterval
+from trader.core.task.config import TaskConfig
+from trader.core.task.config_parsing import create_task_id
+from trader.core.task.domain import TaskType
 from trader.core.task.use_cases.data_tasks import UpdateKlinesTaskRunner
-from trader.task.task_config import TaskConfig, create_task_id
-from trader.task.task_type import TaskType
 
 BINANCE_SPOT_API_BASE = "https://api.binance.com"
 

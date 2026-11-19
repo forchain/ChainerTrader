@@ -9,14 +9,14 @@ from typing import Any
 from uuid import uuid4
 
 from trader.adapters.outbound.binance.exchange import BinanceExchange
-from trader.adapters.outbound.execution_gateway_factory import build_execution_gateway
-from trader.common.config import Config
-from trader.common.logger import Logger
+from trader.adapters.outbound.execution.factory import build_execution_gateway
+from trader.adapters.outbound.files.task_config_loader import TaskConfig
+from trader.adapters.outbound.logging.logger import Logger
 from trader.core.exchange.domain import ExchangeConfig, ExchangeDriverType, MarginMode
+from trader.core.execution.use_cases import AutoExecutionRouter, AutoExecutionStatus
+from trader.core.shared.config import Config
 from trader.core.shared.domain import Interval, Operate, OperateType, Symbol, SymbolInterval
-from trader.live.auto_execution import AutoExecutionRouter, AutoExecutionStatus
-from trader.task.task_config import TaskConfig
-from trader.task.task_type import TaskType
+from trader.core.task.domain import TaskType
 
 
 @dataclass

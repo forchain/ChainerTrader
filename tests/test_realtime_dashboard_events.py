@@ -1,5 +1,6 @@
+from trader.core.marketdata.warmup import KlineUpdate
 from trader.core.shared.domain import Kline, Operate, OperateType
-from trader.live.dashboard import (
+from trader.core.task.dashboard import (
     build_macd_divergence_event,
     build_risk_overlay_events,
     build_signal_marker_event,
@@ -8,7 +9,6 @@ from trader.live.dashboard import (
     runtime_status_event,
     strategy_execution_event,
 )
-from trader.live.market_data import KlineUpdate
 
 BASE = 1_714_281_600
 

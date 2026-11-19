@@ -7,6 +7,8 @@ from pathlib import Path
 ALLOWED_JSON_ROOTS = (
     Path("configs/tasks"),
     Path("configs/notices"),
+    Path("configs/market_universes"),
+    Path("data/market_universes"),
     Path("tests/fixtures"),
     Path(".claude"),
 )
@@ -29,7 +31,9 @@ CORE_PACKAGES = frozenset(
 ADAPTERS_ROOT = Path("src/trader/adapters")
 ADAPTER_PACKAGES = {
     "inbound": frozenset({"http", "cli"}),
-    "outbound": frozenset({"persistence", "binance", "backtrader", "marketstream", "notification", "email", "files", "logging", "identity"}),
+    "outbound": frozenset(
+        {"persistence", "binance", "backtrader", "marketstream", "notification", "email", "files", "logging", "identity", "execution"}
+    ),
 }
 
 
@@ -41,9 +45,18 @@ def _is_under(path: Path, root: Path) -> bool:
         return False
 
 
+TRADER_ROOT = Path("src/trader")
+TRADER_ROOT_FILES = frozenset({"__init__.py", "__main__.py", "main.py"})
+
+
 def _check_hexagonal_placement(path: Path) -> str | None:
     if path.suffix != ".py":
         return None
+
+    if _is_under(path, TRADER_ROOT) and not (_is_under(path, CORE_ROOT) or _is_under(path, ADAPTERS_ROOT)):
+        if path.relative_to(TRADER_ROOT).as_posix() in TRADER_ROOT_FILES:
+            return None
+        return f"{path}: Python modules must live under src/trader/core/ or src/trader/adapters/"
 
     if _is_under(path, CORE_ROOT):
         parts = path.relative_to(CORE_ROOT).parts

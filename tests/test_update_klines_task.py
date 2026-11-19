@@ -525,24 +525,24 @@ class TestTaskConfigForceUpdate:
 
     def test_force_update_default_false(self):
         """Verify force_update defaults to False."""
-        from trader.task.task_config import TaskConfig
-        from trader.task.task_type import TaskType
+        from trader.adapters.outbound.files.task_config_loader import TaskConfig
+        from trader.core.task.domain import TaskType
 
         tc = TaskConfig(1, TaskType.UPDATE_KLINES)
         assert tc.force_update is False
 
     def test_force_update_set_true(self):
         """Verify force_update can be set to True."""
-        from trader.task.task_config import TaskConfig
-        from trader.task.task_type import TaskType
+        from trader.adapters.outbound.files.task_config_loader import TaskConfig
+        from trader.core.task.domain import TaskType
 
         tc = TaskConfig(1, TaskType.UPDATE_KLINES, force_update=True)
         assert tc.force_update is True
 
     def test_force_update_in_to_dict(self):
         """Verify force_update is included in to_dict output."""
-        from trader.task.task_config import TaskConfig
-        from trader.task.task_type import TaskType
+        from trader.adapters.outbound.files.task_config_loader import TaskConfig
+        from trader.core.task.domain import TaskType
 
         tc = TaskConfig(1, TaskType.UPDATE_KLINES, force_update=True)
         d = tc.to_dict()
@@ -553,7 +553,7 @@ class TestTaskConfigForceUpdate:
         """Verify force_update is parsed from config."""
         import json
 
-        from trader.task.task_config import parse_task_config
+        from trader.adapters.outbound.files.task_config_loader import parse_task_config
 
         config = json.dumps(
             [
@@ -574,7 +574,7 @@ class TestTaskConfigForceUpdate:
         """Verify force_update defaults to False when not specified."""
         import json
 
-        from trader.task.task_config import parse_task_config
+        from trader.adapters.outbound.files.task_config_loader import parse_task_config
 
         config = json.dumps(
             [
@@ -593,11 +593,11 @@ class TestTaskConfigForceUpdate:
 
 def test_force_update_deletes_the_range_and_downloads_it_again():
     """A forced update re-downloads the whole requested range."""
-    from trader.common.config import Config
-    from trader.common.logger import Logger
+    from trader.adapters.outbound.files.task_config_loader import TaskConfig
+    from trader.adapters.outbound.logging.logger import Logger
+    from trader.core.shared.config import Config
+    from trader.core.task.domain import TaskType
     from trader.core.task.use_cases.data_tasks import UpdateKlinesTaskRunner
-    from trader.task.task_config import TaskConfig
-    from trader.task.task_type import TaskType
 
     tcfg = TaskConfig(
         1,

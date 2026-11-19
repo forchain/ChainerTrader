@@ -1,11 +1,11 @@
 from types import SimpleNamespace
 
-from trader.common.config import Config
-from trader.common.logger import Logger
-from trader.common.message import new_stat_msg
-from trader.statistics.stat import TraderStat
-from trader.statistics.statistics import Statistics
-from trader.utils.task_state import TaskState
+from trader.adapters.outbound.logging.logger import Logger
+from trader.core.shared.config import Config
+from trader.core.shared.messages import new_stat_msg
+from trader.core.task.domain import TaskState
+from trader.core.task.stats import TraderStat
+from trader.core.task.use_cases.statistics import Statistics
 
 
 def test_statistics_ignores_trader_stat_without_result_when_ranking_is_bounded():

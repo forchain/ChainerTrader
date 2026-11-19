@@ -9,11 +9,10 @@ from trader.adapters.inbound.http import create_app
 from trader.adapters.inbound.http.queries import get_accounts_info
 from trader.adapters.inbound.http.schemas import AcctsInfo, TasksInfo
 from trader.adapters.outbound.identity.fernet_cipher import FernetSecretCipher, encrypt_secret
-from trader.common.common import NAME
-from trader.common.config import Config
-from trader.common.logger import Logger
+from trader.adapters.outbound.logging.logger import Logger
 from trader.core.exchange.domain import Balance, ExchangeConfig, MarginMode
-from trader.core.shared.domain import Interval, SymbolInterval
+from trader.core.shared.config import Config
+from trader.core.shared.domain import NAME, Interval, SymbolInterval
 
 
 def _composition(**overrides):

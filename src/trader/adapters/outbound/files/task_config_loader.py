@@ -3,8 +3,8 @@
 import json
 import os
 
-from trader.adapters.outbound.files import paths as path
 from trader.adapters.outbound.files.symbols_interval import SymbolsInterval
+from trader.core.shared import paths as path
 from trader.core.shared.config import TRADER_MIN_LIVE_TRADE_NOTIONAL
 from trader.core.shared.domain import Interval, SymbolInterval, parse_datetime  # noqa: F401
 from trader.core.task.config import (

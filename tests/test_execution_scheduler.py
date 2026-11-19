@@ -14,16 +14,16 @@ from trader.adapters.outbound.backtrader.sample_worker import (
     build_backtest_sample_spec,
     run_backtest_sample,
 )
-from trader.adapters.outbound.execution_gateway_factory import build_execution_gateway
+from trader.adapters.outbound.execution.factory import build_execution_gateway
 from trader.adapters.outbound.files.optimization_store import FileOptimizationRuntimeStatus, FileRankingReportStore
-from trader.common.config import Config
+from trader.adapters.outbound.files.optimization_store import FileOptimizationRuntimeStatus as OptimizationRuntimeStatus
+from trader.adapters.outbound.files.task_config_loader import TaskConfig
+from trader.core.shared.config import Config
 from trader.core.shared.domain import Interval, Kline, SymbolInterval
+from trader.core.strategy.domain.trader_result import TraderResult
+from trader.core.task.domain import TaskType
+from trader.core.task.use_cases.task_manager import TaskManager
 from trader.main import _MainTaskRunnerFactory
-from trader.strategy.trader_result import TraderResult
-from trader.task.optimization_runtime import OptimizationRuntimeStatus
-from trader.task.task_config import TaskConfig
-from trader.task.task_manager import TaskManager
-from trader.task.task_type import TaskType
 
 
 class _OptimizationRunnerFactory:

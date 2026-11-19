@@ -5,7 +5,7 @@ from datetime import datetime
 from types import SimpleNamespace
 
 from trader.core.task.domain import TaskState, TaskType
-from trader.statistics.stat import BackTraderStat
+from trader.core.task.stats import BackTraderStat
 
 
 def test_cli_rendering_statistics_signals_and_optimization():
@@ -94,13 +94,13 @@ def test_console_runner_runs_startup_once_without_recovery_and_cleans_up():
     class _FakeTaskManager:
         def start(self, taskcs):
             events.append(f"tm.start:{len(taskcs)}")
-            from trader.common.message import new_add_tasks_msg
+            from trader.core.shared.messages import new_add_tasks_msg
 
             return new_add_tasks_msg(taskcs)
 
         def add_tasks(self, taskcs, queue):
             events.append(f"tm.add:{len(taskcs)}:{taskcs[0].user_id}")
-            from trader.common.message import new_exit_msg
+            from trader.core.shared.messages import new_exit_msg
 
             queue.put_nowait(new_exit_msg())
 

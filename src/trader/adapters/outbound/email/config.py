@@ -7,9 +7,9 @@ import os
 from enum import Enum
 
 from trader.adapters.outbound.email.sender import EmailNotificationSender
-from trader.common import path
 from trader.core.notification.domain import Notice
 from trader.core.notification.use_cases import normalize_recipients, notices_from_entries
+from trader.core.shared import paths as path
 
 
 class NotifyType(Enum):

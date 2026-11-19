@@ -3,12 +3,12 @@ from types import SimpleNamespace
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from trader.adapters.inbound.http.auth import SessionAuthMiddleware
 from trader.adapters.inbound.http.routers.exchange.account import router as account_router
 from trader.adapters.inbound.http.routers.exchange.account_commission import router as account_commission_router
-from trader.auth.context import SessionAuthMiddleware
-from trader.auth.credentials import FernetSecretCipher, encrypt_secret
-from trader.common.config import Config
+from trader.adapters.outbound.identity.fernet_cipher import FernetSecretCipher, encrypt_secret
 from trader.core.exchange.domain import ExchangeConfig
+from trader.core.shared.config import Config
 
 
 class _UserRepo:

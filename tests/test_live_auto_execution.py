@@ -3,9 +3,9 @@ from types import SimpleNamespace
 import pytest
 
 from trader.adapters.outbound.binance.execution_gateway import BinanceLiveExecutionGateway
+from trader.adapters.outbound.files.task_config_loader import TaskConfig
 from trader.adapters.outbound.notification.execution_gateway import NotificationOnlyExecutionGateway
-from trader.core.shared.domain import Interval, Kline, Operate, OperateType, SymbolInterval
-from trader.live.auto_execution import (
+from trader.core.execution.use_cases import (
     AUTO_EXECUTION_EVENT_TYPE,
     AutoExecutionRouter,
     AutoExecutionStatus,
@@ -14,9 +14,9 @@ from trader.live.auto_execution import (
     normalize_live_execution_mode,
     operation_identity,
 )
-from trader.live.monitor import build_initial_snapshot
-from trader.task.task_config import TaskConfig
-from trader.task.task_type import TaskType
+from trader.core.shared.domain import Interval, Kline, Operate, OperateType, SymbolInterval
+from trader.core.task.domain import TaskType
+from trader.core.task.live_monitor import build_initial_snapshot
 
 BASE = 1_714_281_600
 

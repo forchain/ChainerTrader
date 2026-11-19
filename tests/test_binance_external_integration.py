@@ -7,14 +7,15 @@ from binance_common.constants import SPOT_REST_API_PROD_URL
 from binance_sdk_spot import Spot
 from dotenv import load_dotenv
 
+from trader.adapters.inbound.cli.env_config import new_and_env
 from trader.adapters.outbound.binance.exchange import BinanceExchange
-from trader.common.config import Config, new_and_env
+from trader.adapters.outbound.files.task_config_loader import TaskConfig
+from trader.adapters.outbound.marketstream.binance import run_binance_kline_websocket_smoke
 from trader.core.exchange.domain import parse_exchange_config
+from trader.core.shared.config import Config
 from trader.core.shared.domain import Interval, SymbolInterval
+from trader.core.task.domain import TaskType
 from trader.core.task.use_cases.realtime_runtime import RealtimeLiveStrategyRuntime
-from trader.live.stream import run_binance_kline_websocket_smoke
-from trader.task.task_config import TaskConfig
-from trader.task.task_type import TaskType
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("TRADER_BINANCE_INTEGRATION"),

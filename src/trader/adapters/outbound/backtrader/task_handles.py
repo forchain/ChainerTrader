@@ -13,7 +13,7 @@ from trader.adapters.outbound.backtrader.live_runtime import BacktraderLiveRunne
 from trader.adapters.outbound.backtrader.live_trader_runner import LiveTraderTaskRunner
 from trader.adapters.outbound.backtrader.node import Node
 from trader.adapters.outbound.binance.exchange import BinanceExchange
-from trader.adapters.outbound.execution_gateway_factory import build_execution_gateway
+from trader.adapters.outbound.execution.factory import build_execution_gateway
 from trader.adapters.outbound.files.dataset import CsvDatasetFileStore
 from trader.adapters.outbound.marketstream import GLOBAL_MARKET_STREAM_HUB
 from trader.adapters.outbound.persistence.manager import DatabaseManager

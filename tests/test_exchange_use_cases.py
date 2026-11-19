@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from trader.auth.credentials import encrypt_secret
+from trader.adapters.outbound.identity.fernet_cipher import encrypt_secret
 from trader.core.exchange.domain import Balance, ExchangeConfig, MarginMode
 from trader.core.exchange.exceptions import ExchangeConnectivityError, UserExchangeCredentialError
 from trader.core.exchange.use_cases import (
@@ -190,7 +190,7 @@ def test_route_exchange_for_task_refreshes_credential_each_call():
 
 
 def _cipher(service_key):
-    from trader.auth.credentials import FernetSecretCipher
+    from trader.adapters.outbound.identity.fernet_cipher import FernetSecretCipher
 
     return FernetSecretCipher(service_key)
 

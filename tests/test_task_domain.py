@@ -81,9 +81,9 @@ def test_collect_operates_returns_operation_payloads_up_to_limit():
 
 
 def test_task_config_is_exposed_by_the_core_task_package():
+    from trader.adapters.outbound.files.task_config_loader import TaskConfig as LegacyTaskConfig
     from trader.core.task import TaskConfig
     from trader.core.task.domain import TaskConfig as DomainTaskConfig
-    from trader.task.task_config import TaskConfig as LegacyTaskConfig
 
     assert TaskConfig is LegacyTaskConfig
     assert DomainTaskConfig is LegacyTaskConfig

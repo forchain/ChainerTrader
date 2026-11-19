@@ -9,7 +9,7 @@ from backtrader import num2date
 
 from trader.adapters.outbound.backtrader.csvdata import BinanceCSVData
 from trader.adapters.outbound.backtrader.trilogy_strategy import TrilogyStrategy
-from trader.common import path
+from trader.core.shared import paths as path
 
 
 class SMAStrategy(TrilogyStrategy):

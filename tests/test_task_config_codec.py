@@ -3,11 +3,10 @@ from datetime import datetime
 
 import pytest
 
+from trader.adapters.outbound.files.task_config_loader import TaskConfig
 from trader.core.shared.domain import Interval, SymbolInterval
 from trader.core.task.config_codec import TaskConfigCodec
-from trader.task.task_config import TaskConfig
-from trader.task.task_type import TaskType
-from trader.utils.task_state import TaskState
+from trader.core.task.domain import TaskState, TaskType
 
 
 def _trader_config(task_id: int = 123) -> TaskConfig:

@@ -28,15 +28,14 @@ from trader.adapters.outbound.backtrader.signal_scanner import BacktraderSignalS
 from trader.adapters.outbound.backtrader.task_handles import BacktestTaskHandle, LiveTraderTaskHandle
 from trader.adapters.outbound.binance.exchange import BinanceExchange, get_oldest_time
 from trader.adapters.outbound.email.config import parse_notice_config
-from trader.adapters.outbound.execution_gateway_factory import build_execution_gateway
-from trader.adapters.outbound.files import paths as path
+from trader.adapters.outbound.execution.factory import build_execution_gateway
 from trader.adapters.outbound.files.dataset import CsvDatasetFileStore
 from trader.adapters.outbound.files.optimization_store import (
     FileOptimizationRuntimeStatus,
     FileRankingReportStore,
     FileTaskConfigFileStore,
 )
-from trader.adapters.outbound.files.task_config_loader import FileTaskConfigSourceLoader
+from trader.adapters.outbound.files.task_config_loader import FileTaskConfigSourceLoader, TaskConfig, parse_task_config
 from trader.adapters.outbound.identity.argon2_hasher import Argon2PasswordHasher
 from trader.adapters.outbound.identity.fernet_cipher import FernetSecretCipher, service_key_available
 from trader.adapters.outbound.logging.logger import Logger
@@ -45,10 +44,13 @@ from trader.core.exchange.domain import ExchangeConfig, ExchangeType, MarginMode
 from trader.core.identity.exceptions import PasswordPolicyError
 from trader.core.identity.use_cases import BootstrapAdministrator, bootstrap_admin_exchange_credential
 from trader.core.notification.manager import NotifyManager
+from trader.core.shared import paths as path
 from trader.core.shared.config import Config, default
 from trader.core.shared.logging import LogTag
+from trader.core.task.domain import TaskType
 from trader.core.task.event_bus import LiveEventBus
 from trader.core.task.interfaces import TaskEventPublisher
+from trader.core.task.persisted_config_migration import assert_persisted_task_config_json_is_migrated
 from trader.core.task.runtime_task import RunnerTaskHandle
 from trader.core.task.use_cases import PlanStartupTasks, RecoverRunningTasks
 from trader.core.task.use_cases.data_tasks import (
@@ -58,12 +60,10 @@ from trader.core.task.use_cases.data_tasks import (
     ImportCsvTaskRunner,
     UpdateKlinesTaskRunner,
 )
+from trader.core.task.use_cases.runtime import AppRuntime
+from trader.core.task.use_cases.startup_self_check import infer_required_margin_mode
 from trader.core.task.use_cases.statistics import Statistics
-from trader.task.live_startup_self_check import infer_required_margin_mode
-from trader.task.persisted_live_config_migration import assert_persisted_task_config_json_is_migrated
-from trader.task.task_config import TaskConfig, parse_task_config
-from trader.task.task_manager import TaskManager
-from trader.task.task_type import TaskType
+from trader.core.task.use_cases.task_manager import TaskManager
 
 
 def version() -> str:
@@ -534,6 +534,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Disable public user registration",
     )
     return parser
+
+
+class App(AppRuntime):
+    """Runtime supervisor bound to a freshly composed application container."""
+
+    def __init__(self, cfg: Config | None = None, event_publisher: TaskEventPublisher | None = None, *, container=None):
+        resolved_cfg = cfg or default()
+        super().__init__(
+            container=container or compose_application(resolved_cfg, event_publisher=event_publisher, task_parser=parse_task_config)
+        )
 
 
 def _parse_bind_addr(bind_addr: str | None) -> tuple[str, int]:

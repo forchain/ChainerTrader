@@ -8,13 +8,14 @@ import pytest
 from tortoise.context import TortoiseContext, get_current_context
 
 from trader.adapters.outbound.backtrader.task_handles import LiveTraderTaskHandle
-from trader.common.config import Config
-from trader.common.logger import Logger
+from trader.adapters.outbound.files.task_config_loader import TaskConfig
+from trader.adapters.outbound.logging.logger import Logger
+from trader.adapters.outbound.marketstream.binance import normalize_binance_kline_message
 from trader.core.execution import ExecutionSide, ExecutionStateRecord, ExecutionStatus, GatewayMode, OrderIntent
+from trader.core.marketdata.warmup import BackfillPlan, BackfillRequestKind
+from trader.core.shared.config import Config
 from trader.core.shared.domain import Interval, Kline, OperateType, SymbolInterval
-from trader.live.market_data import BackfillPlan, BackfillRequestKind, normalize_binance_kline_message
-from trader.task.task_config import TaskConfig
-from trader.task.task_type import TaskType
+from trader.core.task.domain import TaskType
 
 BASE = 1_714_281_600
 
@@ -456,7 +457,7 @@ async def test_trader_task_realtime_catches_up_missing_closed_klines_through_sam
 
 @pytest.mark.anyio
 async def test_trader_task_realtime_publishes_dashboard_events_and_runtime_status(monkeypatch):
-    from trader.live.dashboard import DashboardEvent
+    from trader.core.task.dashboard import DashboardEvent
 
     class OperationRunner(FakeRunner):
         def start(self, warmup=None):
@@ -589,7 +590,7 @@ async def test_trader_task_realtime_preserves_tortoise_context_for_threaded_oper
 
 @pytest.mark.anyio
 async def test_trader_task_realtime_publishes_warmup_operations_for_dashboard_without_notifications(monkeypatch):
-    from trader.live.dashboard import DashboardEvent
+    from trader.core.task.dashboard import DashboardEvent
 
     class WarmupOperationRunner(FakeRunner):
         def start(self, warmup=None):

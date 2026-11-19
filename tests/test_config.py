@@ -5,14 +5,15 @@ import os
 
 import pytest
 
-from trader.common.config import Config, new_and_env
-from trader.common.logger import Logger
-from trader.common.path import GetConfigsDir
+from trader.adapters.inbound.cli.env_config import new_and_env
+from trader.adapters.outbound.files.task_config_loader import TaskConfig, get_symbols, parse_task_config
+from trader.adapters.outbound.logging.logger import Logger
 from trader.core.exchange.domain import ExchangeConfig, parse_ex_type, parse_exchange_config
+from trader.core.shared.config import Config
 from trader.core.shared.domain import Interval, SymbolInterval
+from trader.core.shared.paths import GetConfigsDir
+from trader.core.task.domain import TaskType
 from trader.core.task.runtime_task import ManagedTask
-from trader.task.task_config import TaskConfig, get_symbols, parse_task_config
-from trader.task.task_type import TaskType
 
 
 def test_config():

@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 from trader.adapters.inbound.http import create_app
 from trader.adapters.inbound.http.queries import get_taskinfo
-from trader.utils.task_state import TaskStateType
+from trader.core.task.domain import TaskStateType
 
 
 class _FakeTaskManager:

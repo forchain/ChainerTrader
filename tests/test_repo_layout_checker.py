@@ -12,7 +12,7 @@ def test_check_repo_layout_accepts_configs_and_wrapper_paths():
             Path("configs/notices/notice.sample.json"),
             Path("scripts/ops/setup_worktree.sh"),
             Path("scripts/wrappers/run_top_volume_signal_scanner.py"),
-            Path("src/trader/tools/repo_layout.py"),
+            Path("src/trader/adapters/inbound/cli/repo_layout.py"),
         ]
     )
 
@@ -95,6 +95,9 @@ def _create_path(tmp_path: Path, monkeypatch, relative: str) -> Path:
         "src/trader/adapters/outbound/files/store.py",
         "src/trader/adapters/outbound/logging/logger.py",
         "src/trader/adapters/outbound/identity/fernet_cipher.py",
+        "src/trader/adapters/outbound/execution/factory.py",
+        "src/trader/main.py",
+        "src/trader/__main__.py",
     ],
 )
 def test_check_repo_layout_allows_hexagonal_package_paths(tmp_path: Path, monkeypatch, relative: str):
@@ -114,6 +117,10 @@ def test_check_repo_layout_allows_hexagonal_package_paths(tmp_path: Path, monkey
         "src/trader/adapters/inbound/unknown/thing.py",
         "src/trader/adapters/outbound/rogue.py",
         "src/trader/adapters/outbound/unknown/thing.py",
+        "src/trader/task/rogue.py",
+        "src/trader/common/rogue.py",
+        "src/trader/tools/rogue.py",
+        "src/trader/utils/rogue.py",
     ],
 )
 def test_check_repo_layout_rejects_python_outside_hexagonal_packages(tmp_path: Path, monkeypatch, relative: str):

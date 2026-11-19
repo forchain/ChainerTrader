@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from trader.common import path
+from trader.core.shared import paths as path
 
 DEFAULT_DB_URL = "sqlite://data/trader.db"
 MODELS_MODULE = "trader.adapters.outbound.persistence.models"

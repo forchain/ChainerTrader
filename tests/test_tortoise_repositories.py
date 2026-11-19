@@ -8,7 +8,7 @@ from trader.adapters.outbound.persistence.availability import AvailabilityCol, m
 from trader.adapters.outbound.persistence.kline import KlineCol
 from trader.adapters.outbound.persistence.task import TaskCol
 from trader.core.shared.domain import Kline
-from trader.utils.task_state import TaskState, TaskStateType
+from trader.core.task.domain import TaskState, TaskStateType
 
 
 class _Log:

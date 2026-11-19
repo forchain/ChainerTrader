@@ -1,9 +1,9 @@
 import pytest
 from tortoise import Tortoise
 
+from trader.adapters.outbound.logging.logger import Logger
 from trader.adapters.outbound.persistence.manager import DatabaseManager, DatabaseSchemaError, _supports_tortoise_global_fallback
-from trader.common.config import Config
-from trader.common.logger import Logger
+from trader.core.shared.config import Config
 
 
 @pytest.fixture

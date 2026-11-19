@@ -8,26 +8,27 @@ from unittest.mock import Mock
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from trader.adapters.inbound.http.auth import SessionAuthMiddleware
 from trader.adapters.inbound.http.routers.tasks import router
-from trader.auth.context import SessionAuthMiddleware
-from trader.auth.credentials import encrypt_secret
-from trader.common.config import Config
+from trader.adapters.outbound.files.task_config_loader import TaskConfig
+from trader.adapters.outbound.identity.fernet_cipher import encrypt_secret
 from trader.core.exchange.domain import ExchangeConfig
+from trader.core.shared.config import Config
 from trader.core.shared.domain import Interval, SymbolInterval
-from trader.strategy.trader_result import TraderResult
-from trader.task.task_config import TaskConfig
-from trader.task.task_manager import TaskManager
-from trader.task.task_type import TaskType
-from trader.utils.task_state import TaskState
+from trader.core.strategy.domain.trader_result import TraderResult
+from trader.core.task.domain import TaskState, TaskType
+from trader.core.task.use_cases.task_manager import TaskManager
 
 
 def _composition():
     from trader.adapters.outbound.binance.exchange import BinanceExchange
-    from trader.auth.credentials import FernetSecretCipher
+    from trader.adapters.outbound.files.task_config_loader import FileTaskConfigSourceLoader
+    from trader.adapters.outbound.identity.fernet_cipher import FernetSecretCipher
 
     return SimpleNamespace(
         secret_cipher_factory=lambda key: FernetSecretCipher(key) if key else None,
         user_exchange_factory=BinanceExchange,
+        task_config_loader=FileTaskConfigSourceLoader(),
     )
 
 
@@ -158,7 +159,7 @@ def test_task_manager_uses_user_exchange_for_user_owned_manual_notify_task(monke
             assert exchange == "BINANCE"
             return credential
 
-        from trader.auth.credentials import FernetSecretCipher
+        from trader.adapters.outbound.identity.fernet_cipher import FernetSecretCipher
 
         manager = TaskManager(
             Config(tasks="[]", secret_key=service_key),

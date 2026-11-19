@@ -1,7 +1,8 @@
 import json
 from pathlib import Path
 
-from trader.task.optimization_runtime import OptimizationRuntimeStatus, evaluate_abort_reason
+from trader.adapters.outbound.files.optimization_store import FileOptimizationRuntimeStatus as OptimizationRuntimeStatus
+from trader.core.optimization.domain import evaluate_abort_reason
 
 
 def test_runtime_status_writes_snapshot_and_ordered_events(tmp_path: Path):

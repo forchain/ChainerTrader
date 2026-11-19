@@ -27,7 +27,7 @@ from trader.adapters.inbound.cli.signal_scanner import (
 from trader.adapters.outbound.backtrader.base_strategy import BaseStrategy
 from trader.adapters.outbound.backtrader.signal_scanner import run_strategy_triggered_signals
 from trader.core.shared.domain import Interval, Kline
-from trader.task.task_type import TaskType
+from trader.core.task.domain import TaskType
 
 
 def test_select_top_usdt_symbols_filters_stablecoins_and_limits_to_top_n():

@@ -1,13 +1,13 @@
 import os
 import re
 
-# ``paths.py`` now lives two directories deeper than the legacy ``common/path.py``
-# (src/trader/adapters/outbound/files), so project-level lookups climb one more level.
-_PROJECT_ROOT = "./../../../../../"
-_DATA_DIR = "./../../../../../data"
-_SCRIPTS_DIR = "./../../../../../scripts"
-_CONFIGS_DIR = "./../../../../../configs"
-_TRADER_DIR = "./../../../"
+# ``paths.py`` lives in the shared kernel (src/trader/core/shared); project-level
+# lookups climb to the repository root from there.
+_PROJECT_ROOT = "./../../../.."
+_DATA_DIR = "./../../../../data"
+_SCRIPTS_DIR = "./../../../../scripts"
+_CONFIGS_DIR = "./../../../../configs"
+_TRADER_DIR = "./../.."
 
 
 def _dir(relative: str) -> str:

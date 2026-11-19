@@ -5,14 +5,15 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
 
+from trader.adapters.inbound.http.auth import current_user
 from trader.adapters.inbound.http.exceptions import translate_domain_exception
 from trader.adapters.inbound.http.presenters import public_task_state_dict
-from trader.auth.context import current_user
-from trader.common import path as trader_path
 from trader.core.exchange.account_lifecycle import LiveAccountLifecycle
 from trader.core.exchange.domain import MarginMode
 from trader.core.exchange.use_cases import PreflightUserExchange, base_exchange_config
+from trader.core.shared import paths as trader_path
 from trader.core.task.config_codec import TaskConfigCodec
+from trader.core.task.domain import TaskType
 from trader.core.task.use_cases.submission import (
     default_taskset_file_name as _default_taskset_file_name,
 )
@@ -31,8 +32,6 @@ from trader.core.task.use_cases.submission import (
 from trader.core.task.use_cases.submission import (
     validate_config_file_source as _core_validate_config_file_source,
 )
-from trader.task.task_config import read_task_config_source
-from trader.task.task_type import TaskType
 
 router = APIRouter()
 
@@ -67,7 +66,7 @@ async def add_tasks(request: Request):
         _validate_config_file_source(cfg)
         taskcs = (
             TaskConfigCodec.from_input(
-                read_task_config_source(cfg), min_live_trade_notional=getattr(request.app.state.cfg, "min_live_trade_notional", 11.0)
+                _read_task_config_source(request, cfg), min_live_trade_notional=getattr(request.app.state.cfg, "min_live_trade_notional", 11.0)
             )
             if cfg
             else []
@@ -173,6 +172,12 @@ async def strategy_param_presets(strategy: str, request: Request):
     if not strategy_name:
         raise HTTPException(status_code=400, detail="strategy is required")
     return {"strategy": strategy_name, "params": _strategy_param_defaults(request, strategy_name)}
+
+
+def _read_task_config_source(request: Request, cfg: str) -> str:
+    loader = getattr(getattr(request.app.state, "composition", None), "task_config_loader", None)
+    reader = getattr(loader, "read_source_text", None)
+    return reader(cfg) if callable(reader) else cfg
 
 
 async def _preflight_user_live_tasks(request: Request, user, taskcs) -> None:

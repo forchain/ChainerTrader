@@ -5,17 +5,16 @@ from types import SimpleNamespace
 import pytest
 
 from scripts.migrate_persisted_live_task_configs import main as migrate_persisted_live_task_configs_main
-from trader.app.app import App
-from trader.common.config import TRADER_DB, TRADER_EXCHANGE, TRADER_TASKS, Config
-from trader.common.logger import Logger
-from trader.common.message import new_add_tasks_msg, new_exit_msg
+from trader.adapters.outbound.files.task_config_loader import TaskConfig
+from trader.adapters.outbound.logging.logger import Logger
+from trader.core.shared.config import TRADER_DB, TRADER_EXCHANGE, TRADER_TASKS, Config
 from trader.core.shared.domain import Interval, SymbolInterval
+from trader.core.shared.messages import new_add_tasks_msg, new_exit_msg
+from trader.core.task.domain import TaskState, TaskStateType, TaskType
+from trader.core.task.persisted_config_migration import migrate_persisted_task_config_json
 from trader.core.task.runtime_task import ManagedTask
-from trader.task.persisted_live_config_migration import migrate_persisted_task_config_json
-from trader.task.task_config import TaskConfig
-from trader.task.task_manager import TaskManager
-from trader.task.task_type import TaskType
-from trader.utils.task_state import TaskState, TaskStateType
+from trader.core.task.use_cases.task_manager import TaskManager
+from trader.main import App
 
 
 def test_task_manager_start_returns_none_when_tasks_parse_to_empty():

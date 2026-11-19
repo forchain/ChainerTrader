@@ -1,15 +1,14 @@
 import asyncio
 
 from tests.persistence_harness import initialized_database
+from trader.adapters.outbound.identity.argon2_hasher import Argon2PasswordHasher
+from trader.adapters.outbound.identity.fernet_cipher import FernetSecretCipher, decrypt_secret, service_key_available
+from trader.adapters.outbound.logging.logger import Logger
 from trader.adapters.outbound.persistence.exchange_credential import ExchangeCredentialCol
 from trader.adapters.outbound.persistence.manager import DatabaseManager
 from trader.adapters.outbound.persistence.user import UserCol
-from trader.auth.bootstrap import bootstrap_admin_exchange_credential
-from trader.auth.credentials import FernetSecretCipher, decrypt_secret, service_key_available
-from trader.auth.passwords import Argon2PasswordHasher
-from trader.common.config import Config
-from trader.common.logger import Logger
-from trader.core.identity.use_cases import BootstrapAdministrator
+from trader.core.identity.use_cases import BootstrapAdministrator, bootstrap_admin_exchange_credential
+from trader.core.shared.config import Config
 
 
 async def _with_db(fn):

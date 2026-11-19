@@ -16,8 +16,8 @@ import requests
 
 from trader.adapters.outbound.backtrader.live_runtime import BacktraderLiveRunner
 from trader.adapters.outbound.backtrader.macd_triple_divergence import MacdTripleDivergenceStrategy
-from trader.common.config import Config
-from trader.common.logger import Logger
+from trader.adapters.outbound.logging.logger import Logger
+from trader.core.shared.config import Config
 from trader.core.shared.domain import Kline
 from trader.core.strategy.domain.node import build_strategy_kwargs
 

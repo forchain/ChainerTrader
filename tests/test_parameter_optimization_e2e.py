@@ -5,10 +5,10 @@ from types import SimpleNamespace
 
 from trader.adapters.outbound.backtrader.dataset_feed import BacktraderDatasetFeedLoader as DatasetResolver
 from trader.adapters.outbound.files.optimization_store import FileRankingReportStore, write_optimization_artifacts
-from trader.common.config import Config
+from trader.adapters.outbound.files.task_config_loader import parse_task_config
+from trader.core.shared.config import Config
 from trader.core.shared.domain import Interval, Kline, SymbolInterval
-from trader.task.task_config import parse_task_config
-from trader.task.task_manager import TaskManager
+from trader.core.task.use_cases.task_manager import TaskManager
 
 
 class DummyLog:

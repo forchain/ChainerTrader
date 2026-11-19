@@ -19,6 +19,7 @@ from trader.core.execution.use_cases import (
 )
 from trader.core.marketdata.interfaces import KlineRepository, MarketStreamPort
 from trader.core.marketdata.stream import MarketStreamKey
+from trader.core.marketdata.warmup import BackfillRequestKind, plan_initial_backfill
 from trader.core.notification.domain import (
     ManualTradeAccountState,
     ManualTradeNotificationEvent,
@@ -28,6 +29,7 @@ from trader.core.notification.use_cases import SendManualTradeNotification
 from trader.core.shared.domain import OperateType
 from trader.core.shared.messages import new_stat_msg
 from trader.core.strategy.domain.node import build_strategy_kwargs
+from trader.core.strategy.domain.trader_result import TraderResult
 from trader.core.task.config import TaskConfig
 from trader.core.task.dashboard import (
     build_risk_overlay_events,
@@ -40,8 +42,6 @@ from trader.core.task.dashboard import (
 from trader.core.task.domain import TaskState, TaskStateType, task_state_name
 from trader.core.task.interfaces import FundReservationStore, TaskEventPublisher, TaskRepository
 from trader.core.task.stats import TraderStat
-from trader.live.market_data import BackfillRequestKind, plan_initial_backfill
-from trader.strategy.trader_result import TraderResult
 
 REALTIME_STREAM_QUEUE_TIMEOUT_SECONDS = 1.0
 

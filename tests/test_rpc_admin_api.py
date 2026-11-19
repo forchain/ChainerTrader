@@ -4,10 +4,10 @@ from types import SimpleNamespace
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from trader.adapters.inbound.http.auth import SESSION_COOKIE, SessionAuthMiddleware
 from trader.adapters.inbound.http.routers.admin import router
-from trader.auth.context import SESSION_COOKIE, SessionAuthMiddleware
-from trader.common.config import Config
 from trader.core.identity.sessions import create_session_token, hash_session_token
+from trader.core.shared.config import Config
 
 
 class _UserRepo:

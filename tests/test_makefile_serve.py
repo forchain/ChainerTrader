@@ -22,7 +22,9 @@ def test_makefile_prefers_uv_run_for_test_lint_and_serve():
 
 
 def test_serve_runtime_defaults_to_ccxt_polling_market_stream():
-    from trader.live.stream import GLOBAL_MARKET_STREAM_HUB, BinanceKlineWebSocketAdapter, CcxtPollingMarketStreamAdapter
+    from trader.adapters.outbound.marketstream import GLOBAL_MARKET_STREAM_HUB
+    from trader.adapters.outbound.marketstream.binance import BinanceKlineWebSocketAdapter
+    from trader.adapters.outbound.marketstream.ccxt import CcxtPollingMarketStreamAdapter
 
     assert isinstance(GLOBAL_MARKET_STREAM_HUB.connector, CcxtPollingMarketStreamAdapter)
     assert not isinstance(GLOBAL_MARKET_STREAM_HUB.connector, BinanceKlineWebSocketAdapter)

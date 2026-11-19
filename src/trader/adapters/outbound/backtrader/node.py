@@ -14,7 +14,7 @@ from trader.core.shared.config import Config
 from trader.core.shared.domain import SymbolInterval
 from trader.core.shared.logging import LogTag
 from trader.core.strategy.domain.node import build_strategy_kwargs
-from trader.strategy.trader_result import TraderResult
+from trader.core.strategy.domain.trader_result import TraderResult
 
 
 class Node:

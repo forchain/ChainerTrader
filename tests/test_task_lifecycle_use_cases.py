@@ -20,7 +20,9 @@ from trader.core.task import (
     TaskState,
     TaskStateType,
     TaskType,
+    live_monitor,
 )
+from trader.core.task.event_bus import LiveEventBus
 from trader.core.task.use_cases import (
     CancelTaskOpenOrders,
     CleanupRunningTasksBeforeStart,
@@ -33,8 +35,6 @@ from trader.core.task.use_cases import (
     StopUserRunningTasks,
     SubmitTasks,
 )
-from trader.live import monitor as live_monitor
-from trader.live.monitor import LiveEventBus
 
 
 class _FakeReservationStore(FundReservationStore):
@@ -203,7 +203,7 @@ def test_ports_and_event_bus_have_no_global_singleton():
 
 def test_no_asyncio_run_in_task_lifecycle_modules():
     root = Path(__file__).resolve().parents[1] / "src" / "trader"
-    for rel in ("task/task_manager.py",):
+    for rel in ("core/task/use_cases/task_manager.py",):
         tree = ast.parse((root / rel).read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.Attribute) and node.attr == "run" and isinstance(node.value, ast.Name) and node.value.id == "asyncio":

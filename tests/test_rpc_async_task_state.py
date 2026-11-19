@@ -4,7 +4,7 @@ import pytest
 
 from trader.adapters.inbound.http.queries import get_taskinfo
 from trader.adapters.inbound.http.routers.tasks import get_tasks
-from trader.utils.task_state import TaskStateType
+from trader.core.task.domain import TaskStateType
 
 
 @pytest.fixture

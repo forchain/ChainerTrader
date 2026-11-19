@@ -1,10 +1,7 @@
 from __future__ import annotations
 
 from trader.core.task.config_codec import TaskConfigCodec
-from trader.task.persisted_live_config_migration import (
-    PERSISTED_LEGACY_LIVE_EXECUTION_MODE,
-    PERSISTED_LIVE_DATA_MODE,
-)
+from trader.core.task.persisted_config_migration import PERSISTED_LEGACY_LIVE_EXECUTION_MODE, PERSISTED_LIVE_DATA_MODE
 
 
 def public_task_state_dict(ts) -> dict:

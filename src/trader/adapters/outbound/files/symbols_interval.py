@@ -1,6 +1,6 @@
 import os
 
-from trader.adapters.outbound.files import paths
+from trader.core.shared import paths
 from trader.core.shared.domain import Interval, SymbolInterval
 
 

@@ -6,7 +6,7 @@ import subprocess
 from pathlib import Path
 from typing import Callable
 
-from trader.task.task_config import parse_task_config
+from trader.adapters.outbound.files.task_config_loader import parse_task_config
 
 
 def launch_background_run(

@@ -2,8 +2,8 @@ import inspect
 
 from fastapi import APIRouter, Request
 
+from trader.adapters.inbound.http.auth import current_user
 from trader.adapters.inbound.http.presenters import public_task_state_dict
-from trader.auth.context import current_user
 from trader.core.task.exceptions import TaskNotFound, TaskOwnership
 from trader.core.task.use_cases import GetTask, TaskScope, paginate
 

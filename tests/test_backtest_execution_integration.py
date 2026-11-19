@@ -6,12 +6,12 @@ from unittest.mock import AsyncMock
 from trader.adapters.outbound.backtrader.data import BinanceData
 from trader.adapters.outbound.backtrader.optimization_runner import ProcessPoolBacktestRunner
 from trader.adapters.outbound.backtrader.task_handles import BacktestTaskHandle
-from trader.common.config import Config
+from trader.adapters.outbound.files.task_config_loader import TaskConfig
+from trader.core.shared.config import Config
 from trader.core.shared.domain import Interval, Kline, SymbolInterval
 from trader.core.strategy.domain.node import build_strategy_kwargs
-from trader.task.task_config import TaskConfig
-from trader.task.task_manager import TaskManager
-from trader.task.task_type import TaskType
+from trader.core.task.domain import TaskType
+from trader.core.task.use_cases.task_manager import TaskManager
 
 
 class DummyLog:

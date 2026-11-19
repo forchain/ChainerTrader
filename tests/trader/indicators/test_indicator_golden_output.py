@@ -17,7 +17,7 @@ from trader.adapters.outbound.backtrader.indicators.qqe_mod import QQEMod
 from trader.adapters.outbound.backtrader.indicators.rsrs import RSRSIndicator
 from trader.adapters.outbound.backtrader.indicators.super_trend import SuperTrend
 from trader.adapters.outbound.backtrader.indicators.trend_a import TrendA
-from trader.utils.ma import MAType
+from trader.core.strategy.domain.types import MAType
 
 GOLDEN_SHA256 = "889a3f00d1bbcd0ecf829019afee439cdf1f839470cbd883b568ad2546f8d4ca"
 

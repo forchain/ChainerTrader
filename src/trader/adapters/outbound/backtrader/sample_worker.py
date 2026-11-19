@@ -14,9 +14,9 @@ from trader.adapters.outbound.backtrader.backtest_runner import (
 from trader.adapters.outbound.backtrader.catalog import parse_strategies
 from trader.adapters.outbound.backtrader.dataset_feed import BacktraderDatasetFeedLoader, DatasetRef
 from trader.adapters.outbound.backtrader.node import Node
-from trader.adapters.outbound.files import paths as path
 from trader.adapters.outbound.logging.logger import Logger
 from trader.adapters.outbound.persistence.manager import DatabaseManager
+from trader.core.shared import paths as path
 from trader.core.shared.config import Config
 from trader.core.shared.domain import Interval, SymbolInterval
 from trader.core.shared.messages import new_stat_msg

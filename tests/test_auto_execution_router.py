@@ -2,12 +2,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from trader.common.config import Config
+from trader.adapters.outbound.files.task_config_loader import TaskConfig
 from trader.core.execution import ExecutionStatus
+from trader.core.execution.use_cases import AutoExecutionRouter, AutoExecutionStatus
+from trader.core.shared.config import Config
 from trader.core.shared.domain import Interval, Operate, OperateType, SymbolInterval
-from trader.live.auto_execution import AutoExecutionRouter, AutoExecutionStatus
-from trader.task.task_config import TaskConfig
-from trader.task.task_type import TaskType
+from trader.core.task.domain import TaskType
 
 
 @pytest.fixture

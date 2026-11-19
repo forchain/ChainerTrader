@@ -6,10 +6,10 @@ from types import SimpleNamespace
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from trader.common.config import Config
 from trader.core.exchange.exceptions import ExchangeConnectivityError, UserExchangeCredentialError
 from trader.core.identity.exceptions import AuthenticationError, PasswordPolicyError
 from trader.core.optimization.exceptions import OptimizationConfigError, RankingError
+from trader.core.shared.config import Config
 from trader.core.task.domain import TaskState, TaskStateType
 from trader.core.task.exceptions import FundReservationError, TaskNotFound, TaskOwnership
 

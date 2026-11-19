@@ -7,7 +7,7 @@ import backtrader
 from backtrader import num2date
 
 from trader.adapters.outbound.backtrader.csvdata import BinanceCSVData
-from trader.common import path
+from trader.core.shared import paths as path
 
 
 class TestStrategy(backtrader.Strategy):

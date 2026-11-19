@@ -4,31 +4,13 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-FRAMEWORK_MODULES = frozenset({"fastapi", "tortoise", "backtrader", "ccxt", "pydantic", "cryptography", "argon2", "requests"})
-
-# Legacy test-compatibility shims and operational tools that still re-export or
-# construct concrete adapters for backwards compatibility with pre-hexagonal callers.
-# No new module outside ``src/trader/main.py`` and ``src/trader/adapters/`` may be
-# added here; new code must accept ports and wire concrete adapters in ``main.py``.
-LEGACY_SHIM_ADAPTER_ALLOWLIST = frozenset(
-    {
-        "auth/context.py",
-        "auth/credentials.py",
-        "auth/passwords.py",
-        "common/config.py",
-        "common/log_buffer.py",
-        "common/logger.py",
-        "common/path.py",
-        "live/market_data.py",
-        "live/stream.py",
-        "notify/notify_type.py",
-        "notify/trade_notification.py",
-        "task/optimization_audit.py",
-        "task/optimization_runtime.py",
-        "task/optimization_workbench.py",
-        "task/task_config.py",
-    }
+FRAMEWORK_MODULES = frozenset(
+    {"fastapi", "tortoise", "backtrader", "ccxt", "pydantic", "cryptography", "argon2", "requests", "websockets", "aiohttp"}
 )
+
+# No module outside ``src/trader/main.py`` and ``src/trader/adapters/`` may construct
+# concrete outbound adapters; new code must accept ports and wire adapters in ``main.py``.
+LEGACY_SHIM_ADAPTER_ALLOWLIST: frozenset[str] = frozenset()
 
 
 def _module_parts(path: Path, root: Path, prefix: list[str]) -> tuple[list[str], bool]:
@@ -121,3 +103,54 @@ def check_composition_boundary(
                     violations.append(f"{path}:{node.lineno}: only main.py (composition root) may import {module}")
 
     return violations
+
+
+def _module_imports(trader_root: Path) -> dict[str, set[str]]:
+    """Map every trader module to the trader/framework modules it imports."""
+    graph: dict[str, set[str]] = {}
+    for path in sorted(trader_root.rglob("*.py")):
+        module_parts, is_package = _module_parts(path, trader_root, ["trader"])
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        imports: set[str] = set()
+        for node in ast.walk(tree):
+            imports.update(_imported_modules(node, module_parts, is_package))
+        graph[".".join(module_parts)] = imports
+    return graph
+
+
+def check_transitive_core_imports(trader_root: Path) -> list[str]:
+    """Reject any core module that transitively reaches an adapter or a framework module."""
+    graph = _module_imports(trader_root)
+    modules = set(graph)
+    violations: list[str] = []
+
+    for origin in sorted(module for module in modules if module == "trader.core" or module.startswith("trader.core.")):
+        seen = {origin}
+        stack = list(graph[origin])
+        while stack:
+            dependency = stack.pop()
+            if dependency in seen:
+                continue
+            seen.add(dependency)
+            if _is_forbidden_in_core(dependency):
+                violations.append(f"{origin}: transitively imports {dependency}")
+                break
+            if dependency in modules:
+                stack.extend(graph[dependency])
+    return violations
+
+
+def main() -> int:
+    trader_root = Path(__file__).resolve().parents[1] / "src" / "trader"
+    violations = [
+        *check_import_direction(trader_root / "core"),
+        *check_transitive_core_imports(trader_root),
+        *check_composition_boundary(trader_root),
+    ]
+    for violation in violations:
+        print(violation)
+    return 1 if violations else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

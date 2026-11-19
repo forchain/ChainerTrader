@@ -5,16 +5,12 @@ from types import SimpleNamespace
 
 import pytest
 
+from trader.adapters.outbound.marketstream import GLOBAL_MARKET_STREAM_HUB
+from trader.adapters.outbound.marketstream.binance import BinanceKlineWebSocketAdapter, normalize_binance_kline_message
+from trader.adapters.outbound.marketstream.ccxt import CcxtPollingMarketStreamAdapter
+from trader.adapters.outbound.marketstream.hub import MarketStreamHub
+from trader.core.marketdata.stream import MarketStreamKey, MarketStreamState
 from trader.core.shared.domain import Kline
-from trader.live.market_data import normalize_binance_kline_message
-from trader.live.stream import (
-    GLOBAL_MARKET_STREAM_HUB,
-    BinanceKlineWebSocketAdapter,
-    CcxtPollingMarketStreamAdapter,
-    MarketStreamHub,
-    MarketStreamKey,
-    MarketStreamState,
-)
 
 BASE = 1_714_281_600
 

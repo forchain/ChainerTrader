@@ -9,10 +9,10 @@ import sys
 
 from dotenv import load_dotenv
 
+from trader.adapters.outbound.logging.logger import Logger
 from trader.adapters.outbound.persistence.manager import DatabaseManager
-from trader.common.config import TRADER_DB, Config
-from trader.common.logger import Logger
-from trader.task.persisted_live_config_migration import migrate_persisted_live_task_configs
+from trader.core.shared.config import TRADER_DB, Config
+from trader.core.task.persisted_config_migration import migrate_persisted_live_task_configs
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:

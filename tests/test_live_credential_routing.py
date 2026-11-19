@@ -4,16 +4,14 @@ from types import SimpleNamespace
 
 import pytest
 
-from trader.adapters.outbound.identity.fernet_cipher import FernetSecretCipher, service_key_available
-from trader.auth.credentials import encrypt_secret
-from trader.common.config import Config
-from trader.common.logger import Logger
+from trader.adapters.outbound.files.task_config_loader import TaskConfig
+from trader.adapters.outbound.identity.fernet_cipher import FernetSecretCipher, encrypt_secret, service_key_available
+from trader.adapters.outbound.logging.logger import Logger
 from trader.core.exchange.domain import ExchangeConfig, MarginMode
+from trader.core.shared.config import Config
 from trader.core.shared.domain import Interval, SymbolInterval
-from trader.task.task_config import TaskConfig
-from trader.task.task_manager import TaskManager
-from trader.task.task_type import TaskType
-from trader.utils.task_state import TaskState
+from trader.core.task.domain import TaskState, TaskType
+from trader.core.task.use_cases.task_manager import TaskManager
 
 
 def _make_cipher(service_key):

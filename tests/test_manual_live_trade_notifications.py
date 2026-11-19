@@ -6,12 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from trader.adapters.outbound.backtrader.task_handles import LiveTraderTaskHandle
-from trader.common.config import Config
-from trader.common.logger import Logger
-from trader.common.message import Message, MessageType
-from trader.core.shared.domain import Interval, Operate, OperateType, SymbolInterval
-from trader.notify.notify_manager import NotifyManager
-from trader.notify.trade_notification import (
+from trader.adapters.outbound.email.smoke import (
     ManualNotifySmokeKline,
     ManualTradeAccountState,
     ManualTradeNotificationEvent,
@@ -19,9 +14,14 @@ from trader.notify.trade_notification import (
     normalize_live_execution_mode,
     render_manual_trade_email,
 )
-from trader.strategy.trader_result import TraderResult
-from trader.task.task_config import TaskConfig, parse_task_config
-from trader.task.task_type import TaskType
+from trader.adapters.outbound.files.task_config_loader import TaskConfig, parse_task_config
+from trader.adapters.outbound.logging.logger import Logger
+from trader.core.notification.manager import NotifyManager
+from trader.core.shared.config import Config
+from trader.core.shared.domain import Interval, Operate, OperateType, SymbolInterval
+from trader.core.shared.messages import Message, MessageType
+from trader.core.strategy.domain.trader_result import TraderResult
+from trader.core.task.domain import TaskType
 
 
 def _result_with_operation(op: Operate) -> TraderResult:
@@ -464,7 +464,7 @@ def test_manual_task_notification_maps_dashboard_correlation_fields_from_operati
 
 
 def test_notice_config_accepts_multiple_recipients():
-    from trader.notify.notify_type import parse_notice_config
+    from trader.adapters.outbound.email.config import parse_notice_config
 
     notices = parse_notice_config(
         json.dumps(
@@ -485,7 +485,7 @@ def test_notice_config_accepts_multiple_recipients():
 
 
 def test_notice_config_ignores_unknown_notice_type():
-    from trader.notify.notify_type import parse_notice_config
+    from trader.adapters.outbound.email.config import parse_notice_config
 
     notices = parse_notice_config(
         json.dumps(
@@ -504,7 +504,7 @@ def test_notice_config_ignores_unknown_notice_type():
 
 
 def test_notice_config_missing_file_path_reports_exact_missing_file(tmp_path):
-    from trader.notify.notify_type import parse_notice_config
+    from trader.adapters.outbound.email.config import parse_notice_config
 
     missing_path = tmp_path / "notice.json"
 
@@ -513,7 +513,7 @@ def test_notice_config_missing_file_path_reports_exact_missing_file(tmp_path):
 
 
 def test_notify_mail_sends_to_multiple_recipients(monkeypatch):
-    from trader.notify.notify_type import NotifyMail, NotifyType
+    from trader.adapters.outbound.email.config import NotifyMail, NotifyType
 
     sent = {}
 
@@ -549,7 +549,7 @@ def test_notify_mail_sends_to_multiple_recipients(monkeypatch):
 
 
 def test_notify_mail_sends_html_content_as_html_mime(monkeypatch):
-    from trader.notify.notify_type import NotifyMail, NotifyType
+    from trader.adapters.outbound.email.config import NotifyMail, NotifyType
 
     sent = {}
 
@@ -598,7 +598,7 @@ def test_real_email_smoke_event_is_generated_by_minimal_one_minute_strategy():
     reason="requires TRADER_MANUAL_NOTIFY_E2E_NOTICE with real mail credentials",
 )
 def test_real_email_smoke_requires_explicit_notice_configuration():
-    from trader.notify.trade_notification import run_real_email_smoke
+    from trader.adapters.outbound.email.smoke import run_real_email_smoke
 
     result = run_real_email_smoke()
 
