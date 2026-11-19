@@ -759,15 +759,17 @@ def test_chainer_trader(main=False):
     """Test ChainerTrader indicator logic with BTC-USDT 1h data."""
 
     async def _run():
-        klines = await get_klines_from_db()
-        if klines is None or len(klines) == 0:
-            pytest.skip(f"No klines found for {SYMBOL_INTERVAL}. Please download data first.")
-        return klines
+        try:
+            klines = await get_klines_from_db()
+            if klines is None or len(klines) == 0:
+                pytest.skip(f"No klines found for {SYMBOL_INTERVAL}. Please download data first.")
+            return klines
+        finally:
+            # Must close inside the loop that opened the connection: Tortoise keeps
+            # its connection context on a ContextVar that dies with this loop.
+            await Tortoise.close_connections()
 
-    try:
-        klines = asyncio.run(_run())
-    finally:
-        asyncio.run(Tortoise.close_connections())
+    klines = asyncio.run(_run())
 
     print(f"Loaded {len(klines)} klines from {SYMBOL_INTERVAL}")
     print(f"Date range: {klines[0].open_datetime()} - {klines[-1].open_datetime()}")
