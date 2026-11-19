@@ -67,7 +67,11 @@ class MemoryKlineStore:
         return added
 
 
-def test_e2e_dataset_resolver_ignores_internal_gap_and_returns_db_ref():
+def _hourly_klines(range_start: int, range_end: int) -> list[Kline]:
+    return [make_kline(open_time, 100.0) for open_time in range(range_start, range_end + 1, 3600)]
+
+
+def test_e2e_dataset_resolver_repairs_internal_gap_and_returns_db_ref():
     async def _test():
         start_time = 1_700_000_000
         end_time = start_time + 7200
@@ -85,6 +89,7 @@ def test_e2e_dataset_resolver_ignores_internal_gap_and_returns_db_ref():
 
         async def downloader(name, log, db_manager_arg, collection_name, exchange, symbol_interval_arg, range_start, range_end, quit_event):
             download_calls.append((range_start, range_end))
+            await db_manager_arg.kline.add_klines(collection_name, _hourly_klines(range_start, range_end))
             return True
 
         resolver = DatasetResolver(
@@ -99,13 +104,18 @@ def test_e2e_dataset_resolver_ignores_internal_gap_and_returns_db_ref():
         assert result.ok is True
         assert result.dataset_ref.source_type == "db"
         assert result.dataset_ref.path is None
-        assert download_calls == []
-        assert [item.open_time for item in await store.get_klines(symbol_interval.name(), start_time, end_time)] == [start_time, end_time]
+        # The internal gap is repaired, and missing daily-bucket edges are filled.
+        assert download_calls == [
+            (1699920800, 1699996400),
+            (1700003600, 1700003600),
+            (1700010800, 1700086400),
+        ]
+        assert 1700003600 in {item.open_time for item in await store.get_klines(symbol_interval.name(), start_time, end_time)}
 
     asyncio.run(_test())
 
 
-def test_e2e_dataset_resolver_repairs_only_missing_edges():
+def test_e2e_dataset_resolver_repairs_missing_daily_bucket_edges():
     async def _test():
         start_time = 1_700_000_000
         second_time = start_time + 3600
@@ -123,8 +133,8 @@ def test_e2e_dataset_resolver_repairs_only_missing_edges():
 
         async def downloader(name, log, db_manager_arg, collection_name, exchange, symbol_interval_arg, range_start, range_end, quit_event):
             download_calls.append((range_start, range_end))
-            # Simulate downloading the edges of the narrow window
-            await db_manager_arg.kline.add_klines(collection_name, [make_kline(start_time, 100.0), make_kline(end_time, 102.0)])
+            # Real downloads cover the whole requested range, not just its endpoints.
+            await db_manager_arg.kline.add_klines(collection_name, _hourly_klines(range_start, range_end))
             return True
 
         resolver = DatasetResolver(

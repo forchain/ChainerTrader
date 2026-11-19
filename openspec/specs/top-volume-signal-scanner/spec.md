@@ -1,7 +1,7 @@
 # top-volume-signal-scanner Specification
 
 ## Purpose
-TBD - created by archiving change top-volume-signal-scanner. Update Purpose after archive.
+Defines selection and signal scanning of the top Binance spot USDT trading pairs by quote volume.
 ## Requirements
 ### Requirement: 系统能够选择 Binance 现货 USDT 交易对成交额前十的非稳定币标的
 

@@ -1,4 +1,7 @@
-## ADDED Requirements
+## Purpose
+Defines automatic structured JSON report generation after backtests.
+
+## Requirements
 
 ### Requirement: 回测结束后自动输出 JSON 报告文件
 

@@ -1,4 +1,7 @@
-## ADDED Requirements
+## Purpose
+Defines the end-to-end strategy optimization workflow agents follow, including preflight checks, the One Change Rule, and stopping conditions.
+
+## Requirements
 
 ### Requirement: Skill 定义完整的 Agent 纵向优化工作流
 

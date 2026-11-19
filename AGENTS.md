@@ -75,6 +75,7 @@ Rules:
 - Treat test strategy as part of the implementation workflow from proposal through verification, not as a final optional step.
 - Default to test-driven development for code changes whenever the behavior can be exercised automatically.
 - Prefer automated tests over manual testing unless blocked by a concrete external limitation.
+- Every test MUST finish within the 60-second per-test budget enforced by `pytest-timeout` (`timeout = 60`, `timeout_method = signal` in `pytest.ini`); a test that exceeds it is invalidated by the architecture rather than repaired, and every deletion MUST be recorded in `docs/agents/test-retirement-log.md` before it happens.
 - If a proposed or implemented change cannot be covered by reliable automated tests, explicitly say so and explain why.
 - Do not claim a fix, feature, or refactor is complete without stating what was verified and how.
 
@@ -97,7 +98,7 @@ Directory responsibilities:
 - `src/trader/`: reusable application logic, product modules, CLI modules, internal tools
 - `src/trader/core/`: stable domain and application layer, organized by bounded-context packages (`shared`, `task`, `execution`, `marketdata`, `exchange`, `identity`, `notification`, `strategy`, `optimization`)
 - `src/trader/adapters/inbound/`: HTTP and CLI entry adapters (`http`, `cli`)
-- `src/trader/adapters/outbound/`: outbound adapter implementations (`persistence`, `binance`, `backtrader`, `marketstream`, `notification`, `email`, `files`)
+- `src/trader/adapters/outbound/`: outbound adapter implementations (`persistence`, `binance`, `backtrader`, `marketstream`, `notification`, `email`, `files`, `logging`, `identity`, `execution`)
 - `configs/`: non-executable configuration assets such as task JSON and notice JSON
 - `scripts/`: operational shell scripts and thin compatibility wrappers only
 - `tests/`: automated verification, fixtures, and test-only helpers
@@ -152,6 +153,15 @@ OpenSpec archive rule:
 - Every time an OpenSpec change is archived, explicitly check whether README needs an update
 - Use the README responsibilities above as the decision rule
 - If the change affects project introduction, architecture presentation, deployment, CLI usage, API usage, database design, database structure, or any other user-facing interface, update README in the same change before archiving
+
+## Pull Request Rules
+
+Opening a pull request is governed by `docs/agents/pull-request-rules.md`. The short version:
+
+- **A PR's head branch MUST be named `<type>/<kebab-slug>`** - `feat/<slug>`, `fix/<slug>` (also `refactor/`, `chore/`, `docs/`, `test/`, `perf/`), for example `fix/hexagonal-test-docs-sync`.
+- **Never open a PR from a temporary or environment-specific branch name** (`butterflyray`, `langostino`, `ticket/01-foundation`, `merge/94-...`, `main`, `dev`).
+- **Rename the branch BEFORE creating the PR.** Renaming a branch that an open PR points at deletes the old ref and closes that PR, and the API refuses to reopen it.
+- Base branch is `main`; the body follows the `pr` skill template (`Summary` / `Evidence` / `Merge Danger`) and carries one `Closes #<n>` line per issue resolved. Issues close on merge, never by hand.
 
 ## Agent skills
 

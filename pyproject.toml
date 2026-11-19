@@ -30,6 +30,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest",
+    "pytest-timeout",
     "black",
     "ruff",
     "mkdocs",

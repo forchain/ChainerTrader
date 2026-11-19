@@ -1,8 +1,10 @@
 # execution-gateway-abstraction Specification
 
 ## Purpose
-TBD - created by archiving change decouple-execution-gateway-and-strategy-kernel. Update Purpose after archive.
+Defines the unified execution gateway contract that isolates strategy logic from backtrader and live exchange APIs.
+
 ## Requirements
+
 ### Requirement: Unified Execution Gateway Contract
 The framework SHALL expose a unified `ExecutionGateway` contract for trade execution, protective order management, cancellation, and reconciliation so strategy logic does not directly depend on backtrader or live exchange APIs.
 
@@ -33,11 +35,6 @@ The system SHALL resolve execution gateways through the live execution safety mo
 - **WHEN** runtime configuration uses `live_execution_mode=manual_notify`
 - **THEN** gateway resolution SHALL NOT return a gateway path that submits broker or live exchange orders
 
-#### Scenario: Removed execution modes cannot resolve a gateway
-- **WHEN** runtime configuration uses a removed `live_execution_mode`
-- **THEN** gateway resolution SHALL reject the mode as unsupported
-- **THEN** gateway resolution SHALL NOT return a paper or live execution gateway
-
 #### Scenario: Auto trade cap remains authoritative
 - **WHEN** runtime configuration uses `live_execution_mode=auto_trade` with positive `live_trade_max_notional`
 - **THEN** all live entry intents SHALL be capped by `live_trade_max_notional` before reaching the live gateway
@@ -45,6 +42,11 @@ The system SHALL resolve execution gateways through the live execution safety mo
 #### Scenario: Explicit gateway cannot upgrade safety mode
 - **WHEN** an explicit gateway configuration conflicts with the staged execution mode
 - **THEN** the runtime SHALL reject the configuration instead of allowing the gateway setting to bypass staged safety behavior
+
+#### Scenario: Removed execution modes cannot resolve a gateway
+- **WHEN** runtime configuration uses a removed `live_execution_mode`
+- **THEN** gateway resolution SHALL reject the mode as unsupported
+- **THEN** gateway resolution SHALL NOT return a paper or live execution gateway
 
 ### Requirement: Standardized Execution Events
 The system SHALL publish normalized execution events across all gateways, including at minimum submission, acceptance, fill, cancellation, rejection, protection armed/triggered/replaced, and reconcile gap detection.
@@ -88,7 +90,7 @@ The execution gateway contract SHALL support the minimum order semantics require
 - **THEN** each configured gateway SHALL process a protection replacement intent and emit a normalized protection-replaced event
 
 ### Requirement: Binance Live Protection Uses Native Orders When Armed
-The Binance live gateway SHALL treat exchange-native accepted protection orders as the source of truth for `protection_armed` events. Client-side market monitoring or WebSocket guardian behavior SHALL be represented separately and SHALL NOT be reported as native protection being armed.
+The Binance live gateway SHALL treat exchange-native accepted protection orders as the source of truth for `protection_armed` events. Client-side market monitoring, ordinary-order fallback, or WebSocket guardian behavior SHALL be represented separately and SHALL NOT be reported as native protection being armed.
 
 #### Scenario: Native protection accepted
 - **WHEN** Binance accepts the live protective stop, take-profit, or OCO-style protection order set

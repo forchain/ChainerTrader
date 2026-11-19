@@ -1,6 +1,7 @@
 import logging
 import os
 
+import pytest
 from binance_common.configuration import ConfigurationRestAPI
 from binance_common.constants import SPOT_REST_API_TESTNET_URL
 from binance_sdk_spot import Spot
@@ -9,6 +10,11 @@ from dotenv import load_dotenv
 
 from trader.adapters.inbound.cli.env_config import new_and_env
 from trader.core.exchange.domain import parse_exchange_config
+
+pytestmark = pytest.mark.skipif(
+    not os.environ.get("TRADER_BINANCE_INTEGRATION"),
+    reason="requires TRADER_BINANCE_INTEGRATION=1 and outbound Binance connectivity",
+)
 
 
 def init_spot_client():

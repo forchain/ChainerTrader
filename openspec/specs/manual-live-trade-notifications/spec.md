@@ -1,8 +1,10 @@
 # manual-live-trade-notifications Specification
 
 ## Purpose
-TBD - created by archiving change manual-live-trade-email-notifications. Update Purpose after archive.
+Defines the no-order manual live trading notification mode and the risk reference content of its emails.
+
 ## Requirements
+
 ### Requirement: 手动实盘通知模式不执行交易所订单
 
 系统 SHALL 支持一种手动实盘通知模式，在该模式下 live trader task 根据本地策略运行结果生成进场或出场建议，并通过通知渠道发送给用户，但 MUST NOT 调用交易所下单接口。
@@ -46,7 +48,7 @@ TBD - created by archiving change manual-live-trade-email-notifications. Update 
 
 ### Requirement: 止损止盈以本地出场通知表达
 
-手动实盘通知模式 SHALL 将止损价、止盈价和风险收益比作为策略参考信息或本地出场触发依据。系统 MUST NOT 要求用户根据邮件直接创建高级交易所订单，例如 OCO、bracket order、stop-limit 或 margin 专属订单。
+手动实盘通知模式 SHALL 将止损价、止盈价和风险收益比作为策略参考信息或本地出场触发依据。系统 MUST NOT 要求用户根据邮件直接创建高级交易所订单，例如 OCO、bracket order、stop-limit 或 margin 专属订单。手动模式中的本地止损止盈通知 MUST NOT be reported as exchange-native protection and MUST NOT be reused as proof that an automatic live position is protected.
 
 #### Scenario: 进场通知附带风险参考
 - **WHEN** 策略或框架为进场操作提供建议止损价、止盈价或风险收益比
@@ -57,11 +59,13 @@ TBD - created by archiving change manual-live-trade-email-notifications. Update 
 - **WHEN** 本地策略状态触发止损出场
 - **THEN** 系统 SHALL 发送普通出场通知
 - **THEN** 通知 SHALL 标明触发原因是止损
+- **THEN** 通知 MUST NOT 标明交易所原生止损单已经触发
 
 #### Scenario: 本地止盈触发后发送出场通知
 - **WHEN** 本地策略状态触发止盈出场
 - **THEN** 系统 SHALL 发送普通出场通知
 - **THEN** 通知 SHALL 标明触发原因是止盈
+- **THEN** 通知 MUST NOT 标明交易所原生止盈单已经触发
 
 ### Requirement: 支持真实邮件端到端烟测
 
